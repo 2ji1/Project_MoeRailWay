@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="PrototypeBalance" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/config/prototype_balance.gd" id="1_balance"]
+
+[resource]
+script = ExtResource("1_balance")
+session_duration_seconds = 2.0
+simulation_ticks_per_second = 60

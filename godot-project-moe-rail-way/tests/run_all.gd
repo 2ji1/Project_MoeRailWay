@@ -5,6 +5,8 @@ const SUITES = [
     preload("res://tests/unit/test_config_validator.gd"),
     preload("res://tests/unit/test_session_rng.gd"),
     preload("res://tests/unit/test_project_settings.gd"),
+    preload("res://tests/unit/test_session_controller.gd"),
+    preload("res://tests/unit/test_ui_layout_validator.gd"),
 ]
 
 

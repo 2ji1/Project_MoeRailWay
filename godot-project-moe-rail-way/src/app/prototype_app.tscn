@@ -1,33 +1,13 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://src/app/prototype_app.gd" id="1_app"]
 [ext_resource type="Resource" path="res://data/prototype_balance.tres" id="2_balance"]
+[ext_resource type="Resource" path="res://data/ui_layout_profile.tres" id="3_layout"]
+[ext_resource type="PackedScene" path="res://src/presentation/session/session_shell.tscn" id="4_shell"]
 
 [node name="PrototypeApp" type="Node"]
 script = ExtResource("1_app")
 balance = ExtResource("2_balance")
+layout_profile = ExtResource("3_layout")
 
-[node name="Backdrop" type="ColorRect" parent="."]
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-color = Color(0.949, 0.929, 0.867, 1)
-
-[node name="FoundationLabel" type="Label" parent="Backdrop"]
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -180.0
-offset_top = -28.0
-offset_right = 180.0
-offset_bottom = 28.0
-grow_horizontal = 2
-grow_vertical = 2
-text = "Moe Rail Way Prototype\nFoundation"
-horizontal_alignment = 1
-vertical_alignment = 1
+[node name="SessionShell" parent="." instance=ExtResource("4_shell")]
