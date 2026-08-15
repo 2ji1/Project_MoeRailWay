@@ -26,6 +26,8 @@
 - Use primitive placeholder presentation only. Custom art and final audio remain outside this milestone.
 - Preserve user-owned untracked files. Never force checkout, clean, or reset the workspace.
 - Treat repository ignore files and generated project-setting serialization as approved configuration-file exceptions to strict red-first TDD. Cover them with observable behavior checks: git check-ignore, project-setting assertions, two-run hash equality, and final diff verification.
+- Treat Godot 4.7.1 `.gd.uid` sidecars as tracked source metadata. Every tracked GDScript must have exactly one tracked sidecar, and no orphan sidecar may remain.
+- Use explicit preload constants for cross-script static annotations so the public contracts remain typed during direct execution from a fresh tree without a preparatory editor import.
 
 ---
 
@@ -49,11 +51,14 @@
 - Create godot-project-moe-rail-way/tests/support/prototype_test.gd: lightweight assertion support
 - Create godot-project-moe-rail-way/tests/run_all.gd: native headless test entry point
 - Create godot-project-moe-rail-way/tests/smoke/test_project_boot.gd: main-scene load smoke test
-- Create godot-project-moe-rail-way/tests/unit/test_config_validator.gd: valid and invalid Resource tests
+- Create godot-project-moe-rail-way/tests/unit/test_config_validator.gd: valid and invalid PrototypeBalance tests
 - Create godot-project-moe-rail-way/tests/unit/test_session_rng.gd: deterministic sequence tests
 - Create godot-project-moe-rail-way/tests/unit/test_project_settings.gd: platform, viewport, main-scene, and input tests
+- Track godot-project-moe-rail-way/**/*.gd.uid: Godot 4.7.1 identity metadata, with one generated sidecar for each of the 12 GDScripts above
 
 ## Shared Interfaces
+
+The public type names below remain declared with `class_name`. At each cross-script annotation site, the implementation uses the corresponding explicitly preloaded script constant (for example, `SessionStartConfigScript`) to preserve the same static contract without depending on a generated global class cache.
 
 PrototypeBalance:
 
@@ -698,12 +703,14 @@ Create godot-project-moe-rail-way/src/config/prototype_balance.gd:
 class_name PrototypeBalance
 extends Resource
 
+const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
+
 @export_range(1.0, 3600.0, 1.0) var session_duration_seconds := 180.0
 @export_range(1, 240, 1) var simulation_ticks_per_second := 60
 
 
-func create_session_start_config(seed_value: int) -> SessionStartConfig:
-    return SessionStartConfig.new(
+func create_session_start_config(seed_value: int) -> SessionStartConfigScript:
+    return SessionStartConfigScript.new(
         seed_value,
         session_duration_seconds,
         simulation_ticks_per_second
@@ -716,8 +723,10 @@ Create godot-project-moe-rail-way/src/config/prototype_config_validator.gd:
 class_name PrototypeConfigValidator
 extends RefCounted
 
+const PrototypeBalanceScript = preload("res://src/config/prototype_balance.gd")
 
-static func validate(balance: PrototypeBalance) -> PackedStringArray:
+
+static func validate(balance: PrototypeBalanceScript) -> PackedStringArray:
     var errors := PackedStringArray()
 
     if balance == null:
@@ -753,14 +762,18 @@ Replace godot-project-moe-rail-way/src/app/prototype_app.gd with:
 ~~~gdscript
 extends Node
 
-@export var balance: PrototypeBalance
+const ValidatorScript = preload("res://src/config/prototype_config_validator.gd")
+const PrototypeBalanceScript = preload("res://src/config/prototype_balance.gd")
+const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
+
+@export var balance: PrototypeBalanceScript
 @export var startup_seed := 1
 
-var session_start_config: SessionStartConfig
+var session_start_config: SessionStartConfigScript
 
 
 func _ready() -> void:
-    var errors := PrototypeConfigValidator.validate(balance)
+    var errors := ValidatorScript.validate(balance)
     if not errors.is_empty():
         for error_message in errors:
             push_error(error_message)
@@ -879,6 +892,7 @@ Expected: one focused commit with Resource configuration, validation, integratio
 - Create: godot-project-moe-rail-way/src/domain/random/session_rng.gd
 - Create: godot-project-moe-rail-way/tests/unit/test_session_rng.gd
 - Modify: godot-project-moe-rail-way/tests/run_all.gd
+- Modify: godot-project-moe-rail-way/tests/smoke/test_project_boot.gd
 - Modify: godot-project-moe-rail-way/src/app/prototype_app.gd
 
 **Interfaces:**
@@ -988,15 +1002,20 @@ Replace godot-project-moe-rail-way/src/app/prototype_app.gd with:
 ~~~gdscript
 extends Node
 
-@export var balance: PrototypeBalance
+const ValidatorScript = preload("res://src/config/prototype_config_validator.gd")
+const PrototypeBalanceScript = preload("res://src/config/prototype_balance.gd")
+const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
+const SessionRngScript = preload("res://src/domain/random/session_rng.gd")
+
+@export var balance: PrototypeBalanceScript
 @export var startup_seed := 1
 
-var session_start_config: SessionStartConfig
-var session_rng: SessionRng
+var session_start_config: SessionStartConfigScript
+var session_rng: SessionRngScript
 
 
 func _ready() -> void:
-    var errors := PrototypeConfigValidator.validate(balance)
+    var errors := ValidatorScript.validate(balance)
     if not errors.is_empty():
         for error_message in errors:
             push_error(error_message)
@@ -1005,15 +1024,18 @@ func _ready() -> void:
         return
 
     session_start_config = balance.create_session_start_config(startup_seed)
-    session_rng = SessionRng.new(session_start_config.seed)
-    print(
-        "Moe Rail Way prototype foundation ready | seed=%d ticks=%d" %
-        [
-            session_start_config.seed,
-            session_start_config.simulation_ticks_per_second,
-        ]
-    )
+    session_rng = SessionRngScript.new(session_start_config.seed)
+    if is_inside_tree():
+        print(
+            "Moe Rail Way prototype foundation ready | seed=%d ticks=%d" %
+            [
+                session_start_config.seed,
+                session_start_config.simulation_ticks_per_second,
+            ]
+        )
 ~~~
+
+Extend `tests/smoke/test_project_boot.gd` with an application-level composition assertion. Use a typed `PrototypeBalance` test subclass whose factory returns a seed offset from `startup_seed`, invoke `_ready()` while the instance remains outside the tree so the test emits no readiness log, and compare several `session_rng` samples with a `SessionRng` created from `session_start_config.seed`. This must fail if `PrototypeApp` seeds the RNG directly from `startup_seed` instead of the factory-produced session configuration.
 
 - [ ] **Step 5: Run all tests and the boot scene**
 
@@ -1044,7 +1066,7 @@ Expected: 3 suites pass and the app reports seed 1, ticks 60.
 Run:
 
 ~~~powershell
-git add -- 'godot-project-moe-rail-way/src/domain/random/session_rng.gd' 'godot-project-moe-rail-way/src/app/prototype_app.gd' 'godot-project-moe-rail-way/tests/unit/test_session_rng.gd' 'godot-project-moe-rail-way/tests/run_all.gd'
+git add -- 'godot-project-moe-rail-way/src/domain/random/session_rng.gd' 'godot-project-moe-rail-way/src/app/prototype_app.gd' 'godot-project-moe-rail-way/tests/unit/test_session_rng.gd' 'godot-project-moe-rail-way/tests/smoke/test_project_boot.gd' 'godot-project-moe-rail-way/tests/run_all.gd'
 if ($LASTEXITCODE -ne 0) {
     throw "Failed to stage deterministic-RNG files."
 }
@@ -1394,7 +1416,127 @@ git status --short --untracked-files=all
 
 Expected: 4 suites pass, main scene boots with seed 1 and ticks 60, and tracked working state is clean.
 
-- [ ] **Step 9: Hand off the completed feature branch for review**
+- [ ] **Step 9: Verify tracked script identities and a fresh tracked checkout**
+
+After all Foundation fixes and `.gd.uid` sidecars are committed, run:
+
+~~~powershell
+$MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
+$MoeRailTrackedScripts = @(
+    git ls-files |
+        Where-Object {
+            $_.StartsWith('godot-project-moe-rail-way/') -and
+            $_.EndsWith('.gd')
+        }
+)
+$MoeRailTrackedSidecars = @(
+    git ls-files |
+        Where-Object {
+            $_.StartsWith('godot-project-moe-rail-way/') -and
+            $_.EndsWith('.gd.uid')
+        }
+)
+$MoeRailMissingSidecars = @(
+    $MoeRailTrackedScripts |
+        Where-Object { "$_.uid" -notin $MoeRailTrackedSidecars }
+)
+$MoeRailOrphanSidecars = @(
+    $MoeRailTrackedSidecars |
+        Where-Object { $_.Substring(0, $_.Length - 4) -notin $MoeRailTrackedScripts }
+)
+if (
+    $MoeRailTrackedScripts.Count -ne 12 -or
+    $MoeRailTrackedSidecars.Count -ne 12 -or
+    $MoeRailMissingSidecars -or
+    $MoeRailOrphanSidecars
+) {
+    $MoeRailMissingSidecars
+    $MoeRailOrphanSidecars
+    throw "Tracked GDScripts and UID sidecars are not one-to-one."
+}
+
+$MoeRailUidValues = @(
+    $MoeRailTrackedSidecars |
+        ForEach-Object { (Get-Content -Raw -LiteralPath $_).Trim() }
+)
+if (
+    @($MoeRailUidValues | Where-Object { $_ -notmatch '^uid://[a-z0-9]+$' }) -or
+    @($MoeRailUidValues | Sort-Object -Unique).Count -ne $MoeRailUidValues.Count
+) {
+    throw "Tracked GDScript UID values must be valid and unique."
+}
+
+$MoeRailEditorOutput = & $MoeRailGodotExe --headless --editor --path 'godot-project-moe-rail-way' --quit 2>&1
+$MoeRailEditorExit = $LASTEXITCODE
+$MoeRailEditorOutput
+if ($MoeRailEditorExit -ne 0) {
+    throw "Second editor/import pass failed."
+}
+$MoeRailUidChanges = @(git status --short --untracked-files=all -- '*.gd.uid')
+if ($MoeRailUidChanges) {
+    $MoeRailUidChanges
+    throw "The committed GDScript UID set changed after a second editor/import pass."
+}
+
+$MoeRailFreshRoot = Join-Path (
+    Split-Path -Parent (Get-Location)
+) ("proto-00-foundation-verify-" + [guid]::NewGuid().ToString('N'))
+git worktree add --detach $MoeRailFreshRoot HEAD
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to create the fresh detached verification checkout."
+}
+try {
+    if (Test-Path -LiteralPath (Join-Path $MoeRailFreshRoot 'godot-project-moe-rail-way\.godot')) {
+        throw "Fresh tracked checkout unexpectedly contains a .godot cache."
+    }
+
+    Push-Location $MoeRailFreshRoot
+    try {
+        $MoeRailFreshTestOutput = & $MoeRailGodotExe --headless --path 'godot-project-moe-rail-way' --script 'res://tests/run_all.gd' 2>&1
+        $MoeRailFreshTestExit = $LASTEXITCODE
+        $MoeRailFreshTestOutput
+        if ($MoeRailFreshTestExit -ne 0 -or -not ($MoeRailFreshTestOutput -match 'PASS: 4 prototype test suite\(s\)')) {
+            throw "Fresh tracked checkout did not pass exactly 4 suites."
+        }
+
+        $MoeRailFreshBootOutput = & $MoeRailGodotExe --headless --path 'godot-project-moe-rail-way' --quit-after 2 2>&1
+        $MoeRailFreshBootExit = $LASTEXITCODE
+        $MoeRailFreshBootOutput
+        if ($MoeRailFreshBootExit -ne 0 -or -not ($MoeRailFreshBootOutput -match 'seed=1 ticks=60')) {
+            throw "Fresh tracked checkout main boot failed."
+        }
+
+        $MoeRailConfigureArgs = @('--headless', '--path', 'godot-project-moe-rail-way', '--script', 'res://tools/configure_project.gd')
+        & $MoeRailGodotExe @MoeRailConfigureArgs
+        if ($LASTEXITCODE -ne 0) {
+            throw "Fresh tracked checkout first configuration run failed."
+        }
+        $MoeRailFirstHash = (Get-FileHash -LiteralPath 'godot-project-moe-rail-way\project.godot' -Algorithm SHA256).Hash
+        & $MoeRailGodotExe @MoeRailConfigureArgs
+        if ($LASTEXITCODE -ne 0) {
+            throw "Fresh tracked checkout second configuration run failed."
+        }
+        $MoeRailSecondHash = (Get-FileHash -LiteralPath 'godot-project-moe-rail-way\project.godot' -Algorithm SHA256).Hash
+        if ($MoeRailFirstHash -ne $MoeRailSecondHash) {
+            throw "Fresh tracked checkout project configuration is not idempotent."
+        }
+
+        $MoeRailFreshStatus = @(git status --short --untracked-files=all)
+        if ($MoeRailFreshStatus) {
+            $MoeRailFreshStatus
+            throw "Fresh tracked checkout is not clean after normal Foundation verification."
+        }
+    } finally {
+        Pop-Location
+    }
+} finally {
+    git worktree remove --force $MoeRailFreshRoot
+}
+~~~
+
+Expected: exactly 12 tracked GDScripts have 12 valid, unique, tracked sidecars; a second pinned editor/import pass leaves the UID set unchanged; the fresh detached checkout starts without `.godot`, directly passes 4 suites and main boot, produces identical settings hashes, and remains fully clean.
+
+- [ ] **Step 10: Hand off the completed feature branch for review**
 
 Invoke superpowers:verification-before-completion, then superpowers:requesting-code-review. After review passes, invoke superpowers:finishing-a-development-branch.
 

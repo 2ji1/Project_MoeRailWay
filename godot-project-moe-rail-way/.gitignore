@@ -1,0 +1,11 @@
+# Godot 4+ generated state
+.godot/
+/android/
+
+# Local development tooling
+/addons/godot_mcp/
+
+# Local prototype output
+builds/
+exports/
+logs/
