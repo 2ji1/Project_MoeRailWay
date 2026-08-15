@@ -74,6 +74,8 @@ Use these conceptual units:
 - CreditSystem: limits, borrowing, schedules, interest, and principal
 - Presentation: field, HUD, operations, results, warnings, and previews
 
+These conceptual units define responsibility and state-ownership boundaries. They do not require an interface, abstract base class, or interchangeable implementation for every prototype feature. Do not add abstraction layers solely to anticipate production reuse; keep the prototype implementation as concrete as its tests and ownership rules allow.
+
 Do not use a global event bus. A composition controller wires explicit dependencies and receives explicit commands and domain events.
 
 ### 5.2 Fixed-Tick Data Flow
@@ -369,5 +371,7 @@ Feature completion alone does not validate the prototype. Repeated play must vis
 Record mechanics that worked, mechanics that failed, observed balance ranges, UX problems, and art requirements.
 
 Do not merge Prototyping into Development. Write an English production specification, review prototype units individually, and selectively port only stable data, pure logic, or tests with explicit ownership and no prototype-only dependency.
+
+Before full production implementation, perform a dedicated abstraction-scope review using prototype evidence. Decide then which production boundaries need interfaces, composition seams, polymorphism, or concrete implementations. Do not retrofit speculative production abstractions into Prototyping, and do not treat the prototype's concrete class structure as the required production architecture.
 
 The production codebase begins from validated requirements, not from an automatic prototype promotion.
