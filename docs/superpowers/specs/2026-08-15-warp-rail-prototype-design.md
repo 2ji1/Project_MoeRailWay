@@ -1,427 +1,464 @@
-# 워프 레일 무한 생존 프로토타입 설계
+# Warp Rail Endless Survival Prototype Design
 
-- 작성일: 2026-08-15
-- 상태: 대화에서 승인된 초기 설계와 후속 확장 여지
-- 대상: 핵심 재미 검증용 프로토타입
+- Date: 2026-08-15
+- Status: Approved initial design with explicit post-prototype extension boundaries
+- Audience: Agent-facing canonical specification
+- Target: Prototype for validating the core game loop
 
-## 1. 한 문장 정의
+## 1. One-Sentence Definition
 
-무작위로 생성되고 유한한 수명을 가진 워프 화물을 상대로, 멈추지 않는 기차 한 대의 앞에 제한된 선로를 실시간으로 이어 그리면서 운송 실적과 회사의 현금흐름을 함께 생존시키는 타임어택 한붓그리기 게임이다.
+Warp Rail is a timed, single-stroke route-drawing game in which the player continuously extends limited track ahead of one train that never stops, serves randomly generated warp cargo requests with finite lifetimes, and keeps both delivery performance and company cash flow alive.
 
-## 2. 설계 목표
+## 2. Prototype Goals
 
-프로토타입은 다음 세 가지가 실제로 재미를 만드는지 검증한다.
+The prototype validates three hypotheses:
 
-1. 멈추지 않는 기차 앞에 선로를 계속 잇는 행위가 반복 가능한 긴장을 만드는가.
-2. 즉시 받는 운송료와 계약 할당량 사이에서 경로와 적재칸을 선택하게 되는가.
-3. 현재 워프에 투자할 돈과 세션 밖에 남길 돈 사이에서 의미 있는 위험 판단이 발생하는가.
+1. Continuously extending track ahead of a moving train creates repeatable tension.
+2. Immediate delivery fees and a contracted quota create meaningful route and cargo-capacity choices.
+3. Spending cash inside the current warp session versus preserving it for the company creates meaningful risk decisions.
 
-워프 지점의 위치와 생명주기는 플레이어에게 유리하도록 사후 보정하지 않는다. 불리한 요청을 포기하고 다음 기회를 기다리는 판단도 플레이의 일부다.
+Warp locations and lifetimes are never rerolled or adjusted after generation to help the player. Rejecting an unfavorable request and waiting for a later opportunity is a valid part of play.
 
-## 3. 프로토타입 범위 밖
+## 3. Out of Scope
 
-- 다중 열차, 배차, 환승, 분기 노선망
-- 열차 정지, 속도 조절, 역주행
-- 영구적인 선로 총량·적재칸 업그레이드
-- 캠페인, 엔딩, 서사 진행
-- 기차 기종 구매와 사무실 업그레이드의 실제 콘텐츠 구현. 단, 나중에 추가할 수 있도록 세션 외 확장 경계는 16절에 정의한다.
-- 무작위 결과의 도달 가능성 보장 또는 사후 재추첨
-- 수동 적재·하역과 수동 선로 회수
-- 워프 운행 중 대출
+- Multiple trains, dispatching, transfers, and branching rail networks
+- Stopping, speed control, and reversing
+- Permanent upgrades to track inventory or cargo capacity
+- Campaign progression, endings, and narrative progression
+- Purchasable train models and office-upgrade content; Section 16 reserves extension boundaries only
+- Guaranteed reachability or post-generation rerolls
+- Manual loading, unloading, or track recovery
+- Borrowing during a warp session
+- Mobile, touch, and gamepad support
 
-캠페인은 핵심 루프가 검증된 뒤 별도 확장으로 설계한다.
+The first prototype targets Windows PC, a 16:9 presentation, and mouse-only interaction. Mobile support belongs to full production after prototype validation.
 
-## 4. 전체 게임 루프
+## 4. Overall Game Loop
 
-한 주기는 다음 순서로 진행된다.
+One cycle proceeds in this order:
 
-1. **운영 화면**: 잔고·신뢰도·채무를 확인하고 필요하면 대출한다.
-2. **계약 선택**: 프로토타입 기본값인 6개 업체 중 이번 세션의 계약 업체 하나를 선택한다.
-3. **워프 운행**: 제한 시간 동안 선로를 그리고 화물을 운송한다.
-4. **세션 정산**: 계약 실적, 수리비, 운영비, 원금과 이자를 반영한다.
-5. **재무 복구**: 정산 잔고가 음수라면 운영 화면에서 추가 대출로 복구한다.
-6. **다음 주기 또는 파산**: 잔고를 0 이상으로 만들면 다음 주기를 시작하고, 방법이 없거나 플레이어가 복구하지 않으면 게임오버다.
+1. Operations screen: inspect cash, company trust, and debt, then borrow if desired.
+2. Contract selection: select one company from the prototype default of six.
+3. Warp operation: draw track and deliver cargo until the session ends.
+4. Settlement: apply contract performance, repair cost, operating cost, principal, and interest.
+5. Financial recovery: if settlement leaves negative cash, return to operations and borrow to recover.
+6. Next cycle or bankruptcy: start the next cycle only with nonnegative cash; otherwise end the run.
 
-프로토타입에는 승리 조건이 없다. 주기가 진행될수록 위험 지형의 밀도와 피해가 증가하며, 플레이어는 파산할 때까지 회사를 운영한다.
+The prototype has no victory condition. Hazard density and damage grow over cycles, and the player operates until bankruptcy.
 
-## 5. 워프 세션
+The final prototype must support the complete repeatable loop from contract selection through bankruptcy. A one-session graybox is an intermediate milestone, not the final completion criterion.
 
-### 5.1 기차
+## 5. Warp Session
 
-- 활성 열차는 정확히 한 대다.
-- 세션이 시작되면 기차는 고정 속도로 전진하며 정차하지 않는다.
-- 적재와 하역은 통과 순간 즉시 처리되며 속도에 영향을 주지 않는다.
-- 열차가 현재 선로 끝에 도달하거나 내구도가 0이 되면 운행이 즉시 종료된다.
-- 적재칸 증가는 운송 용량만 늘린다. 기차의 물리적 길이, 속도, 선로 회수 시점은 변하지 않는다.
+### 5.1 Train
 
-### 5.2 선로와 한붓그리기
+- Exactly one train is active.
+- When a session begins, the train moves at a fixed positive speed and never stops.
+- Loading and unloading happen instantly when the train passes a point and do not affect speed.
+- Reaching the current end of track or reaching zero durability ends the operation immediately.
+- Increasing cargo capacity changes capacity only. It does not change physical train length, speed, or the track-recovery point.
 
-- 플레이어는 아직 기차가 지나지 않은 현재 선로의 끝에서만 선로를 연장한다.
-- 선로를 그리는 행위 자체에는 돈이 들지 않지만 보유 선로 총량을 소비한다.
-- 기차 뒤의 고정된 회수 기준점을 지난 선로는 자동으로 사라지고, 그 길이만큼 보유량으로 즉시 돌아온다. 현금 환급은 없다.
-- 이미 회수되어 사라진 경로의 좌표는 다시 자유롭게 통과할 수 있다.
-- 아직 기차가 지나지 않은 계획 선로를 지우거나 고치는 작업에는 현금 비용이 든다.
-- 활성 선로와 교차하려면 큰 현금 비용을 내고 입체교차를 만든다. 입체교차는 분기점이나 합류점이 아니다.
-- 보유량이 부족해 더 그릴 수 없어도 기차는 멈추지 않는다. 뒤쪽 선로가 회수되기 전에 선로 끝에 도달하면 운행이 종료된다.
-- 기본 선로 총량은 세션 중 현금으로 늘릴 수 있지만, 추가분은 워프 종료와 함께 사라진다.
+### 5.2 Track and Single-Stroke Drawing
 
-이 규칙의 핵심은 매번 최단거리만 찾는 것이 아니라, 곧 회수될 선로의 양과 현재 선형의 자기교차 가능성까지 읽으며 한 줄을 계속 유지하는 것이다.
+- The player may extend track only from the current end of untraveled planned track.
+- Drawing track costs no cash but consumes track inventory.
+- Track behind a fixed recovery point is removed automatically and its length immediately returns to inventory. It provides no cash refund.
+- Coordinates occupied only by recovered track may be crossed freely again.
+- Deleting or editing untraveled planned track costs cash.
+- Crossing active track requires a costly grade-separated crossing. It never creates a branch or merge.
+- The train never pauses when inventory is empty. If it reaches the end before rear track is recovered, the operation ends.
+- The player may buy additional track inventory with session cash. The increase disappears at every regular or early session end.
 
-### 5.3 워프 출발지와 목적지
+The challenge is not only shortest-path planning. The player must read upcoming recovery, inventory timing, and self-crossing risk while maintaining one continuous line.
 
-- 워프 요청 하나는 출발지와 목적지 한 쌍, 소속 업체, 하나의 화물 단위로 구성된다.
-- 두 지점은 무작위 위치에 동시에 나타나며 동일한 생명주기를 공유한다.
-- 한 쌍은 활성 상태에서 다른 쌍과 구분되는 동일한 색과 도형을 사용한다.
-- 출발지는 채워진 도형, 목적지는 같은 도형의 윤곽으로 표시한다.
-- 무작위 결과는 생성 전에 확정하며, 출현 예고 또는 워프 조류 표현은 그 위치와 발생 시점을 미리 알려줄 뿐 결과를 재추첨하거나 유리하게 보정하지 않는다.
-- 출현 예고는 정보 표시 상태일 뿐이다. 활성화 전에는 적재·하역·배송 또는 다른 워프 상호작용을 판정하지 않는다.
-- 예고 시간, 지점 수명, 동시 활성 쌍 수는 밸런스 설정값이다.
+### 5.3 Warp Origins and Destinations
 
-각 쌍은 한 번만 적재되고 한 번만 배송될 수 있다. 같은 쌍을 반복 운송해 운송료나 신뢰도를 파밍할 수 없다.
+- One request contains an origin-destination pair, one company, and one cargo unit.
+- Both points appear at random positions together and share one lifecycle.
+- Active pairs use matching colors and shapes that remain distinguishable from other active pairs.
+- The origin uses a filled shape and the destination uses the matching outline.
+- Random results are fixed before presentation. A forecast or current effect reveals the already determined time and location and never rerolls the result.
+- Forecasted points are informational only and do not load, unload, deliver, or trigger warp interactions before activation.
+- Forecast duration, point lifetime, and simultaneous active-pair count are balance data.
 
-### 5.4 자동 적재와 하역
+Each pair may load once and deliver once. Repeatedly farming the same pair for fees or trust is impossible.
 
-- 빈 적재칸이 있는 상태로 활성 출발지를 통과하면 화물을 즉시 자동 적재한다.
-- 적재되면 출발지는 윤곽만 남고, 빈 적재칸 하나에 같은 채워진 색·도형이 표시된다.
-- 적재칸이 가득 찼다면 적재하지 않으며 출발지는 남은 수명 동안 활성 상태를 유지한다.
-- 해당 목적지를 통과하면 즉시 배송된다. 목적지 윤곽은 채워지고 적재칸의 도형은 사라진다.
-- 배송 성공은 즉시 해당 업체의 운송료를 지급한다.
-- 목적지가 먼저 만료되면 연관 화물은 즉시 사라지고 적재칸이 비워진다. 별도의 건별 벌금은 없다.
-- 출발지를 지나치거나 화물을 만료시킨 손실은 사용한 시간, 경로, 적재칸과 잃어버린 계약 달성 기회 자체로 발생한다.
-- 적재칸은 세션 중 현금으로 늘릴 수 있지만 추가분은 워프 종료와 함께 사라진다.
+### 5.4 Automatic Loading and Unloading
 
-### 5.5 위험 지형과 내구도
+- Passing an active origin with an empty cargo slot loads the cargo immediately.
+- After loading, the origin becomes an outline and one cargo slot shows the matching filled color and shape.
+- When all slots are full, the train does not load and the origin remains active until expiry.
+- Passing the matching destination delivers immediately. The destination fills and the cargo marker disappears.
+- Delivery immediately pays that company’s base fee.
+- If the destination expires first, its cargo disappears immediately and frees exactly one slot. There is no per-request fine.
+- Missing an origin or allowing cargo to expire costs time, route length, capacity, and contract opportunity rather than a separate penalty.
+- The player may buy additional cargo slots during a session. They disappear at every regular or early session end.
 
-- 위험 지형은 항상 시각적으로 식별할 수 있다.
-- 피해는 위험 지형 위를 실제로 이동한 길이에 따라 결정되며 숨겨진 확률 판정은 사용하지 않는다.
-- 위험 지형은 기차를 감속시키지 않는다. 우회하면 시간과 선로를, 돌파하면 내구도와 미래 수리비를 소비한다.
-- 내구도가 0이 되면 운행이 즉시 종료된다.
-- 세션 종료 뒤 기차는 자동으로 완전 수리되며, 잃은 내구도에 따른 수리비를 정산한다. 다음 세션은 항상 최대 내구도로 시작한다.
+### 5.5 Hazards and Durability
 
-### 5.6 세션 종료의 두 종류
+- Hazards are always visually identifiable.
+- Damage is deterministic and based on distance actually traveled through hazard terrain.
+- Hazards never slow the train. Detouring spends time and track; crossing spends durability and creates future repair cost.
+- Zero durability ends the operation immediately.
+- After settlement, the train is restored to full durability and repair cost is charged from durability lost. Every session starts at maximum durability.
 
-**정기 워프 종료**
+### 5.6 Session End Types
 
-- 고정된 세션 시간이 끝나면 워프 공간 전체가 초기화된다.
-- 남아 있던 출발지, 목적지, 운송 중 화물은 성공도 실패도 아닌 무효가 된다.
-- 무효 화물에는 건별 벌금이나 추가 달성률 감소가 없다.
-- 세션에서 구입한 선로 총량과 적재칸 추가분도 모두 사라진다.
+Regular warp end:
 
-**조기 운행 종료**
+- The fixed session timer expires and clears the warp space.
+- Remaining origins, destinations, and carried cargo become void: neither success nor failure.
+- Voided cargo creates no per-request fine or extra reduction in attainment.
+- All session-only track and cargo-capacity purchases disappear.
 
-- 선로 끝 도달 또는 내구도 0으로 즉시 발생한다.
-- 남은 세션 시간은 소멸하고, 그 시점까지 완료한 배송 수로 계약 실적을 정산한다.
-- 미배송 화물은 제거되며 별도의 건별 벌금은 없다. 일찍 끝난 탓에 남은 운송료와 할당량 달성 기회를 모두 잃는 것이 손실이다.
-- 수리비와 모든 세션 외 고정지출은 정상적으로 정산한다.
+Early operation end:
 
-같은 판정 시점에 배송과 지점 만료가 겹치면 이동·통과 판정을 먼저 처리한다. 기차가 제한시간 또는 지점 수명이 0이 되기 전까지 목적지 판정 범위에 들어왔다면 배송 성공이다.
+- Reaching the track end or zero durability ends operation immediately.
+- Remaining session time is discarded, and contract performance uses deliveries completed so far.
+- Undelivered cargo is removed without per-request fines. Lost fees and quota opportunity are the penalty.
+- Repair cost and all out-of-session fixed expenses settle normally.
 
-## 6. 계약과 업체
+If delivery and expiry share a decision instant, movement and pass-through resolve first. Entering the destination region before session time or point life reaches zero counts as delivery.
 
-### 6.1 계약 선택
-
-- 필드에는 여러 업체의 워프 쌍이 함께 무작위로 나타난다.
-- 플레이어는 세션 전에 업체 하나와 계약한다.
-- 계약 체결 시 1 이상의 정수 할당량 `Q`, 운송료, 목표 달성 보너스, 미달 위약금 조건을 확정한다.
-- `Q`는 정기 종료나 조기 종료를 포함해 해당 세션 도중 변경되지 않는다.
-- 무작위 출현은 계약 할당량을 반드시 달성할 수 있도록 보장하지 않는다.
+## 6. Contracts and Companies
 
-### 6.2 운송료와 서비스 달성률
+### 6.1 Contract Selection
 
-- 모든 업체의 배송은 즉시 기본 운송료를 지급한다.
-- 계약하지 않은 업체의 배송은 계약 달성률, 위약금, 신뢰도에 영향을 주지 않는다.
-- 계약 업체의 배송만 할당량 실적에 더한다.
-- 불리한 계약 지점을 지나쳐도 직접적인 실패로 기록하지 않는다. 대신 제한된 세션에서 할당량을 채울 기회를 포기한다.
-- 서비스 달성률은 세션 종료 때 아래 식으로 계산하며 상한을 두지 않는다. 배송 완료 수를 `D`라고 한다.
+- Requests from several companies appear together on the field.
+- Before each session the player contracts with exactly one company.
+- Contract selection fixes an integer quota Q of at least one, fee, completion bonus, and shortfall penalty.
+- Q never changes during the session, including after an early-end request.
+- Random generation does not guarantee the quota is achievable.
 
-```text
-A = D / Q * 100%
-현금 계약 정산 = C(min(A, 100%))
-신뢰도 증가 = G(max(A - 100%, 0))
-```
+### 6.2 Delivery Fees and Service Attainment
 
-- `C`는 계약에 명시된 보너스·위약금 곡선이고, `G`는 초과 달성률의 신뢰도 변환 곡선이다.
-- 신뢰도는 고정소수점 값으로 저장하며 반올림은 화면 표시에만 적용한다.
-- 100%까지의 결과가 현금 계약 보너스 또는 위약금을 결정한다.
-- 100%를 넘긴 배송도 기본 운송료를 지급한다.
-- 100% 초과분은 현금 계약 보너스를 더 늘리지 않고, 해당 업체의 영구 신뢰도 상승으로 전환한다.
+- Every company’s delivery pays its base fee immediately.
+- Uncontracted-company deliveries never affect contract attainment, penalties, or trust.
+- Only deliveries belonging to the contracted company count toward quota.
+- Skipping an unfavorable contracted request is not recorded as an individual failure; it sacrifices a limited opportunity.
+- At settlement, completed contracted deliveries D produce:
 
-### 6.3 신뢰도
+    A = D / Q * 100%
+    Cash contract settlement = C(min(A, 100%))
+    Trust gain = G(max(A - 100%, 0))
 
-- 신뢰도는 프로토타입 기본값인 6개 업체마다 별도로 영구 누적된다.
-- 신뢰도는 소비 재화가 아니며 대출을 받아도 직접 차감되지 않는다.
-- 신뢰도의 유일한 직접 시스템 입력은 해당 업체의 신용한도 함수 `H(R)`다. 늘어난 한도에서 빌린 현금을 다른 곳에 쓰며 생기는 간접 효과는 허용한다.
-- 신뢰도는 금리, 운송료, 할당량, 보너스·위약금, 워프 출현률이나 계약 선택 가능 여부를 바꾸지 않는다.
-- 프로토타입 기본값에서 모든 업체는 신뢰도 0과 신용한도 0으로 시작한다. 첫 초과 달성으로 신뢰도를 얻어야 대출이 열린다.
-- `H(R)`는 신뢰도가 높아질수록 감소하지 않으며, 증가 곡선과 업체별 최대 한도는 밸런스 설정값이다.
+- C is the configured bonus and penalty curve; G converts over-attainment to trust.
+- Trust uses fixed-point storage. Rounding is display-only.
+- Attainment up to 100% determines cash bonus or penalty.
+- Deliveries beyond 100% still pay base fees.
+- Over-attainment never increases the cash contract bonus and instead creates permanent trust for that company.
 
-이 구조는 한 업체를 집중 육성해 큰 한도를 확보하는 전략과, 여러 업체에 초과 실적을 분산해 돌려막기 안전망을 만드는 전략을 동시에 허용한다.
+### 6.3 Trust
 
-## 7. 돈과 임시 투자
+- Trust accumulates independently for the prototype default of six companies during one run.
+- Trust is not spendable and borrowing never subtracts it.
+- Trust’s only direct system input is that company’s credit-limit function H(R).
+- Trust never changes interest rates, fees, quotas, bonus or penalty curves, warp frequency, or contract availability.
+- Every company starts at trust zero and credit limit zero. The first over-attainment is required to unlock borrowing.
+- H(R) is nondecreasing. Growth curves and per-company caps are balance data.
 
-- 현금 잔고는 세션 사이에 영구 보존된다.
-- 배송 운송료는 운행 중 즉시 잔고에 들어온다.
-- 계약 보너스·위약금, 수리비, 기본 운영비, 대출 상환은 세션 종료 정산에서 처리한다.
-- 운행 중 구매는 현재 잔고로 지불할 수 있을 때만 가능하다.
-- 워프 안에서 구매할 수 있는 항목은 선로 총량 증가, 적재칸 증가, 입체교차, 미주행 계획 선로 수정이다.
-- 워프 안에서 산 선로 총량과 적재칸 추가분은 정기 또는 조기 종료와 함께 사라진다. 사용한 현금은 돌아오지 않는다.
+This structure supports concentrating on one company for a large limit or spreading over-attainment across companies to build refinancing options.
 
-따라서 세션에서 절약한 돈은 세션 밖의 부가 되지만, 지나치게 아끼면 운송 기회와 계약 실적을 놓친다. 반대로 현재 세션에 과투자하면 이후의 운영비·수리비·대출 상환을 감당하기 어려워진다.
+## 7. Cash and Temporary Investment
 
-## 8. 대출과 채무
+- Cash persists across sessions during a run.
+- Delivery fees enter cash immediately during operation.
+- Contract settlement, repair, operating cost, and loan payments occur at session settlement.
+- In-session purchases require sufficient current cash.
+- Purchasable items are track inventory, cargo capacity, grade-separated crossings, and edits to untraveled planned track.
+- Temporary track and capacity increases disappear at every end condition. Spent cash never returns.
 
-### 8.1 차입
+Saving preserves future company funds but can lose delivery opportunity. Overspending may make operating, repair, and loan costs unaffordable.
 
-- 대출은 워프 운행 중이 아니라 세션 사이 운영 화면에서만 가능하다.
-- 잔고가 음수일 때만이 아니라 플레이어가 원할 때 언제든 운영 화면에서 신청할 수 있다.
-- 운영 화면이 열려 있는 동안 잔고의 부호와 관계없이 횟수 제한 없이 차입할 수 있다.
-- 매 실행액은 화폐 최소 단위 이상, 해당 업체의 남은 신용한도 이하에서 플레이어가 직접 정한다.
-- 대출은 실행 즉시 현금 잔고와 해당 업체의 미상환 원금에 반영된다.
-- 여러 업체에서 동시에 빌릴 수 있으며, 한 업체의 대출로 다른 업체의 상환 부담을 충당하는 돌려막기도 허용한다.
-- 업체들은 다른 업체의 채무를 공유해 평가하지 않는다. 전역 총부채 한도도 두지 않는다.
-- 업체별 사용 가능 한도는 해당 업체의 신뢰도 기반 한도에서 그 업체의 미상환 원금을 뺀 값이다.
+## 8. Loans and Debt
 
-### 8.2 금리와 상환
+### 8.1 Borrowing
 
-- 업체 `i`는 한 게임 동안 변하지 않는 주기 고정금리 `r_i`를 가진다. 업체별 금리는 서로 다를 수 있다.
-- 동일 업체의 모든 신규·기존 대출에 같은 `r_i`를 적용한다.
-- 신뢰도, 회사 사정, 차입 시점, 차입액과 대출 건수는 금리를 바꾸지 않는다.
-- 대출 실행 시 정해진 상환 일정이 생성된다.
-- 첫 원금·이자 납부는 대출을 받은 뒤 처음 끝나는 세션의 정산에서 발생한다.
-- 매 주기 정산의 고정지출에 예정 원금과 예정 원금 상환 직전 미상환 원금에 대한 고정금리 이자를 합산한다.
-- 여러 대출이 있으면 모든 원금·이자 항목을 합산한다.
-- 대출 기간, 주기별 원금 산식, 업체별 금리와 한도 곡선은 프로토타입 밸런스 설정값이다.
-- 첫 프로토타입에서는 예정된 자동 상환만 제공하며 수동 조기상환은 범위에서 제외한다.
+- Borrowing is available only on the between-session operations screen.
+- The player may borrow voluntarily even with nonnegative cash.
+- While operations is open, borrowing has no transaction-count limit.
+- Each amount is player-selected from the minimum currency unit through that company’s remaining credit.
+- Borrowing immediately increases cash and that company’s outstanding principal.
+- The player may borrow from several companies and use one company’s proceeds to service another company’s debt.
+- Companies do not share debt assessment. There is no global debt cap.
+- Available company credit equals its trust-based limit minus its outstanding principal.
 
-돌려막기는 허점이 아니라 여러 업체의 신뢰도를 쌓은 플레이어가 확보한 고위험 생존 전략이다. 대신 대출이 늘어날수록 매 주기의 확정 지출이 커져 이후 운행에서 더 높은 수익을 강요한다.
+### 8.2 Interest and Repayment
 
-### 8.3 적자와 파산
+- Company i has a per-cycle fixed rate r_i that never changes during one run.
+- All new and existing loans from a company use the same r_i.
+- Trust, company condition, borrowing time, amount, and transaction count never change the rate.
+- Every borrowing action creates a repayment schedule.
+- The first principal and interest payment occurs at settlement of the first session ending after borrowing.
+- Each settlement adds scheduled principal and interest calculated on principal immediately before scheduled repayment.
+- All principal and interest items across loans are summed.
+- Term length, principal schedule, company rates, and limit curves are balance data.
+- The prototype supports scheduled automatic repayment only and excludes voluntary early repayment.
 
-- 세션 정산은 다음 순서로 정확히 한 번 실행한다.
+Refinancing is an intentional high-risk strategy earned by building trust across companies. More debt raises unavoidable future costs and demands stronger future revenue.
 
-  1. 계약 달성률을 계산하고 현금 보너스·위약금을 적용한다.
-  2. 초과 달성 신뢰도와 해당 업체의 신용한도를 갱신한다.
-  3. 내구도를 완전 수리하고 수리비를 차감한다.
-  4. 기본 운영비를 차감한다.
-  5. 상환 직전 미상환 원금으로 이자를 계산하고, 예정 원금과 이자를 차감한 뒤 예정 원금만큼 채무를 줄인다.
-  6. 모든 세션 내 임시 업그레이드를 제거하고 운영 화면을 연다.
+### 8.3 Deficit and Bankruptcy
 
-- 이번 정산에서 갱신된 신용한도와 원금 상환으로 다시 비워진 한도는 이어지는 운영 화면에서 즉시 사용할 수 있다.
-- 정산은 잔고를 음수로 만들 수 있다.
-- 음수 잔고가 확인되면 즉시 게임오버하지 않고 운영 화면에서 신규 대출 기회를 준다.
-- 플레이어는 다음 세션을 시작하기 전에 잔고를 0 이상으로 만들어야 한다.
-- 모든 가용 신용을 사용해도 복구할 수 없거나 플레이어가 복구하지 않으면 회사가 파산하고 게임이 끝난다.
+Settlement executes exactly once in this order:
 
-## 9. 무한 진행
+1. Calculate contract attainment and apply cash bonus or penalty.
+2. Apply over-attainment trust and update the company credit limit.
+3. Restore full durability and subtract repair cost.
+4. Subtract base operating cost.
+5. Calculate interest on pre-repayment outstanding principal, subtract scheduled principal and interest, then reduce principal by scheduled principal.
+6. Remove every session-only upgrade and open operations.
 
-- 영구적으로 남는 핵심 상태는 현금 잔고, 업체별 신뢰도, 업체별 채무, 생존 주기 수다.
-- 매 세션은 같은 기본 규칙을 사용한다.
-- 주기가 진행될수록 위험 지형의 밀도와 피해량을 높여 평균 수리비와 경로 압박을 증가시킨다.
-- 기본 운영비는 매 주기 반복되고 대출 상환이 추가 고정지출을 만든다.
-- 워프 지점의 무작위 위치와 생명주기는 후반 난이도를 이유로 사후 보정하지 않는다.
-- 파산 시 생존 주기, 총 배송, 계약별 최고 달성률, 업체별 신뢰도, 최고·최종 채무를 결과로 표시한다.
-
-## 10. 화면 정보와 피드백
-
-### 10.1 운행 화면
-
-항상 읽을 수 있어야 하는 정보는 다음과 같다.
+Updated credit limits and credit freed by principal payment are immediately available in the following operations screen.
 
-- 세션 남은 시간
-- 기차와 현재 선로 끝 사이의 남은 거리 또는 예상 도달 시간
-- 남은 선로 총량
-- 현재 잔고와 각 행동의 비용
-- 최대·사용 중 적재칸
-- 기차 내구도와 위험 지형의 예상 피해
-- 계약 업체, 할당량, 현재 배송 수와 달성률
-- 각 워프 쌍의 색·도형, 소속 업체, 남은 수명
-- 출현 예고 위치와 카운트다운
-
-업체 소속은 색·도형과 별개의 작은 업체 표식으로 보여준다. 색·도형은 출발지와 목적지의 짝을 찾는 용도로만 사용한다.
-
-화물칸은 기차 뒤에 줄줄이 이어진 슬롯처럼 표현한다. 이는 적재 상태를 직관적으로 보여주는 UI이며, 적재칸 증가가 물리적 열차 길이를 바꾸지는 않는다.
-
-### 10.2 운영 화면
-
-업체마다 다음을 한 화면에서 비교할 수 있어야 한다.
-
-- 현재 신뢰도
-- 다음 신용한도까지 필요한 신뢰도
-- 총 신용한도와 남은 한도
-- 고정금리
-- 미상환 원금
-- 다음 주기 원금·이자 상환액
+Settlement may make cash negative. Negative cash does not immediately end the run. The player may borrow on the operations screen and must restore cash to at least zero before starting the next session. If all available credit is insufficient or the player declines recovery, the company becomes bankrupt.
 
-대출을 실행하거나 계약 업체를 선택하기 전에, 다음 정산의 예상 고정지출 합계를 보여준다.
+## 9. Endless Progression
 
-## 11. 개념적 시스템 경계
-
-구현에서는 다음 책임을 서로 분리한다.
+- Persistent run state contains cash, cycle count, each company’s trust, and each company’s debt.
+- Every session uses the same base rules.
+- Hazard density and damage grow with cycle count, raising route pressure and expected repair cost.
+- Base operating cost repeats every cycle and loan schedules add fixed expense.
+- Later difficulty never causes post-generation adjustment of warp positions or lifetimes.
+- Bankruptcy results show survived cycles, total deliveries, best attainment per company, trust per company, peak debt, and final debt.
 
-- **RunState**: 잔고, 생존 주기, 업체 상태와 채무 같은 영구 상태를 보유한다.
-- **WarpSession**: 세션 시간, 난이도 단계, 정기·조기 종료 사유를 관리한다.
-- **TrackSystem**: 한 끝점에서의 그리기, 길이 재고, 자동 회수, 수정, 입체교차 비용을 판정한다.
-- **TrainSystem**: 고정 속도 이동, 선로 끝 도달, 워프 통과와 내구도 판정을 담당한다.
-- **WarpPairSystem**: 쌍 생성, 예고, 수명, 상태 전이를 관리한다.
-- **CargoSystem**: 적재칸, 자동 적재·하역, 만료에 따른 화물 제거를 관리한다.
-- **ContractSystem**: 활성 계약 목록의 업체, 할당량, 배송 수, 달성률, 보너스·위약금과 신뢰도 변화를 계산한다. 첫 프로토타입에서 목록의 최대 길이는 1이다.
-- **EconomySystem**: 실시간 구매와 운송료, 세션 정산 순서를 관리한다.
-- **CreditSystem**: 업체별 한도, 차입, 미상환 원금, 원금·이자 일정을 관리한다.
-- **Presentation**: 도형 상태, 타이머, 경고, 비용 미리보기와 결과 화면을 표시한다.
-
-시스템 간 통신은 `선로 설치`, `출발지 통과`, `목적지 통과`, `워프 만료`, `세션 종료`, `배송 완료`, `대출 실행`, `정산 완료` 같은 단일 이벤트로 제한한다. 돈이나 계약 실적을 여러 시스템이 각각 직접 변경하지 않도록 EconomySystem과 ContractSystem을 단일 계산 주체로 둔다.
+## 10. Information and Feedback
 
-## 12. 상태 전이와 판정 순서
+### 10.1 Operation Screen
 
-워프 쌍의 핵심 상태는 다음과 같다.
+The following must remain readable:
 
-```text
-예고 -> 활성/미적재 -> 운송 중 -> 배송 완료
-                    -> 만료
-              운송 중 -> 목적지 만료/화물 제거
-모든 활성 상태 -> 정기 워프 종료/무효
-```
-
-한 프레임 또는 한 물리 틱의 판정 순서는 다음과 같이 고정한다.
-
-1. 기차 이동과 경로 끝 도달 여부를 계산하고, 종료가 필요하면 즉시 정산하지 않고 종료 요청만 기록
-2. 출발지·목적지 통과 판정과 적재·배송 처리
-3. 위험 지형 피해와 내구도 0 판정
-4. 워프 쌍 수명 만료 처리
-5. 세션 시간 만료 처리
-6. 발생한 종료 요청의 우선순위를 확정하고 단 한 번의 정산
+- Session time remaining
+- Distance or estimated time from train to current track end
+- Track inventory remaining
+- Cash and action costs
+- Maximum and occupied cargo slots
+- Durability and expected hazard damage
+- Contract company, quota, deliveries, and attainment
+- Each pair’s color, shape, company, and remaining lifetime
+- Forecast location and countdown
 
-이를 통해 같은 순간의 도착과 만료, 내구도 0과 세션 종료가 서로 다른 결과를 내는 문제를 막는다.
+Company identity uses a small marker separate from pair color and shape. Color and shape identify origin-destination pairing only.
 
-## 13. 반드시 지킬 불변 조건
+Cargo slots appear as cars following the train for immediate readability, but capacity never changes physical train length.
 
-- 보유 선로 길이는 0보다 작아질 수 없다.
-- 선로 회수는 실제로 회수 기준점을 지난 구간에 한 번만 적용한다.
-- 워프 쌍 하나는 화물 하나만 생성하고 배송 보상도 한 번만 지급한다.
-- 화물 하나는 적재칸 하나에만 존재하며, 제거 시 정확히 한 칸만 비운다.
-- 배송 완료와 만료는 같은 워프 쌍에 동시에 적용되지 않는다.
-- 정기 워프 종료로 무효화된 화물은 벌금이나 계약 실패 건수를 만들지 않는다.
-- 세션 정산은 한 세션에 한 번만 실행한다.
-- 업체별 대출 실행액은 남은 한도를 넘지 않는다.
-- 신뢰도는 대출 실행으로 소비되지 않고 금리에도 영향을 주지 않는다.
-- 신뢰도는 해당 업체의 신용한도 외 다른 게임 규칙에 영향을 주지 않는다.
-- 세션 내 임시 업그레이드는 어떤 종료 사유에서도 다음 세션으로 넘어가지 않는다.
+The session layout uses a top-down orthographic 2D field inspired by Mini Metro and thin top- and bottom-anchored HUD bands. The map remains the dominant area.
 
-## 14. 프로토타입 검증 시나리오
+### 10.2 Operations Screen
 
-기능 검증에서는 다음 경계 사례를 반드시 재현한다.
+The player must compare, for each company:
 
-1. 남은 선로가 0인 동안 뒤쪽 회수를 기다리다 선로 끝에 도달하는 경우
-2. 활성 선로 교차가 큰 비용을 청구하지만 분기점을 만들지 않는 경우
-3. 빈 칸, 가득 찬 칸, 여러 화물이 섞인 상태의 자동 적재·하역
-4. 목적지 만료 직전 배송과 만료 직후 화물 제거
-5. 정기 종료 때 운송 중인 화물이 아무 결과 없이 무효화되는 경우
-6. 조기 종료가 남은 시간을 없애고 현재 배송 수만으로 정산되는 경우
-7. 계약 달성률이 100%를 넘고 초과분만 신뢰도에 반영되는 경우
-8. 양수 잔고에서의 자발적 대출과 여러 업체 동시 대출
-9. 한 업체의 대출금으로 다른 업체의 원금·이자를 지불하는 경우
-10. 적자 정산 뒤 신규 대출로 복구하는 경우와 모든 한도 소진 뒤 파산하는 경우
-11. 어떤 종료 사유에서도 임시 선로·적재칸 증가가 초기화되는 경우
-12. 내구도 손실에 따라 수리비가 늘고 다음 세션은 최대 내구도로 시작하는 경우
+- Current trust
+- Trust required for the next credit-limit increase
+- Total and remaining credit
+- Fixed rate
+- Outstanding principal
+- Next-cycle principal and interest
 
-무작위 세션은 시드와 이벤트 기록을 저장해 같은 배치를 재현할 수 있어야 한다. 플레이테스트에서는 생존 주기뿐 아니라 선로 끝 조기 종료율, 입체교차 사용 빈도, 임시 투자 대비 추가 배송, 계약·비계약 화물 비율, 적재칸 유휴율, 부채 상환 비중을 함께 기록한다.
+Before borrowing or choosing a contract, show the projected total fixed expense at the next settlement.
 
-## 15. 밸런스 설정값
+### 10.3 Adjustable UI Layout
 
-아래 항목은 규칙이 아니라 반복 플레이테스트로 정할 수치다.
+- UI art and game logic remain separate, while layout metrics remain intentionally configurable.
+- An agent-editable UILayoutProfile resource owns horizontal and vertical outer padding, panel padding, item gaps, row gaps, HUD height, and icon size.
+- Godot Control and Container nodes respond automatically when metrics change.
+- Each axis may be tuned independently in the Inspector during prototyping.
+- Validated minimum and maximum values prevent padding or HUD height from consuming the required playfield.
+- The prototype does not include a player-facing UI settings screen.
+- Full production may reuse the same structure for a user-facing UI scale option.
 
-- 세션 길이와 출현 예고 시간
-- 기차 속도와 기본 내구도
-- 기본 선로 총량과 회수 기준 거리
-- 기본 적재칸 수
-- 선로 수정, 입체교차, 임시 확장 비용 곡선
-- 워프 쌍 생성 간격, 동시 활성 수, 생명주기 분포
-- 업체별 출현 비중, 운송료, 할당량, 보너스·위약금 곡선
-- 초과 달성률의 신뢰도 변환 비율
-- 신뢰도별 신용한도 곡선
-- 업체별 고정금리와 상환 기간
-- 기본 운영비, 위험 지형 피해량과 주기별 난이도 상승률
-- 내구도당 수리비
+## 11. Conceptual System Boundaries
 
-수치를 조정하더라도 무작위 결과를 사후 보정하지 않는 원칙, 무정차 한붓그리기, 자동 적재·회수, 세션 내 투자 소멸, 업체별 독립 신용이라는 핵심 규칙은 바꾸지 않는다.
+- RunState: cash, cycle count, company state, and debt that persist during a run
+- WarpSession: timer, difficulty stage, and regular or early end requests
+- TrackSystem: endpoint drawing, inventory, automatic recovery, edits, and crossing cost validation
+- TrainSystem: fixed-speed movement, end-of-track detection, pass-through detection, and durability
+- WarpPairSystem: generation, forecast, activation, lifetime, and state transitions
+- CargoSystem: slots, automatic loading and unloading, and expiry removal
+- ContractSystem: selected contract list, quota, deliveries, attainment, cash curve, and trust gain; prototype list length is at most one
+- EconomySystem: delivery fees, purchases, and ordered settlement
+- CreditSystem: company limits, borrowing, principal, interest, and schedules
+- Presentation: field shapes, timers, warnings, cost previews, results, and adjustable layout
 
-## 16. 세션 외 잉여재화 소비와 후속 확장 여지
+Communication is limited to explicit events such as track placed, origin passed, destination passed, warp expired, delivery completed, session end requested, loan executed, and settlement completed.
 
-핵심 루프가 안정된 뒤에는 오래 생존한 플레이어가 쌓은 잉여재화를 운영 화면에서 소비할 수 있어야 한다. 이 절의 항목은 첫 프로토타입의 필수 콘텐츠가 아니라, 이후 추가할 영구 성장 요소 때문에 핵심 시스템을 다시 뜯어고치지 않도록 미리 확보하는 설계 경계다.
+EconomySystem is the sole cash writer. ContractSystem is the sole contract-performance writer. Presentation never changes domain state directly.
 
-### 16.1 공통 원칙
+The implementation uses one composition controller rather than a global event bus. Pure GDScript domain models remain separate from Node2D, Line2D, Control, and CanvasLayer presentation nodes.
 
-- 영구 구매와 업그레이드는 워프 운행 중이 아니라 운영 화면에서만 실행한다.
-- 구매 비용은 회사의 영구 현금 잔고에서 지불한다. 대출금과 운송 수익은 같은 잔고에 들어가므로 부채로 영구 자산을 사는 레버리지 운영도 허용한다.
-- 구입한 기차와 사무실 레벨은 워프 초기화로 사라지지 않는다.
-- 각 항목은 일회성 구매 가격과 주기별 유지비 필드를 가진다. 유지비가 없는 항목은 0으로 설정할 수 있으며, 0보다 크면 다음 정산 예상 고정지출에 표시한다.
-- 영구 업그레이드는 새로운 선택지나 서로 다른 장단점을 제공해야 한다. 무정차, 단일 기차, 제한 선로, 무작위 워프, 유한 생명주기 같은 핵심 제약을 제거해서는 안 된다.
+## 12. State Transitions and Decision Order
 
-### 16.2 기차 기종과 보유 차량
+Warp-pair states are:
 
-- 기차 기종은 데이터로 추가할 수 있는 `TrainModelDefinition`으로 관리한다.
-- 플레이어는 운영 화면에서 기종을 구입해 영구 보유 목록에 추가하고, 세션 진입 전에 사용할 기종 하나만 선택한다.
-- 한 세션에 활성화되는 기차는 기종 보유 수와 관계없이 항상 한 대다.
-- 기종별 확장 가능 속성은 구매 가격, 주기별 기본 운영비, 고정 운행 속도, 기본 최대 내구도, 수리비 계수, 기본 선로 총량, 기본 적재칸 수다.
-- 기종마다 속도 값이 다를 수 있지만, 세션이 시작된 뒤에는 선택한 기종의 속도로 고정되며 정지·가감속 명령은 없다.
-- 모든 기종 속도는 공통으로 설정한 양의 최솟값과 최댓값 안에 있어야 하며, 사무실 효과는 세션 중 속도나 속도 배율을 바꿀 수 없다.
-- 높은 성능은 더 높은 구매 가격, 운영비, 수리비 또는 다른 능력의 감소와 교환한다. 모든 면에서 기존 기종보다 좋은 상위호환만 누적하지 않는다.
-- 기종이 정하는 기본 선로와 적재칸 위에 세션 내 임시 구매량이 더해진다. 임시 구매량만 워프 종료 시 사라지며 기종의 기본값은 유지된다.
+    Forecast -> Active/Unloaded -> In Transit -> Delivered
+                                -> Expired
+                   In Transit -> Destination Expired/Cargo Removed
+    Any active state -> Regular Warp End/Voided
 
-이 구조는 기종 수를 늘려도 TrainSystem의 이동 규칙을 바꾸지 않고, 세션 시작 시 선택한 정의값만 주입하도록 한다.
+Each physics tick resolves in this exact order:
 
-### 16.3 사무실 업그레이드
+1. Calculate train movement and end-of-track status. Record an end request without settling yet.
+2. Resolve swept origin and destination pass-through and apply loading or delivery.
+3. Resolve hazard damage and zero durability.
+4. Resolve warp-pair expiry.
+5. Resolve session timer expiry.
+6. Prioritize accumulated end requests and execute one settlement.
 
-- 사무실은 데이터 기반 `OfficeUpgradeDefinition`의 단계형 영구 업그레이드로 구성한다.
-- 각 정의는 식별자, 구매 비용, 유지비, 선행 조건, 최대 단계와 허용된 효과 목록을 가진다.
-- 선행 조건에는 다른 사무실 단계와 보유 기종만 사용할 수 있다. 신뢰도나 대출 여부를 업그레이드 해금 조건으로 사용하지 않는다.
-- 첫 프로토타입의 동시 계약 한도는 한 업체다.
-- 후속 **계약관리 부서** 업그레이드는 한 세션에서 동시에 계약할 수 있는 업체 수를 늘릴 수 있다.
-- 복수 계약을 맺으면 업체마다 `Q`, `D`, `A`, 현금 보너스·위약금과 초과 달성 신뢰도를 따로 계산한다. 한 화물은 소속 업체의 계약 하나에만 반영되며 여러 계약의 실적을 동시에 올리지 않는다.
-- 복수 계약은 보너스 기회를 늘리는 동시에 각각의 미달 위약금 위험도 함께 늘린다. 여러 할당량을 하나로 합쳐 위험을 상쇄하지 않는다.
+The session controller owns this order. Pass-through is computed from previous to current train position rather than depending on Godot physics-signal ordering.
 
-추가할 수 있는 사무실 계열의 예시는 다음과 같다.
+## 13. Required Invariants
 
-- **운행분석실**: 출현 예고 시간이나 정보 표현을 개선하되 워프 결과를 재추첨하거나 생명주기를 늘리지 않는다.
-- **정비부서**: 기종별 내구도·수리비 계수에 허용된 보정을 적용한다.
-- **물류부서**: 세션 시작 기본 선로 또는 기본 적재칸에 허용된 보정을 적용한다. 세션 중 구매한 임시 증가분을 보존하지는 않는다.
-- **계약관리 부서**: 동시 계약 업체 한도를 늘리고 복수 계약 현황을 운영·운행 화면에 표시한다.
+- Track inventory never becomes negative.
+- Each recovered segment returns inventory exactly once.
+- One warp pair creates one cargo unit and one delivery reward.
+- One cargo unit occupies one slot and frees exactly one slot.
+- Delivery and expiry never apply to the same pair.
+- Regular-end voiding never creates a penalty or failed-request count.
+- Settlement executes once per session.
+- Borrowing never exceeds remaining company credit.
+- Borrowing never consumes trust or changes interest.
+- Trust affects no direct rule except that company’s credit limit.
+- Session-only upgrades never survive any end condition.
+- UI-layout values remain inside validated bounds and cannot reduce the field below the required playable area.
 
-금융 관련 사무실 업그레이드는 대출 정보 표시나 상환 편의만 개선할 수 있다. 업체 고정금리와 `신뢰도는 신용한도에만 영향`이라는 규칙은 바꾸지 않는다.
+Invalid balance or UI configuration prevents session start in debug builds and reports the exact resource and field. Debug assertions enforce invariants close to their owning systems. Release-style prototype builds fail safely to operations or results rather than applying settlement twice.
 
-### 16.4 확장용 시스템 경계
+## 14. Required Prototype Scenarios
 
-후속 구현을 위해 다음 상태와 인터페이스를 독립적으로 추가할 수 있게 한다.
+1. Inventory remains zero while waiting for recovery and the train reaches the end first.
+2. Crossing active track charges the larger cost without creating a branch.
+3. Automatic load and unload with empty, full, and mixed cargo slots.
+4. Delivery immediately before destination expiry and removal immediately after expiry.
+5. Regular end voids in-transit cargo without result.
+6. Early end discards remaining time and settles current deliveries.
+7. Attainment exceeds 100% and only the excess becomes trust.
+8. Voluntary borrowing with positive cash and borrowing from several companies.
+9. One company’s loan services another company’s principal and interest.
+10. New borrowing recovers a post-settlement deficit, and exhausted limits cause bankruptcy.
+11. Every end condition clears temporary track and cargo capacity.
+12. Repair cost scales with durability loss and the next session starts at full durability.
+13. UI layout accepts minimum and maximum configured padding without overlap or field loss.
 
-- **TrainModelCatalog**: 기종 정의와 밸런스 데이터를 읽는다.
-- **FleetState**: 구입한 기종 목록과 현재 선택 기종을 영구 저장한다.
-- **OfficeUpgradeCatalog**: 사무실 업그레이드 정의, 단계와 선행 조건을 읽는다.
-- **OfficeState**: 구입한 단계와 그로 인한 유지비를 영구 저장한다.
-- **UpgradeEffectResolver**: 허용된 효과만 대상 시스템의 세션 시작값에 합성한다.
-- **ContractSystem**: 첫 프로토타입부터 단일 값이 아니라 계약 목록을 받을 수 있게 경계를 잡되, 기본 동시 계약 한도는 1로 설정한다.
+Random sessions store their seed and ordered event log for replay. Playtests record survived cycles, end-of-track early-end rate, crossing frequency, deliveries gained per temporary purchase, contracted versus uncontracted deliveries, idle cargo-slot rate, and debt-service share.
 
-업그레이드가 임의로 다른 시스템의 내부 상태를 직접 고치게 하지 않는다. `UpgradeEffectResolver`는 기본 선로, 기본 적재칸, 최대 내구도, 수리비 계수, 예고 정보와 동시 계약 한도만 받는 폐쇄형 효과 목록을 사용한다. 워프 위치·수명·재추첨, 기차 정지·세션 중 속도, 임시 구매 보존, 신뢰도, 고정금리와 신용한도 함수는 효과 타입으로 등록할 수 없다.
+Prototype validation requires observing all three target decisions in repeated play: maintaining track under recovery pressure, selecting contract-relevant cargo under capacity pressure, and spending versus preserving cash. Feature completion alone does not count as prototype validation.
 
-세션 시작 시 `기종 기본값 + 사무실 영구 효과 + 이번 세션 임시 구매`를 명시적인 순서로 합성하며, 세션 종료 시에는 마지막 항목만 제거한다.
+## 15. Balance Data
 
-### 16.5 확장 후에도 유지할 불변 조건
+The following are tunable data rather than rules:
 
-- 보유 기종이 늘어나도 한 세션에는 기차 한 대만 운행한다.
-- 어떤 기종이나 업그레이드도 기차를 정지시키거나 선로 끝 도달을 무효화하지 않는다.
-- 워프 위치·생명주기를 사후 보정하거나 불리한 요청을 재추첨하지 않는다.
-- 무료 입체교차, 무제한 선로, 무제한 적재칸처럼 한붓그리기 제약을 제거하는 효과를 만들지 않는다.
-- 최대 영구 성장 상태에서도 기본 선로만으로 필드 전체를 가로지르는 모든 경로를 완성할 수 없어야 하며 자동 회수 판단이 남아야 한다.
-- 최대 영구 적재칸 수는 최대 동시 활성 화물 수보다 작게 유지해 적재 포화와 경로 선택이 계속 발생하게 한다.
-- 사무실 업그레이드는 세션 안에서 산 임시 선로·적재칸을 다음 세션으로 가져오지 않는다.
-- 복수 계약은 업체별 실적과 정산을 독립적으로 유지한다.
-- 신뢰도는 업그레이드가 추가된 뒤에도 해당 업체의 신용한도만 바꾼다.
+- Session duration and forecast duration
+- Train speed and base durability
+- Base track inventory and recovery distance
+- Base cargo capacity
+- Edit, crossing, and temporary-expansion cost curves
+- Pair generation interval, simultaneous active count, and lifetime distribution
+- Company frequency, fee, quota, bonus, and penalty curves
+- Over-attainment-to-trust conversion
+- Trust-to-credit-limit curves
+- Company fixed rates and repayment terms
+- Base operating cost, hazard damage, and cycle scaling
+- Repair cost per durability
+- UI-layout padding, gaps, HUD height, and icon size within validated bounds
 
-이 확장 구조의 목적은 잉여재화를 쓸 곳을 늘리면서도, 더 오래 플레이한 회사가 핵심 퍼즐을 자동으로 해결하게 만들지 않는 것이다.
+Tuning must not change these rules: no post-generation correction, continuous single-stroke track, a nonstopping train, automatic loading and recovery, expiring session investment, and independent company credit.
 
-### 16.6 후속 확장 검증 항목
+## 16. Post-Prototype Permanent Spending and Extension Boundary
 
-- 구입한 기종과 사무실 단계는 정기·조기 종료 뒤에도 유지되지만 세션 임시 구매량은 제거되는가.
-- 여러 기종을 보유해도 선택 기종 하나만 세션에 생성되는가.
-- 복수 계약에서 화물 하나가 정확히 한 업체 실적에만 반영되고 각 업체가 독립 정산되는가.
-- 기종·사무실 유지비가 다음 정산 예상치와 실제 고정지출에 각각 한 번만 반영되는가.
-- 운행분석실 정보가 RNG 결과를 바꾸지 않고 이미 확정된 예고 정보만 더 잘 보여주는가.
+These items are not prototype content. They reserve boundaries so validated production work can add permanent uses for surplus cash without rebuilding the core loop.
+
+### 16.1 Common Rules
+
+- Permanent purchases occur only on the operations screen.
+- Purchases use persistent company cash. Borrowed and earned cash share the same balance, so leveraged asset buying remains possible.
+- Purchased trains and office levels survive warp resets.
+- Each item supports a purchase price and per-cycle upkeep, including zero upkeep.
+- Permanent upgrades add choices and trade-offs without removing nonstopping, single-train, limited-track, random-warp, or finite-lifetime constraints.
+
+### 16.2 Train Models and Fleet
+
+- Train models are data-driven TrainModelDefinition records.
+- The player permanently owns purchased models and selects exactly one before a session.
+- Exactly one train remains active regardless of fleet size.
+- Extensible model fields are price, upkeep, fixed speed, durability, repair multiplier, base track inventory, and base cargo capacity.
+- Model speeds may differ but remain fixed during sessions and inside common positive bounds.
+- Office effects never alter speed or speed multiplier during a session.
+- Higher performance must trade against price, upkeep, repair, or another capability; avoid strict upgrades.
+- Session-only inventory and capacity add on top of model base values and are the only values removed at session end.
+
+### 16.3 Office Upgrades
+
+- Office upgrades are data-driven, staged OfficeUpgradeDefinition records.
+- Each definition has an identifier, price, upkeep, prerequisites, maximum level, and an allowed effect list.
+- Prerequisites may reference office levels and owned models only, not trust or borrowing.
+- The prototype contract limit is one company.
+- A future contract-management department may increase simultaneous company contracts.
+- Multiple contracts calculate Q, D, A, cash settlement, and trust independently.
+- One cargo belongs to one company contract and never advances multiple contracts.
+- Multiple contracts add both bonus opportunity and independent shortfall risk; quotas are never pooled.
+
+Allowed office families include:
+
+- Operations Analysis: improves forecast timing or presentation without changing generated results or lifetimes
+- Maintenance: adjusts model durability and repair multipliers within allowed bounds
+- Logistics: adjusts base track or cargo capacity without preserving session-only purchases
+- Contract Management: increases simultaneous contract limit and presents each contract independently
+
+Financial office upgrades may improve information or repayment convenience only. Fixed company rates and the rule that trust affects only credit limits remain unchanged.
+
+### 16.4 Extension Interfaces
+
+Future implementation may add:
+
+- TrainModelCatalog for model definitions and balance data
+- FleetState for owned and selected models
+- OfficeUpgradeCatalog for definitions, levels, and prerequisites
+- OfficeState for purchased levels and upkeep
+- UpgradeEffectResolver for composing only explicitly allowed effects
+- ContractSystem accepting a contract list from the first implementation, with prototype maximum length one
+
+UpgradeEffectResolver uses a closed effect list: base track, base cargo capacity, durability, repair multiplier, forecast information, and simultaneous contract limit.
+
+It cannot affect warp position, lifetime, rerolls, stopping, in-session speed, temporary-purchase persistence, trust, fixed interest, or the credit-limit function.
+
+Session start composes values in this explicit order:
+
+1. Selected train-model base
+2. Permanent office effects
+3. Current session’s temporary purchases
+
+Only the third layer is removed at session end.
+
+The prototype implements a SessionStartConfig input boundary only. It does not implement train catalogs, fleet state, office catalogs, office state, or upgrade content.
+
+### 16.5 Invariants After Extension
+
+- Fleet size never creates more than one active train.
+- No model or upgrade can stop the train or ignore track-end failure.
+- Warp location and lifetime remain uncorrected after generation.
+- No effect provides free crossings, unlimited track, or unlimited cargo.
+- At maximum progression, base track still cannot complete every field-spanning route without recovery decisions.
+- Maximum permanent cargo capacity remains below maximum simultaneous cargo count.
+- Office upgrades never preserve temporary track or cargo capacity.
+- Multiple contracts retain independent performance and settlement.
+- Trust continues to affect only that company’s credit limit.
+
+### 16.6 Future Extension Verification
+
+- Owned models and office levels survive every session end while temporary purchases disappear.
+- Owning several models still creates only the selected one.
+- Multiple contracts credit one cargo to one company and settle independently.
+- Model and office upkeep appears once in forecast and once in actual settlement.
+- Operations Analysis reveals only already-determined RNG information.
+
+## 17. Prototype-to-Production Handoff
+
+Prototyping is isolated from Development. The Prototyping branch is never merged wholesale into Development.
+
+After validation:
+
+1. Record validated mechanics, rejected assumptions, balance ranges, usability findings, and art requirements in English production specifications.
+2. Review each prototype module for independent reuse.
+3. Reimplement prototype shortcuts in production architecture unless a module has explicit tests, a stable interface, and no prototype-only dependency.
+4. Selectively port approved data, tests, and pure logic. Never import the prototype scene tree as the production foundation by default.
+
+The purpose of this boundary is to carry evidence into production without carrying accidental prototype architecture.
