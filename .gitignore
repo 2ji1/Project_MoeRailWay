@@ -1,0 +1,7 @@
+# Local Visual Companion state
+.superpowers/
+
+# Local prototype output
+builds/
+logs/
+*.log
