@@ -1,0 +1,7 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://src/app/prototype_app.tscn" id="1_app"]
+[ext_resource type="Resource" path="res://tests/fixtures/short_session_balance.tres" id="2_balance"]
+
+[node name="ShortSessionApp" instance=ExtResource("1_app")]
+balance = ExtResource("2_balance")

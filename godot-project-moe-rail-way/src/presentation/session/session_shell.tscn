@@ -1,0 +1,337 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://src/presentation/session/session_shell.gd" id="1_shell"]
+[ext_resource type="Theme" path="res://src/presentation/theme/prototype_theme.tres" id="2_theme"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_field"]
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+bg_color = Color(0.82, 0.855, 0.78, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.31, 0.39, 0.35, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_result"]
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+bg_color = Color(0.075, 0.098, 0.118, 0.98)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.78, 0.66, 0.35, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[node name="SessionShell" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_shell")
+
+[node name="OuterMargin" type="MarginContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MainColumn" type="VBoxContainer" parent="OuterMargin"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="TopHud" type="PanelContainer" parent="OuterMargin/MainColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+
+[node name="TopContent" type="MarginContainer" parent="OuterMargin/MainColumn/TopHud"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="TopItems" type="HBoxContainer" parent="OuterMargin/MainColumn/TopHud/TopContent"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="TimeItem" type="HBoxContainer" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="TimeIcon" type="ColorRect" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/TimeItem"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+mouse_filter = 2
+color = Color(0.91, 0.73, 0.29, 1)
+
+[node name="TimeText" type="VBoxContainer" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/TimeItem"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="TimeTitle" type="Label" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/TimeItem/TimeText"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "TIME"
+
+[node name="TimeValue" type="Label" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/TimeItem/TimeText"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(48, 0)
+layout_mode = 2
+text = "0:00"
+
+[node name="TrackItem" type="HBoxContainer" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="TrackIcon" type="ColorRect" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/TrackItem"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+mouse_filter = 2
+color = Color(0.42, 0.66, 0.73, 1)
+
+[node name="TrackText" type="VBoxContainer" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/TrackItem"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="TrackTitle" type="Label" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/TrackItem/TrackText"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "TRACK"
+
+[node name="TrackValue" type="Label" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/TrackItem/TrackText"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(48, 0)
+layout_mode = 2
+text = "—"
+
+[node name="CashItem" type="HBoxContainer" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="CashIcon" type="ColorRect" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/CashItem"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+mouse_filter = 2
+color = Color(0.47, 0.72, 0.43, 1)
+
+[node name="CashText" type="VBoxContainer" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/CashItem"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="CashTitle" type="Label" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/CashItem/CashText"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "CASH"
+
+[node name="CashValue" type="Label" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/CashItem/CashText"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(48, 0)
+layout_mode = 2
+text = "—"
+
+[node name="DurabilityItem" type="HBoxContainer" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="DurabilityIcon" type="ColorRect" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/DurabilityItem"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+mouse_filter = 2
+color = Color(0.79, 0.43, 0.38, 1)
+
+[node name="DurabilityText" type="VBoxContainer" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/DurabilityItem"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="DurabilityTitle" type="Label" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/DurabilityItem/DurabilityText"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "DURABILITY"
+
+[node name="DurabilityValue" type="Label" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/DurabilityItem/DurabilityText"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(48, 0)
+layout_mode = 2
+text = "—"
+
+[node name="Field" type="PanelContainer" parent="OuterMargin/MainColumn"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_field")
+
+[node name="BottomHud" type="PanelContainer" parent="OuterMargin/MainColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+
+[node name="BottomContent" type="MarginContainer" parent="OuterMargin/MainColumn/BottomHud"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="BottomItems" type="HBoxContainer" parent="OuterMargin/MainColumn/BottomHud/BottomContent"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="ContractItem" type="HBoxContainer" parent="OuterMargin/MainColumn/BottomHud/BottomContent/BottomItems"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="ContractIcon" type="ColorRect" parent="OuterMargin/MainColumn/BottomHud/BottomContent/BottomItems/ContractItem"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+mouse_filter = 2
+color = Color(0.58, 0.49, 0.76, 1)
+
+[node name="ContractText" type="VBoxContainer" parent="OuterMargin/MainColumn/BottomHud/BottomContent/BottomItems/ContractItem"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="ContractTitle" type="Label" parent="OuterMargin/MainColumn/BottomHud/BottomContent/BottomItems/ContractItem/ContractText"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "CONTRACT"
+
+[node name="ContractValue" type="Label" parent="OuterMargin/MainColumn/BottomHud/BottomContent/BottomItems/ContractItem/ContractText"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(48, 0)
+layout_mode = 2
+text = "—"
+
+[node name="CargoItem" type="HBoxContainer" parent="OuterMargin/MainColumn/BottomHud/BottomContent/BottomItems"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="CargoIcon" type="ColorRect" parent="OuterMargin/MainColumn/BottomHud/BottomContent/BottomItems/CargoItem"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+mouse_filter = 2
+color = Color(0.38, 0.63, 0.77, 1)
+
+[node name="CargoText" type="VBoxContainer" parent="OuterMargin/MainColumn/BottomHud/BottomContent/BottomItems/CargoItem"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="CargoTitle" type="Label" parent="OuterMargin/MainColumn/BottomHud/BottomContent/BottomItems/CargoItem/CargoText"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "CARGO"
+
+[node name="CargoValue" type="Label" parent="OuterMargin/MainColumn/BottomHud/BottomContent/BottomItems/CargoItem/CargoText"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(48, 0)
+layout_mode = 2
+text = "—"
+
+[node name="TrackEndItem" type="HBoxContainer" parent="OuterMargin/MainColumn/BottomHud/BottomContent/BottomItems"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="TrackEndIcon" type="ColorRect" parent="OuterMargin/MainColumn/BottomHud/BottomContent/BottomItems/TrackEndItem"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+mouse_filter = 2
+color = Color(0.82, 0.44, 0.25, 1)
+
+[node name="TrackEndText" type="VBoxContainer" parent="OuterMargin/MainColumn/BottomHud/BottomContent/BottomItems/TrackEndItem"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="TrackEndTitle" type="Label" parent="OuterMargin/MainColumn/BottomHud/BottomContent/BottomItems/TrackEndItem/TrackEndText"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "TRACK END"
+
+[node name="TrackEndValue" type="Label" parent="OuterMargin/MainColumn/BottomHud/BottomContent/BottomItems/TrackEndItem/TrackEndText"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(48, 0)
+layout_mode = 2
+text = "—"
+
+[node name="ResultOverlay" type="CenterContainer" parent="."]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+
+[node name="ResultPanel" type="PanelContainer" parent="ResultOverlay"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_result")
+
+[node name="ResultContent" type="MarginContainer" parent="ResultOverlay/ResultPanel"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="ResultRows" type="VBoxContainer" parent="ResultOverlay/ResultPanel/ResultContent"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="ResultTitle" type="Label" parent="ResultOverlay/ResultPanel/ResultContent/ResultRows"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "SESSION COMPLETE"
+horizontal_alignment = 1
+
+[node name="ResultReason" type="Label" parent="ResultOverlay/ResultPanel/ResultContent/ResultRows"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "REGULAR TIME EXPIRED"
+horizontal_alignment = 1
+
+[node name="ResultNotice" type="Label" parent="ResultOverlay/ResultPanel/ResultContent/ResultRows"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Settlement is not available in this milestone."
+horizontal_alignment = 1
