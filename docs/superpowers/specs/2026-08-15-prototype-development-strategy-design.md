@@ -5,6 +5,7 @@
 - Audience: Agent-facing canonical specification
 - Related gameplay specification: docs/superpowers/specs/2026-08-15-warp-rail-prototype-design.md
 - User briefing: docs/briefings/ko/2026-08-15-prototype-development-strategy-briefing.md
+- Execution boundary: Finalize strategy and implementation plans in the current planning session; create branches and implement the prototype only in a separate development session explicitly started by the user.
 
 ## 1. Outcome
 
@@ -355,7 +356,7 @@ The gameplay specification’s invariant list is mandatory and is covered increm
 - Review domain ownership, test evidence, and manual smoke evidence before merge.
 - Fix regressions before starting the next sequential branch.
 
-Implementation branch creation is not part of this design-document commit. It begins only after the implementation plan is approved.
+Implementation branch creation is not part of this strategy session or its documentation commits. It begins only in a separate development session after the implementation plan is approved and the user explicitly starts implementation.
 
 ## 11. Prototype Exit and Production Handoff
 

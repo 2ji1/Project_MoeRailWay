@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
+> **Session boundary:** This document is finalized in a strategy session. Do not create implementation branches or worktrees, modify Godot source, or create implementation commits, merges, or tags while reviewing this plan. Execute it only in a new development session after the user explicitly starts implementation.
+
 **Goal:** Establish the tracked, deterministic, testable Godot 4.7.1 foundation for the first playable prototype milestone on proto/00-foundation.
 
 **Architecture:** A minimal PrototypeApp scene composes validated Resource-based balance data, an explicit SessionStartConfig, and a seeded SessionRng. A native GDScript SceneTree test runner validates pure scripts and scene loading without third-party test plugins. Repository and project settings make the Windows PC, 16:9, mouse-only target reproducible while keeping generated files out of Git.
@@ -12,15 +14,18 @@
 
 - Create Prototyping from the current main baseline. Do not branch it from Development.
 - Implement this plan on proto/00-foundation, created from Prototyping.
+- At the start of the development session, invoke superpowers:using-git-worktrees and execute all implementation in an isolated worktree. Worktree and branch setup are execution preconditions, not actions for the strategy session.
 - Never merge Prototyping into Development.
 - Target Windows PC, a 1280x720 logical viewport, 16:9, and mouse-only input.
 - Keep Forward Plus and the current D3D12 Windows driver for this milestone; renderer evaluation is outside foundation scope.
 - Add no third-party Godot add-ons or test plugins.
+- Keep the existing local godot_mcp add-on in the primary workspace only. Do not copy, track, or activate it in the isolated prototype project.
 - Use the verified Godot binary at D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe.
 - Do not modify C:\Users\noisy\bin\godot.cmd; it points to a missing Godot 4.5.1 path.
 - Write all agent-facing Markdown in English and all user-facing briefings in Korean.
 - Use primitive placeholder presentation only. Custom art and final audio remain outside this milestone.
 - Preserve user-owned untracked files. Never force checkout, clean, or reset the workspace.
+- Treat repository ignore files and generated project-setting serialization as approved configuration-file exceptions to strict red-first TDD. Cover them with observable behavior checks: git check-ignore, project-setting assertions, two-run hash equality, and final diff verification.
 
 ---
 
@@ -101,29 +106,36 @@ func run() -> PackedStringArray
 
 ---
 
-### Task 1: Create the Prototype Branch Boundary and Repository Hygiene
+## Development Session Preflight (Controller Only)
 
-**Files:**
+Do not run this preflight in the strategy session. In the separate development session, the controller performs it before dispatching Task 1. Invoke superpowers:using-git-worktrees first, then use the following verified project-specific boundary.
 
-- Create: .gitignore
-- Modify: godot-project-moe-rail-way/.gitignore
-
-**Interfaces:**
-
-- Consumes: current main at the approved documentation commit; existing untracked Godot scaffold
-- Produces: Prototyping and proto/00-foundation branch boundaries; deterministic ignore rules
-
-- [ ] **Step 1: Verify the starting state without changing it**
-
-Run:
+Verify the primary workspace without changing it:
 
 ~~~powershell
-git branch --show-current
-git status --short
-git log -1 --oneline
-git show-ref --verify --quiet refs/heads/Prototyping
+$MoeRailPrimary = 'D:\godot\MoeRailWay'
+$MoeRailCurrentBranch = git -C $MoeRailPrimary branch --show-current
+if ($LASTEXITCODE -ne 0 -or $MoeRailCurrentBranch.Trim() -ne 'main') {
+    throw "The primary workspace must be on main."
+}
+$MoeRailCurrentBranch
+
+$MoeRailTrackedChanges = git -C $MoeRailPrimary status --short --untracked-files=no
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to inspect tracked primary-workspace changes."
+}
+if ($MoeRailTrackedChanges) {
+    $MoeRailTrackedChanges
+    throw "Tracked changes must be resolved before creating Prototyping."
+}
+
+git -C $MoeRailPrimary status --short --untracked-files=all
+git -C $MoeRailPrimary log -1 --oneline
+git -C $MoeRailPrimary show-ref --verify --quiet refs/heads/Prototyping
 if ($LASTEXITCODE -eq 0) {
     throw "Prototyping already exists; inspect it before executing this plan."
+} elseif ($LASTEXITCODE -ne 1) {
+    throw "Failed to inspect the Prototyping branch state."
 }
 ~~~
 
@@ -132,25 +144,113 @@ Expected:
 - Current branch is main.
 - The Godot scaffold and .superpowers may appear as untracked.
 - Prototyping does not exist.
-- No tracked implementation changes are present.
+- No tracked changes are present, so the committed English plan is included in the branch baseline.
 
-- [ ] **Step 2: Create the isolated prototype integration and feature branches**
+Create the prototype integration branch and isolated feature worktree:
+
+~~~powershell
+$MoeRailPrimary = 'D:\godot\MoeRailWay'
+$MoeRailWorktreeRoot = 'D:\godot\MoeRailWay-worktrees'
+$MoeRailWorktree = Join-Path $MoeRailWorktreeRoot 'proto-00-foundation'
+if (Test-Path -LiteralPath $MoeRailWorktree) {
+    throw "The planned worktree path already exists; inspect it before continuing."
+}
+
+git -C $MoeRailPrimary branch Prototyping main
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to create Prototyping from main."
+}
+
+New-Item -ItemType Directory -Path $MoeRailWorktreeRoot -Force | Out-Null
+git -C $MoeRailPrimary worktree add -b proto/00-foundation $MoeRailWorktree Prototyping
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to create the isolated proto/00-foundation worktree."
+}
+
+git -C $MoeRailWorktree branch --show-current
+git -C $MoeRailWorktree merge-base --is-ancestor main Prototyping
+if ($LASTEXITCODE -ne 0) {
+    throw "Prototyping is not based on main."
+}
+~~~
+
+Expected: the isolated worktree is created outside the primary repository directory, its current branch prints proto/00-foundation, and the ancestry check exits 0.
+
+Copy only the existing source scaffold into the isolated worktree. Do not copy the generated .godot directory:
+
+~~~powershell
+$MoeRailWorktree = 'D:\godot\MoeRailWay-worktrees\proto-00-foundation'
+$MoeRailSourceProject = 'D:\godot\MoeRailWay\godot-project-moe-rail-way'
+$MoeRailTargetProject = Join-Path $MoeRailWorktree 'godot-project-moe-rail-way'
+New-Item -ItemType Directory -Path $MoeRailTargetProject -Force | Out-Null
+
+$MoeRailScaffoldFiles = @(
+    '.editorconfig',
+    '.gitattributes',
+    '.gitignore',
+    'icon.svg',
+    'icon.svg.import',
+    'project.godot'
+)
+foreach ($MoeRailScaffoldFile in $MoeRailScaffoldFiles) {
+    $MoeRailScaffoldSource = Join-Path $MoeRailSourceProject $MoeRailScaffoldFile
+    if (-not (Test-Path -LiteralPath $MoeRailScaffoldSource)) {
+        throw "Missing scaffold source file: $MoeRailScaffoldSource"
+    }
+    Copy-Item -LiteralPath $MoeRailScaffoldSource -Destination $MoeRailTargetProject -ErrorAction Stop
+}
+foreach ($MoeRailScaffoldFile in $MoeRailScaffoldFiles) {
+    $MoeRailCopiedFile = Join-Path $MoeRailTargetProject $MoeRailScaffoldFile
+    if (-not (Test-Path -LiteralPath $MoeRailCopiedFile -PathType Leaf)) {
+        throw "Scaffold copy verification failed: $MoeRailCopiedFile"
+    }
+}
+if (Test-Path -LiteralPath (Join-Path $MoeRailTargetProject '.godot')) {
+    throw "Generated .godot state must not be copied into the worktree."
+}
+
+git -C $MoeRailWorktree status --short --untracked-files=all
+~~~
+
+Expected: the six explicit scaffold source files are visible as untracked, while no .godot cache content is present. Initialize the subagent-driven-development workspace and ledger with D:\godot\MoeRailWay-worktrees\proto-00-foundation as the explicit working directory, then dispatch Task 1 with that same working directory. The local .superpowers SDD workspace may appear as untracked until Task 1 installs the root ignore rule. Do not rely on PowerShell location or variables persisting across tool calls.
+
+---
+
+### Task 1: Establish Repository Hygiene in the Isolated Prototype Worktree
+
+**Files:**
+
+- Create: .gitignore
+- Modify: godot-project-moe-rail-way/.gitignore
+- Modify: godot-project-moe-rail-way/project.godot
+
+**Interfaces:**
+
+- Consumes: the preflight-created proto/00-foundation worktree and copied source scaffold
+- Produces: deterministic repository and Godot-project ignore rules; a plugin-free tracked project baseline
+
+- [ ] **Step 1: Verify the isolated feature boundary without changing it**
 
 Run:
 
 ~~~powershell
-git switch -c Prototyping main
-git switch -c proto/00-foundation
 git branch --show-current
+git status --short --untracked-files=all
 git merge-base --is-ancestor main Prototyping
 if ($LASTEXITCODE -ne 0) {
     throw "Prototyping is not based on main."
 }
 ~~~
 
-Expected: current branch prints proto/00-foundation and the ancestry check exits 0.
+Expected:
 
-- [ ] **Step 3: Add repository and project ignore rules**
+- Current branch is proto/00-foundation.
+- The ancestry check exits 0.
+- The six copied Godot source scaffold files are untracked and visible.
+- The local .superpowers SDD workspace may also appear as untracked at this point.
+- No .godot cache content is present.
+
+- [ ] **Step 2: Add ignore rules and remove local plug-in activation**
 
 Create .gitignore with:
 
@@ -171,39 +271,76 @@ Replace godot-project-moe-rail-way/.gitignore with:
 .godot/
 /android/
 
+# Local development tooling
+/addons/godot_mcp/
+
 # Local prototype output
 builds/
 exports/
 logs/
 ~~~
 
-- [ ] **Step 4: Verify generated state is ignored and source remains visible**
+The copied project.godot contains a local editor plug-in reference whose add-on source is intentionally not copied. Use apply_patch on the isolated worktree copy of godot-project-moe-rail-way/project.godot to remove this complete block:
+
+~~~ini
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/godot_mcp/plugin.cfg")
+~~~
+
+Do not modify the primary workspace copy of project.godot or delete the primary workspace add-on.
+
+- [ ] **Step 3: Verify generated state is ignored and source remains visible**
 
 Run:
 
 ~~~powershell
-git check-ignore -v '.superpowers/brainstorm'
-git check-ignore -v 'godot-project-moe-rail-way/.godot/uid_cache.bin'
-git status --short
+$MoeRailIgnoreChecks = @(
+    '.superpowers/brainstorm',
+    'godot-project-moe-rail-way/.godot/uid_cache.bin',
+    'godot-project-moe-rail-way/addons/godot_mcp/plugin.cfg'
+)
+foreach ($MoeRailIgnoredPath in $MoeRailIgnoreChecks) {
+    git check-ignore -v -- $MoeRailIgnoredPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "Expected ignored path is not covered: $MoeRailIgnoredPath"
+    }
+}
+$MoeRailPluginReference = Select-String -LiteralPath 'godot-project-moe-rail-way/project.godot' -Pattern 'editor_plugins|godot_mcp'
+if ($MoeRailPluginReference) {
+    $MoeRailPluginReference
+    throw "The isolated prototype project still activates local Godot MCP tooling."
+}
+git status --short --untracked-files=all
 ~~~
 
 Expected:
 
-- Both check-ignore commands identify the new rules.
-- .superpowers and the project .godot directory are absent from normal status.
-- The Godot source scaffold remains untracked and visible.
+- All three check-ignore commands identify the new rules.
+- .superpowers, the project .godot directory, and local godot_mcp add-on are absent from normal status.
+- No editor plug-in activation remains in the isolated project.godot.
+- The intended Godot source scaffold remains untracked and visible.
 
-- [ ] **Step 5: Commit the hygiene boundary**
+- [ ] **Step 4: Commit the hygiene boundary**
 
 Run:
 
 ~~~powershell
-git add -- '.gitignore' 'godot-project-moe-rail-way/.gitignore'
+git add -- '.gitignore' 'godot-project-moe-rail-way/.gitignore' 'godot-project-moe-rail-way/project.godot'
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to stage the repository-hygiene files."
+}
 git diff --cached --check
+if ($LASTEXITCODE -ne 0) {
+    throw "Repository-hygiene staged diff check failed."
+}
 git commit -m "chore: define prototype repository hygiene"
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to commit the repository-hygiene boundary."
+}
 ~~~
 
-Expected: one commit containing only the two ignore files.
+Expected: one configuration-only commit containing the two ignore files and the plugin-free project baseline.
 
 ---
 
@@ -220,11 +357,10 @@ Expected: one commit containing only the two ignore files.
 - Track: godot-project-moe-rail-way/.gitattributes
 - Track: godot-project-moe-rail-way/icon.svg
 - Track: godot-project-moe-rail-way/icon.svg.import
-- Track: godot-project-moe-rail-way/project.godot
 
 **Interfaces:**
 
-- Consumes: verified Godot 4.7.1 console binary; ignored .godot cache
+- Consumes: verified Godot 4.7.1 console binary; ignored .godot cache; plugin-free tracked project.godot
 - Produces: res://tests/run_all.gd headless test entry point; res://src/app/prototype_app.tscn boot scene
 
 - [ ] **Step 1: Create the assertion support**
@@ -275,12 +411,9 @@ func run() -> PackedStringArray:
 
     if packed_scene != null:
         var instance := packed_scene.instantiate()
-        assert_equal(instance.name, "PrototypeApp", "Root node name must be stable")
-        assert_not_null(
-            instance.get_node_or_null("Backdrop"),
-            "PrototypeApp must contain the placeholder Backdrop"
-        )
-        instance.free()
+        assert_not_null(instance, "PrototypeApp scene must instantiate")
+        if instance != null:
+            instance.free()
 
     return finish()
 ~~~
@@ -324,13 +457,22 @@ $MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_co
 if (-not (Test-Path -LiteralPath $MoeRailGodotExe)) {
     throw "Verified Godot 4.7.1 binary is missing."
 }
-& $MoeRailGodotExe --headless --path 'godot-project-moe-rail-way' --script 'res://tests/run_all.gd'
-if ($LASTEXITCODE -eq 0) {
-    throw "Boot test unexpectedly passed before the scene existed."
+$MoeRailVersionOutput = & $MoeRailGodotExe --version 2>&1
+$MoeRailVersionExit = $LASTEXITCODE
+$MoeRailVersionOutput
+$MoeRailVersion = ($MoeRailVersionOutput -join "`n").Trim()
+if ($MoeRailVersionExit -ne 0 -or $MoeRailVersion -ne '4.7.1.stable.official.a13da4feb') {
+    throw "Unexpected Godot version: $MoeRailVersion"
+}
+$MoeRailRedOutput = & $MoeRailGodotExe --headless --path 'godot-project-moe-rail-way' --script 'res://tests/run_all.gd' 2>&1
+$MoeRailRedExit = $LASTEXITCODE
+$MoeRailRedOutput
+if ($MoeRailRedExit -eq 0 -or -not ($MoeRailRedOutput -match 'PrototypeApp scene must load')) {
+    throw "Expected missing-scene red state was not observed."
 }
 ~~~
 
-Expected: exit code is nonzero and the failure says PrototypeApp scene must load.
+Expected: the exact Godot version is 4.7.1.stable.official.a13da4feb, then the test exits nonzero and says PrototypeApp scene must load.
 
 - [ ] **Step 4: Create the minimal application composition root**
 
@@ -386,22 +528,41 @@ Run:
 
 ~~~powershell
 $MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
-& $MoeRailGodotExe --headless --path 'godot-project-moe-rail-way' --script 'res://tests/run_all.gd'
-if ($LASTEXITCODE -ne 0) {
-    throw "Prototype test runner failed."
+$MoeRailTestOutput = & $MoeRailGodotExe --headless --path 'godot-project-moe-rail-way' --script 'res://tests/run_all.gd' 2>&1
+$MoeRailTestExit = $LASTEXITCODE
+$MoeRailTestOutput
+if ($MoeRailTestExit -ne 0 -or -not ($MoeRailTestOutput -match 'PASS: 1 prototype test suite\(s\)')) {
+    throw "Prototype test runner did not pass exactly 1 suite."
+}
+
+$MoeRailBootArgs = @('--headless', '--path', 'godot-project-moe-rail-way', '--scene', 'res://src/app/prototype_app.tscn', '--quit-after', '2')
+$BootOutput = & $MoeRailGodotExe @MoeRailBootArgs 2>&1
+$BootExit = $LASTEXITCODE
+$BootOutput
+if ($BootExit -ne 0 -or -not ($BootOutput -match 'Moe Rail Way prototype foundation ready')) {
+    throw "PrototypeApp did not complete a real headless boot."
 }
 ~~~
 
-Expected: PASS: 1 prototype test suite(s), exit code 0.
+Expected: PASS: 1 prototype test suite(s), the explicit scene boots headlessly and reports readiness, and both commands exit 0.
 
 - [ ] **Step 6: Commit the tracked scaffold and boot slice**
 
 Run:
 
 ~~~powershell
-git add -- 'godot-project-moe-rail-way/.editorconfig' 'godot-project-moe-rail-way/.gitattributes' 'godot-project-moe-rail-way/icon.svg' 'godot-project-moe-rail-way/icon.svg.import' 'godot-project-moe-rail-way/project.godot' 'godot-project-moe-rail-way/src/app/prototype_app.gd' 'godot-project-moe-rail-way/src/app/prototype_app.tscn' 'godot-project-moe-rail-way/tests/support/prototype_test.gd' 'godot-project-moe-rail-way/tests/smoke/test_project_boot.gd' 'godot-project-moe-rail-way/tests/run_all.gd'
+git add -- 'godot-project-moe-rail-way/.editorconfig' 'godot-project-moe-rail-way/.gitattributes' 'godot-project-moe-rail-way/icon.svg' 'godot-project-moe-rail-way/icon.svg.import' 'godot-project-moe-rail-way/src/app/prototype_app.gd' 'godot-project-moe-rail-way/src/app/prototype_app.tscn' 'godot-project-moe-rail-way/tests/support/prototype_test.gd' 'godot-project-moe-rail-way/tests/smoke/test_project_boot.gd' 'godot-project-moe-rail-way/tests/run_all.gd'
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to stage the application-bootstrap files."
+}
 git diff --cached --check
+if ($LASTEXITCODE -ne 0) {
+    throw "Application-bootstrap staged diff check failed."
+}
 git commit -m "feat: bootstrap prototype application"
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to commit the application bootstrap."
+}
 ~~~
 
 Expected: generated .godot content is not staged.
@@ -451,14 +612,19 @@ func run() -> PackedStringArray:
     invalid_balance.simulation_ticks_per_second = 0
     var errors: PackedStringArray = Validator.validate(invalid_balance)
     assert_equal(errors.size(), 2, "Both invalid fields must be reported")
-    assert_true(
-        errors.has("session_duration_seconds must be greater than 0"),
-        "Duration error must name the field"
-    )
-    assert_true(
-        errors.has("simulation_ticks_per_second must be greater than 0"),
-        "Tick-rate error must name the field"
-    )
+    var duration_error_found := false
+    var tick_rate_error_found := false
+    for error_message in errors:
+        duration_error_found = (
+            error_message.contains("session_duration_seconds")
+            or duration_error_found
+        )
+        tick_rate_error_found = (
+            error_message.contains("simulation_ticks_per_second")
+            or tick_rate_error_found
+        )
+    assert_true(duration_error_found, "Duration error must name the field")
+    assert_true(tick_rate_error_found, "Tick-rate error must name the field")
 
     var start_config = valid_balance.create_session_start_config(4242)
     assert_equal(start_config.seed, 4242, "SessionStartConfig must preserve seed")
@@ -491,9 +657,11 @@ Run:
 
 ~~~powershell
 $MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
-& $MoeRailGodotExe --headless --path 'godot-project-moe-rail-way' --script 'res://tests/run_all.gd'
-if ($LASTEXITCODE -eq 0) {
-    throw "Configuration tests unexpectedly passed before implementation."
+$MoeRailRedOutput = & $MoeRailGodotExe --headless --path 'godot-project-moe-rail-way' --script 'res://tests/run_all.gd' 2>&1
+$MoeRailRedExit = $LASTEXITCODE
+$MoeRailRedOutput
+if ($MoeRailRedExit -eq 0 -or -not ($MoeRailRedOutput -match 'res://src/config/prototype_balance.gd')) {
+    throw "Expected missing-configuration-script red state was not observed."
 }
 ~~~
 
@@ -648,13 +816,13 @@ horizontal_alignment = 1
 vertical_alignment = 1
 ~~~
 
-Add this assertion inside the non-null branch of godot-project-moe-rail-way/tests/smoke/test_project_boot.gd:
+Add this assertion inside the `if instance != null` branch, immediately before `instance.free()`, in godot-project-moe-rail-way/tests/smoke/test_project_boot.gd:
 
 ~~~gdscript
-        assert_not_null(
-            instance.get("balance"),
-            "PrototypeApp must receive the default balance Resource"
-        )
+            assert_not_null(
+                instance.get("balance"),
+                "PrototypeApp must receive the default balance Resource"
+            )
 ~~~
 
 - [ ] **Step 6: Run configuration and boot tests**
@@ -663,20 +831,19 @@ Run:
 
 ~~~powershell
 $MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
-& $MoeRailGodotExe --headless --path 'godot-project-moe-rail-way' --script 'res://tests/run_all.gd'
-if ($LASTEXITCODE -ne 0) {
-    throw "Configuration implementation failed its test suite."
+$MoeRailTestOutput = & $MoeRailGodotExe --headless --path 'godot-project-moe-rail-way' --script 'res://tests/run_all.gd' 2>&1
+$MoeRailTestExit = $LASTEXITCODE
+$MoeRailTestOutput
+if ($MoeRailTestExit -ne 0 -or -not ($MoeRailTestOutput -match 'PASS: 2 prototype test suite\(s\)')) {
+    throw "Configuration implementation did not pass exactly 2 suites."
 }
 
 $MoeRailBootArgs = @('--headless', '--path', 'godot-project-moe-rail-way', '--scene', 'res://src/app/prototype_app.tscn', '--quit-after', '2')
 $BootOutput = & $MoeRailGodotExe @MoeRailBootArgs 2>&1
 $BootExit = $LASTEXITCODE
 $BootOutput
-if ($BootExit -ne 0) {
-    throw "PrototypeApp scene failed to boot."
-}
-if (-not ($BootOutput -match 'Moe Rail Way prototype foundation ready')) {
-    throw "PrototypeApp did not report successful startup."
+if ($BootExit -ne 0 -or -not ($BootOutput -match 'seed=1 ticks=60')) {
+    throw "PrototypeApp did not boot with the default seed and tick rate."
 }
 ~~~
 
@@ -688,8 +855,17 @@ Run:
 
 ~~~powershell
 git add -- 'godot-project-moe-rail-way/src/domain/session/session_start_config.gd' 'godot-project-moe-rail-way/src/config/prototype_balance.gd' 'godot-project-moe-rail-way/src/config/prototype_config_validator.gd' 'godot-project-moe-rail-way/data/prototype_balance.tres' 'godot-project-moe-rail-way/src/app/prototype_app.gd' 'godot-project-moe-rail-way/src/app/prototype_app.tscn' 'godot-project-moe-rail-way/tests/smoke/test_project_boot.gd' 'godot-project-moe-rail-way/tests/unit/test_config_validator.gd' 'godot-project-moe-rail-way/tests/run_all.gd'
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to stage the validated-configuration files."
+}
 git diff --cached --check
+if ($LASTEXITCODE -ne 0) {
+    throw "Validated-configuration staged diff check failed."
+}
 git commit -m "feat: add validated prototype session config"
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to commit validated prototype session config."
+}
 ~~~
 
 Expected: one focused commit with Resource configuration, validation, integration, and tests.
@@ -740,6 +916,18 @@ func run() -> PackedStringArray:
             "Matching seeds must match at float sample %d" % index
         )
 
+    var baseline_sequence := []
+    var alternate_sequence := []
+    var baseline_rng = SessionRngScript.new(4242)
+    var alternate_rng = SessionRngScript.new(4243)
+    for index in range(16):
+        baseline_sequence.append(baseline_rng.next_u32())
+        alternate_sequence.append(alternate_rng.next_u32())
+    assert_false(
+        baseline_sequence == alternate_sequence,
+        "Different seeds must produce different integer sequences"
+    )
+
     return finish()
 ~~~
 
@@ -759,9 +947,11 @@ Run:
 
 ~~~powershell
 $MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
-& $MoeRailGodotExe --headless --path 'godot-project-moe-rail-way' --script 'res://tests/run_all.gd'
-if ($LASTEXITCODE -eq 0) {
-    throw "RNG tests unexpectedly passed before implementation."
+$MoeRailRedOutput = & $MoeRailGodotExe --headless --path 'godot-project-moe-rail-way' --script 'res://tests/run_all.gd' 2>&1
+$MoeRailRedExit = $LASTEXITCODE
+$MoeRailRedOutput
+if ($MoeRailRedExit -eq 0 -or -not ($MoeRailRedOutput -match 'res://src/domain/random/session_rng.gd')) {
+    throw "Expected missing-RNG-script red state was not observed."
 }
 ~~~
 
@@ -831,9 +1021,11 @@ Run:
 
 ~~~powershell
 $MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
-& $MoeRailGodotExe --headless --path 'godot-project-moe-rail-way' --script 'res://tests/run_all.gd'
-if ($LASTEXITCODE -ne 0) {
-    throw "Deterministic RNG implementation failed its tests."
+$MoeRailTestOutput = & $MoeRailGodotExe --headless --path 'godot-project-moe-rail-way' --script 'res://tests/run_all.gd' 2>&1
+$MoeRailTestExit = $LASTEXITCODE
+$MoeRailTestOutput
+if ($MoeRailTestExit -ne 0 -or -not ($MoeRailTestOutput -match 'PASS: 3 prototype test suite\(s\)')) {
+    throw "Deterministic RNG implementation did not pass exactly 3 suites."
 }
 
 $MoeRailBootArgs = @('--headless', '--path', 'godot-project-moe-rail-way', '--scene', 'res://src/app/prototype_app.tscn', '--quit-after', '2')
@@ -853,8 +1045,17 @@ Run:
 
 ~~~powershell
 git add -- 'godot-project-moe-rail-way/src/domain/random/session_rng.gd' 'godot-project-moe-rail-way/src/app/prototype_app.gd' 'godot-project-moe-rail-way/tests/unit/test_session_rng.gd' 'godot-project-moe-rail-way/tests/run_all.gd'
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to stage deterministic-RNG files."
+}
 git diff --cached --check
+if ($LASTEXITCODE -ne 0) {
+    throw "Deterministic-RNG staged diff check failed."
+}
 git commit -m "feat: add deterministic session random stream"
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to commit deterministic session random stream."
+}
 ~~~
 
 Expected: one focused RNG and composition commit.
@@ -945,9 +1146,23 @@ Run:
 
 ~~~powershell
 $MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
-& $MoeRailGodotExe --headless --path 'godot-project-moe-rail-way' --script 'res://tests/run_all.gd'
-if ($LASTEXITCODE -eq 0) {
+$MoeRailRedOutput = & $MoeRailGodotExe --headless --path 'godot-project-moe-rail-way' --script 'res://tests/run_all.gd' 2>&1
+$MoeRailRedExit = $LASTEXITCODE
+$MoeRailRedOutput
+if ($MoeRailRedExit -eq 0) {
     throw "Project-setting tests unexpectedly passed before configuration."
+}
+$MoeRailRequiredSettingFailures = @(
+    'Application name must identify the prototype',
+    'PrototypeApp must be the main scene',
+    'Logical viewport width must be 1280',
+    'Logical viewport height must be 720',
+    'track_draw action must exist'
+)
+foreach ($MoeRailExpectedFailure in $MoeRailRequiredSettingFailures) {
+    if (-not ($MoeRailRedOutput -match [regex]::Escape($MoeRailExpectedFailure))) {
+        throw "Expected project-setting red signal is missing: $MoeRailExpectedFailure"
+    }
 }
 ~~~
 
@@ -1017,17 +1232,21 @@ Run:
 ~~~powershell
 $MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
 $MoeRailConfigureArgs = @('--headless', '--path', 'godot-project-moe-rail-way', '--script', 'res://tools/configure_project.gd')
-& $MoeRailGodotExe @MoeRailConfigureArgs
-if ($LASTEXITCODE -ne 0) {
-    throw "First project configuration run failed."
+$MoeRailFirstConfigureOutput = & $MoeRailGodotExe @MoeRailConfigureArgs 2>&1
+$MoeRailFirstConfigureExit = $LASTEXITCODE
+$MoeRailFirstConfigureOutput
+if ($MoeRailFirstConfigureExit -ne 0 -or -not ($MoeRailFirstConfigureOutput -match 'Project settings configured')) {
+    throw "First project configuration run did not report success."
 }
 
-$FirstHash = (Get-FileHash 'godot-project-moe-rail-way\project.godot').Hash
-& $MoeRailGodotExe @MoeRailConfigureArgs
-if ($LASTEXITCODE -ne 0) {
-    throw "Second project configuration run failed."
+$FirstHash = (Get-FileHash -LiteralPath 'godot-project-moe-rail-way\project.godot' -ErrorAction Stop).Hash
+$MoeRailSecondConfigureOutput = & $MoeRailGodotExe @MoeRailConfigureArgs 2>&1
+$MoeRailSecondConfigureExit = $LASTEXITCODE
+$MoeRailSecondConfigureOutput
+if ($MoeRailSecondConfigureExit -ne 0 -or -not ($MoeRailSecondConfigureOutput -match 'Project settings configured')) {
+    throw "Second project configuration run did not report success."
 }
-$SecondHash = (Get-FileHash 'godot-project-moe-rail-way\project.godot').Hash
+$SecondHash = (Get-FileHash -LiteralPath 'godot-project-moe-rail-way\project.godot' -ErrorAction Stop).Hash
 if ($FirstHash -ne $SecondHash) {
     throw "Project configuration is not idempotent."
 }
@@ -1041,63 +1260,102 @@ Run:
 
 ~~~powershell
 $MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
-& $MoeRailGodotExe --version
-if ($LASTEXITCODE -ne 0) {
-    throw "Godot version check failed."
+$MoeRailVersionOutput = & $MoeRailGodotExe --version 2>&1
+$MoeRailVersionExit = $LASTEXITCODE
+$MoeRailVersionOutput
+$MoeRailVersion = ($MoeRailVersionOutput -join "`n").Trim()
+if ($MoeRailVersionExit -ne 0 -or $MoeRailVersion -ne '4.7.1.stable.official.a13da4feb') {
+    throw "Unexpected Godot version: $MoeRailVersion"
 }
 
-& $MoeRailGodotExe --headless --path 'godot-project-moe-rail-way' --script 'res://tests/run_all.gd'
-if ($LASTEXITCODE -ne 0) {
-    throw "Foundation test suite failed."
+$MoeRailTestOutput = & $MoeRailGodotExe --headless --path 'godot-project-moe-rail-way' --script 'res://tests/run_all.gd' 2>&1
+$MoeRailTestExit = $LASTEXITCODE
+$MoeRailTestOutput
+if ($MoeRailTestExit -ne 0 -or -not ($MoeRailTestOutput -match 'PASS: 4 prototype test suite\(s\)')) {
+    throw "Foundation test runner did not pass exactly 4 suites."
 }
 
 $MoeRailMainArgs = @('--headless', '--path', 'godot-project-moe-rail-way', '--quit-after', '2')
 $BootOutput = & $MoeRailGodotExe @MoeRailMainArgs 2>&1
 $BootExit = $LASTEXITCODE
 $BootOutput
-if ($BootExit -ne 0) {
-    throw "Configured main scene failed to boot."
-}
-if (-not ($BootOutput -match 'Moe Rail Way prototype foundation ready')) {
-    throw "Configured main scene did not report readiness."
+if ($BootExit -ne 0 -or -not ($BootOutput -match 'seed=1 ticks=60')) {
+    throw "Configured main scene did not boot with the default seed and tick rate."
 }
 ~~~
 
 Expected:
 
-- Version is 4.7.1.stable.
+- Version is exactly 4.7.1.stable.official.a13da4feb.
 - All 4 suites pass.
-- The project boots its configured main scene and reports readiness.
+- The project boots its configured main scene with seed 1 and tick rate 60.
 
 - [ ] **Step 6: Verify repository hygiene and diff quality**
 
 Run:
 
 ~~~powershell
+$MoeRailTask5Files = @(
+    'godot-project-moe-rail-way/tools/configure_project.gd',
+    'godot-project-moe-rail-way/tests/unit/test_project_settings.gd',
+    'godot-project-moe-rail-way/tests/run_all.gd',
+    'godot-project-moe-rail-way/project.godot'
+)
+git add -- $MoeRailTask5Files
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to stage Task 5 files for complete diff verification."
+}
+git diff --cached --check
+if ($LASTEXITCODE -ne 0) {
+    throw "Task 5 staged diff check failed."
+}
 git diff --check
 if ($LASTEXITCODE -ne 0) {
-    throw "Working-tree diff check failed."
+    throw "Unexpected unstaged working-tree diff check failed."
 }
 
-$TrackedGenerated = git ls-files | Select-String -Pattern '(^|/)\.godot/|(^|/)logs/|(^|/)builds/'
+$TrackedGenerated = git ls-files | Select-String -Pattern '(^|/)(\.superpowers|\.godot|logs|builds|exports|android)/|(^|/)addons/godot_mcp/|\.log$'
 if ($TrackedGenerated) {
     $TrackedGenerated
     throw "Generated files are tracked."
 }
 
-git status --short
+$MoeRailPluginReference = Select-String -LiteralPath 'godot-project-moe-rail-way/project.godot' -Pattern 'editor_plugins|godot_mcp'
+if ($MoeRailPluginReference) {
+    $MoeRailPluginReference
+    throw "The final prototype project activates local Godot MCP tooling."
+}
+
+$MoeRailStagedFiles = @(git diff --cached --name-only)
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to inspect staged Task 5 files."
+}
+$MoeRailUnexpectedStaged = @($MoeRailStagedFiles | Where-Object { $_ -notin $MoeRailTask5Files })
+$MoeRailMissingStaged = @($MoeRailTask5Files | Where-Object { $_ -notin $MoeRailStagedFiles })
+if ($MoeRailUnexpectedStaged -or $MoeRailMissingStaged) {
+    $MoeRailUnexpectedStaged
+    $MoeRailMissingStaged
+    throw "The staged Task 5 file set does not match the plan."
+}
+
+git status --short --untracked-files=all
 ~~~
 
-Expected: no whitespace errors, no generated paths tracked, and only Task 5 source changes appear.
+Expected: no whitespace errors in staged or unstaged changes, no generated or local-tool paths tracked, no local editor plug-in activation, and exactly the four Task 5 files are staged.
 
 - [ ] **Step 7: Commit reproducible settings**
 
 Run:
 
 ~~~powershell
-git add -- 'godot-project-moe-rail-way/tools/configure_project.gd' 'godot-project-moe-rail-way/tests/unit/test_project_settings.gd' 'godot-project-moe-rail-way/tests/run_all.gd' 'godot-project-moe-rail-way/project.godot'
 git diff --cached --check
+if ($LASTEXITCODE -ne 0) {
+    throw "Final Task 5 staged diff check failed."
+}
 git commit -m "chore: configure prototype platform baseline"
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to commit the prototype platform baseline."
+}
 ~~~
 
 Expected: one focused settings, test, and tool commit.
@@ -1108,9 +1366,11 @@ Run:
 
 ~~~powershell
 $MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
-& $MoeRailGodotExe --headless --path 'godot-project-moe-rail-way' --script 'res://tests/run_all.gd'
-if ($LASTEXITCODE -ne 0) {
-    throw "Post-commit test suite failed."
+$MoeRailTestOutput = & $MoeRailGodotExe --headless --path 'godot-project-moe-rail-way' --script 'res://tests/run_all.gd' 2>&1
+$MoeRailTestExit = $LASTEXITCODE
+$MoeRailTestOutput
+if ($MoeRailTestExit -ne 0 -or -not ($MoeRailTestOutput -match 'PASS: 4 prototype test suite\(s\)')) {
+    throw "Post-commit verification did not pass exactly 4 suites."
 }
 
 $MoeRailMainArgs = @('--headless', '--path', 'godot-project-moe-rail-way', '--quit-after', '2')
@@ -1121,7 +1381,15 @@ if ($BootExit -ne 0 -or -not ($BootOutput -match 'seed=1 ticks=60')) {
     throw "Post-commit boot verification failed."
 }
 
-git status --short
+$MoeRailTrackedStatus = git status --short --untracked-files=no
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to inspect the post-commit tracked status."
+}
+if ($MoeRailTrackedStatus) {
+    $MoeRailTrackedStatus
+    throw "Tracked working state is not clean after the Task 5 commit."
+}
+git status --short --untracked-files=all
 ~~~
 
 Expected: 4 suites pass, main scene boots with seed 1 and ticks 60, and tracked working state is clean.

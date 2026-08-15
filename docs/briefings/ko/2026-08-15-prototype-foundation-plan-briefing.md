@@ -6,6 +6,12 @@
 - 용도: 사용자 검토용 한국어 브리핑
 - 에이전트용 영어 정본: docs/superpowers/plans/2026-08-15-prototype-foundation.md
 
+## 0. 세션 경계
+
+이 문서는 프로토타입 개발 전략 수립 세션의 결과물이다. 현재 세션에서는 구현 브랜치·워크트리 생성, Godot 코드 작성, 테스트 실행, 병합, 태그 생성을 하지 않는다.
+
+실제 구현은 사용자가 별도의 새 개발 세션을 시작한 뒤 영어 정본 계획을 기준으로 수행한다. 새 세션은 먼저 격리된 워크트리를 만들고, 이후 작업별 구현·검토 절차를 연속 실행한다.
+
 ## 1. 이번 계획의 범위
 
 전체 8개 피처를 한 계획에서 동시에 구현하지 않는다. 먼저 첫 번째 버티컬 슬라이스인 proto/00-foundation만 상세 계획으로 고정한다.
@@ -30,13 +36,21 @@
 
 D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe
 
+새 개발 세션의 최초 Godot 실행 전 `4.7.1.stable.official.a13da4feb` 전체 버전 문자열이 정확히 일치하는지 확인한다.
+
 현재 C:\Users\noisy\bin\godot.cmd는 존재하지 않는 Godot 4.5.1 경로를 가리켜 실행되지 않는다. 계획에서는 이 파일을 수정하지 않고 확인된 4.7.1 실행 파일을 명시적으로 사용한다.
 
 ## 3. 작업 순서
 
-### 작업 1: 브랜치와 저장소 위생
+### 작업 1: 격리된 브랜치 경계와 저장소 위생
 
-현재 main에서 Prototyping을 만들고, 그 브랜치에서 proto/00-foundation을 분기한다.
+새 개발 세션에서 현재 main을 확인한 뒤 Prototyping을 만들고, 그 브랜치에서 proto/00-foundation을 분기한다. 실제 작업은 기본 작업공간이 아니라 별도의 격리 워크트리에서 진행한다.
+
+main에 추적 변경이 하나라도 남아 있으면 프리플라이트를 중단한다. 이로써 승인된 영어 계획 문서가 커밋된 기준점에서만 Prototyping을 생성한다.
+
+현재 미추적 Godot 스캐폴드에서는 소스 파일 6개만 격리 워크트리로 복사하며, 생성 캐시인 .godot 폴더는 복사하지 않는다.
+
+기본 작업공간의 로컬 godot_mcp 애드온은 복사·추적하지 않고 그대로 보존한다. 격리된 project.godot에서는 복사되지 않은 플러그인을 가리키는 editor_plugins 활성화 블록을 제거해 서드파티 애드온 없는 프로토타입 기준을 유지한다.
 
 저장소 루트의 .superpowers, 빌드 결과, 로컬 로그를 무시한다. Godot 프로젝트 안에서는 .godot 캐시, Android 생성물, 로컬 빌드·내보내기·로그 폴더를 무시한다.
 
@@ -48,19 +62,21 @@ SceneTree 기반 tests/run_all.gd를 만들고 테스트 파일이 run 함수를
 
 먼저 존재하지 않는 PrototypeApp 씬을 읽는 실패 테스트를 실행한다. 실패를 확인한 뒤, 단색 배경과 Foundation 문구만 있는 최소 씬을 만들어 테스트를 통과시킨다.
 
+테스트는 PrototypeApp·Backdrop 같은 내부 노드 이름에 결합하지 않는다. 씬 로드, 인스턴스 생성, 실제 헤드리스 부팅과 준비 메시지를 검증한다.
+
 이 시점에는 커스텀 아트가 없다.
 
 ### 작업 3: 밸런스 설정과 세션 입력
 
 PrototypeBalance Resource에 세션 길이와 초당 시뮬레이션 틱 수를 둔다. 기본값은 180초와 60틱이다.
 
-PrototypeConfigValidator는 잘못된 값을 한 번에 모두 보고한다. SessionStartConfig는 시드, 세션 길이, 틱 수를 명시적으로 전달한다.
+PrototypeConfigValidator는 잘못된 값을 한 번에 모두 보고한다. 오류 문장 전체를 고정하지 않고 session_duration_seconds와 simulation_ticks_per_second 필드명이 포함되는지 검증한다. SessionStartConfig는 시드, 세션 길이, 틱 수를 명시적으로 전달한다.
 
 PrototypeApp은 시작할 때 설정을 검증하고 유효하지 않으면 디버그 실행을 종료한다.
 
 ### 작업 4: 결정적 RNG
 
-SessionRng를 만들어 동일한 시드는 정수·실수 난수 시퀀스를 동일하게 재현하도록 한다.
+SessionRng를 만들어 동일한 시드는 정수·실수 난수 시퀀스를 동일하게 재현하도록 한다. 서로 다른 시드는 다른 정수 시퀀스를 내는지도 확인해 상수만 반환하는 잘못된 구현을 차단한다.
 
 PrototypeApp은 SessionStartConfig의 시드로 SessionRng를 생성한다. 이후 워프 생성 기능이 이 인터페이스를 사용한다.
 
@@ -81,6 +97,8 @@ configure_project.gd가 다음 값을 설정하고 project.godot에 저장한다
 
 모든 기능은 실패 테스트를 먼저 실행하고 최소 구현으로 통과시킨다.
 
+.gitignore와 Godot 프로젝트 설정 직렬화는 구성 파일 예외로 둔다. 대신 git check-ignore, 프로젝트 설정 동작 테스트, 두 번 실행 후 동일 해시, 최종 diff 검증을 통과해야 한다.
+
 최종 자동 검증은 다음을 확인한다.
 
 - Godot 4.7.1 실행
@@ -88,6 +106,8 @@ configure_project.gd가 다음 값을 설정하고 project.godot에 저장한다
 - PrototypeApp 메인 씬 헤드리스 부팅
 - 기본 시드 1과 틱 수 60 적용
 - .godot, logs, builds가 Git 추적 대상이 아님
+- exports, android, 로컬 godot_mcp와 .superpowers 작업공간이 Git 추적 대상이 아님
+- 최종 project.godot에 로컬 editor_plugins 활성화가 없음
 - Git 공백 오류 없음
 
 Windows 환경에서 시스템 인증서 저장소 경고가 나타날 수 있지만, 스크립트 파싱 오류, 런타임 스크립트 오류, 0이 아닌 종료 코드는 실패로 처리한다.
