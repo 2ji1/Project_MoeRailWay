@@ -1,9 +1,10 @@
 # Warp Rail Endless Survival Prototype Design
 
 - Date: 2026-08-15
-- Status: Approved initial design with explicit post-prototype extension boundaries
+- Status: Approved design, amended by the approved track-and-train milestone design
 - Audience: Agent-facing canonical specification
 - Target: Prototype for validating the core game loop
+- Track-and-train detail: docs/superpowers/specs/2026-08-16-prototype-track-train-design.md
 
 ## 1. One-Sentence Definition
 
@@ -27,7 +28,7 @@ Warp locations and lifetimes are never rerolled or adjusted after generation to 
 - Campaign progression, endings, and narrative progression
 - Purchasable train models and office-upgrade content; Section 16 reserves extension boundaries only
 - Guaranteed reachability or post-generation rerolls
-- Manual loading, unloading, or track recovery
+- Manual loading or unloading, and free manual recovery of built track; paid early demolition is an approved `proto/04` investment action
 - Borrowing during a warp session
 - Mobile, touch, and gamepad support
 
@@ -60,11 +61,13 @@ The final prototype must support the complete repeatable loop from contract sele
 
 ### 5.2 Track and Single-Stroke Drawing
 
-- The player may extend track only from the current end of untraveled planned track.
-- Drawing track costs no cash but consumes track inventory.
+- The player may extend track only from the current end of the one continuous reserved route.
+- Drawing reserves track immediately, costs no cash, and consumes track inventory before physical construction reaches the reserved endpoint.
+- Reserved unbuilt track is constructed from the built endpoint in route order at a tunable fixed speed. The train may travel only on built track.
+- Right-clicking reserved unbuilt track cancels from the clicked route position through the reserved endpoint for free and immediately returns that reserved length.
 - Track behind a fixed recovery point is removed automatically and its length immediately returns to inventory. It provides no cash refund.
 - Coordinates occupied only by recovered track may be crossed freely again.
-- Deleting or editing untraveled planned track costs cash.
+- Beginning in `proto/04`, right-clicking built untraveled track pays one major-track-action cost and removes the clicked position through the forward endpoint. Right-clicking traveled retained track pays the same cost and removes the active rear start through the clicked position. Both actions return removed length once and preserve one connected route around the train.
 - Crossing active track requires a costly grade-separated crossing. It never creates a branch or merge.
 - The train never pauses when inventory is empty. If it reaches the end before rear track is recovered, the operation ends.
 - The player may buy additional track inventory with session cash. The increase disappears at every regular or early session end.
@@ -165,7 +168,7 @@ This structure supports concentrating on one company for a large limit or spread
 - Delivery fees enter cash immediately during operation.
 - Contract settlement, repair, operating cost, and loan payments occur at session settlement.
 - In-session purchases require sufficient current cash.
-- Purchasable items are track inventory, cargo capacity, grade-separated crossings, and edits to untraveled planned track.
+- Purchasable items are track inventory, cargo capacity, grade-separated crossings, built-track demolition, and edits to built untraveled track.
 - Temporary track and capacity increases disappear at every end condition. Spent cash never returns.
 
 Saving preserves future company funds but can lose delivery opportunity. Overspending may make operating, repair, and loan costs unaffordable.
@@ -270,7 +273,7 @@ Before borrowing or choosing a contract, show the projected total fixed expense 
 
 - RunState: cash, cycle count, company state, and debt that persist during a run
 - WarpSession: timer, difficulty stage, and regular or early end requests
-- TrackSystem: endpoint drawing, inventory, automatic recovery, edits, and crossing cost validation
+- TrackSystem: route reservation, ordered construction, inventory, automatic recovery, cancellation, demolition geometry, and crossing validation
 - TrainSystem: fixed-speed movement, end-of-track detection, pass-through detection, and durability
 - WarpPairSystem: generation, forecast, activation, lifetime, and state transitions
 - CargoSystem: slots, automatic loading and unloading, and expiry removal
@@ -296,19 +299,27 @@ Warp-pair states are:
 
 Each physics tick resolves in this exact order:
 
-1. Calculate train movement and end-of-track status. Record an end request without settling yet.
-2. Resolve swept origin and destination pass-through and apply loading or delivery.
-3. Resolve hazard damage and zero durability.
-4. Resolve warp-pair expiry.
-5. Resolve session timer expiry.
-6. Prioritize accumulated end requests and execute one settlement.
+1. Apply right-click cancellation or authorized demolition commands against the tick-start route state.
+2. Accept sampled left-drag input as route reservations.
+3. Advance physical construction and resolve departure readiness.
+4. Calculate train movement and end-of-built-track status. Record an end request without settling yet.
+5. Resolve swept origin and destination pass-through and apply loading or delivery.
+6. Resolve hazard damage and zero durability.
+7. Recover eligible rear track and return its length once.
+8. Resolve warp-pair expiry.
+9. Resolve session timer expiry.
+10. Prioritize accumulated end requests and execute one settlement.
+11. Publish one read-only presentation snapshot, then emit one result if the session completed.
 
 The session controller owns this order. Pass-through is computed from previous to current train position rather than depending on Godot physics-signal ordering.
 
 ## 13. Required Invariants
 
 - Track inventory never becomes negative.
+- Available inventory plus built active length plus reserved unbuilt length equals total inventory within the fixed technical geometry epsilon.
 - Each recovered segment returns inventory exactly once.
+- Each canceled, demolished, or automatically recovered length returns inventory through exactly one transition.
+- Built and reserved route geometry remains one ordered, nonbranching path around the train.
 - One warp pair creates one cargo unit and one delivery reward.
 - One cargo unit occupies one slot and frees exactly one slot.
 - Delivery and expiry never apply to the same pair.
@@ -348,9 +359,9 @@ The following are tunable data rather than rules:
 
 - Session duration and forecast duration
 - Train speed and base durability
-- Base track inventory and recovery distance
+- Base track inventory, recovery distance, departure construction length, construction speed, and input hit distances
 - Base cargo capacity
-- Edit, crossing, and temporary-expansion cost curves
+- The shared major-track-action cost for built-track demolition and grade-separated crossing, plus temporary-expansion cost curves
 - Pair generation interval, simultaneous active count, and lifetime distribution
 - Company frequency, fee, quota, bonus, and penalty curves
 - Over-attainment-to-trust conversion
@@ -360,7 +371,7 @@ The following are tunable data rather than rules:
 - Repair cost per durability
 - UI-layout padding, gaps, HUD height, and icon size within validated bounds
 
-Tuning must not change these rules: no post-generation correction, continuous single-stroke track, a nonstopping train, automatic loading and recovery, expiring session investment, and independent company credit.
+Tuning must not change these rules: no post-generation correction, continuous single-stroke track, a nonstopping active train, automatic loading and baseline recovery, exact reservation accounting, expiring session investment, and independent company credit.
 
 ## 16. Post-Prototype Permanent Spending and Extension Boundary
 

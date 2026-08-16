@@ -4,6 +4,7 @@
 - Status: Approved
 - Audience: Agent-facing canonical specification
 - Related gameplay specification: docs/superpowers/specs/2026-08-15-warp-rail-prototype-design.md
+- Approved track-and-train design: docs/superpowers/specs/2026-08-16-prototype-track-train-design.md
 - User briefing: docs/briefings/ko/2026-08-15-prototype-development-strategy-briefing.md
 - Execution boundary: Finalize strategy and implementation plans in the current planning session; create branches and implement the prototype only in a separate development session explicitly started by the user.
 
@@ -82,15 +83,18 @@ Do not use a global event bus. A composition controller wires explicit dependenc
 
 Each physics tick uses this order:
 
-1. Accept sampled mouse input as track commands.
-2. Advance the train and record track-end requests.
-3. Resolve swept origin and destination pass-through.
-4. Resolve deterministic hazard damage.
-5. Resolve warp expiry.
-6. Resolve session-time expiry.
-7. Prioritize all end requests.
-8. Execute settlement at most once.
-9. Publish a read-only presentation snapshot.
+1. Apply right-click cancellation or authorized demolition commands.
+2. Accept sampled left-drag input as track reservations.
+3. Advance physical track construction and resolve departure readiness.
+4. Advance the train and record built-track-end requests.
+5. Resolve swept origin and destination pass-through.
+6. Resolve deterministic hazard damage.
+7. Recover eligible rear track.
+8. Resolve warp expiry.
+9. Resolve session-time expiry.
+10. Prioritize all end requests.
+11. Execute settlement at most once.
+12. Publish a read-only presentation snapshot and then any one-shot result.
 
 Presentation observes state and never writes cash, trust, debt, or contract delivery counts directly.
 
@@ -193,20 +197,26 @@ Purpose: validate continuous track maintenance.
 
 Scope:
 
-- Endpoint-only track extension
-- Track-inventory consumption
-- Automatic rear recovery
-- Fixed-speed train movement
-- Track-end early termination
-- Remaining-distance or remaining-time warning
+- Seeded selection from editor-placed departure candidate nodes
+- Untimed departure preparation followed by automatic timed-session start
+- Endpoint-only left-drag reservation and ordered physical construction
+- Immediate inventory reservation and free right-click cancellation of unbuilt route suffixes
+- Track-inventory consumption and continuous partial rear recovery
+- Fixed-speed train movement on built track only
+- Built-track-end early termination and estimated-time warning
+- Inspector-adjustable logical field presets and feature-specific balance Resources
 
 Acceptance:
 
 - Inventory never becomes negative.
+- Available, built, and reserved lengths conserve total inventory.
+- Free cancellation returns only the canceled unbuilt length once.
+- The train departs only after the configured built length exists.
 - Every recovered segment returns length once.
 - The train never stops to wait for inventory.
-- Reaching the end ends operation once.
+- Reaching the built end ends operation once even when unbuilt reservation remains.
 - A player can sustain the train by drawing and timing recovery.
+- Same seeds select the same departure candidate while the candidate set is unchanged.
 
 ### 7.4 proto/03-warp-cargo
 
@@ -238,14 +248,16 @@ Scope:
 - Visible hazard terrain
 - Distance-based deterministic damage
 - Durability and repair-cost basis
-- Planned-track edits
-- Costly grade-separated crossings without branching
+- Paid demolition of built untraveled route suffixes
+- Paid early demolition of traveled retained rear prefixes
+- Costly grade-separated crossings without branching, sharing the demolition action cost
 - Temporary track and cargo-capacity purchases
 
 Acceptance:
 
 - Damage is deterministic for the traveled path.
-- Purchases and edits charge cash once.
+- Purchases, demolition actions, and crossings charge cash once or make no state change when unaffordable.
+- Demolition returns removed track length once without refunding cash.
 - Crossings never create branches or merges.
 - Zero durability ends operation once.
 - Every end condition removes temporary increases.
