@@ -1,0 +1,43 @@
+[gd_resource type="Resource" script_class="PrototypeBalance" load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://src/config/prototype_balance.gd" id="1_balance"]
+[ext_resource type="Script" path="res://src/config/session_balance.gd" id="2_session"]
+[ext_resource type="Script" path="res://src/config/train_balance.gd" id="3_train"]
+[ext_resource type="Script" path="res://src/config/track_inventory_balance.gd" id="4_inventory"]
+[ext_resource type="Script" path="res://src/config/track_construction_balance.gd" id="5_construction"]
+[ext_resource type="Script" path="res://src/config/departure_balance.gd" id="6_departure"]
+
+[sub_resource type="Resource" id="Resource_session"]
+script = ExtResource("2_session")
+session_duration_seconds = 4.0
+simulation_ticks_per_second = 10
+
+[sub_resource type="Resource" id="Resource_train"]
+script = ExtResource("3_train")
+speed_units_per_second = 25.0
+
+[sub_resource type="Resource" id="Resource_inventory"]
+script = ExtResource("4_inventory")
+total_units = 200.0
+recovery_distance_units = 40.0
+urgent_warning_seconds = 1.5
+
+[sub_resource type="Resource" id="Resource_construction"]
+script = ExtResource("5_construction")
+speed_units_per_second = 50.0
+endpoint_grab_radius_units = 18.0
+route_hit_radius_units = 12.0
+minimum_sample_distance_units = 6.0
+intersection_clearance_units = 3.0
+
+[sub_resource type="Resource" id="Resource_departure"]
+script = ExtResource("6_departure")
+required_built_units = 50.0
+
+[resource]
+script = ExtResource("1_balance")
+session_balance = SubResource("Resource_session")
+train_balance = SubResource("Resource_train")
+track_inventory_balance = SubResource("Resource_inventory")
+track_construction_balance = SubResource("Resource_construction")
+departure_balance = SubResource("Resource_departure")

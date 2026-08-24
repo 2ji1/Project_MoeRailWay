@@ -3,6 +3,51 @@ extends "res://tests/support/prototype_test.gd"
 const SessionControllerScript = preload("res://src/domain/session/session_controller.gd")
 const SessionResultScript = preload("res://src/domain/session/session_result.gd")
 const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
+const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
+const TrackSystemScript = preload("res://src/domain/track/track_system.gd")
+const TrainSystemScript = preload("res://src/domain/train/train_system.gd")
+
+
+func _config(duration_seconds: float, ticks_per_second: int) -> SessionStartConfigScript:
+    return SessionStartConfigScript.new(
+        7,
+        duration_seconds,
+        ticks_per_second,
+        1.0,
+        600.0,
+        10.0,
+        3.0,
+        float(ticks_per_second) * 2.0,
+        24.0,
+        16.0,
+        8.0,
+        4.0,
+        2.0,
+        Vector2(800.0, 400.0),
+        &"departure_01",
+        Vector2(100.0, 100.0)
+    )
+
+
+func _controller(config: SessionStartConfigScript):
+    return SessionControllerScript.new(
+        config,
+        TrackSystemScript.new(config),
+        TrainSystemScript.new(config.train_speed_units_per_second)
+    )
+
+
+func _departure_draw() -> TrackInputFrameScript:
+    return TrackInputFrameScript.new(
+        Vector2(500.0, 100.0),
+        true,
+        true,
+        true,
+        false,
+        false,
+        Vector2(100.0, 100.0),
+        true
+    )
 
 
 func run() -> PackedStringArray:
@@ -13,8 +58,8 @@ func run() -> PackedStringArray:
 
 
 func _verify_explicit_tick_lifecycle() -> void:
-    var config = SessionStartConfigScript.new(7, 2.0, 4)
-    var controller = SessionControllerScript.new(config)
+    var config = _config(2.0, 4)
+    var controller = _controller(config)
     var snapshots := []
     var results := []
     var event_order := PackedStringArray()
@@ -42,13 +87,17 @@ func _verify_explicit_tick_lifecycle() -> void:
     assert_equal(snapshots.size(), 0, "A pre-start tick must not publish")
 
     controller.start()
-    assert_equal(controller.get_state(), SessionControllerScript.State.RUNNING, "Start must enter running")
+    assert_equal(
+        controller.get_state(),
+        SessionControllerScript.State.PREPARING_DEPARTURE,
+        "Start must enter preparation"
+    )
     assert_equal(snapshots.size(), 1, "Start must publish exactly one initial snapshot")
     assert_equal(snapshots[0].get_remaining_ticks(), 8, "The initial snapshot must retain full duration")
     assert_equal(snapshots[0].get_display_seconds(), 2, "The initial display must use ceiling seconds")
 
     var retained_snapshot = snapshots[0]
-    controller.advance_tick()
+    controller.advance_tick(_departure_draw())
     assert_equal(controller.get_snapshot().get_remaining_ticks(), 7, "Each running tick must consume one tick")
     assert_equal(retained_snapshot.get_remaining_ticks(), 8, "Published snapshots must be detached from later ticks")
 
@@ -117,14 +166,14 @@ func _verify_explicit_tick_lifecycle() -> void:
 
 
 func _verify_fractional_duration_rounds_up() -> void:
-    var config = SessionStartConfigScript.new(11, 0.11, 10)
-    var controller = SessionControllerScript.new(config)
+    var config = _config(0.11, 10)
+    var controller = _controller(config)
     var results := []
     controller.session_completed.connect(func(result) -> void: results.append(result))
 
     assert_equal(controller.get_snapshot().get_total_ticks(), 2, "Fractional durations must round up")
     controller.start()
-    controller.advance_tick()
+    controller.advance_tick(_departure_draw())
     assert_equal(controller.get_snapshot().get_remaining_ticks(), 1, "The first rounded tick must remain running")
     assert_equal(controller.get_snapshot().get_display_seconds(), 1, "Positive fractional time displays one second")
     assert_equal(results.size(), 0, "Rounded duration must not complete early")
@@ -133,8 +182,8 @@ func _verify_fractional_duration_rounds_up() -> void:
 
 
 func _verify_terminal_snapshot_reentrancy_is_guarded() -> void:
-    var config = SessionStartConfigScript.new(17, 1.0, 2)
-    var controller = SessionControllerScript.new(config)
+    var config = _config(1.0, 2)
+    var controller = _controller(config)
     var terminal_snapshots := []
     var results := []
     var reentered := [false]
@@ -153,7 +202,7 @@ func _verify_terminal_snapshot_reentrancy_is_guarded() -> void:
     controller.session_completed.connect(func(result) -> void: results.append(result))
 
     controller.start()
-    controller.advance_tick()
+    controller.advance_tick(_departure_draw())
     controller.advance_tick()
 
     assert_true(reentered[0], "The regression listener must attempt one terminal reentrant tick")

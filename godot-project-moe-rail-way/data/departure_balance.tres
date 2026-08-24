@@ -1,0 +1,6 @@
+[gd_resource type="Resource" script_class="DepartureBalance" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/config/departure_balance.gd" id="1_departure"]
+
+[resource]
+script = ExtResource("1_departure")

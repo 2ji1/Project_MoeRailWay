@@ -1,7 +1,9 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://src/presentation/session/session_shell.gd" id="1_shell"]
 [ext_resource type="Theme" path="res://src/presentation/theme/prototype_theme.tres" id="2_theme"]
+[ext_resource type="Script" path="res://src/presentation/track/track_field_view.gd" id="3_track_view"]
+[ext_resource type="PackedScene" path="res://src/presentation/track/logical_track_field.tscn" id="4_logical_field"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_field"]
 content_margin_left = 0.0
@@ -191,6 +193,15 @@ layout_mode = 2
 size_flags_vertical = 3
 mouse_filter = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_field")
+
+[node name="TrackFieldView" type="Control" parent="OuterMargin/MainColumn/Field"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 0
+script = ExtResource("3_track_view")
+
+[node name="LogicalTrackField" parent="OuterMargin/MainColumn/Field/TrackFieldView" instance=ExtResource("4_logical_field")]
 
 [node name="BottomHud" type="PanelContainer" parent="OuterMargin/MainColumn"]
 unique_name_in_owner = true

@@ -7,6 +7,8 @@ const SessionResultScript = preload("res://src/domain/session/session_result.gd"
 const SessionRngScript = preload("res://src/domain/random/session_rng.gd")
 const SessionSnapshotScript = preload("res://src/domain/session/session_snapshot.gd")
 const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
+const TrackSystemScript = preload("res://src/domain/track/track_system.gd")
+const TrainSystemScript = preload("res://src/domain/train/train_system.gd")
 const SessionShellScript = preload("res://src/presentation/session/session_shell.gd")
 const UILayoutProfileScript = preload("res://src/presentation/layout/ui_layout_profile.gd")
 const UILayoutValidatorScript = preload("res://src/presentation/layout/ui_layout_validator.gd")
@@ -19,6 +21,8 @@ signal session_result_presented(result: SessionResultScript)
 
 var session_start_config: SessionStartConfigScript
 var session_rng: SessionRngScript
+var track_system: TrackSystemScript
+var train_system: TrainSystemScript
 var session_controller: SessionControllerScript
 
 @onready var _session_shell: SessionShellScript = $SessionShell
@@ -39,7 +43,11 @@ func _ready() -> void:
     Engine.physics_ticks_per_second = session_start_config.simulation_ticks_per_second
     session_controller.snapshot_published.connect(_on_snapshot_published)
     session_controller.session_completed.connect(_on_session_completed)
-    _session_shell.configure(layout_profile, session_controller.get_snapshot())
+    _session_shell.configure(
+        layout_profile,
+        session_controller.get_snapshot(),
+        session_start_config
+    )
     session_controller.start()
     set_physics_process(true)
     print(
@@ -54,27 +62,68 @@ func _ready() -> void:
 func compose_session_dependencies() -> PackedStringArray:
     session_start_config = null
     session_rng = null
+    track_system = null
+    train_system = null
     session_controller = null
     _session_result_was_presented = false
 
     var errors := PackedStringArray()
+    var shell = get_node_or_null("SessionShell") as SessionShellScript
+    var track_field_view = null
+    var logical_track_field = null
+    if shell == null:
+        errors.append("prototype_app.SessionShell must exist")
+    else:
+        track_field_view = shell.get_track_field_view()
+        if track_field_view == null:
+            errors.append("session_shell.TrackFieldView must exist")
+        else:
+            logical_track_field = track_field_view.get_logical_track_field()
+            if logical_track_field == null:
+                errors.append("track_field_view.LogicalTrackField must exist")
     errors.append_array(ValidatorScript.validate(balance))
     errors.append_array(UILayoutValidatorScript.validate(layout_profile))
+    if logical_track_field != null:
+        for field_error in logical_track_field.validate_configuration():
+            errors.append("logical_track_field." + field_error)
     if not errors.is_empty():
         return errors
 
-    session_start_config = balance.create_session_start_config(startup_seed)
-    session_rng = SessionRngScript.new(session_start_config.seed)
-    session_controller = SessionControllerScript.new(session_start_config)
+    var base_config = balance.create_session_start_config(startup_seed)
+    var records: Array[Dictionary] = logical_track_field.get_sorted_candidate_records()
+    session_rng = SessionRngScript.new(base_config.seed)
+    var selected_index := session_rng.peek_index(records.size())
+    if selected_index < 0:
+        errors.append("logical_track_field.DepartureCandidates must select one candidate")
+        session_rng = null
+        return errors
+    var selected_record: Dictionary = records[selected_index]
+    session_start_config = balance.complete_session_start_config(
+        base_config,
+        logical_track_field.get_logical_size(),
+        selected_record.candidate_id,
+        selected_record.position
+    )
+    track_system = TrackSystemScript.new(session_start_config)
+    train_system = TrainSystemScript.new(session_start_config.train_speed_units_per_second)
+    session_controller = SessionControllerScript.new(
+        session_start_config,
+        track_system,
+        train_system
+    )
     return errors
 
 
 func _physics_process(_delta: float) -> void:
     if session_controller == null:
         return
-    if session_controller.get_state() != SessionControllerScript.State.RUNNING:
+    if session_controller.get_state() not in [
+        SessionControllerScript.State.PREPARING_DEPARTURE,
+        SessionControllerScript.State.RUNNING,
+    ]:
         return
-    session_controller.advance_tick()
+    var input_frame = _session_shell.consume_track_input_frame()
+    session_controller.advance_tick(input_frame)
 
 
 func present_session_result(result: SessionResultScript) -> void:

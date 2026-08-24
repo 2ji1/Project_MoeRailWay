@@ -2,19 +2,25 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **Execution boundary:** This plan is authored in a planning session. Do not create `proto/02-track-train`, modify Godot source, integrate `Prototyping`, create `prototype-m3`, or push while reviewing it. Execute it only in a separate development session after the user explicitly starts implementation.
+> **Execution boundary:** Tasks 1–3 are complete and Task 3 is clean, independently specification-and-quality-reviewed at commit `7bfeb914141aaefdb2fc05adcaa0b876ccc69267`; Task 4 must not start until the reviewed final post-commit gate and sixth-amendment adoption gate pass; Gate A, `Prototyping` integration, `prototype-m3` tag, push, PR, and cleanup remain unauthorized.
 
 **Goal:** Deliver `prototype-m3` as a Windows mouse-driven prototype in which one seeded departure point starts an untimed build phase, the player reserves one continuous route, physical track constructs at a fixed rate, and one nonstopping train consumes and recovers finite track until regular expiry or built-track-end failure.
 
 **Architecture:** Keep `PrototypeApp` as the concrete composition root. Inspector-authored feature Resources are validated and copied into `SessionStartConfig`; editor-authored `Marker2D` candidates remain scene nodes. `TrackSystem`, `TrainSystem`, and `SessionController` are concrete `RefCounted` domain objects advanced by explicit fixed ticks, while `TrackFieldView` maps mouse input into immutable tick values and renders detached snapshots with primitive Godot drawing. No interface hierarchy, graph model, physics body, navigation layer, or production abstraction is introduced.
 
-**Tech Stack:** Godot `4.7.1.stable.official.a13da4feb`, GDScript, Godot Resource and scene files, the existing native `SceneTree` test harness, PowerShell, Git
+**Tech Stack:** Godot `4.7.1.stable.official.a13da4feb`, GDScript, Godot Resource and scene files, the existing native `SceneTree` test harness, one first-party test-only `EditorPlugin`, PowerShell, Git
 
 ## Global Constraints
 
 - The immutable code baseline is `4e9fc7e39d3c07c51cf5b823fc0963fee01f0f97`, the approved track-and-train design commit on local `Prototyping`.
-- The approved planning commit must be the one direct child of that code baseline, must change only this English plan and its Korean briefing, and must be the exact starting commit for `proto/02-track-train`.
-- Create `proto/02-track-train` only in a new isolated worktree at `D:\godot\MoeRailWay-worktrees\proto-02-track-train` during the later development session.
+- The immutable feature starting plan commit is `4c0b9ac9a1335c8ffa8cb24f4b7eaf9434dc30c1`. It is the one direct child of the code baseline, changes only this English plan and its Korean briefing, remains local `Prototyping`, and is the exact merge base for `proto/02-track-train`.
+- The approved editor-gate design commit is `36730aa6bc6f05d7e01b96e79aff37ac73d0d11a`, whose parent is the immutable feature starting plan commit and whose only file is `docs/superpowers/specs/2026-08-17-prototype-track-train-editor-gate-amendment-design.md`.
+- The first approved plan-amendment commit is `9047301da36c18b94e6e5be24d8dfd7423966828`. It is the direct child of the editor-gate design commit and changes only this English plan and its Korean briefing. Both first-amendment documentation commits entered the feature history through merge commit `b09aaaafe7b6be192776b49adc69c01e82e41bdc` without moving `Prototyping`.
+- The approved second shutdown-amendment commit is `aaca77325acb3ecd722894f133c5319152554eb6`. It is the direct child of `9047301da36c18b94e6e5be24d8dfd7423966828`, changes only `docs/superpowers/specs/2026-08-21-prototype-track-train-editor-shutdown-amendment-design.md`, this English plan, and its Korean briefing, and entered the feature history through documentation merge `83ea845ca114f6803f24dd81a3d83f3ad97e2593` without moving `Prototyping`.
+- The approved third disposable-editor-mirror amendment is supplied as `MOERAIL_APPROVED_THIRD_AMENDMENT` after independent review. It must be the direct child of `aaca77325acb3ecd722894f133c5319152554eb6` and change only `docs/superpowers/specs/2026-08-22-prototype-track-train-disposable-editor-mirror-amendment-design.md`, this English plan, and its Korean briefing. It enters the feature history only through the third amendment resume gate.
+- The sixth-amendment documentation commit is the direct child of `1500db09f1797d3a5f461b655cfdebc61176130c`, changes exactly this canonical plan, and may enter feature history only through the adoption gate after independent review; the reviewed final Task 3 commit before adoption is `7bfeb914141aaefdb2fc05adcaa0b876ccc69267`.
+- Dispatch every direct Task 2-9 implementation turn to the exact model `nvidia/nvidia-nemotron-3-ultra-550b-a55b`. Use `gpt-5.6-luna` only for required web research and a fresh `gpt-5.6-sol` agent for specification review followed by a separate fresh `gpt-5.6-sol` agent for quality review.
+- The approved `proto/02-track-train` branch already exists only in the isolated worktree at `D:\godot\MoeRailWay-worktrees\proto-02-track-train`. Do not recreate, relocate, or substitute that worktree during amendment resume.
 - Never branch from `main` or `Development`. Never merge `Prototyping` wholesale into `Development`.
 - Preserve the primary worktree's user-owned changes in `godot-project-moe-rail-way/tests/smoke/test_project_boot.gd`, `godot-project-moe-rail-way/tests/support/prototype_test.gd`, and `docs/superpowers/plans/2026-08-15-godot-mcp-project-setup.md`. Do not stage, format, copy, reset, or absorb them.
 - Do not modify `godot-project-moe-rail-way/tests/smoke/test_project_boot.gd` or `godot-project-moe-rail-way/tests/support/prototype_test.gd` on the feature branch. Add task-owned assertions to new test files.
@@ -24,7 +30,8 @@
 - Use `D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe` and require the exact version string `4.7.1.stable.official.a13da4feb`.
 - Run Godot verification with normal access to `user://logs`. A logging-denial signal 11 is an environment failure, not proof of a project regression.
 - Do not terminate or reconfigure a user-owned Godot or Steam editor process.
-- Add no third-party add-ons, test frameworks, custom art, custom fonts, final audio, mobile behavior, touch behavior, or gamepad behavior.
+- Every automated editor-mode command after the third amendment runs against a fresh ordinary-file project mirror selected from an approved, exact-snapshotted source's tracked plus untracked-nonignored project files. Task 2 uses its exact 20-path paused implementation source; pre-integration Task 9 uses a clean committed feature source; a separately authorized post-integration primary gate uses the clean candidate only after proving its committed tree equals primary `HEAD`, so no protected primary file is copied. Each child receives mirror-local `APPDATA`, `LOCALAPPDATA`, `TEMP`, and `TMP`; no mirror file is copied back.
+- Add no third-party add-ons, test frameworks, custom art, custom fonts, final audio, mobile behavior, touch behavior, or gamepad behavior. The only permitted add-on is the repository-owned test-only editor gate at `res://addons/moerail_test_editor_gate/plugin.cfg`; it is not a production extension point.
 - Use primitive `draw_polyline`, `draw_circle`, and `draw_colored_polygon` presentation only.
 - Keep balance-sensitive values in the owning feature Resource. `PrototypeBalance` composes Resources and has no runtime-manager behavior.
 - Keep candidate coordinates in `Marker2D` scene nodes. Do not store candidate positions in a manager or Resource array.
@@ -37,8 +44,9 @@
 - Preserve exact fixed-tick ordering: right-click, left reservation, construction, departure transition, train movement, later movement hooks, recovery, later expiry hooks, running timer, end priority, detached snapshot, one result.
 - Regular time expiry wins a same-tick tie with `TRACK_END_REACHED`.
 - Keep implementation concrete. Do not add abstract bases, interfaces, a service locator, a global event bus, or generalized production seams.
-- Every new tracked `.gd` file must have exactly one matching `.gd.uid` sidecar. Godot-serialized `.tscn`, `.tres`, `.gd.uid`, and project settings are covered by integration, validation, boot, UID, and diff gates rather than textual unit RED.
+- Every new tracked `.gd` file must have exactly one matching `.gd.uid` sidecar. Godot-serialized `.tscn`, `.tres`, `.gd.uid`, `plugin.cfg`, and project settings are covered by integration, validation, boot, UID, and diff gates rather than textual unit RED.
 - Agent-facing Markdown remains English. Korean user-review documents remain under `docs/briefings/ko` and name this plan as their English source of truth.
+- After every focused task commit, perform a fresh specification-compliance review and then a separate code/test-quality review. A finding is corrected in its own focused fix loop before the next task starts.
 - Merge, annotated tag creation, and remote push are three separate user approval gates. Approval of one never authorizes the next.
 
 ## Approved Defaults and Technical Constants
@@ -79,7 +87,7 @@ At the default tick rate:
 
 ## Development Session Preflight
 
-Run this block only after the user starts the separate development session and after the approved plan and briefing have been committed together. Each later command block is independent and redeclares its paths.
+This is the immutable original preflight block that completed before implementation began. Retain it as provenance for the accepted baseline evidence, but do not rerun it after the branch and worktree exist. Use the amendment resume gate below instead. Each later command block remains independent and redeclares its paths.
 
 ~~~powershell
 $ErrorActionPreference = 'Stop'
@@ -299,7 +307,1182 @@ Expected:
 - The Godot code baseline passes exactly six native suites, two session-shell integration markers, and one main-scene readiness marker.
 - The three primary user-owned files retain their preflight SHA-256 values.
 
-Initialize a task ledger in the feature worktree. Execute tasks serially with a fresh implementer and two-stage review when `superpowers:subagent-driven-development` is available. Otherwise use `superpowers:executing-plans` and preserve the same RED/GREEN, focused-commit, and independent-review gates.
+## Approved Mid-Session Amendment Resume Gate
+
+The original preflight above completed on 2026-08-17, Task 1 plus its focused validator-coverage correction are committed, and Task 2 is paused with an empty index. Do not rerun the original preflight now that the feature branch and worktree exist. Run this block exactly once only after the user approves the committed editor-gate amendment and set `MOERAIL_APPROVED_PLAN_AMENDMENT` to that reviewed commit's exact 40-character SHA.
+
+This gate verifies the original base, remote, Godot version, protected primary state, reviewed documentation ancestry, and every paused Task 2 byte before it changes anything. It then performs the two user-approved cleanups: restore the indentation-only `prototype_app.gd` worktree change to feature `HEAD`, and remove the superseded untracked custom-`SceneTree` editor runner plus its sidecar. Finally, it merges the reviewed documentation branch without staging or absorbing any Task 2 work. Any mismatch stops the session; do not repair or recreate state automatically.
+
+~~~powershell
+$ErrorActionPreference = 'Stop'
+$MoeRailPrimary = 'D:\godot\MoeRailWay'
+$MoeRailFeatureWorktree = 'D:\godot\MoeRailWay-worktrees\proto-02-track-train'
+$MoeRailFeatureBranch = 'proto/02-track-train'
+$MoeRailCodeBase = '4e9fc7e39d3c07c51cf5b823fc0963fee01f0f97'
+$MoeRailStartingPlanCommit = '4c0b9ac9a1335c8ffa8cb24f4b7eaf9434dc30c1'
+$MoeRailTaskOneHead = '562499e639e6277a796fb6aeb1ac9581a0bb057e'
+$MoeRailEditorGateDesignCommit = '36730aa6bc6f05d7e01b96e79aff37ac73d0d11a'
+$MoeRailApprovedPlanAmendment = $env:MOERAIL_APPROVED_PLAN_AMENDMENT
+$MoeRailMilestoneTwo = 'c93e1834da8fb38792048914120fe50f9f500cb4'
+$MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
+$MoeRailPlanPath = 'docs/superpowers/plans/2026-08-16-prototype-track-train.md'
+$MoeRailBriefPath = 'docs/briefings/ko/2026-08-16-prototype-track-train-plan-briefing.md'
+$MoeRailDesignPath = 'docs/superpowers/specs/2026-08-17-prototype-track-train-editor-gate-amendment-design.md'
+$MoeRailPrototypeAppPath = 'godot-project-moe-rail-way/src/app/prototype_app.gd'
+$MoeRailOldEditorRunnerPaths = @(
+    'godot-project-moe-rail-way/tests/integration/run_logical_track_field_editor_integration.gd',
+    'godot-project-moe-rail-way/tests/integration/run_logical_track_field_editor_integration.gd.uid'
+)
+$MoeRailExpectedPrimaryStatus = @(
+    ' M godot-project-moe-rail-way/tests/smoke/test_project_boot.gd',
+    ' M godot-project-moe-rail-way/tests/support/prototype_test.gd',
+    '?? docs/superpowers/plans/2026-08-15-godot-mcp-project-setup.md'
+) | Sort-Object
+$MoeRailExpectedProtectedHashes = [ordered]@{
+    'godot-project-moe-rail-way/tests/smoke/test_project_boot.gd' = '7871537D0BE68518D59CA0F6EDA8E8295662F03DF3F723591163946D54E51324'
+    'godot-project-moe-rail-way/tests/support/prototype_test.gd' = 'F1046A3C22D979C60473CE64B639937EB1C35E61D76568AB53D2BB08F521985B'
+    'docs/superpowers/plans/2026-08-15-godot-mcp-project-setup.md' = '826EBE2D77A76C077D3D7F4ABE8BC89329CAE39BC302284559D2433A8F700681'
+}
+$MoeRailExpectedPausedStatus = @(
+    ' M godot-project-moe-rail-way/src/app/prototype_app.gd',
+    ' M godot-project-moe-rail-way/src/domain/random/session_rng.gd',
+    ' M godot-project-moe-rail-way/src/presentation/session/session_shell.gd',
+    ' M godot-project-moe-rail-way/src/presentation/session/session_shell.tscn',
+    ' M godot-project-moe-rail-way/tests/integration/run_session_shell_integration.gd',
+    ' M godot-project-moe-rail-way/tests/run_all.gd',
+    '?? godot-project-moe-rail-way/src/presentation/track/departure_candidate.gd',
+    '?? godot-project-moe-rail-way/src/presentation/track/departure_candidate.gd.uid',
+    '?? godot-project-moe-rail-way/src/presentation/track/logical_track_field.gd',
+    '?? godot-project-moe-rail-way/src/presentation/track/logical_track_field.gd.uid',
+    '?? godot-project-moe-rail-way/src/presentation/track/logical_track_field.tscn',
+    '?? godot-project-moe-rail-way/src/presentation/track/track_field_view.gd',
+    '?? godot-project-moe-rail-way/src/presentation/track/track_field_view.gd.uid',
+    '?? godot-project-moe-rail-way/tests/integration/run_logical_track_field_editor_integration.gd',
+    '?? godot-project-moe-rail-way/tests/integration/run_logical_track_field_editor_integration.gd.uid',
+    '?? godot-project-moe-rail-way/tests/integration/run_logical_track_field_integration.gd',
+    '?? godot-project-moe-rail-way/tests/integration/run_logical_track_field_integration.gd.uid',
+    '?? godot-project-moe-rail-way/tests/unit/test_departure_selection.gd',
+    '?? godot-project-moe-rail-way/tests/unit/test_departure_selection.gd.uid'
+) | Sort-Object
+$MoeRailExpectedPausedHashes = [ordered]@{
+    'godot-project-moe-rail-way/src/app/prototype_app.gd' = '0FA6071192B96D723FBE4B30AD0E41231721EFDE7E3B4DB349849FB28C2CA754'
+    'godot-project-moe-rail-way/src/domain/random/session_rng.gd' = 'A6DD65CE62D79F12BF1CC4468817A2229B326D1421E78869BC0EA72B59921F9A'
+    'godot-project-moe-rail-way/src/presentation/session/session_shell.gd' = '3A6C430A6843BBFB2C4CD303D42EC81F8A9D3BF841CB6EE9052B05DB40E89055'
+    'godot-project-moe-rail-way/src/presentation/session/session_shell.tscn' = 'A398CC249EB00E8DEAA2CBE15544329509954EDE17C4DE4160BD41A4A0BE1DB8'
+    'godot-project-moe-rail-way/tests/integration/run_session_shell_integration.gd' = '6A5E2F3A5B9F7059BAA1DEFCF66F3EC3858EB56A0ECB66935A9052617AAE533C'
+    'godot-project-moe-rail-way/tests/run_all.gd' = '18613C37E0EDFE005970D4D7E3CB9629208054C75661703A46ADA7E9BDC441E0'
+    'godot-project-moe-rail-way/src/presentation/track/departure_candidate.gd' = 'C80DF8E8600B9C0074244A6C1CA2F2D64AAF0C4FB60C5882503B88DDAF097487'
+    'godot-project-moe-rail-way/src/presentation/track/departure_candidate.gd.uid' = '5819ADA2633838E1A0223F4D9D92E3FC8B603ABCD6B09BAECF63583DBD844944'
+    'godot-project-moe-rail-way/src/presentation/track/logical_track_field.gd' = '441B3D01F41720E4E78C708EF3DAA13B1B5EB583B40173EA721B2676C97DEFC4'
+    'godot-project-moe-rail-way/src/presentation/track/logical_track_field.gd.uid' = 'EE710EFFC6C25810678E3DB68D9547061D7A360F0544F2CDB90891062C91F1C4'
+    'godot-project-moe-rail-way/src/presentation/track/logical_track_field.tscn' = '6BADCE5FF383FE76E10C08DA31243C5F015EC5ACA8AA1459C4F9E442286B9C38'
+    'godot-project-moe-rail-way/src/presentation/track/track_field_view.gd' = '531FB9D6C42C8393A315DD88D6DF7D1FCAED70C0FA2143BB65E4EDFEED5449B7'
+    'godot-project-moe-rail-way/src/presentation/track/track_field_view.gd.uid' = 'CDE89B6A7D88CFBE5CCFDBF15C3D4626FCAB8B89C6516C46105B47FD0A87AC9F'
+    'godot-project-moe-rail-way/tests/integration/run_logical_track_field_editor_integration.gd' = 'D80309A74C33E972D606BA2FDCB5EFBDC7729A3A7C210D8ECE20B0A94D829571'
+    'godot-project-moe-rail-way/tests/integration/run_logical_track_field_editor_integration.gd.uid' = 'DCA4AC52873ECD3334685B746DCB97FE4F6BE7D5E2D5163ECECA8C38BD2EB39F'
+    'godot-project-moe-rail-way/tests/integration/run_logical_track_field_integration.gd' = '75D13A0D627825DC2D9F98A3657A3B9627C95048929F8E5C585FC99BCEB9A5E8'
+    'godot-project-moe-rail-way/tests/integration/run_logical_track_field_integration.gd.uid' = 'FFB4EBCA1126C7FE45B276E167DB622F64B2C3652951EA94F4EC6BEABFCAF7D0'
+    'godot-project-moe-rail-way/tests/unit/test_departure_selection.gd' = '8F78B62F1BB843E8D5692CD6731688D82311347D614EE955598EB9F27A88EBD7'
+    'godot-project-moe-rail-way/tests/unit/test_departure_selection.gd.uid' = 'AE555B0B5FAB095B0A9C98722A8455161D67E8CACFD67483DD35D77D6AE5E5D6'
+}
+
+if ($MoeRailApprovedPlanAmendment -notmatch '^[0-9a-f]{40}$') {
+    throw 'Set MOERAIL_APPROVED_PLAN_AMENDMENT to the reviewed amendment commit.'
+}
+$MoeRailPrimaryBranch = (git -C $MoeRailPrimary branch --show-current).Trim()
+$MoeRailPrimaryHead = (git -C $MoeRailPrimary rev-parse HEAD).Trim()
+$MoeRailPrimaryIndex = @(git -C $MoeRailPrimary diff --cached --name-only)
+$MoeRailPrimaryStatus = @(
+    git -C $MoeRailPrimary status --porcelain=v1 --untracked-files=all | Sort-Object
+)
+if ($LASTEXITCODE -ne 0 -or
+    $MoeRailPrimaryBranch -ne 'Prototyping' -or
+    $MoeRailPrimaryHead -ne $MoeRailStartingPlanCommit -or
+    $MoeRailPrimaryIndex.Count -ne 0 -or
+    @(Compare-Object $MoeRailExpectedPrimaryStatus $MoeRailPrimaryStatus).Count -ne 0) {
+    $MoeRailPrimaryStatus
+    throw 'Primary identity, index, or protected status changed while Task 2 was paused.'
+}
+foreach ($MoeRailProtectedPath in $MoeRailExpectedProtectedHashes.Keys) {
+    $MoeRailActualHash = (
+        Get-FileHash -LiteralPath (Join-Path $MoeRailPrimary $MoeRailProtectedPath) `
+            -Algorithm SHA256
+    ).Hash
+    if ($MoeRailActualHash -ne $MoeRailExpectedProtectedHashes[$MoeRailProtectedPath]) {
+        throw "Protected primary fingerprint changed: $MoeRailProtectedPath"
+    }
+}
+
+$MoeRailTagCommit = (git -C $MoeRailPrimary rev-list -n 1 prototype-m2).Trim()
+$MoeRailRemoteRows = @(
+    git -C $MoeRailPrimary ls-remote --heads origin refs/heads/Prototyping
+)
+$MoeRailRemoteCommit = if ($MoeRailRemoteRows.Count -eq 1) {
+    ($MoeRailRemoteRows[0] -split "`t")[0]
+} else {
+    ''
+}
+$MoeRailVersionOutput = @(& $MoeRailGodotExe --version 2>&1)
+$MoeRailVersionExit = $LASTEXITCODE
+$MoeRailVersion = ($MoeRailVersionOutput -join "`n").Trim()
+$MoeRailCodeParent = (git -C $MoeRailPrimary rev-parse "$MoeRailCodeBase^").Trim()
+if ($LASTEXITCODE -ne 0 -or
+    $MoeRailVersionExit -ne 0 -or
+    $MoeRailTagCommit -ne $MoeRailMilestoneTwo -or
+    $MoeRailRemoteRows.Count -ne 1 -or
+    $MoeRailRemoteCommit -ne $MoeRailMilestoneTwo -or
+    $MoeRailCodeParent -ne $MoeRailMilestoneTwo -or
+    $MoeRailVersion -ne '4.7.1.stable.official.a13da4feb') {
+    throw 'prototype-m2, origin/Prototyping, the code baseline, or the exact Godot build changed.'
+}
+
+$MoeRailPlanParent = (git -C $MoeRailPrimary rev-parse "$MoeRailStartingPlanCommit^").Trim()
+$MoeRailPlanFiles = @(
+    git -C $MoeRailPrimary diff-tree --no-commit-id --name-only -r `
+        $MoeRailStartingPlanCommit | Sort-Object
+)
+$MoeRailDesignParent = (git -C $MoeRailPrimary rev-parse "$MoeRailEditorGateDesignCommit^").Trim()
+$MoeRailDesignFiles = @(
+    git -C $MoeRailPrimary diff-tree --no-commit-id --name-only -r `
+        $MoeRailEditorGateDesignCommit | Sort-Object
+)
+$MoeRailAmendmentParent = (git -C $MoeRailPrimary rev-parse "$MoeRailApprovedPlanAmendment^").Trim()
+$MoeRailAmendmentFiles = @(
+    git -C $MoeRailPrimary diff-tree --no-commit-id --name-only -r `
+        $MoeRailApprovedPlanAmendment | Sort-Object
+)
+if ($LASTEXITCODE -ne 0 -or
+    $MoeRailPlanParent -ne $MoeRailCodeBase -or
+    @(Compare-Object @($MoeRailPlanPath, $MoeRailBriefPath) $MoeRailPlanFiles).Count -ne 0 -or
+    $MoeRailDesignParent -ne $MoeRailStartingPlanCommit -or
+    @(Compare-Object @($MoeRailDesignPath) $MoeRailDesignFiles).Count -ne 0 -or
+    $MoeRailAmendmentParent -ne $MoeRailEditorGateDesignCommit -or
+    @(Compare-Object @($MoeRailPlanPath, $MoeRailBriefPath) $MoeRailAmendmentFiles).Count -ne 0) {
+    $MoeRailDesignFiles
+    $MoeRailAmendmentFiles
+    throw 'The reviewed design or plan-amendment ancestry and file scope changed.'
+}
+
+$MoeRailFeatureCurrentBranch = (git -C $MoeRailFeatureWorktree branch --show-current).Trim()
+$MoeRailFeatureHead = (git -C $MoeRailFeatureWorktree rev-parse HEAD).Trim()
+$MoeRailFeatureBase = (git -C $MoeRailFeatureWorktree merge-base `
+    $MoeRailStartingPlanCommit HEAD).Trim()
+$MoeRailFeatureIndex = @(git -C $MoeRailFeatureWorktree diff --cached --name-only)
+$MoeRailFeatureStatus = @(
+    git -C $MoeRailFeatureWorktree status --porcelain=v1 --untracked-files=all |
+        Sort-Object
+)
+if ($LASTEXITCODE -ne 0 -or
+    $MoeRailFeatureCurrentBranch -ne $MoeRailFeatureBranch -or
+    $MoeRailFeatureHead -ne $MoeRailTaskOneHead -or
+    $MoeRailFeatureBase -ne $MoeRailStartingPlanCommit -or
+    $MoeRailFeatureIndex.Count -ne 0 -or
+    @(Compare-Object $MoeRailExpectedPausedStatus $MoeRailFeatureStatus).Count -ne 0) {
+    $MoeRailFeatureStatus
+    throw 'The paused Task 2 branch, HEAD, index, or exact path set changed.'
+}
+foreach ($MoeRailPausedPath in $MoeRailExpectedPausedHashes.Keys) {
+    $MoeRailActualHash = (
+        Get-FileHash -LiteralPath (Join-Path $MoeRailFeatureWorktree $MoeRailPausedPath) `
+            -Algorithm SHA256
+    ).Hash
+    if ($MoeRailActualHash -ne $MoeRailExpectedPausedHashes[$MoeRailPausedPath]) {
+        throw "Paused Task 2 file changed: $MoeRailPausedPath"
+    }
+}
+
+git -C $MoeRailFeatureWorktree diff --ignore-all-space --quiet HEAD -- `
+    $MoeRailPrototypeAppPath
+if ($LASTEXITCODE -ne 0) {
+    throw 'prototype_app.gd is no longer the authorized indentation-only change.'
+}
+git -C $MoeRailFeatureWorktree restore --source=HEAD --worktree -- `
+    $MoeRailPrototypeAppPath
+if ($LASTEXITCODE -ne 0) { throw 'Failed to restore only prototype_app.gd.' }
+foreach ($MoeRailOldEditorRunnerPath in $MoeRailOldEditorRunnerPaths) {
+    git -C $MoeRailFeatureWorktree ls-files --error-unmatch -- `
+        $MoeRailOldEditorRunnerPath *> $null
+    $MoeRailOldEditorRunnerProbe = $LASTEXITCODE
+    if ($MoeRailOldEditorRunnerProbe -eq 0) {
+        throw "Superseded editor runner unexpectedly became tracked: $MoeRailOldEditorRunnerPath"
+    } elseif ($MoeRailOldEditorRunnerProbe -ne 1) {
+        throw "Failed to verify superseded editor runner ownership: $MoeRailOldEditorRunnerPath"
+    }
+    $MoeRailOldEditorRunnerAbsolute = Join-Path `
+        $MoeRailFeatureWorktree $MoeRailOldEditorRunnerPath
+    Remove-Item -LiteralPath $MoeRailOldEditorRunnerAbsolute -Force
+    if (Test-Path -LiteralPath $MoeRailOldEditorRunnerAbsolute) {
+        throw "Failed to remove superseded untracked runner: $MoeRailOldEditorRunnerPath"
+    }
+}
+
+$MoeRailExpectedCleanedStatus = @(
+    $MoeRailExpectedPausedStatus | Where-Object {
+        $_ -notmatch [regex]::Escape($MoeRailPrototypeAppPath) -and
+        $_ -notmatch 'run_logical_track_field_editor_integration\.gd(?:\.uid)?$'
+    }
+) | Sort-Object
+$MoeRailCleanedStatus = @(
+    git -C $MoeRailFeatureWorktree status --porcelain=v1 --untracked-files=all |
+        Sort-Object
+)
+if (@(Compare-Object $MoeRailExpectedCleanedStatus $MoeRailCleanedStatus).Count -ne 0 -or
+    @(git -C $MoeRailFeatureWorktree diff --cached --name-only).Count -ne 0) {
+    $MoeRailCleanedStatus
+    throw 'The approved Task 2 cleanup changed an unexpected path.'
+}
+
+git -C $MoeRailFeatureWorktree merge --no-ff $MoeRailApprovedPlanAmendment `
+    -m 'docs: adopt editor gate amendment'
+if ($LASTEXITCODE -ne 0) {
+    throw 'Failed to merge the reviewed documentation amendment.'
+}
+$MoeRailAmendmentMergeHead = (git -C $MoeRailFeatureWorktree rev-parse HEAD).Trim()
+$MoeRailMergeFirstParent = (git -C $MoeRailFeatureWorktree rev-parse 'HEAD^1').Trim()
+$MoeRailMergeSecondParent = (git -C $MoeRailFeatureWorktree rev-parse 'HEAD^2').Trim()
+$MoeRailMergedDocPaths = @(
+    git -C $MoeRailFeatureWorktree diff --name-only `
+        "$MoeRailMergeFirstParent..$MoeRailAmendmentMergeHead" | Sort-Object
+)
+$MoeRailExpectedMergedDocPaths = @(
+    $MoeRailDesignPath,
+    $MoeRailPlanPath,
+    $MoeRailBriefPath
+) | Sort-Object
+$MoeRailPostMergeStatus = @(
+    git -C $MoeRailFeatureWorktree status --porcelain=v1 --untracked-files=all |
+        Sort-Object
+)
+if ($LASTEXITCODE -ne 0 -or
+    $MoeRailMergeFirstParent -ne $MoeRailTaskOneHead -or
+    $MoeRailMergeSecondParent -ne $MoeRailApprovedPlanAmendment -or
+    @(Compare-Object $MoeRailExpectedMergedDocPaths $MoeRailMergedDocPaths).Count -ne 0 -or
+    @(Compare-Object $MoeRailExpectedCleanedStatus $MoeRailPostMergeStatus).Count -ne 0 -or
+    @(git -C $MoeRailFeatureWorktree diff --cached --name-only).Count -ne 0) {
+    $MoeRailMergedDocPaths
+    $MoeRailPostMergeStatus
+    throw 'The documentation merge absorbed Task 2 work or has unexpected ancestry.'
+}
+foreach ($MoeRailPausedPath in $MoeRailExpectedPausedHashes.Keys) {
+    if ($MoeRailPausedPath -eq $MoeRailPrototypeAppPath -or
+        $MoeRailPausedPath -in $MoeRailOldEditorRunnerPaths) {
+        continue
+    }
+    $MoeRailActualHash = (
+        Get-FileHash -LiteralPath (Join-Path $MoeRailFeatureWorktree $MoeRailPausedPath) `
+            -Algorithm SHA256
+    ).Hash
+    if ($MoeRailActualHash -ne $MoeRailExpectedPausedHashes[$MoeRailPausedPath]) {
+        throw "Documentation merge changed Task 2 work: $MoeRailPausedPath"
+    }
+}
+$MoeRailFinalPrimaryBranch = (git -C $MoeRailPrimary branch --show-current).Trim()
+$MoeRailFinalPrimaryHead = (git -C $MoeRailPrimary rev-parse HEAD).Trim()
+$MoeRailFinalPrimaryIndex = @(git -C $MoeRailPrimary diff --cached --name-only)
+$MoeRailFinalPrimaryStatus = @(
+    git -C $MoeRailPrimary status --porcelain=v1 --untracked-files=all |
+        Sort-Object
+)
+if ($LASTEXITCODE -ne 0 -or
+    $MoeRailFinalPrimaryBranch -ne 'Prototyping' -or
+    $MoeRailFinalPrimaryHead -ne $MoeRailStartingPlanCommit -or
+    $MoeRailFinalPrimaryIndex.Count -ne 0 -or
+    @(Compare-Object $MoeRailExpectedPrimaryStatus $MoeRailFinalPrimaryStatus).Count -ne 0) {
+    $MoeRailFinalPrimaryStatus
+    throw 'Primary identity, index, or protected path set changed during amendment resume.'
+}
+foreach ($MoeRailProtectedPath in $MoeRailExpectedProtectedHashes.Keys) {
+    $MoeRailActualHash = (
+        Get-FileHash -LiteralPath (Join-Path $MoeRailPrimary $MoeRailProtectedPath) `
+            -Algorithm SHA256
+    ).Hash
+    if ($MoeRailActualHash -ne $MoeRailExpectedProtectedHashes[$MoeRailProtectedPath]) {
+        throw "Protected primary fingerprint changed during amendment resume: $MoeRailProtectedPath"
+    }
+}
+"AMENDMENT_MERGE_SHA=$MoeRailAmendmentMergeHead"
+~~~
+
+Expected: the obsolete agent-owned custom-`SceneTree` runner and its sidecar are removed, `prototype_app.gd` exactly matches the Task 1 feature `HEAD`, the reviewed design and amendment commits are ancestors of one focused documentation merge, the sixteen retained Task 2 files remain byte-identical and unstaged, the index is empty, and the primary protected state is unchanged. Record `AMENDMENT_MERGE_SHA` in the English task ledger before continuing.
+
+Resume the English local task ledger under the feature worktree's ignored `.superpowers/sdd/2026-08-16-prototype-track-train/` directory. This operational evidence is never staged and is outside the Target File Map. Execute tasks serially with a fresh implementer and two-stage review when `superpowers:subagent-driven-development` is available. Otherwise use `superpowers:executing-plans` and preserve the same RED/GREEN, focused-commit, and independent-review gates.
+
+## Approved Second Amendment Resume Gate
+
+The first amendment merge is complete, its replacement plugin has been implemented but not committed, and the exact shutdown contract failed after printing PASS. The user approved the second shutdown amendment and authorized restoring only the import-created whitespace rewrite of `src/app/prototype_app.gd`; that exact-path restore is already recorded in the ignored English Task 2 ledger. Do not rerun the first amendment gate or the import that created the existing valid plugin sidecar.
+
+After the second amendment documentation commit passes independent review, set `MOERAIL_APPROVED_SECOND_AMENDMENT` to its exact 40-character SHA and run this block verbatim. It rechecks the original base, remote, Godot version, protected primary state, documentation ancestry, exact 20-path Task 2 state, every WIP hash, the empty feature index, and the already-restored `prototype_app.gd` before merging only the second documentation amendment. Any mismatch stops the session without repair.
+
+~~~powershell
+$ErrorActionPreference = 'Stop'
+$MoeRailPrimary = 'D:\godot\MoeRailWay'
+$MoeRailFeatureWorktree = 'D:\godot\MoeRailWay-worktrees\proto-02-track-train'
+$MoeRailFeatureBranch = 'proto/02-track-train'
+$MoeRailStartingPlanCommit = '4c0b9ac9a1335c8ffa8cb24f4b7eaf9434dc30c1'
+$MoeRailFirstAmendmentCommit = '9047301da36c18b94e6e5be24d8dfd7423966828'
+$MoeRailPausedFeatureHead = 'b09aaaafe7b6be192776b49adc69c01e82e41bdc'
+$MoeRailApprovedSecondAmendment = $env:MOERAIL_APPROVED_SECOND_AMENDMENT
+$MoeRailMilestoneTwo = 'c93e1834da8fb38792048914120fe50f9f500cb4'
+$MoeRailCodeBase = '4e9fc7e39d3c07c51cf5b823fc0963fee01f0f97'
+$MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
+$MoeRailPlanPath = 'docs/superpowers/plans/2026-08-16-prototype-track-train.md'
+$MoeRailBriefPath = 'docs/briefings/ko/2026-08-16-prototype-track-train-plan-briefing.md'
+$MoeRailSecondDesignPath = 'docs/superpowers/specs/2026-08-21-prototype-track-train-editor-shutdown-amendment-design.md'
+$MoeRailPrototypeAppPath = 'godot-project-moe-rail-way/src/app/prototype_app.gd'
+$MoeRailExpectedPrimaryStatus = @(
+    ' M godot-project-moe-rail-way/tests/smoke/test_project_boot.gd',
+    ' M godot-project-moe-rail-way/tests/support/prototype_test.gd',
+    '?? docs/superpowers/plans/2026-08-15-godot-mcp-project-setup.md'
+) | Sort-Object
+$MoeRailExpectedProtectedHashes = [ordered]@{
+    'godot-project-moe-rail-way/tests/smoke/test_project_boot.gd' = '7871537D0BE68518D59CA0F6EDA8E8295662F03DF3F723591163946D54E51324'
+    'godot-project-moe-rail-way/tests/support/prototype_test.gd' = 'F1046A3C22D979C60473CE64B639937EB1C35E61D76568AB53D2BB08F521985B'
+    'docs/superpowers/plans/2026-08-15-godot-mcp-project-setup.md' = '826EBE2D77A76C077D3D7F4ABE8BC89329CAE39BC302284559D2433A8F700681'
+}
+$MoeRailExpectedTaskTwoHashes = [ordered]@{
+    'godot-project-moe-rail-way/project.godot' = '23B8A22A772AFCB231C9E00ADA70E791B704640607927D3B2924E0FF5DC0D324'
+    'godot-project-moe-rail-way/src/domain/random/session_rng.gd' = 'A6DD65CE62D79F12BF1CC4468817A2229B326D1421E78869BC0EA72B59921F9A'
+    'godot-project-moe-rail-way/src/presentation/session/session_shell.gd' = '3A6C430A6843BBFB2C4CD303D42EC81F8A9D3BF841CB6EE9052B05DB40E89055'
+    'godot-project-moe-rail-way/src/presentation/session/session_shell.tscn' = 'A398CC249EB00E8DEAA2CBE15544329509954EDE17C4DE4160BD41A4A0BE1DB8'
+    'godot-project-moe-rail-way/tests/integration/run_session_shell_integration.gd' = '6A5E2F3A5B9F7059BAA1DEFCF66F3EC3858EB56A0ECB66935A9052617AAE533C'
+    'godot-project-moe-rail-way/tests/run_all.gd' = '18613C37E0EDFE005970D4D7E3CB9629208054C75661703A46ADA7E9BDC441E0'
+    'godot-project-moe-rail-way/addons/moerail_test_editor_gate/logical_track_field_editor_gate.gd' = '648F9DB7B725E101876E40F586127A16B06821E22E223F1B4B26FE7FA97C741C'
+    'godot-project-moe-rail-way/addons/moerail_test_editor_gate/logical_track_field_editor_gate.gd.uid' = '6A6D4575B585A148C4456FC7C08EB3977769F97A36AA0459571B176A77D72214'
+    'godot-project-moe-rail-way/addons/moerail_test_editor_gate/plugin.cfg' = 'CEB518D10044BCB5CC9A51A9FB41334D49F76264F285BA1580A4DA973CF36173'
+    'godot-project-moe-rail-way/src/presentation/track/departure_candidate.gd' = 'C80DF8E8600B9C0074244A6C1CA2F2D64AAF0C4FB60C5882503B88DDAF097487'
+    'godot-project-moe-rail-way/src/presentation/track/departure_candidate.gd.uid' = '5819ADA2633838E1A0223F4D9D92E3FC8B603ABCD6B09BAECF63583DBD844944'
+    'godot-project-moe-rail-way/src/presentation/track/logical_track_field.gd' = '441B3D01F41720E4E78C708EF3DAA13B1B5EB583B40173EA721B2676C97DEFC4'
+    'godot-project-moe-rail-way/src/presentation/track/logical_track_field.gd.uid' = 'EE710EFFC6C25810678E3DB68D9547061D7A360F0544F2CDB90891062C91F1C4'
+    'godot-project-moe-rail-way/src/presentation/track/logical_track_field.tscn' = '6BADCE5FF383FE76E10C08DA31243C5F015EC5ACA8AA1459C4F9E442286B9C38'
+    'godot-project-moe-rail-way/src/presentation/track/track_field_view.gd' = '531FB9D6C42C8393A315DD88D6DF7D1FCAED70C0FA2143BB65E4EDFEED5449B7'
+    'godot-project-moe-rail-way/src/presentation/track/track_field_view.gd.uid' = 'CDE89B6A7D88CFBE5CCFDBF15C3D4626FCAB8B89C6516C46105B47FD0A87AC9F'
+    'godot-project-moe-rail-way/tests/integration/run_logical_track_field_integration.gd' = '75D13A0D627825DC2D9F98A3657A3B9627C95048929F8E5C585FC99BCEB9A5E8'
+    'godot-project-moe-rail-way/tests/integration/run_logical_track_field_integration.gd.uid' = 'FFB4EBCA1126C7FE45B276E167DB622F64B2C3652951EA94F4EC6BEABFCAF7D0'
+    'godot-project-moe-rail-way/tests/unit/test_departure_selection.gd' = '8F78B62F1BB843E8D5692CD6731688D82311347D614EE955598EB9F27A88EBD7'
+    'godot-project-moe-rail-way/tests/unit/test_departure_selection.gd.uid' = 'AE555B0B5FAB095B0A9C98722A8455161D67E8CACFD67483DD35D77D6AE5E5D6'
+}
+$MoeRailExpectedTaskTwoStatus = @(
+    foreach ($MoeRailTaskTwoPath in $MoeRailExpectedTaskTwoHashes.Keys) {
+        git -C $MoeRailFeatureWorktree ls-files --error-unmatch -- $MoeRailTaskTwoPath *> $null
+        if ($LASTEXITCODE -eq 0) { " M $MoeRailTaskTwoPath" } else { "?? $MoeRailTaskTwoPath" }
+    }
+) | Sort-Object
+
+if ($MoeRailApprovedSecondAmendment -notmatch '^[0-9a-f]{40}$') {
+    throw 'Set MOERAIL_APPROVED_SECOND_AMENDMENT to the reviewed second amendment commit.'
+}
+$MoeRailPrimaryBranch = (git -C $MoeRailPrimary branch --show-current).Trim()
+$MoeRailPrimaryHead = (git -C $MoeRailPrimary rev-parse HEAD).Trim()
+$MoeRailPrimaryIndex = @(git -C $MoeRailPrimary diff --cached --name-only)
+$MoeRailPrimaryStatus = @(
+    git -C $MoeRailPrimary status --porcelain=v1 --untracked-files=all | Sort-Object
+)
+if ($LASTEXITCODE -ne 0 -or
+    $MoeRailPrimaryBranch -ne 'Prototyping' -or
+    $MoeRailPrimaryHead -ne $MoeRailStartingPlanCommit -or
+    $MoeRailPrimaryIndex.Count -ne 0 -or
+    @(Compare-Object $MoeRailExpectedPrimaryStatus $MoeRailPrimaryStatus).Count -ne 0) {
+    $MoeRailPrimaryStatus
+    throw 'Primary identity, index, or protected state changed before second amendment resume.'
+}
+foreach ($MoeRailProtectedPath in $MoeRailExpectedProtectedHashes.Keys) {
+    $MoeRailActualHash = (
+        Get-FileHash -LiteralPath (Join-Path $MoeRailPrimary $MoeRailProtectedPath) -Algorithm SHA256
+    ).Hash
+    if ($MoeRailActualHash -ne $MoeRailExpectedProtectedHashes[$MoeRailProtectedPath]) {
+        throw "Protected primary fingerprint changed: $MoeRailProtectedPath"
+    }
+}
+$MoeRailTagCommit = (git -C $MoeRailPrimary rev-list -n 1 prototype-m2).Trim()
+$MoeRailRemoteRows = @(git -C $MoeRailPrimary ls-remote --heads origin refs/heads/Prototyping)
+$MoeRailRemoteCommit = if ($MoeRailRemoteRows.Count -eq 1) {
+    ($MoeRailRemoteRows[0] -split "`t")[0]
+} else { '' }
+$MoeRailCodeParent = (git -C $MoeRailPrimary rev-parse "$MoeRailCodeBase^").Trim()
+$MoeRailVersion = ((& $MoeRailGodotExe --version 2>&1) -join "`n").Trim()
+if ($LASTEXITCODE -ne 0 -or
+    $MoeRailTagCommit -ne $MoeRailMilestoneTwo -or
+    $MoeRailRemoteRows.Count -ne 1 -or
+    $MoeRailRemoteCommit -ne $MoeRailMilestoneTwo -or
+    $MoeRailCodeParent -ne $MoeRailMilestoneTwo -or
+    $MoeRailVersion -ne '4.7.1.stable.official.a13da4feb') {
+    throw 'Base, remote, prototype-m2, or exact Godot build changed.'
+}
+
+$MoeRailSecondAmendmentParent = (
+    git -C $MoeRailPrimary rev-parse "$MoeRailApprovedSecondAmendment^"
+).Trim()
+$MoeRailSecondAmendmentFiles = @(
+    git -C $MoeRailPrimary diff-tree --no-commit-id --name-only -r `
+        $MoeRailApprovedSecondAmendment | Sort-Object
+)
+$MoeRailExpectedSecondAmendmentFiles = @(
+    $MoeRailSecondDesignPath,
+    $MoeRailPlanPath,
+    $MoeRailBriefPath
+) | Sort-Object
+if ($LASTEXITCODE -ne 0 -or
+    $MoeRailSecondAmendmentParent -ne $MoeRailFirstAmendmentCommit -or
+    @(Compare-Object $MoeRailExpectedSecondAmendmentFiles $MoeRailSecondAmendmentFiles).Count -ne 0) {
+    $MoeRailSecondAmendmentFiles
+    throw 'Second amendment ancestry or file scope changed.'
+}
+
+$MoeRailFeatureRoot = (git -C $MoeRailFeatureWorktree rev-parse --show-toplevel).Trim()
+$MoeRailFeatureCurrentBranch = (git -C $MoeRailFeatureWorktree branch --show-current).Trim()
+$MoeRailFeatureHead = (git -C $MoeRailFeatureWorktree rev-parse HEAD).Trim()
+$MoeRailFeatureBase = (
+    git -C $MoeRailFeatureWorktree merge-base $MoeRailStartingPlanCommit HEAD
+).Trim()
+$MoeRailFeatureIndex = @(git -C $MoeRailFeatureWorktree diff --cached --name-only)
+$MoeRailFeatureStatus = @(
+    git -C $MoeRailFeatureWorktree status --porcelain=v1 --untracked-files=all | Sort-Object
+)
+if ($LASTEXITCODE -ne 0 -or
+    [IO.Path]::GetFullPath($MoeRailFeatureRoot) -ne [IO.Path]::GetFullPath($MoeRailFeatureWorktree) -or
+    $MoeRailFeatureCurrentBranch -ne $MoeRailFeatureBranch -or
+    $MoeRailFeatureHead -ne $MoeRailPausedFeatureHead -or
+    $MoeRailFeatureBase -ne $MoeRailStartingPlanCommit -or
+    $MoeRailFeatureIndex.Count -ne 0 -or
+    @(Compare-Object $MoeRailExpectedTaskTwoStatus $MoeRailFeatureStatus).Count -ne 0) {
+    $MoeRailFeatureStatus
+    throw 'Paused Task 2 identity, index, or exact path set changed.'
+}
+git -C $MoeRailFeatureWorktree diff --quiet HEAD -- $MoeRailPrototypeAppPath
+if ($LASTEXITCODE -ne 0) {
+    throw 'prototype_app.gd no longer matches feature HEAD.'
+}
+foreach ($MoeRailTaskTwoPath in $MoeRailExpectedTaskTwoHashes.Keys) {
+    $MoeRailActualHash = (
+        Get-FileHash -LiteralPath (Join-Path $MoeRailFeatureWorktree $MoeRailTaskTwoPath) -Algorithm SHA256
+    ).Hash
+    if ($MoeRailActualHash -ne $MoeRailExpectedTaskTwoHashes[$MoeRailTaskTwoPath]) {
+        throw "Paused Task 2 file changed: $MoeRailTaskTwoPath"
+    }
+}
+
+git -C $MoeRailFeatureWorktree -c merge.autostash=false merge `
+    --no-ff --no-autostash $MoeRailApprovedSecondAmendment `
+    -m 'docs: adopt editor shutdown amendment'
+if ($LASTEXITCODE -ne 0) { throw 'Failed to merge the second documentation amendment.' }
+$MoeRailSecondMergeHead = (git -C $MoeRailFeatureWorktree rev-parse HEAD).Trim()
+$MoeRailMergeFirstParent = (git -C $MoeRailFeatureWorktree rev-parse 'HEAD^1').Trim()
+$MoeRailMergeSecondParent = (git -C $MoeRailFeatureWorktree rev-parse 'HEAD^2').Trim()
+$MoeRailMergedDocPaths = @(
+    git -C $MoeRailFeatureWorktree diff --name-only `
+        "$MoeRailMergeFirstParent..$MoeRailSecondMergeHead" | Sort-Object
+)
+$MoeRailPostMergeStatus = @(
+    git -C $MoeRailFeatureWorktree status --porcelain=v1 --untracked-files=all | Sort-Object
+)
+if ($LASTEXITCODE -ne 0 -or
+    $MoeRailMergeFirstParent -ne $MoeRailPausedFeatureHead -or
+    $MoeRailMergeSecondParent -ne $MoeRailApprovedSecondAmendment -or
+    @(Compare-Object $MoeRailExpectedSecondAmendmentFiles $MoeRailMergedDocPaths).Count -ne 0 -or
+    @(Compare-Object $MoeRailExpectedTaskTwoStatus $MoeRailPostMergeStatus).Count -ne 0 -or
+    @(git -C $MoeRailFeatureWorktree diff --cached --name-only).Count -ne 0) {
+    $MoeRailMergedDocPaths
+    $MoeRailPostMergeStatus
+    throw 'Second documentation merge absorbed Task 2 work or has unexpected ancestry.'
+}
+git -C $MoeRailFeatureWorktree diff --quiet HEAD -- $MoeRailPrototypeAppPath
+if ($LASTEXITCODE -ne 0) { throw 'Second documentation merge changed prototype_app.gd.' }
+foreach ($MoeRailTaskTwoPath in $MoeRailExpectedTaskTwoHashes.Keys) {
+    $MoeRailActualHash = (
+        Get-FileHash -LiteralPath (Join-Path $MoeRailFeatureWorktree $MoeRailTaskTwoPath) -Algorithm SHA256
+    ).Hash
+    if ($MoeRailActualHash -ne $MoeRailExpectedTaskTwoHashes[$MoeRailTaskTwoPath]) {
+        throw "Second documentation merge changed Task 2 work: $MoeRailTaskTwoPath"
+    }
+}
+$MoeRailFinalPrimaryStatus = @(
+    git -C $MoeRailPrimary status --porcelain=v1 --untracked-files=all | Sort-Object
+)
+if ((git -C $MoeRailPrimary branch --show-current).Trim() -ne 'Prototyping' -or
+    (git -C $MoeRailPrimary rev-parse HEAD).Trim() -ne $MoeRailStartingPlanCommit -or
+    @(git -C $MoeRailPrimary diff --cached --name-only).Count -ne 0 -or
+    @(Compare-Object $MoeRailExpectedPrimaryStatus $MoeRailFinalPrimaryStatus).Count -ne 0) {
+    $MoeRailFinalPrimaryStatus
+    throw 'Primary state changed during second amendment resume.'
+}
+foreach ($MoeRailProtectedPath in $MoeRailExpectedProtectedHashes.Keys) {
+    $MoeRailActualHash = (
+        Get-FileHash -LiteralPath (Join-Path $MoeRailPrimary $MoeRailProtectedPath) -Algorithm SHA256
+    ).Hash
+    if ($MoeRailActualHash -ne $MoeRailExpectedProtectedHashes[$MoeRailProtectedPath]) {
+        throw "Protected primary fingerprint changed during second amendment resume: $MoeRailProtectedPath"
+    }
+}
+"SECOND_AMENDMENT_MERGE_SHA=$MoeRailSecondMergeHead"
+~~~
+
+Expected: the reviewed three-document second amendment enters one focused merge, all 20 paused Task 2 files remain byte-identical and unstaged, `prototype_app.gd` remains identical to feature `HEAD`, the feature index stays empty, and the primary protected state is unchanged. Record `SECOND_AMENDMENT_MERGE_SHA` in the ignored English task ledger before dispatching the fresh Task 2 implementation agent.
+
+## Approved Third Amendment Resume Gate
+
+The second amendment documentation merge is complete, the assertion-only plugin is implemented but uncommitted, and the flagged editor assertions and engine-owned shutdown are clean. The strict post-process state check correctly rejected a new whitespace-only rewrite of `src/app/prototype_app.gd`. The user approved the disposable-editor-mirror amendment and authorized restoring exactly that one preserved rewrite to feature `HEAD`. Do not rerun either earlier amendment gate or any feature-worktree editor process.
+
+After the third amendment documentation commit passes independent specification and quality review, set `MOERAIL_APPROVED_THIRD_AMENDMENT` to its exact 40-character SHA and run this block verbatim. It rechecks the original base, remote, Godot version, protected primary state, documentation ancestry, exact 21-path paused evidence, every WIP hash, the empty feature index, and the exact whitespace-only prototype rewrite before changing anything. It then restores only the approved file, merges only the three reviewed documents with autostash disabled, and repeats every invariant. Any mismatch stops the session without repair.
+
+~~~powershell
+$ErrorActionPreference = 'Stop'
+$MoeRailPrimary = 'D:\godot\MoeRailWay'
+$MoeRailFeatureWorktree = 'D:\godot\MoeRailWay-worktrees\proto-02-track-train'
+$MoeRailFeatureBranch = 'proto/02-track-train'
+$MoeRailStartingPlanCommit = '4c0b9ac9a1335c8ffa8cb24f4b7eaf9434dc30c1'
+$MoeRailFirstAmendmentCommit = '9047301da36c18b94e6e5be24d8dfd7423966828'
+$MoeRailSecondAmendmentCommit = 'aaca77325acb3ecd722894f133c5319152554eb6'
+$MoeRailPausedFeatureHead = '83ea845ca114f6803f24dd81a3d83f3ad97e2593'
+$MoeRailPausedFirstParent = 'b09aaaafe7b6be192776b49adc69c01e82e41bdc'
+$MoeRailApprovedThirdAmendment = $env:MOERAIL_APPROVED_THIRD_AMENDMENT
+$MoeRailMilestoneTwo = 'c93e1834da8fb38792048914120fe50f9f500cb4'
+$MoeRailCodeBase = '4e9fc7e39d3c07c51cf5b823fc0963fee01f0f97'
+$MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
+$MoeRailPlanPath = 'docs/superpowers/plans/2026-08-16-prototype-track-train.md'
+$MoeRailBriefPath = 'docs/briefings/ko/2026-08-16-prototype-track-train-plan-briefing.md'
+$MoeRailThirdDesignPath = 'docs/superpowers/specs/2026-08-22-prototype-track-train-disposable-editor-mirror-amendment-design.md'
+$MoeRailPrototypeAppPath = 'godot-project-moe-rail-way/src/app/prototype_app.gd'
+$MoeRailExpectedPrototypeHeadBlob = '2088b43ffdd8510eadb4682746a11c948c8f8aee'
+$MoeRailExpectedPrototypeRewriteBlob = 'a3228bb9b6d8f1b2546bd026ac02aef11d755710'
+$MoeRailExpectedPrototypeHeadHash = 'C60283885338A45C975EC8250FC3285D18DAD5879E7CBD38E272E3BAACDA6CEF'
+$MoeRailExpectedPrototypeRewriteHash = '0FA6071192B96D723FBE4B30AD0E41231721EFDE7E3B4DB349849FB28C2CA754'
+$MoeRailExpectedPrimaryStatus = @(
+    ' M godot-project-moe-rail-way/tests/smoke/test_project_boot.gd',
+    ' M godot-project-moe-rail-way/tests/support/prototype_test.gd',
+    '?? docs/superpowers/plans/2026-08-15-godot-mcp-project-setup.md'
+) | Sort-Object
+$MoeRailExpectedProtectedHashes = [ordered]@{
+    'godot-project-moe-rail-way/tests/smoke/test_project_boot.gd' = '7871537D0BE68518D59CA0F6EDA8E8295662F03DF3F723591163946D54E51324'
+    'godot-project-moe-rail-way/tests/support/prototype_test.gd' = 'F1046A3C22D979C60473CE64B639937EB1C35E61D76568AB53D2BB08F521985B'
+    'docs/superpowers/plans/2026-08-15-godot-mcp-project-setup.md' = '826EBE2D77A76C077D3D7F4ABE8BC89329CAE39BC302284559D2433A8F700681'
+}
+$MoeRailExpectedTaskTwoHashes = [ordered]@{
+    'godot-project-moe-rail-way/project.godot' = '23B8A22A772AFCB231C9E00ADA70E791B704640607927D3B2924E0FF5DC0D324'
+    'godot-project-moe-rail-way/src/domain/random/session_rng.gd' = 'A6DD65CE62D79F12BF1CC4468817A2229B326D1421E78869BC0EA72B59921F9A'
+    'godot-project-moe-rail-way/src/presentation/session/session_shell.gd' = '3A6C430A6843BBFB2C4CD303D42EC81F8A9D3BF841CB6EE9052B05DB40E89055'
+    'godot-project-moe-rail-way/src/presentation/session/session_shell.tscn' = 'A398CC249EB00E8DEAA2CBE15544329509954EDE17C4DE4160BD41A4A0BE1DB8'
+    'godot-project-moe-rail-way/tests/integration/run_session_shell_integration.gd' = '6A5E2F3A5B9F7059BAA1DEFCF66F3EC3858EB56A0ECB66935A9052617AAE533C'
+    'godot-project-moe-rail-way/tests/run_all.gd' = '18613C37E0EDFE005970D4D7E3CB9629208054C75661703A46ADA7E9BDC441E0'
+    'godot-project-moe-rail-way/addons/moerail_test_editor_gate/logical_track_field_editor_gate.gd' = '38BBCD8901234B3E6F43DB5958FC026865EA151675F353A20218ADEB7FB745ED'
+    'godot-project-moe-rail-way/addons/moerail_test_editor_gate/logical_track_field_editor_gate.gd.uid' = '6A6D4575B585A148C4456FC7C08EB3977769F97A36AA0459571B176A77D72214'
+    'godot-project-moe-rail-way/addons/moerail_test_editor_gate/plugin.cfg' = 'CEB518D10044BCB5CC9A51A9FB41334D49F76264F285BA1580A4DA973CF36173'
+    'godot-project-moe-rail-way/src/presentation/track/departure_candidate.gd' = 'C80DF8E8600B9C0074244A6C1CA2F2D64AAF0C4FB60C5882503B88DDAF097487'
+    'godot-project-moe-rail-way/src/presentation/track/departure_candidate.gd.uid' = '5819ADA2633838E1A0223F4D9D92E3FC8B603ABCD6B09BAECF63583DBD844944'
+    'godot-project-moe-rail-way/src/presentation/track/logical_track_field.gd' = '441B3D01F41720E4E78C708EF3DAA13B1B5EB583B40173EA721B2676C97DEFC4'
+    'godot-project-moe-rail-way/src/presentation/track/logical_track_field.gd.uid' = 'EE710EFFC6C25810678E3DB68D9547061D7A360F0544F2CDB90891062C91F1C4'
+    'godot-project-moe-rail-way/src/presentation/track/logical_track_field.tscn' = '6BADCE5FF383FE76E10C08DA31243C5F015EC5ACA8AA1459C4F9E442286B9C38'
+    'godot-project-moe-rail-way/src/presentation/track/track_field_view.gd' = '531FB9D6C42C8393A315DD88D6DF7D1FCAED70C0FA2143BB65E4EDFEED5449B7'
+    'godot-project-moe-rail-way/src/presentation/track/track_field_view.gd.uid' = 'CDE89B6A7D88CFBE5CCFDBF15C3D4626FCAB8B89C6516C46105B47FD0A87AC9F'
+    'godot-project-moe-rail-way/tests/integration/run_logical_track_field_integration.gd' = '75D13A0D627825DC2D9F98A3657A3B9627C95048929F8E5C585FC99BCEB9A5E8'
+    'godot-project-moe-rail-way/tests/integration/run_logical_track_field_integration.gd.uid' = 'FFB4EBCA1126C7FE45B276E167DB622F64B2C3652951EA94F4EC6BEABFCAF7D0'
+    'godot-project-moe-rail-way/tests/unit/test_departure_selection.gd' = '8F78B62F1BB843E8D5692CD6731688D82311347D614EE955598EB9F27A88EBD7'
+    'godot-project-moe-rail-way/tests/unit/test_departure_selection.gd.uid' = 'AE555B0B5FAB095B0A9C98722A8455161D67E8CACFD67483DD35D77D6AE5E5D6'
+}
+$MoeRailExpectedTaskTwoStatus = @(
+    foreach ($MoeRailTaskTwoPath in $MoeRailExpectedTaskTwoHashes.Keys) {
+        git -C $MoeRailFeatureWorktree ls-files --error-unmatch -- $MoeRailTaskTwoPath *> $null
+        if ($LASTEXITCODE -eq 0) { " M $MoeRailTaskTwoPath" } else { "?? $MoeRailTaskTwoPath" }
+    }
+) | Sort-Object
+$MoeRailExpectedPausedStatus = @(
+    $MoeRailExpectedTaskTwoStatus
+    " M $MoeRailPrototypeAppPath"
+) | Sort-Object
+
+if ($MoeRailApprovedThirdAmendment -notmatch '^[0-9a-f]{40}$') {
+    throw 'Set MOERAIL_APPROVED_THIRD_AMENDMENT to the reviewed third amendment commit.'
+}
+$MoeRailPrimaryBranch = (git -C $MoeRailPrimary branch --show-current).Trim()
+$MoeRailPrimaryHead = (git -C $MoeRailPrimary rev-parse HEAD).Trim()
+$MoeRailPrimaryIndex = @(git -C $MoeRailPrimary diff --cached --name-only)
+$MoeRailPrimaryStatus = @(
+    git -C $MoeRailPrimary status --porcelain=v1 --untracked-files=all | Sort-Object
+)
+if ($LASTEXITCODE -ne 0 -or
+    $MoeRailPrimaryBranch -ne 'Prototyping' -or
+    $MoeRailPrimaryHead -ne $MoeRailStartingPlanCommit -or
+    $MoeRailPrimaryIndex.Count -ne 0 -or
+    @(Compare-Object $MoeRailExpectedPrimaryStatus $MoeRailPrimaryStatus).Count -ne 0) {
+    $MoeRailPrimaryStatus
+    throw 'Primary identity, index, or protected state changed before third amendment resume.'
+}
+foreach ($MoeRailProtectedPath in $MoeRailExpectedProtectedHashes.Keys) {
+    $MoeRailActualHash = (
+        Get-FileHash -LiteralPath (Join-Path $MoeRailPrimary $MoeRailProtectedPath) -Algorithm SHA256
+    ).Hash
+    if ($MoeRailActualHash -ne $MoeRailExpectedProtectedHashes[$MoeRailProtectedPath]) {
+        throw "Protected primary fingerprint changed: $MoeRailProtectedPath"
+    }
+}
+$MoeRailTagCommit = (git -C $MoeRailPrimary rev-list -n 1 prototype-m2).Trim()
+$MoeRailRemoteRows = @(git -C $MoeRailPrimary ls-remote --heads origin refs/heads/Prototyping)
+$MoeRailRemoteCommit = if ($MoeRailRemoteRows.Count -eq 1) {
+    ($MoeRailRemoteRows[0] -split "`t")[0]
+} else { '' }
+$MoeRailCodeParent = (git -C $MoeRailPrimary rev-parse "$MoeRailCodeBase^").Trim()
+$MoeRailVersion = ((& $MoeRailGodotExe --version 2>&1) -join "`n").Trim()
+if ($LASTEXITCODE -ne 0 -or
+    $MoeRailTagCommit -ne $MoeRailMilestoneTwo -or
+    $MoeRailRemoteRows.Count -ne 1 -or
+    $MoeRailRemoteCommit -ne $MoeRailMilestoneTwo -or
+    $MoeRailCodeParent -ne $MoeRailMilestoneTwo -or
+    $MoeRailVersion -ne '4.7.1.stable.official.a13da4feb') {
+    throw 'Base, remote, prototype-m2, or exact Godot build changed.'
+}
+
+$MoeRailThirdAmendmentParent = (
+    git -C $MoeRailPrimary rev-parse "$MoeRailApprovedThirdAmendment^"
+).Trim()
+$MoeRailThirdAmendmentParentTokens = @(
+    (git -C $MoeRailPrimary rev-list --parents -n 1 `
+        $MoeRailApprovedThirdAmendment).Trim() -split '\s+'
+)
+$MoeRailThirdAmendmentFiles = @(
+    git -C $MoeRailPrimary diff-tree --no-commit-id --name-only -r `
+        $MoeRailApprovedThirdAmendment | Sort-Object
+)
+$MoeRailExpectedThirdAmendmentFiles = @(
+    $MoeRailThirdDesignPath,
+    $MoeRailPlanPath,
+    $MoeRailBriefPath
+) | Sort-Object
+if ($LASTEXITCODE -ne 0 -or
+    $MoeRailThirdAmendmentParentTokens.Count -ne 2 -or
+    $MoeRailThirdAmendmentParent -ne $MoeRailSecondAmendmentCommit -or
+    @(Compare-Object $MoeRailExpectedThirdAmendmentFiles $MoeRailThirdAmendmentFiles).Count -ne 0) {
+    $MoeRailThirdAmendmentFiles
+    throw 'Third amendment ancestry or file scope changed.'
+}
+
+$MoeRailFeatureRoot = (git -C $MoeRailFeatureWorktree rev-parse --show-toplevel).Trim()
+$MoeRailFeatureCurrentBranch = (git -C $MoeRailFeatureWorktree branch --show-current).Trim()
+$MoeRailFeatureHead = (git -C $MoeRailFeatureWorktree rev-parse HEAD).Trim()
+$MoeRailFeatureBase = (
+    git -C $MoeRailFeatureWorktree merge-base $MoeRailStartingPlanCommit HEAD
+).Trim()
+$MoeRailFeatureIndex = @(git -C $MoeRailFeatureWorktree diff --cached --name-only)
+$MoeRailFeatureStatus = @(
+    git -C $MoeRailFeatureWorktree status --porcelain=v1 --untracked-files=all | Sort-Object
+)
+$MoeRailPausedSecondParent = (
+    git -C $MoeRailFeatureWorktree rev-parse 'HEAD^2'
+).Trim()
+$MoeRailPausedActualFirstParent = (
+    git -C $MoeRailFeatureWorktree rev-parse 'HEAD^1'
+).Trim()
+if ($LASTEXITCODE -ne 0 -or
+    [IO.Path]::GetFullPath($MoeRailFeatureRoot) -ne [IO.Path]::GetFullPath($MoeRailFeatureWorktree) -or
+    $MoeRailFeatureCurrentBranch -ne $MoeRailFeatureBranch -or
+    $MoeRailFeatureHead -ne $MoeRailPausedFeatureHead -or
+    $MoeRailFeatureBase -ne $MoeRailStartingPlanCommit -or
+    $MoeRailPausedActualFirstParent -ne $MoeRailPausedFirstParent -or
+    $MoeRailPausedSecondParent -ne $MoeRailSecondAmendmentCommit -or
+    $MoeRailFeatureIndex.Count -ne 0 -or
+    @(Compare-Object $MoeRailExpectedPausedStatus $MoeRailFeatureStatus).Count -ne 0) {
+    $MoeRailFeatureStatus
+    throw 'Paused Task 2 identity, ancestry, index, or exact evidence path set changed.'
+}
+foreach ($MoeRailTaskTwoPath in $MoeRailExpectedTaskTwoHashes.Keys) {
+    $MoeRailActualHash = (
+        Get-FileHash -LiteralPath (Join-Path $MoeRailFeatureWorktree $MoeRailTaskTwoPath) -Algorithm SHA256
+    ).Hash
+    if ($MoeRailActualHash -ne $MoeRailExpectedTaskTwoHashes[$MoeRailTaskTwoPath]) {
+        throw "Paused Task 2 file changed: $MoeRailTaskTwoPath"
+    }
+}
+$MoeRailPrototypeNumstat = @(
+    git -C $MoeRailFeatureWorktree diff --numstat HEAD -- $MoeRailPrototypeAppPath
+)
+git -C $MoeRailFeatureWorktree diff --ignore-all-space --quiet HEAD -- $MoeRailPrototypeAppPath
+$MoeRailPrototypeWhitespaceExit = $LASTEXITCODE
+$MoeRailPrototypeHeadBlob = (
+    git -C $MoeRailFeatureWorktree rev-parse "HEAD:$MoeRailPrototypeAppPath"
+).Trim()
+$MoeRailPrototypeRewriteBlob = (
+    git -C $MoeRailFeatureWorktree hash-object $MoeRailPrototypeAppPath
+).Trim()
+$MoeRailPrototypeRewriteHash = (
+    Get-FileHash -LiteralPath (Join-Path $MoeRailFeatureWorktree $MoeRailPrototypeAppPath) -Algorithm SHA256
+).Hash
+if ($MoeRailPrototypeNumstat.Count -ne 1 -or
+    $MoeRailPrototypeNumstat[0] -notmatch '^54\s+54\s+' -or
+    $MoeRailPrototypeWhitespaceExit -ne 0 -or
+    $MoeRailPrototypeHeadBlob -ne $MoeRailExpectedPrototypeHeadBlob -or
+    $MoeRailPrototypeRewriteBlob -ne $MoeRailExpectedPrototypeRewriteBlob -or
+    $MoeRailPrototypeRewriteHash -ne $MoeRailExpectedPrototypeRewriteHash) {
+    $MoeRailPrototypeNumstat
+    throw 'prototype_app.gd is no longer the exact authorized whitespace-only evidence.'
+}
+
+git -C $MoeRailFeatureWorktree restore --source=HEAD --worktree -- $MoeRailPrototypeAppPath
+if ($LASTEXITCODE -ne 0) { throw 'Failed to restore only prototype_app.gd.' }
+$MoeRailRestoredStatus = @(
+    git -C $MoeRailFeatureWorktree status --porcelain=v1 --untracked-files=all | Sort-Object
+)
+$MoeRailRestoredPrototypeHash = (
+    Get-FileHash -LiteralPath (Join-Path $MoeRailFeatureWorktree $MoeRailPrototypeAppPath) -Algorithm SHA256
+).Hash
+if (@(Compare-Object $MoeRailExpectedTaskTwoStatus $MoeRailRestoredStatus).Count -ne 0 -or
+    @(git -C $MoeRailFeatureWorktree diff --cached --name-only).Count -ne 0 -or
+    $MoeRailRestoredPrototypeHash -ne $MoeRailExpectedPrototypeHeadHash) {
+    $MoeRailRestoredStatus
+    throw 'Exact prototype restore changed an unauthorized path or content.'
+}
+foreach ($MoeRailTaskTwoPath in $MoeRailExpectedTaskTwoHashes.Keys) {
+    $MoeRailActualHash = (
+        Get-FileHash -LiteralPath (Join-Path $MoeRailFeatureWorktree $MoeRailTaskTwoPath) -Algorithm SHA256
+    ).Hash
+    if ($MoeRailActualHash -ne $MoeRailExpectedTaskTwoHashes[$MoeRailTaskTwoPath]) {
+        throw "Exact prototype restore changed Task 2 work: $MoeRailTaskTwoPath"
+    }
+}
+
+git -C $MoeRailFeatureWorktree -c merge.autostash=false merge `
+    --no-ff --no-autostash $MoeRailApprovedThirdAmendment `
+    -m 'docs: adopt disposable editor mirror amendment'
+if ($LASTEXITCODE -ne 0) { throw 'Failed to merge the third documentation amendment.' }
+$MoeRailThirdMergeHead = (git -C $MoeRailFeatureWorktree rev-parse HEAD).Trim()
+$MoeRailMergeFirstParent = (git -C $MoeRailFeatureWorktree rev-parse 'HEAD^1').Trim()
+$MoeRailMergeSecondParent = (git -C $MoeRailFeatureWorktree rev-parse 'HEAD^2').Trim()
+$MoeRailMergedDocPaths = @(
+    git -C $MoeRailFeatureWorktree diff --name-only `
+        "$MoeRailMergeFirstParent..$MoeRailThirdMergeHead" | Sort-Object
+)
+$MoeRailPostMergeStatus = @(
+    git -C $MoeRailFeatureWorktree status --porcelain=v1 --untracked-files=all | Sort-Object
+)
+if ($LASTEXITCODE -ne 0 -or
+    $MoeRailMergeFirstParent -ne $MoeRailPausedFeatureHead -or
+    $MoeRailMergeSecondParent -ne $MoeRailApprovedThirdAmendment -or
+    @(Compare-Object $MoeRailExpectedThirdAmendmentFiles $MoeRailMergedDocPaths).Count -ne 0 -or
+    @(Compare-Object $MoeRailExpectedTaskTwoStatus $MoeRailPostMergeStatus).Count -ne 0 -or
+    @(git -C $MoeRailFeatureWorktree diff --cached --name-only).Count -ne 0) {
+    $MoeRailMergedDocPaths
+    $MoeRailPostMergeStatus
+    throw 'Third documentation merge absorbed Task 2 work or has unexpected ancestry.'
+}
+git -C $MoeRailFeatureWorktree diff --quiet HEAD -- $MoeRailPrototypeAppPath
+if ($LASTEXITCODE -ne 0) { throw 'Third documentation merge changed prototype_app.gd.' }
+foreach ($MoeRailTaskTwoPath in $MoeRailExpectedTaskTwoHashes.Keys) {
+    $MoeRailActualHash = (
+        Get-FileHash -LiteralPath (Join-Path $MoeRailFeatureWorktree $MoeRailTaskTwoPath) -Algorithm SHA256
+    ).Hash
+    if ($MoeRailActualHash -ne $MoeRailExpectedTaskTwoHashes[$MoeRailTaskTwoPath]) {
+        throw "Third documentation merge changed Task 2 work: $MoeRailTaskTwoPath"
+    }
+}
+$MoeRailPostFeatureRoot = (
+    git -C $MoeRailFeatureWorktree rev-parse --show-toplevel
+).Trim()
+$MoeRailPostFeatureBranch = (
+    git -C $MoeRailFeatureWorktree branch --show-current
+).Trim()
+$MoeRailPostFeatureBase = (
+    git -C $MoeRailFeatureWorktree merge-base $MoeRailStartingPlanCommit HEAD
+).Trim()
+$MoeRailPostTagCommit = (
+    git -C $MoeRailPrimary rev-list -n 1 prototype-m2
+).Trim()
+$MoeRailPostRemoteRows = @(
+    git -C $MoeRailPrimary ls-remote --heads origin refs/heads/Prototyping
+)
+$MoeRailPostRemoteCommit = if ($MoeRailPostRemoteRows.Count -eq 1) {
+    ($MoeRailPostRemoteRows[0] -split "`t")[0]
+} else { '' }
+$MoeRailPostCodeParent = (
+    git -C $MoeRailPrimary rev-parse "$MoeRailCodeBase^"
+).Trim()
+$MoeRailPostVersion = ((& $MoeRailGodotExe --version 2>&1) -join "`n").Trim()
+if ($LASTEXITCODE -ne 0 -or
+    [IO.Path]::GetFullPath($MoeRailPostFeatureRoot) -ne [IO.Path]::GetFullPath($MoeRailFeatureWorktree) -or
+    $MoeRailPostFeatureBranch -ne $MoeRailFeatureBranch -or
+    $MoeRailPostFeatureBase -ne $MoeRailStartingPlanCommit -or
+    $MoeRailPostTagCommit -ne $MoeRailMilestoneTwo -or
+    $MoeRailPostRemoteRows.Count -ne 1 -or
+    $MoeRailPostRemoteCommit -ne $MoeRailMilestoneTwo -or
+    $MoeRailPostCodeParent -ne $MoeRailMilestoneTwo -or
+    $MoeRailPostVersion -ne '4.7.1.stable.official.a13da4feb') {
+    throw 'Feature root, branch, base, remote, prototype-m2, code parent, or Godot build changed during third amendment resume.'
+}
+$MoeRailFinalPrimaryStatus = @(
+    git -C $MoeRailPrimary status --porcelain=v1 --untracked-files=all | Sort-Object
+)
+if ((git -C $MoeRailPrimary branch --show-current).Trim() -ne 'Prototyping' -or
+    (git -C $MoeRailPrimary rev-parse HEAD).Trim() -ne $MoeRailStartingPlanCommit -or
+    @(git -C $MoeRailPrimary diff --cached --name-only).Count -ne 0 -or
+    @(Compare-Object $MoeRailExpectedPrimaryStatus $MoeRailFinalPrimaryStatus).Count -ne 0) {
+    $MoeRailFinalPrimaryStatus
+    throw 'Primary state changed during third amendment resume.'
+}
+foreach ($MoeRailProtectedPath in $MoeRailExpectedProtectedHashes.Keys) {
+    $MoeRailActualHash = (
+        Get-FileHash -LiteralPath (Join-Path $MoeRailPrimary $MoeRailProtectedPath) -Algorithm SHA256
+    ).Hash
+    if ($MoeRailActualHash -ne $MoeRailExpectedProtectedHashes[$MoeRailProtectedPath]) {
+        throw "Protected primary fingerprint changed during third amendment resume: $MoeRailProtectedPath"
+    }
+}
+"THIRD_AMENDMENT_MERGE_SHA=$MoeRailThirdMergeHead"
+~~~
+
+Expected: the exact authorized whitespace-only prototype rewrite is restored from feature `HEAD`; the reviewed three-document third amendment enters one focused merge; all 20 paused Task 2 files remain byte-identical and unstaged; the feature index stays empty; and the primary protected state remains unchanged. Record `THIRD_AMENDMENT_MERGE_SHA` in the ignored English task ledger before regenerating the Task 2 brief.
+
+## Approved Sixth Amendment Post-Commit Adoption Gate
+
+Run the independently reviewed Task 3 Step 4 final post-commit gate with `FEATURE_HEAD=7bfeb914141aaefdb2fc05adcaa0b876ccc69267` and `STATE_MODE=POSTCOMMIT_FINAL` before the documentation merge; do not merge documentation unless it passes.
+
+After the one-file sixth-amendment documentation commit passes a separate Sol specification review followed by a separate Sol quality review, set `MOERAIL_APPROVED_SIXTH_AMENDMENT` to its exact 40-character SHA and run the adoption gate. It rechecks the canonical base, remote, protected state, Godot build, and feature ancestry, scope, and hashes; merges only the reviewed plan with autostash disabled; rechecks all invariants; and authorizes Task 4 only after success. It does not authorize Gate A, `Prototyping` integration, tag creation, push, PR, or cleanup.
+
+~~~powershell
+$ErrorActionPreference = 'Stop'
+
+$MoeRailPrimary = 'D:\godot\MoeRailWay'
+$MoeRailFeatureWorktree = 'D:\godot\MoeRailWay-worktrees\proto-02-track-train'
+$MoeRailFeatureBranch = 'proto/02-track-train'
+$MoeRailStartingPlanCommit = '4c0b9ac9a1335c8ffa8cb24f4b7eaf9434dc30c1'
+$MoeRailFixedFeatureHead = '7bfeb914141aaefdb2fc05adcaa0b876ccc69267'
+$MoeRailFixedFeatureParent = 'da65a015f4590e454876b0e93758a0c4782a254c'
+$MoeRailRequiredAmendmentParent = '1500db09f1797d3a5f461b655cfdebc61176130c'
+$MoeRailMilestoneTwo = 'c93e1834da8fb38792048914120fe50f9f500cb4'
+$MoeRailCodeBase = '4e9fc7e39d3c07c51cf5b823fc0963fee01f0f97'
+$MoeRailRemoteUrl = 'https://github.com/2ji1/Project_MoeRailWay.git'
+$MoeRailExpectedGitCommonDir = 'D:\godot\MoeRailWay\.git'
+$MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
+$MoeRailExpectedVersion = '4.7.1.stable.official.a13da4feb'
+$MoeRailPlanPath = 'docs/superpowers/plans/2026-08-16-prototype-track-train.md'
+$MoeRailApprovedSixthAmendment = $env:MOERAIL_APPROVED_SIXTH_AMENDMENT
+if ($MoeRailApprovedSixthAmendment -notmatch '^[0-9a-f]{40}$') {
+    throw 'Set MOERAIL_APPROVED_SIXTH_AMENDMENT to the reviewed sixth-amendment commit.'
+}
+
+[string[]] $MoeRailExpectedPrimaryStatus = [string[]]@(
+    ' M godot-project-moe-rail-way/tests/smoke/test_project_boot.gd'
+    ' M godot-project-moe-rail-way/tests/support/prototype_test.gd'
+    '?? docs/superpowers/plans/2026-08-15-godot-mcp-project-setup.md'
+)
+[Array]::Sort($MoeRailExpectedPrimaryStatus, [StringComparer]::Ordinal)
+
+$MoeRailExpectedProtectedHashes = [ordered]@{
+    'godot-project-moe-rail-way/tests/smoke/test_project_boot.gd' = '7871537D0BE68518D59CA0F6EDA8E8295662F03DF3F723591163946D54E51324'
+    'godot-project-moe-rail-way/tests/support/prototype_test.gd' = 'F1046A3C22D979C60473CE64B639937EB1C35E61D76568AB53D2BB08F521985B'
+    'docs/superpowers/plans/2026-08-15-godot-mcp-project-setup.md' = '826EBE2D77A76C077D3D7F4ABE8BC89329CAE39BC302284559D2433A8F700681'
+}
+
+$MoeRailExpectedTask3Hashes = [ordered]@{
+    'godot-project-moe-rail-way/src/domain/track/track_input_frame.gd' = 'F02C193E583105F98782F7917FA20E9F0D02CA9ECA568CF3EC0191DF0B591A43'
+    'godot-project-moe-rail-way/src/domain/track/track_input_frame.gd.uid' = 'E728E2E63AB09B7770163F9A30CBBA5BEBEE63109E144186776E1934387D4882'
+    'godot-project-moe-rail-way/src/domain/track/track_system.gd' = '7E37B8588FF7767999949CC87C3882314E0D5400270C9B7B185CB7E1973AD919'
+    'godot-project-moe-rail-way/src/domain/track/track_system.gd.uid' = '026773E4DBF2691E41D0C450EBBD554CB076F06C0E4B5B0CB9564C39210EB768'
+    'godot-project-moe-rail-way/tests/run_all.gd' = '017EA13E7771288CB5049BEED310EF25AEDDD092019FDC5123EF04294AA580DC'
+    'godot-project-moe-rail-way/tests/unit/test_track_system_reservation.gd' = '5F09BFB960C2621F4443A3C52B166D7C916C7464CF06EEE9C566C6FE731D26A2'
+    'godot-project-moe-rail-way/tests/unit/test_track_system_reservation.gd.uid' = '35CC862A7B6E2211D6F06E713399F36D0B0A2B111D3E4A518AE5653C0E027BB5'
+}
+[string[]] $MoeRailTask3Scope = [string[]]@($MoeRailExpectedTask3Hashes.Keys)
+[Array]::Sort($MoeRailTask3Scope, [StringComparer]::Ordinal)
+
+function Invoke-MoeRailGit {
+    param(
+        [Parameter(Mandatory = $true)][string] $Worktree,
+        [Parameter(Mandatory = $true)][string[]] $Arguments,
+        [Parameter(Mandatory = $true)][string] $Label
+    )
+    [string[]] $Rows = [string[]]@(& git -C $Worktree @Arguments)
+    [int] $ExitCode = $LASTEXITCODE
+    if ($ExitCode -ne 0) {
+        throw "[$Label] git exited with code $ExitCode."
+    }
+    return ,$Rows
+}
+
+function Get-MoeRailSingleGitRow {
+    param(
+        [Parameter(Mandatory = $true)][string] $Worktree,
+        [Parameter(Mandatory = $true)][string[]] $Arguments,
+        [Parameter(Mandatory = $true)][string] $Label
+    )
+    [string[]] $Rows = Invoke-MoeRailGit -Worktree $Worktree -Arguments $Arguments -Label $Label
+    if ($Rows.Count -ne 1) {
+        throw "[$Label] expected exactly one row, got $($Rows.Count)."
+    }
+    $Rows[0].Trim()
+}
+
+function Assert-MoeRailOrdinalRows {
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]] $Actual,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]] $Expected,
+        [Parameter(Mandatory = $true)][string] $Label
+    )
+    [string[]] $ActualRows = [string[]]@($Actual)
+    [string[]] $ExpectedRows = [string[]]@($Expected)
+    [Array]::Sort($ActualRows, [StringComparer]::Ordinal)
+    [Array]::Sort($ExpectedRows, [StringComparer]::Ordinal)
+    if ($ActualRows.Count -ne $ExpectedRows.Count -or
+        -not [System.Linq.Enumerable]::SequenceEqual($ActualRows, $ExpectedRows, [StringComparer]::Ordinal)) {
+        throw "[$Label] rows differ."
+    }
+}
+
+function Assert-MoeRailOrdinaryPathChain {
+    param(
+        [Parameter(Mandatory = $true)][string] $Path,
+        [Parameter(Mandatory = $true)][string] $Boundary
+    )
+    $MoeRailFullPath = [IO.Path]::GetFullPath($Path).TrimEnd('\')
+    $MoeRailFullBoundary = [IO.Path]::GetFullPath($Boundary).TrimEnd('\')
+    $MoeRailBoundaryPrefix = $MoeRailFullBoundary + '\'
+    $MoeRailConfined = (
+        [string]::Equals(
+            $MoeRailFullPath,
+            $MoeRailFullBoundary,
+            [StringComparison]::OrdinalIgnoreCase
+        ) -or
+        $MoeRailFullPath.StartsWith(
+            $MoeRailBoundaryPrefix,
+            [StringComparison]::OrdinalIgnoreCase
+        )
+    )
+    if (-not $MoeRailConfined) {
+        throw "Path '$MoeRailFullPath' is not confined within boundary '$MoeRailFullBoundary'."
+    }
+    $MoeRailCurrent = $MoeRailFullPath
+    while ($true) {
+        if (-not (Test-Path -LiteralPath $MoeRailCurrent)) {
+            throw "Path '$MoeRailCurrent' does not exist."
+        }
+        $MoeRailItem = Get-Item -LiteralPath $MoeRailCurrent -Force
+        if (($MoeRailItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Path '$MoeRailCurrent' is a reparse point."
+        }
+        if ([string]::Equals(
+            $MoeRailCurrent,
+            $MoeRailFullBoundary,
+            [StringComparison]::OrdinalIgnoreCase
+        )) {
+            break
+        }
+        $MoeRailParent = [IO.Path]::GetFullPath(
+            ([IO.Path]::GetDirectoryName($MoeRailCurrent))
+        ).TrimEnd('\')
+        if ([string]::Equals(
+            $MoeRailParent,
+            $MoeRailCurrent,
+            [StringComparison]::OrdinalIgnoreCase
+        )) {
+            throw "Path-chain ascent made no progress at '$MoeRailCurrent'."
+        }
+        if (-not (Test-Path -LiteralPath $MoeRailParent -PathType Container)) {
+            throw "Parent '$MoeRailParent' is not a directory."
+        }
+        $MoeRailCurrent = $MoeRailParent
+    }
+    $MoeRailFullPath
+}
+
+function Assert-MoeRailHashMap {
+    param(
+        [Parameter(Mandatory = $true)][string] $Root,
+        [Parameter(Mandatory = $true)][System.Collections.IDictionary] $Expected,
+        [Parameter(Mandatory = $true)][string] $Label
+    )
+    $MoeRailFullRoot = [IO.Path]::GetFullPath($Root).TrimEnd('\')
+    if (-not (Test-Path -LiteralPath $MoeRailFullRoot -PathType Container)) {
+        throw "[$Label] root '$MoeRailFullRoot' is not a directory."
+    }
+    $null = Assert-MoeRailOrdinaryPathChain `
+        -Path $MoeRailFullRoot `
+        -Boundary $MoeRailFullRoot
+    foreach ($Path in $Expected.Keys) {
+        $MoeRailCandidate = [IO.Path]::GetFullPath(
+            (Join-Path $MoeRailFullRoot $Path)
+        )
+        $MoeRailCandidate = Assert-MoeRailOrdinaryPathChain `
+            -Path $MoeRailCandidate `
+            -Boundary $MoeRailFullRoot
+        if (-not (Test-Path -LiteralPath $MoeRailCandidate -PathType Leaf)) {
+            throw "[$Label] '$MoeRailCandidate' is not a file."
+        }
+        $MoeRailItem = Get-Item -LiteralPath $MoeRailCandidate -Force
+        if (-not [string]::Equals(
+            $MoeRailItem.PSProvider.Name,
+            'FileSystem',
+            [StringComparison]::Ordinal
+        )) {
+            throw "[$Label] '$MoeRailCandidate' is not on the FileSystem provider."
+        }
+        if ($MoeRailItem.PSIsContainer) {
+            throw "[$Label] '$MoeRailCandidate' is a container."
+        }
+        $MoeRailDisallowedAttributes = (
+            [IO.FileAttributes]::ReparsePoint -bor [IO.FileAttributes]::Device
+        )
+        if (($MoeRailItem.Attributes -band $MoeRailDisallowedAttributes) -ne 0) {
+            throw "[$Label] '$MoeRailCandidate' has disallowed attributes."
+        }
+        $MoeRailActualHash = (
+            Get-FileHash -LiteralPath $MoeRailCandidate -Algorithm SHA256
+        ).Hash
+        $MoeRailExpectedHash = $Expected[$Path]
+        if (-not [string]::Equals(
+            $MoeRailActualHash,
+            $MoeRailExpectedHash,
+            [StringComparison]::Ordinal
+        )) {
+            throw "[$Label] hash mismatch for '$Path': expected '$MoeRailExpectedHash', actual '$MoeRailActualHash'."
+        }
+    }
+}
+
+$MoeRailApprovedCommit = Get-MoeRailSingleGitRow -Worktree $MoeRailPrimary -Arguments @('rev-parse', "$MoeRailApprovedSixthAmendment^{commit}") -Label 'approved sixth amendment commit'
+if (-not [string]::Equals($MoeRailApprovedCommit, $MoeRailApprovedSixthAmendment, [StringComparison]::Ordinal)) {
+    throw 'Approved sixth-amendment commit resolution changed.'
+}
+$MoeRailApprovedParentRow = Get-MoeRailSingleGitRow -Worktree $MoeRailPrimary -Arguments @('rev-list', '--parents', '-n', '1', $MoeRailApprovedSixthAmendment) -Label 'approved sixth amendment parent'
+[string[]] $MoeRailApprovedParentTokens = [string[]]@($MoeRailApprovedParentRow -split '\s+')
+if ($MoeRailApprovedParentTokens.Length -ne 2 -or
+    -not [string]::Equals($MoeRailApprovedParentTokens[0], $MoeRailApprovedSixthAmendment, [StringComparison]::Ordinal) -or
+    -not [string]::Equals($MoeRailApprovedParentTokens[1], $MoeRailRequiredAmendmentParent, [StringComparison]::Ordinal)) {
+    throw 'Approved sixth-amendment ancestry changed.'
+}
+[string[]] $MoeRailApprovedFiles = Invoke-MoeRailGit -Worktree $MoeRailPrimary -Arguments @('diff-tree', '--no-commit-id', '--name-only', '-r', $MoeRailApprovedSixthAmendment) -Label 'approved sixth amendment scope'
+Assert-MoeRailOrdinalRows -Actual $MoeRailApprovedFiles -Expected ([string[]]@($MoeRailPlanPath)) -Label 'approved sixth amendment scope'
+
+$MoeRailPrimaryRoot = Get-MoeRailSingleGitRow -Worktree $MoeRailPrimary -Arguments @('rev-parse', '--show-toplevel') -Label 'primary root'
+if (-not [IO.Path]::GetFullPath($MoeRailPrimaryRoot).Equals([IO.Path]::GetFullPath($MoeRailPrimary), [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Primary worktree root changed.'
+}
+$MoeRailPrimaryBranch = Get-MoeRailSingleGitRow -Worktree $MoeRailPrimary -Arguments @('branch', '--show-current') -Label 'primary branch'
+$MoeRailPrimaryHead = Get-MoeRailSingleGitRow -Worktree $MoeRailPrimary -Arguments @('rev-parse', 'HEAD') -Label 'primary head'
+$MoeRailPrimaryCommonDir = Get-MoeRailSingleGitRow -Worktree $MoeRailPrimary -Arguments @('rev-parse', '--path-format=absolute', '--git-common-dir') -Label 'primary common dir'
+$MoeRailPrimaryRemote = Get-MoeRailSingleGitRow -Worktree $MoeRailPrimary -Arguments @('remote', 'get-url', 'origin') -Label 'primary remote'
+if (-not [string]::Equals($MoeRailPrimaryBranch, 'Prototyping', [StringComparison]::Ordinal) -or
+    -not [string]::Equals($MoeRailPrimaryHead, $MoeRailStartingPlanCommit, [StringComparison]::Ordinal) -or
+    -not [IO.Path]::GetFullPath($MoeRailPrimaryCommonDir).Equals([IO.Path]::GetFullPath($MoeRailExpectedGitCommonDir), [StringComparison]::OrdinalIgnoreCase) -or
+    -not [string]::Equals($MoeRailPrimaryRemote, $MoeRailRemoteUrl, [StringComparison]::Ordinal)) {
+    throw 'Primary identity changed before sixth-amendment adoption.'
+}
+[string[]] $MoeRailPrimaryIndex = Invoke-MoeRailGit -Worktree $MoeRailPrimary -Arguments @('diff', '--cached', '--name-only') -Label 'primary index'
+Assert-MoeRailOrdinalRows -Actual $MoeRailPrimaryIndex -Expected ([string[]]@()) -Label 'primary index'
+[string[]] $MoeRailPrimaryStatus = Invoke-MoeRailGit -Worktree $MoeRailPrimary -Arguments @('status', '--porcelain=v1', '--untracked-files=all') -Label 'primary status'
+Assert-MoeRailOrdinalRows -Actual $MoeRailPrimaryStatus -Expected $MoeRailExpectedPrimaryStatus -Label 'primary status'
+Assert-MoeRailHashMap -Root $MoeRailPrimary -Expected $MoeRailExpectedProtectedHashes -Label 'primary protected files'
+
+$MoeRailPrototypeM2 = Get-MoeRailSingleGitRow -Worktree $MoeRailPrimary -Arguments @('rev-list', '-n', '1', 'prototype-m2') -Label 'prototype-m2'
+[string[]] $MoeRailRemoteRows = Invoke-MoeRailGit -Worktree $MoeRailPrimary -Arguments @('ls-remote', '--heads', 'origin', 'refs/heads/Prototyping') -Label 'remote Prototyping'
+$MoeRailCodeParent = Get-MoeRailSingleGitRow -Worktree $MoeRailPrimary -Arguments @('rev-parse', "$MoeRailCodeBase^") -Label 'code parent'
+if ($MoeRailRemoteRows.Count -ne 1) {
+    throw 'Remote Prototyping must have exactly one row.'
+}
+[string[]] $MoeRailRemoteTokens = [string[]]@($MoeRailRemoteRows[0] -split '\t')
+if ($MoeRailRemoteTokens.Length -ne 2 -or
+    -not [string]::Equals($MoeRailPrototypeM2, $MoeRailMilestoneTwo, [StringComparison]::Ordinal) -or
+    -not [string]::Equals($MoeRailRemoteTokens[0], $MoeRailMilestoneTwo, [StringComparison]::Ordinal) -or
+    -not [string]::Equals($MoeRailRemoteTokens[1], 'refs/heads/Prototyping', [StringComparison]::Ordinal) -or
+    -not [string]::Equals($MoeRailCodeParent, $MoeRailMilestoneTwo, [StringComparison]::Ordinal)) {
+    throw 'Canonical milestone, remote, or code parent changed.'
+}
+[string[]] $MoeRailVersionRows = [string[]]@(& $MoeRailGodotExe --version 2>&1)
+[int] $MoeRailVersionExit = $LASTEXITCODE
+if ($MoeRailVersionExit -ne 0 -or $MoeRailVersionRows.Count -ne 1 -or
+    -not [string]::Equals($MoeRailVersionRows[0].Trim(), $MoeRailExpectedVersion, [StringComparison]::Ordinal)) {
+    throw 'Exact Godot version changed.'
+}
+
+$MoeRailFeatureRoot = Get-MoeRailSingleGitRow -Worktree $MoeRailFeatureWorktree -Arguments @('rev-parse', '--show-toplevel') -Label 'feature root'
+if (-not [IO.Path]::GetFullPath($MoeRailFeatureRoot).Equals([IO.Path]::GetFullPath($MoeRailFeatureWorktree), [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Feature worktree root changed.'
+}
+$MoeRailFeatureCurrentBranch = Get-MoeRailSingleGitRow -Worktree $MoeRailFeatureWorktree -Arguments @('branch', '--show-current') -Label 'feature branch'
+$MoeRailFeatureCurrentHead = Get-MoeRailSingleGitRow -Worktree $MoeRailFeatureWorktree -Arguments @('rev-parse', 'HEAD') -Label 'feature head'
+$MoeRailFeatureCommonDir = Get-MoeRailSingleGitRow -Worktree $MoeRailFeatureWorktree -Arguments @('rev-parse', '--path-format=absolute', '--git-common-dir') -Label 'feature common dir'
+$MoeRailFeatureRemote = Get-MoeRailSingleGitRow -Worktree $MoeRailFeatureWorktree -Arguments @('remote', 'get-url', 'origin') -Label 'feature remote'
+$MoeRailFeatureBase = Get-MoeRailSingleGitRow -Worktree $MoeRailFeatureWorktree -Arguments @('merge-base', $MoeRailFeatureBranch, 'Prototyping') -Label 'feature merge base'
+if (-not [string]::Equals($MoeRailFeatureCurrentBranch, $MoeRailFeatureBranch, [StringComparison]::Ordinal) -or
+    -not [string]::Equals($MoeRailFeatureCurrentHead, $MoeRailFixedFeatureHead, [StringComparison]::Ordinal) -or
+    -not [IO.Path]::GetFullPath($MoeRailFeatureCommonDir).Equals([IO.Path]::GetFullPath($MoeRailExpectedGitCommonDir), [StringComparison]::OrdinalIgnoreCase) -or
+    -not [string]::Equals($MoeRailFeatureRemote, $MoeRailRemoteUrl, [StringComparison]::Ordinal) -or
+    -not [string]::Equals($MoeRailFeatureBase, $MoeRailStartingPlanCommit, [StringComparison]::Ordinal)) {
+    throw 'Feature identity changed before sixth-amendment adoption.'
+}
+[string[]] $MoeRailFeatureIndex = Invoke-MoeRailGit -Worktree $MoeRailFeatureWorktree -Arguments @('diff', '--cached', '--name-only') -Label 'feature index'
+[string[]] $MoeRailFeatureStatus = Invoke-MoeRailGit -Worktree $MoeRailFeatureWorktree -Arguments @('status', '--porcelain=v1', '--untracked-files=all') -Label 'feature status'
+Assert-MoeRailOrdinalRows -Actual $MoeRailFeatureIndex -Expected ([string[]]@()) -Label 'feature index'
+Assert-MoeRailOrdinalRows -Actual $MoeRailFeatureStatus -Expected ([string[]]@()) -Label 'feature status'
+$MoeRailFeatureParentRow = Get-MoeRailSingleGitRow -Worktree $MoeRailFeatureWorktree -Arguments @('rev-list', '--parents', '-n', '1', 'HEAD') -Label 'feature parent'
+[string[]] $MoeRailFeatureParentTokens = [string[]]@($MoeRailFeatureParentRow -split '\s+')
+if ($MoeRailFeatureParentTokens.Length -ne 2 -or
+    -not [string]::Equals($MoeRailFeatureParentTokens[0], $MoeRailFixedFeatureHead, [StringComparison]::Ordinal) -or
+    -not [string]::Equals($MoeRailFeatureParentTokens[1], $MoeRailFixedFeatureParent, [StringComparison]::Ordinal)) {
+    throw 'Feature parent changed before sixth-amendment adoption.'
+}
+[string[]] $MoeRailFeatureCommitFiles = Invoke-MoeRailGit -Worktree $MoeRailFeatureWorktree -Arguments @('diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD') -Label 'feature Task 3 scope'
+Assert-MoeRailOrdinalRows -Actual $MoeRailFeatureCommitFiles -Expected $MoeRailTask3Scope -Label 'feature Task 3 scope'
+Assert-MoeRailHashMap -Root $MoeRailFeatureWorktree -Expected $MoeRailExpectedTask3Hashes -Label 'feature Task 3 files'
+
+[string[]] $MoeRailMergeOutput = Invoke-MoeRailGit -Worktree $MoeRailFeatureWorktree -Arguments @('-c', 'merge.autostash=false', 'merge', '--no-ff', '--no-edit', $MoeRailApprovedSixthAmendment) -Label 'sixth amendment merge'
+$MoeRailMergeOutput
+
+$MoeRailNewHead = Get-MoeRailSingleGitRow -Worktree $MoeRailFeatureWorktree -Arguments @('rev-parse', 'HEAD') -Label 'post-merge head'
+$MoeRailMergeParentRow = Get-MoeRailSingleGitRow -Worktree $MoeRailFeatureWorktree -Arguments @('rev-list', '--parents', '-n', '1', $MoeRailNewHead) -Label 'post-merge parents'
+[string[]] $MoeRailMergeParentTokens = [string[]]@($MoeRailMergeParentRow -split '\s+')
+if ($MoeRailMergeParentTokens.Length -ne 3 -or
+    -not [string]::Equals($MoeRailMergeParentTokens[0], $MoeRailNewHead, [StringComparison]::Ordinal) -or
+    -not [string]::Equals($MoeRailMergeParentTokens[1], $MoeRailFixedFeatureHead, [StringComparison]::Ordinal) -or
+    -not [string]::Equals($MoeRailMergeParentTokens[2], $MoeRailApprovedSixthAmendment, [StringComparison]::Ordinal)) {
+    throw 'Sixth-amendment merge ancestry is invalid.'
+}
+[string[]] $MoeRailMergeFiles = Invoke-MoeRailGit -Worktree $MoeRailFeatureWorktree -Arguments @('diff', '--name-only', "$MoeRailFixedFeatureHead..$MoeRailNewHead") -Label 'sixth amendment merge scope'
+Assert-MoeRailOrdinalRows -Actual $MoeRailMergeFiles -Expected ([string[]]@($MoeRailPlanPath)) -Label 'sixth amendment merge scope'
+
+$MoeRailPostFeatureRoot = Get-MoeRailSingleGitRow -Worktree $MoeRailFeatureWorktree -Arguments @('rev-parse', '--show-toplevel') -Label 'post-merge feature root'
+$MoeRailPostFeatureBranch = Get-MoeRailSingleGitRow -Worktree $MoeRailFeatureWorktree -Arguments @('branch', '--show-current') -Label 'post-merge feature branch'
+$MoeRailPostFeatureCommonDir = Get-MoeRailSingleGitRow -Worktree $MoeRailFeatureWorktree -Arguments @('rev-parse', '--path-format=absolute', '--git-common-dir') -Label 'post-merge feature common dir'
+$MoeRailPostFeatureRemote = Get-MoeRailSingleGitRow -Worktree $MoeRailFeatureWorktree -Arguments @('remote', 'get-url', 'origin') -Label 'post-merge feature remote'
+$MoeRailPostFeatureBase = Get-MoeRailSingleGitRow -Worktree $MoeRailFeatureWorktree -Arguments @('merge-base', $MoeRailFeatureBranch, 'Prototyping') -Label 'post-merge feature base'
+if (-not [IO.Path]::GetFullPath($MoeRailPostFeatureRoot).Equals([IO.Path]::GetFullPath($MoeRailFeatureWorktree), [StringComparison]::OrdinalIgnoreCase) -or
+    -not [string]::Equals($MoeRailPostFeatureBranch, $MoeRailFeatureBranch, [StringComparison]::Ordinal) -or
+    -not [IO.Path]::GetFullPath($MoeRailPostFeatureCommonDir).Equals([IO.Path]::GetFullPath($MoeRailExpectedGitCommonDir), [StringComparison]::OrdinalIgnoreCase) -or
+    -not [string]::Equals($MoeRailPostFeatureRemote, $MoeRailRemoteUrl, [StringComparison]::Ordinal) -or
+    -not [string]::Equals($MoeRailPostFeatureBase, $MoeRailStartingPlanCommit, [StringComparison]::Ordinal)) {
+    throw 'Feature identity changed during sixth-amendment adoption.'
+}
+[string[]] $MoeRailPostFeatureIndex = Invoke-MoeRailGit -Worktree $MoeRailFeatureWorktree -Arguments @('diff', '--cached', '--name-only') -Label 'post-merge feature index'
+[string[]] $MoeRailPostFeatureStatus = Invoke-MoeRailGit -Worktree $MoeRailFeatureWorktree -Arguments @('status', '--porcelain=v1', '--untracked-files=all') -Label 'post-merge feature status'
+Assert-MoeRailOrdinalRows -Actual $MoeRailPostFeatureIndex -Expected ([string[]]@()) -Label 'post-merge feature index'
+Assert-MoeRailOrdinalRows -Actual $MoeRailPostFeatureStatus -Expected ([string[]]@()) -Label 'post-merge feature status'
+Assert-MoeRailHashMap -Root $MoeRailFeatureWorktree -Expected $MoeRailExpectedTask3Hashes -Label 'post-merge feature Task 3 files'
+
+$MoeRailPostPrimaryRoot = Get-MoeRailSingleGitRow -Worktree $MoeRailPrimary -Arguments @('rev-parse', '--show-toplevel') -Label 'post-merge primary root'
+$MoeRailPostPrimaryBranch = Get-MoeRailSingleGitRow -Worktree $MoeRailPrimary -Arguments @('branch', '--show-current') -Label 'post-merge primary branch'
+$MoeRailPostPrimaryHead = Get-MoeRailSingleGitRow -Worktree $MoeRailPrimary -Arguments @('rev-parse', 'HEAD') -Label 'post-merge primary head'
+$MoeRailPostPrimaryCommonDir = Get-MoeRailSingleGitRow -Worktree $MoeRailPrimary -Arguments @('rev-parse', '--path-format=absolute', '--git-common-dir') -Label 'post-merge primary common dir'
+$MoeRailPostPrimaryRemote = Get-MoeRailSingleGitRow -Worktree $MoeRailPrimary -Arguments @('remote', 'get-url', 'origin') -Label 'post-merge primary remote'
+if (-not [IO.Path]::GetFullPath($MoeRailPostPrimaryRoot).Equals([IO.Path]::GetFullPath($MoeRailPrimary), [StringComparison]::OrdinalIgnoreCase) -or
+    -not [string]::Equals($MoeRailPostPrimaryBranch, 'Prototyping', [StringComparison]::Ordinal) -or
+    -not [string]::Equals($MoeRailPostPrimaryHead, $MoeRailStartingPlanCommit, [StringComparison]::Ordinal) -or
+    -not [IO.Path]::GetFullPath($MoeRailPostPrimaryCommonDir).Equals([IO.Path]::GetFullPath($MoeRailExpectedGitCommonDir), [StringComparison]::OrdinalIgnoreCase) -or
+    -not [string]::Equals($MoeRailPostPrimaryRemote, $MoeRailRemoteUrl, [StringComparison]::Ordinal)) {
+    throw 'Primary identity changed during sixth-amendment adoption.'
+}
+[string[]] $MoeRailPostPrimaryIndex = Invoke-MoeRailGit -Worktree $MoeRailPrimary -Arguments @('diff', '--cached', '--name-only') -Label 'post-merge primary index'
+[string[]] $MoeRailPostPrimaryStatus = Invoke-MoeRailGit -Worktree $MoeRailPrimary -Arguments @('status', '--porcelain=v1', '--untracked-files=all') -Label 'post-merge primary status'
+Assert-MoeRailOrdinalRows -Actual $MoeRailPostPrimaryIndex -Expected ([string[]]@()) -Label 'post-merge primary index'
+Assert-MoeRailOrdinalRows -Actual $MoeRailPostPrimaryStatus -Expected $MoeRailExpectedPrimaryStatus -Label 'post-merge primary status'
+Assert-MoeRailHashMap -Root $MoeRailPrimary -Expected $MoeRailExpectedProtectedHashes -Label 'post-merge primary protected files'
+
+$MoeRailFinalFeatureHead = Get-MoeRailSingleGitRow -Worktree $MoeRailFeatureWorktree -Arguments @('rev-parse', 'HEAD') -Label 'final feature head'
+$MoeRailFinalPrimaryHead = Get-MoeRailSingleGitRow -Worktree $MoeRailPrimary -Arguments @('rev-parse', 'HEAD') -Label 'final primary head'
+if (-not [string]::Equals($MoeRailFinalFeatureHead, $MoeRailNewHead, [StringComparison]::Ordinal)) {
+    throw "Final feature head mismatch: expected $MoeRailNewHead, got $MoeRailFinalFeatureHead."
+}
+if (-not [string]::Equals($MoeRailFinalPrimaryHead, $MoeRailStartingPlanCommit, [StringComparison]::Ordinal)) {
+    throw "Final primary head mismatch: expected $MoeRailStartingPlanCommit, got $MoeRailFinalPrimaryHead."
+}
+
+Write-Host "SIXTH_AMENDMENT_MERGE_SHA=$MoeRailNewHead"
+~~~
+
+Expected: The reviewed one-file sixth-amendment documentation commit enters feature history through one focused merge whose first parent is final reviewed Task 3 commit `7bfeb914141aaefdb2fc05adcaa0b876ccc69267` and whose second parent is the reviewed documentation commit; only the canonical plan differs across the merge, the seven Task 3 files remain byte-identical, the feature branch is clean, the primary branch remains protected and unchanged, and the final head equalities are rechecked. Record `SIXTH_AMENDMENT_MERGE_SHA` in the ignored English ledger; Task 4 is then authorized to begin, but Gate A, integration, tag creation, push, PR, and cleanup remain unauthorized.
 
 ## Domain and Data Contracts
 
@@ -681,8 +1864,9 @@ The old `try_viewport_to_field` remains pixel-local for prototype-m2 compatibili
 - `godot-project-moe-rail-way/tests/unit/test_track_field_view_input.gd` and `.gd.uid`
 - `godot-project-moe-rail-way/tests/unit/test_track_train_session_controller.gd` and `.gd.uid`
 - `godot-project-moe-rail-way/tests/smoke/test_track_train_app_composition.gd` and `.gd.uid`
+- `godot-project-moe-rail-way/addons/moerail_test_editor_gate/plugin.cfg`
+- `godot-project-moe-rail-way/addons/moerail_test_editor_gate/logical_track_field_editor_gate.gd` and `.gd.uid`
 - `godot-project-moe-rail-way/tests/integration/run_logical_track_field_integration.gd` and `.gd.uid`
-- `godot-project-moe-rail-way/tests/integration/run_logical_track_field_editor_integration.gd` and `.gd.uid`
 - `godot-project-moe-rail-way/tests/integration/run_track_train_input_integration.gd` and `.gd.uid`
 - `godot-project-moe-rail-way/tests/integration/run_track_train_app_integration.gd` and `.gd.uid`
 - `godot-project-moe-rail-way/tests/fixtures/short_session_values.tres`
@@ -691,6 +1875,15 @@ The old `try_viewport_to_field` remains pixel-local for prototype-m2 compatibili
 - `godot-project-moe-rail-way/tests/integration/nondefault_track_train_app.tscn`
 - `godot-project-moe-rail-way/tests/integration/invalid_track_train_app.tscn`
 - `godot-project-moe-rail-way/tests/manual/track_train_windows.md`
+
+### Reviewed Resume-Only Documentation History
+
+- Create `docs/superpowers/specs/2026-08-17-prototype-track-train-editor-gate-amendment-design.md` through reviewed commit `36730aa6bc6f05d7e01b96e79aff37ac73d0d11a`.
+- Modify `docs/superpowers/plans/2026-08-16-prototype-track-train.md` and `docs/briefings/ko/2026-08-16-prototype-track-train-plan-briefing.md` through first amendment commit `9047301da36c18b94e6e5be24d8dfd7423966828`.
+- Create `docs/superpowers/specs/2026-08-21-prototype-track-train-editor-shutdown-amendment-design.md` and modify the English plan plus Korean briefing through reviewed commit `aaca77325acb3ecd722894f133c5319152554eb6`.
+- Create `docs/superpowers/specs/2026-08-22-prototype-track-train-disposable-editor-mirror-amendment-design.md` and modify the English plan plus Korean briefing through `MOERAIL_APPROVED_THIRD_AMENDMENT`.
+
+These documentation paths enter the feature history only through their approved documentation merge gates. They are never staged or committed with a Task 1-9 implementation allowlist.
 
 ### Modify
 
@@ -727,6 +1920,8 @@ The old `try_viewport_to_field` remains pixel-local for prototype-m2 compatibili
 
 ### Task 1: Compose and Validate Feature Balance Resources
 
+**Execution status:** Completed and independently reviewed. The focused implementation commit is `6a5fe45a12b3021b90fe9879e65c4b56a26ebe40`; the specification-review correction is `562499e639e6277a796fb6aeb1ac9581a0bb057e`. The required RED, seven-suite GREEN, correction GREEN, specification review, and quality review are recorded. Do not rerun or amend Task 1 while resuming Task 2.
+
 **Files:**
 
 - Create `godot-project-moe-rail-way/src/config/session_balance.gd` and `.gd.uid`
@@ -753,7 +1948,7 @@ The old `try_viewport_to_field` remains pixel-local for prototype-m2 compatibili
 - Consumes: the existing three-argument `SessionStartConfig` construction and protected `PrototypeBalance` compatibility properties.
 - Produces: the five feature Resources, exact field-level validation, a complete copied `SessionStartConfig`, and `PASS: 7 prototype test suite(s)`.
 
-- [ ] **Step 1: Write the failing configuration suite and register it seventh**
+- [x] **Step 1: Write the failing configuration suite and register it seventh**
 
 Create the suite with concrete default, null, range, cross-field, compatibility, and copy-isolation checks:
 
@@ -831,7 +2026,7 @@ func _assert_contains(errors: PackedStringArray, fragment: String, message: Stri
 
 Append its preload to `SUITES` after `test_ui_layout_validator.gd`.
 
-- [ ] **Step 2: Run the suite to verify the configuration RED**
+- [x] **Step 2: Run the suite to verify the configuration RED**
 
 ~~~powershell
 $MoeRailFeatureWorktree = 'D:\godot\MoeRailWay-worktrees\proto-02-track-train'
@@ -852,7 +2047,7 @@ if ($MoeRailExit -eq 0 -or
 
 Expected: nonzero exit with the missing `res://src/config/session_balance.gd` path. A preload parse RED may occur before the runner prints `FAIL:`.
 
-- [ ] **Step 3: Implement the five Resources, composition, validation, and copied values**
+- [x] **Step 3: Implement the five Resources, composition, validation, and copied values**
 
 Use these exact Resource fields:
 
@@ -923,7 +2118,7 @@ func complete_session_start_config(
 
 Serialize each default in its own `.tres`, reference all five from `data/prototype_balance.tres`, and make `short_session_balance.tres` reference `short_session_values.tres` for only the two-second session override while sharing the default train, inventory, construction, and departure Resources.
 
-- [ ] **Step 4: Run the configuration GREEN gate**
+- [x] **Step 4: Run the configuration GREEN gate**
 
 ~~~powershell
 $MoeRailFeatureWorktree = 'D:\godot\MoeRailWay-worktrees\proto-02-track-train'
@@ -943,7 +2138,7 @@ if ($MoeRailExit -ne 0 -or
 }
 ~~~
 
-- [ ] **Step 5: Commit only Task 1 files**
+- [x] **Step 5: Commit only Task 1 files**
 
 ~~~powershell
 $ErrorActionPreference = 'Stop'
@@ -1007,6 +2202,8 @@ if ($LASTEXITCODE -ne 0 -or $MoeRailPostCommitStatus.Count -ne 0) {
 
 ### Task 2: Author the Logical Field and Seeded Departure Candidates
 
+**Execution status:** Task 2 Steps 1 through 5, including replacement Step 2A and disposable-editor-mirror Step 4B, are complete; implementation commit `9cd0dc51bf4ffde260f42a85c3fa01b3d595225f` and focused specification correction `d472814e4b13544b52280d91a80a6cc68ff5bcea` are committed. All required non-editor and isolated editor gates passed. Task 2 has no active WIP or rerun instruction; the historical gate bodies below are retained only as completed evidence and must not be rerun during Task 3 or Task 4 continuation.
+
 **Files:**
 
 - Create `godot-project-moe-rail-way/src/presentation/track/departure_candidate.gd` and `.gd.uid`
@@ -1014,8 +2211,10 @@ if ($LASTEXITCODE -ne 0 -or $MoeRailPostCommitStatus.Count -ne 0) {
 - Create `godot-project-moe-rail-way/src/presentation/track/logical_track_field.tscn`
 - Create `godot-project-moe-rail-way/src/presentation/track/track_field_view.gd` and `.gd.uid`
 - Create `godot-project-moe-rail-way/tests/unit/test_departure_selection.gd` and `.gd.uid`
+- Create `godot-project-moe-rail-way/addons/moerail_test_editor_gate/plugin.cfg`
+- Create `godot-project-moe-rail-way/addons/moerail_test_editor_gate/logical_track_field_editor_gate.gd` and `.gd.uid`
 - Create `godot-project-moe-rail-way/tests/integration/run_logical_track_field_integration.gd` and `.gd.uid`
-- Create `godot-project-moe-rail-way/tests/integration/run_logical_track_field_editor_integration.gd` and `.gd.uid`
+- Modify `godot-project-moe-rail-way/project.godot`
 - Modify `godot-project-moe-rail-way/src/domain/random/session_rng.gd`
 - Modify `godot-project-moe-rail-way/src/presentation/session/session_shell.gd`
 - Modify `godot-project-moe-rail-way/src/presentation/session/session_shell.tscn`
@@ -1025,9 +2224,9 @@ if ($LASTEXITCODE -ne 0 -or $MoeRailPostCommitStatus.Count -ne 0) {
 **Interfaces:**
 
 - Consumes: `SessionRng`, `%Field`, and the existing pixel-local `SessionShell.try_viewport_to_field` contract.
-- Produces: eight editor-movable candidates, deterministic sorted selection data, logical presets and `CUSTOM`, editor boundary observation, uniform letterbox mapping, and `PASS: 8 prototype test suite(s)`.
+- Produces: eight editor-movable candidates, deterministic sorted selection data, logical presets and `CUSTOM`, an explicitly activated first-party editor-owned verification gate, uniform letterbox mapping, and `PASS: 8 prototype test suite(s)`.
 
-- [ ] **Step 1: Write the departure and field RED suite**
+- [x] **Step 1: Write the departure and field RED suite**
 
 The suite must load the real scene and prove defaults, sorting, seed stability, rescaling, and validation:
 
@@ -1160,7 +2359,9 @@ func _assert_vector_close(actual: Vector2, expected: Vector2, message: String) -
 
 Register it eighth in `tests/run_all.gd`.
 
-- [ ] **Step 2: Run the departure suite to verify RED**
+- [x] **Step 2: Run the departure suite to verify RED**
+
+Historical evidence only: this exact missing-scene RED already passed and is recorded in the English Task 2 report. Do not run this block during amendment resume.
 
 ~~~powershell
 $MoeRailFeatureWorktree = 'D:\godot\MoeRailWay-worktrees\proto-02-track-train'
@@ -1176,7 +2377,72 @@ if ($MoeRailExit -eq 0 -or
 }
 ~~~
 
-- [ ] **Step 3: Implement candidates, presets, editor redraw, and logical mapping**
+- [x] **Step 2A: Verify the replacement editor gate is RED before the plugin exists**
+
+Historical evidence only: this exact missing-plugin RED already passed and is recorded in the English Task 2 report. Do not run this block during the second amendment resume. The process remained alive without the exact marker or an unrelated Godot error; the wrapper declared RED and terminated only the child process object it started.
+
+~~~powershell
+$ErrorActionPreference = 'Stop'
+$MoeRailFeatureWorktree = 'D:\godot\MoeRailWay-worktrees\proto-02-track-train'
+$MoeRailProject = Join-Path $MoeRailFeatureWorktree 'godot-project-moe-rail-way'
+$MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
+$MoeRailMarker = 'PASS: logical track field editor integration'
+$MoeRailBeforeStatus = @(
+    git -C $MoeRailFeatureWorktree status --porcelain=v1 --untracked-files=all |
+        Sort-Object
+)
+$MoeRailStdoutPath = [IO.Path]::GetTempFileName()
+$MoeRailStderrPath = [IO.Path]::GetTempFileName()
+$MoeRailProcess = $null
+try {
+    $MoeRailArguments = @(
+        '--headless', '--editor', '--path', $MoeRailProject,
+        '--max-fps', '60', '--', '--moerail-logical-field-editor-gate'
+    )
+    $MoeRailProcess = Start-Process -FilePath $MoeRailGodotExe `
+        -ArgumentList $MoeRailArguments -WindowStyle Hidden -PassThru `
+        -RedirectStandardOutput $MoeRailStdoutPath `
+        -RedirectStandardError $MoeRailStderrPath
+    $MoeRailExited = $MoeRailProcess.WaitForExit(10000)
+    if ($MoeRailExited) {
+        throw 'Editor exited before the missing-plugin RED deadline.'
+    }
+    if (-not $MoeRailProcess.HasExited) {
+        $MoeRailProcess.Kill()
+        $MoeRailProcess.WaitForExit()
+    }
+    $MoeRailOutput = @(
+        Get-Content -LiteralPath $MoeRailStdoutPath
+        Get-Content -LiteralPath $MoeRailStderrPath
+    )
+    $MoeRailText = $MoeRailOutput -join "`n"
+    $MoeRailOutput
+    if ([regex]::Matches(
+        $MoeRailText,
+        "(?m)^$([regex]::Escape($MoeRailMarker))\r?$"
+    ).Count -ne 0 -or
+        $MoeRailText -match '(?m)^(FAIL:|SCRIPT ERROR:|ERROR:)' -or
+        $MoeRailText -match '(?i)(Scan thread aborted|(?:\bRID allocations\b[^\r\n]*leaked at exit|\bRIDs?\b[^\r\n]*(?:was|were) leaked)|ObjectDB instances[^\r\n]*(?:leaked at exit|still alive))') {
+        throw 'Editor-gate RED was masked by a marker or unrelated diagnostic.'
+    }
+} finally {
+    if ($MoeRailProcess -ne $null) { $MoeRailProcess.Dispose() }
+    Remove-Item -LiteralPath $MoeRailStdoutPath, $MoeRailStderrPath -Force
+}
+$MoeRailAfterStatus = @(
+    git -C $MoeRailFeatureWorktree status --porcelain=v1 --untracked-files=all |
+        Sort-Object
+)
+if (@(Compare-Object $MoeRailBeforeStatus $MoeRailAfterStatus).Count -ne 0) {
+    $MoeRailAfterStatus
+    throw 'The editor-gate RED changed the feature worktree.'
+}
+'RED: logical track field editor marker is absent without the plugin'
+~~~
+
+Expected: after the wrapper-owned process is declared timed out and cleaned up, exactly `RED: logical track field editor marker is absent without the plugin` is printed by PowerShell, the feature path set is unchanged, and no Godot failure or leak diagnostic substitutes for the missing marker.
+
+- [x] **Step 3: Implement candidates, presets, editor redraw, and logical mapping**
 
 Use these exact preset sizes and fresh record copies:
 
@@ -1238,25 +2504,404 @@ Implement `TrackFieldView.configure_session` in this task as configuration-only 
 
 Implement both bounded methods with an early `if exclusive_upper_bound <= 0: return -1` that does not touch `_rng`. For a positive bound, implement `SessionRng.next_index` with `randi_range(0, exclusive_upper_bound - 1)`. Implement `peek_index` by saving `_rng.state`, calling `next_index` once, restoring the saved state, and returning the sampled index; it must not create or seed another generator.
 
-Create one runtime runner that verifies all four presets, letterbox rejection, uniform scale, and resize invariance. After configuring a session, mutate the underlying `LogicalTrackField` preset and `CUSTOM` dimensions and prove that the configured content rectangle and mapped logical endpoints do not change. Create one editor runner that requires `Engine.is_editor_hint()`, changes preset and `CUSTOM`, and verifies boundary rectangles and normalized candidate positions. Their exact success markers are:
+Create one runtime runner that verifies all four presets, letterbox rejection, uniform scale, and resize invariance. After configuring a session, mutate the underlying `LogicalTrackField` preset and `CUSTOM` dimensions and prove that the configured content rectangle and mapped logical endpoints do not change. Its exact success marker is:
 
 ~~~text
 PASS: logical track field runtime integration
+~~~
+
+Replace the superseded custom-`SceneTree` editor runner with the one permitted first-party `EditorPlugin`. Create `plugin.cfg` exactly as:
+
+~~~ini
+[plugin]
+
+name="MoeRail Logical Field Test Gate"
+description="Runs the repository-owned logical-field editor integration gate only when explicitly requested."
+author="Moe Rail Way"
+version="1.0.0"
+script="logical_track_field_editor_gate.gd"
+~~~
+
+Add this exact project setting without changing unrelated settings:
+
+~~~ini
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/moerail_test_editor_gate/plugin.cfg")
+~~~
+
+Create the plugin script with this concrete editor-owned lifecycle and assertion set:
+
+~~~gdscript
+@tool
+extends EditorPlugin
+
+const GATE_FLAG := "--moerail-logical-field-editor-gate"
+const FIELD_SCENE_PATH := "res://src/presentation/track/logical_track_field.tscn"
+const PASS_MARKER := "PASS: logical track field editor integration"
+
+var _failures := PackedStringArray()
+var _gate_started := false
+
+
+func _enter_tree() -> void:
+    if GATE_FLAG not in OS.get_cmdline_user_args():
+        return
+    if _gate_started:
+        return
+    _gate_started = true
+    call_deferred("_run_gate")
+
+
+func _run_gate() -> void:
+    _assert_true(Engine.is_editor_hint(), "Editor integration must run with editor hint")
+    var editor_filesystem := EditorInterface.get_resource_filesystem()
+    _assert_true(editor_filesystem != null, "Editor filesystem must exist")
+    if editor_filesystem != null:
+        while editor_filesystem.is_scanning():
+            await get_tree().process_frame
+        await get_tree().process_frame
+
+    var packed = load(FIELD_SCENE_PATH) as PackedScene
+    _assert_true(packed != null, "Logical field scene must load in the editor")
+    if packed != null:
+        var field = packed.instantiate()
+        var baseline: Array[Dictionary] = field.get_sorted_candidate_records()
+        _assert_equal(baseline.size(), 8, "Editor gate requires eight authored candidates")
+        var normalized: Array[Vector2] = []
+        for record in baseline:
+            normalized.append(record.position / Vector2(1200.0, 560.0))
+        var cases := [
+            [field.SizePreset.COMPACT, Vector2(900.0, 420.0)],
+            [field.SizePreset.STANDARD, Vector2(1200.0, 560.0)],
+            [field.SizePreset.EXPANSIVE, Vector2(1500.0, 700.0)],
+        ]
+        for case in cases:
+            field.size_preset = case[0]
+            _assert_equal(
+                field.get_editor_boundary_rect(),
+                Rect2(Vector2.ZERO, case[1]),
+                "Preset boundary must update in editor"
+            )
+            _assert_normalized_positions(
+                field.get_sorted_candidate_records(), normalized, case[1]
+            )
+        field.size_preset = field.SizePreset.CUSTOM
+        field.custom_width = 960.0
+        field.custom_height = 480.0
+        _assert_equal(
+            field.get_editor_boundary_rect(),
+            Rect2(Vector2.ZERO, Vector2(960.0, 480.0)),
+            "CUSTOM boundary must update in editor"
+        )
+        _assert_normalized_positions(
+            field.get_sorted_candidate_records(), normalized, Vector2(960.0, 480.0)
+        )
+        field.free()
+
+    _finish_gate()
+
+
+func _finish_gate() -> void:
+    if _failures.is_empty():
+        print(PASS_MARKER)
+    else:
+        for failure in _failures:
+            push_error(failure)
+        print("FAIL: %d logical track field editor assertion(s)" % _failures.size())
+
+
+func _assert_normalized_positions(
+    records: Array[Dictionary],
+    expected: Array[Vector2],
+    logical_size: Vector2
+) -> void:
+    _assert_equal(records.size(), expected.size(), "Candidate count must remain stable")
+    for index in range(min(records.size(), expected.size())):
+        _assert_true(
+            records[index].position.is_equal_approx(expected[index] * logical_size),
+            "Editor resize must preserve normalized candidate positions"
+        )
+
+
+func _assert_true(condition: bool, message: String) -> void:
+    if not condition:
+        _failures.append(message)
+
+
+func _assert_equal(actual: Variant, expected: Variant, message: String) -> void:
+    if actual != expected:
+        _failures.append("%s | expected=%s actual=%s" % [message, expected, actual])
+~~~
+
+The unique matching `.gd.uid` already exists in the paused Task 2 state and must be validated without rerunning import. If the sidecar is absent, malformed, or duplicated in any resumed or fresh execution, stop immediately. Do not run any feature-worktree editor import, generate the sidecar in a mirror, copy a generated file back, hand-author a replacement, or restore another path automatically.
+
+Without `GATE_FLAG`, `_enter_tree()` returns before scheduling work or printing a gate marker. With the flag, the plugin performs assertions and prints its result but never propagates a close notification, calls `SceneTree.quit`, restarts the editor, or invokes another shutdown API. Godot owns addon unloading and termination through the wrapper's `--quit-after` iteration budget. The plugin does not install a custom main loop, duplicate field logic, suppress diagnostics, or run in the game. The exact success marker remains:
+
+~~~text
 PASS: logical track field editor integration
 ~~~
 
 Extend the accepted `run_session_shell_integration.gd` with an out-of-tree probe that instantiates the real shell packed scene without adding it to the SceneTree and requires `get_track_field_view()` plus the nested `get_logical_track_field()` to return the real children before `_ready`. Then assert that the in-tree shell owns exactly one `TrackFieldView`, its logical delegate maps a content point correctly, and its delegate rejects the internal letterbox. Preserve every existing assertion and both accepted markers.
 
-- [ ] **Step 4: Run Task 2 GREEN gates**
+- [x] **Historical Step 3A: Feature-worktree UID preparation superseded by the third amendment**
 
-~~~powershell
+Historical evidence only. This block belonged to the second amendment and must not be run after the third amendment. Its feature-worktree editor-import fallback is superseded. The current validation-only Step 3B follows this preserved record.
+
+~~~text
+$ErrorActionPreference = 'Stop'
 $MoeRailFeatureWorktree = 'D:\godot\MoeRailWay-worktrees\proto-02-track-train'
 $MoeRailProject = Join-Path $MoeRailFeatureWorktree 'godot-project-moe-rail-way'
 $MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
+$MoeRailPluginUid = 'godot-project-moe-rail-way/addons/moerail_test_editor_gate/logical_track_field_editor_gate.gd.uid'
+$MoeRailPrototypeApp = 'godot-project-moe-rail-way/src/app/prototype_app.gd'
+function Get-MoeRailContentSnapshot {
+    $MoeRailTrackedPaths = @(git -C $MoeRailFeatureWorktree ls-files)
+    $MoeRailTrackedExit = $LASTEXITCODE
+    $MoeRailUntrackedPaths = @(
+        git -C $MoeRailFeatureWorktree ls-files --others --exclude-standard
+    )
+    $MoeRailUntrackedExit = $LASTEXITCODE
+    if ($MoeRailTrackedExit -ne 0 -or $MoeRailUntrackedExit -ne 0) {
+        throw 'Failed to enumerate the repository content snapshot.'
+    }
+    @(
+        @($MoeRailTrackedPaths + $MoeRailUntrackedPaths) |
+            Sort-Object -Unique |
+            ForEach-Object {
+                $MoeRailSnapshotAbsolute = Join-Path $MoeRailFeatureWorktree $_
+                if (-not (Test-Path -LiteralPath $MoeRailSnapshotAbsolute -PathType Leaf)) {
+                    throw "Snapshot path is not a file: $_"
+                }
+                $MoeRailSnapshotHash = (
+                    Get-FileHash -LiteralPath $MoeRailSnapshotAbsolute -Algorithm SHA256
+                ).Hash
+                "$_`t$MoeRailSnapshotHash"
+            }
+    )
+}
+function Get-MoeRailStatusSnapshot {
+    $MoeRailStatusRows = @(
+        git -C $MoeRailFeatureWorktree status --porcelain=v1 --untracked-files=all
+    )
+    $MoeRailStatusExit = $LASTEXITCODE
+    if ($MoeRailStatusExit -ne 0) {
+        throw "Failed to capture repository status: exit $MoeRailStatusExit"
+    }
+    @($MoeRailStatusRows | Sort-Object)
+}
+$MoeRailBeforeStatus = @(Get-MoeRailStatusSnapshot)
+$MoeRailBeforeContent = @(Get-MoeRailContentSnapshot)
+git -C $MoeRailFeatureWorktree diff --quiet HEAD -- $MoeRailPrototypeApp
+if ($LASTEXITCODE -ne 0) { throw 'prototype_app.gd must match feature HEAD before UID validation.' }
+$MoeRailPluginUidAbsolute = Join-Path $MoeRailFeatureWorktree $MoeRailPluginUid
+$MoeRailUidWasMissing = -not (
+    Test-Path -LiteralPath $MoeRailPluginUidAbsolute -PathType Leaf
+)
+$MoeRailExpectedAfterStatus = $MoeRailBeforeStatus
+if ($MoeRailUidWasMissing) {
+    $MoeRailStdoutPath = [IO.Path]::GetTempFileName()
+    $MoeRailStderrPath = [IO.Path]::GetTempFileName()
+    $MoeRailProcess = $null
+    $MoeRailPreserveLogs = $false
+    try {
+        $MoeRailArguments = @(
+            '--headless', '--editor', '--path', $MoeRailProject, '--import'
+        )
+        $MoeRailProcess = Start-Process -FilePath $MoeRailGodotExe `
+            -ArgumentList $MoeRailArguments -WindowStyle Hidden -PassThru `
+            -RedirectStandardOutput $MoeRailStdoutPath `
+            -RedirectStandardError $MoeRailStderrPath
+        $MoeRailTimedOut = -not $MoeRailProcess.WaitForExit(60000)
+        $MoeRailTerminationFailure = ''
+        if ($MoeRailTimedOut) {
+            try {
+                if (-not $MoeRailProcess.HasExited) { $MoeRailProcess.Kill() }
+            } catch {
+                $MoeRailTerminationFailure = $_.Exception.Message
+            }
+            try {
+                if (-not $MoeRailProcess.WaitForExit(5000)) {
+                    $MoeRailTerminationFailure = (
+                        $MoeRailTerminationFailure + ' Child did not exit within the 5-second reap deadline.'
+                    ).Trim()
+                }
+            } catch {
+                $MoeRailTerminationFailure = (
+                    $MoeRailTerminationFailure + ' ' + $_.Exception.Message
+                ).Trim()
+            }
+        }
+        $MoeRailImportOutput = @(
+            Get-Content -LiteralPath $MoeRailStdoutPath -ErrorAction SilentlyContinue
+            Get-Content -LiteralPath $MoeRailStderrPath -ErrorAction SilentlyContinue
+        )
+        $MoeRailImportText = $MoeRailImportOutput -join "`n"
+        $MoeRailImportOutput
+        if ($MoeRailTimedOut) {
+            if (-not [string]::IsNullOrWhiteSpace($MoeRailTerminationFailure)) {
+                $MoeRailPreserveLogs = $true
+                throw "UID import timed out and exact-child cleanup failed: $MoeRailTerminationFailure; logs: $MoeRailStdoutPath ; $MoeRailStderrPath"
+            }
+            throw 'UID import exceeded its 60-second deadline.'
+        }
+        if ($MoeRailProcess.ExitCode -ne 0 -or
+            $MoeRailImportText -match '(?m)^(FAIL:|SCRIPT ERROR:|ERROR:|FATAL:|WARNING:|CRASH:)' -or
+            $MoeRailImportText -match '(?i)(CrashHandlerException|Program crashed|signal \d+|Scan thread aborted|(?:\bRID allocations\b[^\r\n]*leaked at exit|\bRIDs?\b[^\r\n]*(?:was|were) leaked)|ObjectDB instances[^\r\n]*(?:leaked at exit|still alive))' -or
+            $MoeRailImportText -match '(?m)^PASS: logical track field editor integration\r?$') {
+            throw 'The no-flag import was not inert and clean.'
+        }
+    } finally {
+        $MoeRailChildStillRunning = $false
+        if ($MoeRailProcess -ne $null) {
+            try { $MoeRailChildStillRunning = -not $MoeRailProcess.HasExited } catch {
+                $MoeRailChildStillRunning = $true
+            }
+            $MoeRailProcess.Dispose()
+        }
+        if ($MoeRailPreserveLogs -or $MoeRailChildStillRunning) {
+            "Preserved exact-child import logs: $MoeRailStdoutPath ; $MoeRailStderrPath"
+        } else {
+            Remove-Item -LiteralPath $MoeRailStdoutPath, $MoeRailStderrPath `
+                -Force -ErrorAction SilentlyContinue
+        }
+    }
+    $MoeRailExpectedAfterStatus = @(
+        $MoeRailBeforeStatus
+        "?? $MoeRailPluginUid"
+    ) | Sort-Object
+}
+$MoeRailAfterStatus = @(Get-MoeRailStatusSnapshot)
+$MoeRailAfterContent = @(Get-MoeRailContentSnapshot)
+if (@(Compare-Object $MoeRailExpectedAfterStatus $MoeRailAfterStatus).Count -ne 0) {
+    $MoeRailAfterStatus
+    throw 'UID preparation changed a path other than the one missing plugin sidecar.'
+}
+$MoeRailExpectedAfterContent = $MoeRailBeforeContent
+if ($MoeRailUidWasMissing) {
+    $MoeRailNewUidContent = @(
+        $MoeRailAfterContent | Where-Object {
+            $_.StartsWith("$MoeRailPluginUid`t", [StringComparison]::Ordinal)
+        }
+    )
+    if ($MoeRailNewUidContent.Count -ne 1) {
+        throw 'The missing plugin sidecar did not produce exactly one content record.'
+    }
+    $MoeRailExpectedAfterContent = @(
+        $MoeRailBeforeContent
+        $MoeRailNewUidContent[0]
+    ) | Sort-Object
+}
+if (@(Compare-Object $MoeRailExpectedAfterContent $MoeRailAfterContent).Count -ne 0) {
+    throw 'UID preparation changed repository file content outside its permitted transition.'
+}
+git -C $MoeRailFeatureWorktree diff --quiet HEAD -- $MoeRailPrototypeApp
+if ($LASTEXITCODE -ne 0) {
+    throw 'UID preparation changed prototype_app.gd; preserve evidence and stop without restoring it.'
+}
+if (-not (Test-Path -LiteralPath $MoeRailPluginUidAbsolute -PathType Leaf)) {
+    throw 'The plugin GDScript UID sidecar is still missing.'
+}
+$MoeRailUidPaths = @(
+    git -C $MoeRailFeatureWorktree ls-files '*.gd.uid'
+    git -C $MoeRailFeatureWorktree ls-files --others --exclude-standard '*.gd.uid'
+)
+$MoeRailUidRecords = @(
+    foreach ($MoeRailUidPath in $MoeRailUidPaths) {
+        $MoeRailUidValue = (
+            Get-Content -LiteralPath (Join-Path $MoeRailFeatureWorktree $MoeRailUidPath) -Raw
+        ).Trim()
+        [pscustomobject]@{ Path = $MoeRailUidPath; Value = $MoeRailUidValue }
+    }
+)
+$MoeRailPluginUidRecord = @(
+    $MoeRailUidRecords | Where-Object { $_.Path -eq $MoeRailPluginUid }
+)
+if ($MoeRailPluginUidRecord.Count -ne 1 -or
+    $MoeRailPluginUidRecord[0].Value -notmatch '^uid://[a-z0-9]+$') {
+    $MoeRailPluginUidRecord
+    throw 'The plugin UID sidecar is missing or malformed.'
+}
+$MoeRailDuplicatePluginUid = @(
+    $MoeRailUidRecords | Where-Object {
+        $_.Value -eq $MoeRailPluginUidRecord[0].Value
+    }
+)
+if ($MoeRailDuplicatePluginUid.Count -ne 1) {
+    $MoeRailDuplicatePluginUid
+    throw 'The plugin UID sidecar is duplicated.'
+}
+~~~
+
+- [x] **Historical Step 4: Real-feature editor GREEN rejected by the strict state gate**
+
+Historical evidence only. This block produced clean assertions and shutdown but rewrote `prototype_app.gd`; its strict postcondition rejected the run. Do not run it after the third amendment. The current disposable-mirror Step 4B follows this preserved record.
+
+~~~text
+$ErrorActionPreference = 'Stop'
+$MoeRailFeatureWorktree = 'D:\godot\MoeRailWay-worktrees\proto-02-track-train'
+$MoeRailProject = Join-Path $MoeRailFeatureWorktree 'godot-project-moe-rail-way'
+$MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
+$MoeRailPrototypeApp = 'godot-project-moe-rail-way/src/app/prototype_app.gd'
+function Get-MoeRailContentSnapshot {
+    $MoeRailTrackedPaths = @(git -C $MoeRailFeatureWorktree ls-files)
+    $MoeRailTrackedExit = $LASTEXITCODE
+    $MoeRailUntrackedPaths = @(
+        git -C $MoeRailFeatureWorktree ls-files --others --exclude-standard
+    )
+    $MoeRailUntrackedExit = $LASTEXITCODE
+    if ($MoeRailTrackedExit -ne 0 -or $MoeRailUntrackedExit -ne 0) {
+        throw 'Failed to enumerate the repository content snapshot.'
+    }
+    @(
+        @($MoeRailTrackedPaths + $MoeRailUntrackedPaths) |
+            Sort-Object -Unique |
+            ForEach-Object {
+                $MoeRailSnapshotAbsolute = Join-Path $MoeRailFeatureWorktree $_
+                if (-not (Test-Path -LiteralPath $MoeRailSnapshotAbsolute -PathType Leaf)) {
+                    throw "Snapshot path is not a file: $_"
+                }
+                $MoeRailSnapshotHash = (
+                    Get-FileHash -LiteralPath $MoeRailSnapshotAbsolute -Algorithm SHA256
+                ).Hash
+                "$_`t$MoeRailSnapshotHash"
+            }
+    )
+}
+function Get-MoeRailStatusSnapshot {
+    $MoeRailStatusRows = @(
+        git -C $MoeRailFeatureWorktree status --porcelain=v1 --untracked-files=all
+    )
+    $MoeRailStatusExit = $LASTEXITCODE
+    if ($MoeRailStatusExit -ne 0) {
+        throw "Failed to capture repository status: exit $MoeRailStatusExit"
+    }
+    @($MoeRailStatusRows | Sort-Object)
+}
+function Stop-MoeRailOwnedChild {
+    param([System.Diagnostics.Process]$Process)
+    $MoeRailTerminationFailure = ''
+    try {
+        if (-not $Process.HasExited) { $Process.Kill() }
+    } catch {
+        $MoeRailTerminationFailure = $_.Exception.Message
+    }
+    try {
+        if (-not $Process.WaitForExit(5000)) {
+            $MoeRailTerminationFailure = (
+                $MoeRailTerminationFailure + ' Child did not exit within the 5-second reap deadline.'
+            ).Trim()
+        }
+    } catch {
+        $MoeRailTerminationFailure = (
+            $MoeRailTerminationFailure + ' ' + $_.Exception.Message
+        ).Trim()
+    }
+    $MoeRailTerminationFailure
+}
 $MoeRailRuns = @(
     @{ Args = @('--headless', '--path', $MoeRailProject, '--script', 'res://tests/run_all.gd'); Markers = @('PASS: 8 prototype test suite(s)') },
     @{ Args = @('--headless', '--path', $MoeRailProject, '--script', 'res://tests/integration/run_logical_track_field_integration.gd'); Markers = @('PASS: logical track field runtime integration') },
-    @{ Args = @('--headless', '--editor', '--path', $MoeRailProject, '--script', 'res://tests/integration/run_logical_track_field_editor_integration.gd'); Markers = @('PASS: logical track field editor integration') },
     @{ Args = @('--headless', '--path', $MoeRailProject, '--script', 'res://tests/integration/run_session_shell_integration.gd'); Markers = @('PASS: session shell layout integration', 'PASS: session shell lifecycle integration') }
 )
 foreach ($MoeRailRun in $MoeRailRuns) {
@@ -1265,7 +2910,9 @@ foreach ($MoeRailRun in $MoeRailRuns) {
     $MoeRailExit = $LASTEXITCODE
     $MoeRailText = $MoeRailOutput -join "`n"
     $MoeRailOutput
-    if ($MoeRailExit -ne 0 -or $MoeRailText -match '(?m)^(FAIL:|SCRIPT ERROR:|ERROR:)') {
+    if ($MoeRailExit -ne 0 -or
+        $MoeRailText -match '(?m)^(FAIL:|SCRIPT ERROR:|ERROR:|FATAL:|WARNING:|CRASH:)' -or
+        $MoeRailText -match '(?i)(CrashHandlerException|Program crashed|signal \d+)') {
         throw 'Task 2 runner failed.'
     }
     foreach ($MoeRailMarker in $MoeRailRun.Markers) {
@@ -1277,61 +2924,709 @@ foreach ($MoeRailRun in $MoeRailRuns) {
         }
     }
 }
+
+function Invoke-MoeRailHistoricalRealFeatureEditorGate {
+    $MoeRailMarker = 'PASS: logical track field editor integration'
+    $MoeRailBeforeStatus = @(Get-MoeRailStatusSnapshot)
+    $MoeRailBeforeContent = @(Get-MoeRailContentSnapshot)
+    git -C $MoeRailFeatureWorktree diff --quiet HEAD -- $MoeRailPrototypeApp
+    if ($LASTEXITCODE -ne 0) {
+        throw 'prototype_app.gd must match feature HEAD before the flagged editor gate.'
+    }
+    $MoeRailStdoutPath = [IO.Path]::GetTempFileName()
+    $MoeRailStderrPath = [IO.Path]::GetTempFileName()
+    $MoeRailProcess = $null
+    $MoeRailPreserveLogs = $false
+    try {
+        $MoeRailArguments = @(
+            '--headless', '--editor', '--path', $MoeRailProject,
+            '--quit-after', '600', '--max-fps', '60', '--',
+            '--moerail-logical-field-editor-gate'
+        )
+        $MoeRailProcess = Start-Process -FilePath $MoeRailGodotExe `
+            -ArgumentList $MoeRailArguments -WindowStyle Hidden -PassThru `
+            -RedirectStandardOutput $MoeRailStdoutPath `
+            -RedirectStandardError $MoeRailStderrPath
+        $MoeRailTimedOut = -not $MoeRailProcess.WaitForExit(30000)
+        $MoeRailTerminationFailure = ''
+        if ($MoeRailTimedOut) {
+            $MoeRailTerminationFailure = Stop-MoeRailOwnedChild -Process $MoeRailProcess
+        }
+        $MoeRailOutput = @(
+            Get-Content -LiteralPath $MoeRailStdoutPath -ErrorAction SilentlyContinue
+            Get-Content -LiteralPath $MoeRailStderrPath -ErrorAction SilentlyContinue
+        )
+        $MoeRailText = $MoeRailOutput -join "`n"
+        $MoeRailOutput
+        $MoeRailAfterStatus = @(Get-MoeRailStatusSnapshot)
+        $MoeRailAfterContent = @(Get-MoeRailContentSnapshot)
+        git -C $MoeRailFeatureWorktree diff --quiet HEAD -- $MoeRailPrototypeApp
+        $MoeRailPrototypeAppExit = $LASTEXITCODE
+        if ($MoeRailTimedOut) {
+            if (-not [string]::IsNullOrWhiteSpace($MoeRailTerminationFailure)) {
+                $MoeRailPreserveLogs = $true
+                throw "Logical field editor integration timed out and exact-child cleanup failed: $MoeRailTerminationFailure; logs: $MoeRailStdoutPath ; $MoeRailStderrPath"
+            }
+            throw 'Logical field editor integration exceeded its 30-second deadline.'
+        }
+        if ($MoeRailPrototypeAppExit -ne 0 -or
+            $MoeRailProcess.ExitCode -ne 0 -or
+            [regex]::Matches(
+                $MoeRailText,
+                "(?m)^$([regex]::Escape($MoeRailMarker))\r?$"
+            ).Count -ne 1 -or
+            $MoeRailText -match '(?m)^(FAIL:|SCRIPT ERROR:|ERROR:|FATAL:|WARNING:|CRASH:)' -or
+            $MoeRailText -match '(?i)(CrashHandlerException|Program crashed|signal \d+|Scan thread aborted|(?:\bRID allocations\b[^\r\n]*leaked at exit|\bRIDs?\b[^\r\n]*(?:was|were) leaked)|ObjectDB instances[^\r\n]*(?:leaked at exit|still alive))' -or
+            @(Compare-Object $MoeRailBeforeStatus $MoeRailAfterStatus).Count -ne 0 -or
+            @(Compare-Object $MoeRailBeforeContent $MoeRailAfterContent).Count -ne 0) {
+            $MoeRailAfterStatus
+            throw 'Logical field editor integration failed its marker, diagnostic, exit, or file-state contract.'
+        }
+    } finally {
+        $MoeRailChildStillRunning = $false
+        if ($MoeRailProcess -ne $null) {
+            try { $MoeRailChildStillRunning = -not $MoeRailProcess.HasExited } catch {
+                $MoeRailChildStillRunning = $true
+            }
+            $MoeRailProcess.Dispose()
+        }
+        if ($MoeRailPreserveLogs -or $MoeRailChildStillRunning) {
+            "Preserved flagged editor logs: $MoeRailStdoutPath ; $MoeRailStderrPath"
+        } else {
+            Remove-Item -LiteralPath $MoeRailStdoutPath, $MoeRailStderrPath `
+                -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+
+function Invoke-MoeRailHistoricalRealFeatureNoFlagEditorSmoke {
+    $MoeRailBeforeStatus = @(Get-MoeRailStatusSnapshot)
+    $MoeRailBeforeContent = @(Get-MoeRailContentSnapshot)
+    git -C $MoeRailFeatureWorktree diff --quiet HEAD -- $MoeRailPrototypeApp
+    if ($LASTEXITCODE -ne 0) {
+        throw 'prototype_app.gd must match feature HEAD before the no-flag editor smoke.'
+    }
+    $MoeRailStdoutPath = [IO.Path]::GetTempFileName()
+    $MoeRailStderrPath = [IO.Path]::GetTempFileName()
+    $MoeRailProcess = $null
+    $MoeRailPreserveLogs = $false
+    try {
+        $MoeRailArguments = @(
+            '--headless', '--editor', '--path', $MoeRailProject,
+            '--quit-after', '600', '--max-fps', '60'
+        )
+        $MoeRailProcess = Start-Process -FilePath $MoeRailGodotExe `
+            -ArgumentList $MoeRailArguments -WindowStyle Hidden -PassThru `
+            -RedirectStandardOutput $MoeRailStdoutPath `
+            -RedirectStandardError $MoeRailStderrPath
+        $MoeRailTimedOut = -not $MoeRailProcess.WaitForExit(30000)
+        $MoeRailTerminationFailure = ''
+        if ($MoeRailTimedOut) {
+            $MoeRailTerminationFailure = Stop-MoeRailOwnedChild -Process $MoeRailProcess
+        }
+        $MoeRailOutput = @(
+            Get-Content -LiteralPath $MoeRailStdoutPath -ErrorAction SilentlyContinue
+            Get-Content -LiteralPath $MoeRailStderrPath -ErrorAction SilentlyContinue
+        )
+        $MoeRailText = $MoeRailOutput -join "`n"
+        $MoeRailOutput
+        $MoeRailAfterStatus = @(Get-MoeRailStatusSnapshot)
+        $MoeRailAfterContent = @(Get-MoeRailContentSnapshot)
+        git -C $MoeRailFeatureWorktree diff --quiet HEAD -- $MoeRailPrototypeApp
+        $MoeRailPrototypeAppExit = $LASTEXITCODE
+        if ($MoeRailTimedOut) {
+            if (-not [string]::IsNullOrWhiteSpace($MoeRailTerminationFailure)) {
+                $MoeRailPreserveLogs = $true
+                throw "No-flag editor smoke timed out and exact-child cleanup failed: $MoeRailTerminationFailure; logs: $MoeRailStdoutPath ; $MoeRailStderrPath"
+            }
+            throw 'No-flag editor smoke exceeded its 30-second deadline.'
+        }
+        if ($MoeRailPrototypeAppExit -ne 0 -or
+            $MoeRailProcess.ExitCode -ne 0 -or
+            $MoeRailText -match '(?m)^(PASS: logical track field editor integration|FAIL:|SCRIPT ERROR:|ERROR:|FATAL:|WARNING:|CRASH:)' -or
+            $MoeRailText -match '(?i)(CrashHandlerException|Program crashed|signal \d+|Scan thread aborted|(?:\bRID allocations\b[^\r\n]*leaked at exit|\bRIDs?\b[^\r\n]*(?:was|were) leaked)|ObjectDB instances[^\r\n]*(?:leaked at exit|still alive))' -or
+            @(Compare-Object $MoeRailBeforeStatus $MoeRailAfterStatus).Count -ne 0 -or
+            @(Compare-Object $MoeRailBeforeContent $MoeRailAfterContent).Count -ne 0) {
+            $MoeRailAfterStatus
+            throw 'The enabled editor plugin was not inert and clean without its gate flag.'
+        }
+    } finally {
+        $MoeRailChildStillRunning = $false
+        if ($MoeRailProcess -ne $null) {
+            try { $MoeRailChildStillRunning = -not $MoeRailProcess.HasExited } catch {
+                $MoeRailChildStillRunning = $true
+            }
+            $MoeRailProcess.Dispose()
+        }
+        if ($MoeRailPreserveLogs -or $MoeRailChildStillRunning) {
+            "Preserved no-flag editor logs: $MoeRailStdoutPath ; $MoeRailStderrPath"
+        } else {
+            Remove-Item -LiteralPath $MoeRailStdoutPath, $MoeRailStderrPath `
+                -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 ~~~
 
-- [ ] **Step 5: Commit only Task 2 files**
+- [x] **Step 3B: Validate the existing plugin sidecar without editor import**
+
+Run this validation-only block after the third amendment resume. The sidecar must already exist. If it is absent, malformed, or duplicated, stop without starting an editor, generating a replacement in a mirror, or copying anything back.
 
 ~~~powershell
 $ErrorActionPreference = 'Stop'
 $MoeRailFeatureWorktree = 'D:\godot\MoeRailWay-worktrees\proto-02-track-train'
-$MoeRailTaskFiles = @(
-    'godot-project-moe-rail-way/src/presentation/track/departure_candidate.gd',
-    'godot-project-moe-rail-way/src/presentation/track/departure_candidate.gd.uid',
-    'godot-project-moe-rail-way/src/presentation/track/logical_track_field.gd',
-    'godot-project-moe-rail-way/src/presentation/track/logical_track_field.gd.uid',
-    'godot-project-moe-rail-way/src/presentation/track/logical_track_field.tscn',
-    'godot-project-moe-rail-way/src/presentation/track/track_field_view.gd',
-    'godot-project-moe-rail-way/src/presentation/track/track_field_view.gd.uid',
-    'godot-project-moe-rail-way/tests/unit/test_departure_selection.gd',
-    'godot-project-moe-rail-way/tests/unit/test_departure_selection.gd.uid',
-    'godot-project-moe-rail-way/tests/integration/run_logical_track_field_integration.gd',
-    'godot-project-moe-rail-way/tests/integration/run_logical_track_field_integration.gd.uid',
-    'godot-project-moe-rail-way/tests/integration/run_logical_track_field_editor_integration.gd',
-    'godot-project-moe-rail-way/tests/integration/run_logical_track_field_editor_integration.gd.uid',
-    'godot-project-moe-rail-way/src/domain/random/session_rng.gd',
-    'godot-project-moe-rail-way/src/presentation/session/session_shell.gd',
-    'godot-project-moe-rail-way/src/presentation/session/session_shell.tscn',
-    'godot-project-moe-rail-way/tests/integration/run_session_shell_integration.gd',
-    'godot-project-moe-rail-way/tests/run_all.gd'
+$MoeRailPluginUid = 'godot-project-moe-rail-way/addons/moerail_test_editor_gate/logical_track_field_editor_gate.gd.uid'
+$MoeRailPrototypeApp = 'godot-project-moe-rail-way/src/app/prototype_app.gd'
+function Get-MoeRailContentSnapshot {
+    $MoeRailTracked = @(git -C $MoeRailFeatureWorktree ls-files)
+    $MoeRailTrackedExit = $LASTEXITCODE
+    $MoeRailUntracked = @(
+        git -C $MoeRailFeatureWorktree ls-files --others --exclude-standard
+    )
+    $MoeRailUntrackedExit = $LASTEXITCODE
+    if ($MoeRailTrackedExit -ne 0 -or $MoeRailUntrackedExit -ne 0) {
+        throw 'Failed to enumerate repository content.'
+    }
+    @(
+        @($MoeRailTracked + $MoeRailUntracked) | Sort-Object -Unique |
+            ForEach-Object {
+                $MoeRailAbsolute = Join-Path $MoeRailFeatureWorktree $_
+                if (-not (Test-Path -LiteralPath $MoeRailAbsolute -PathType Leaf)) {
+                    throw "Snapshot path is not a file: $_"
+                }
+                $MoeRailHash = (
+                    Get-FileHash -LiteralPath $MoeRailAbsolute -Algorithm SHA256
+                ).Hash
+                "$_`t$MoeRailHash"
+            }
+    )
+}
+function Get-MoeRailStatusSnapshot {
+    $MoeRailRows = @(
+        git -C $MoeRailFeatureWorktree status --porcelain=v1 --untracked-files=all
+    )
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to capture feature status.' }
+    @($MoeRailRows | Sort-Object)
+}
+$MoeRailBeforeStatus = @(Get-MoeRailStatusSnapshot)
+$MoeRailBeforeContent = @(Get-MoeRailContentSnapshot)
+git -C $MoeRailFeatureWorktree diff --quiet HEAD -- $MoeRailPrototypeApp
+if ($LASTEXITCODE -ne 0) {
+    throw 'prototype_app.gd must match feature HEAD before UID validation.'
+}
+$MoeRailPluginUidAbsolute = Join-Path $MoeRailFeatureWorktree $MoeRailPluginUid
+if (-not (Test-Path -LiteralPath $MoeRailPluginUidAbsolute -PathType Leaf)) {
+    throw 'The approved plugin UID sidecar is absent; stop without editor import.'
+}
+$MoeRailUidPaths = @(
+    git -C $MoeRailFeatureWorktree ls-files '*.gd.uid'
+    git -C $MoeRailFeatureWorktree ls-files --others --exclude-standard '*.gd.uid'
 )
-if (@(git -C $MoeRailFeatureWorktree diff --cached --name-only).Count -ne 0) { throw 'Task 2 index is not empty.' }
-git -C $MoeRailFeatureWorktree add -- $MoeRailTaskFiles
-if ($LASTEXITCODE -ne 0) { throw 'Task 2 staging failed.' }
-$MoeRailStaged = @(git -C $MoeRailFeatureWorktree diff --cached --name-only | Sort-Object)
-if (@(Compare-Object ($MoeRailTaskFiles | Sort-Object) $MoeRailStaged).Count -ne 0) {
-    $MoeRailStaged
-    throw 'Task 2 staged set differs from its file contract.'
+$MoeRailUidRecords = @(
+    foreach ($MoeRailUidPath in $MoeRailUidPaths) {
+        $MoeRailValue = (
+            Get-Content -LiteralPath (
+                Join-Path $MoeRailFeatureWorktree $MoeRailUidPath
+            ) -Raw
+        ).Trim()
+        [pscustomobject]@{ Path = $MoeRailUidPath; Value = $MoeRailValue }
+    }
+)
+$MoeRailPluginRecord = @(
+    $MoeRailUidRecords | Where-Object { $_.Path -eq $MoeRailPluginUid }
+)
+if ($MoeRailPluginRecord.Count -ne 1 -or
+    $MoeRailPluginRecord[0].Value -notmatch '^uid://[a-z0-9]+$') {
+    $MoeRailPluginRecord
+    throw 'The approved plugin UID sidecar is missing or malformed.'
 }
-$MoeRailUnstagedOutput = @(git -C $MoeRailFeatureWorktree diff --name-only)
-$MoeRailUnstagedExit = $LASTEXITCODE
-$MoeRailUntracked = @(git -C $MoeRailFeatureWorktree ls-files --others --exclude-standard)
-$MoeRailUntrackedExit = $LASTEXITCODE
-if ($MoeRailUnstagedExit -ne 0 -or $MoeRailUntrackedExit -ne 0 -or
-    $MoeRailUnstagedOutput.Count -ne 0 -or $MoeRailUntracked.Count -ne 0) {
-    $MoeRailUnstagedOutput
-    $MoeRailUntracked
-    throw 'Task 2 has changes outside its staged file contract.'
+$MoeRailDuplicates = @(
+    $MoeRailUidRecords | Where-Object {
+        $_.Value -eq $MoeRailPluginRecord[0].Value
+    }
+)
+if ($MoeRailDuplicates.Count -ne 1) {
+    $MoeRailDuplicates
+    throw 'The approved plugin UID value is duplicated.'
 }
-git -C $MoeRailFeatureWorktree diff --cached --check
-if ($LASTEXITCODE -ne 0) { throw 'Task 2 cached diff failed.' }
-git -C $MoeRailFeatureWorktree commit -m 'feat: add logical track field authoring'
-if ($LASTEXITCODE -ne 0) { throw 'Task 2 commit failed.' }
-$MoeRailPostCommitStatus = @(git -C $MoeRailFeatureWorktree status --porcelain --untracked-files=all)
-if ($LASTEXITCODE -ne 0 -or $MoeRailPostCommitStatus.Count -ne 0) {
-    $MoeRailPostCommitStatus
-    throw 'Task 2 did not leave a clean feature worktree.'
+$MoeRailAfterStatus = @(Get-MoeRailStatusSnapshot)
+$MoeRailAfterContent = @(Get-MoeRailContentSnapshot)
+if (@(Compare-Object $MoeRailBeforeStatus $MoeRailAfterStatus).Count -ne 0 -or
+    @(Compare-Object $MoeRailBeforeContent $MoeRailAfterContent).Count -ne 0) {
+    throw 'UID validation changed feature state.'
 }
 ~~~
+
+- [x] **Step 4B: Run Task 2 GREEN gates with isolated disposable editor mirrors**
+
+~~~powershell
+$ErrorActionPreference = 'Stop'
+$MoeRailFeatureWorktree = 'D:\godot\MoeRailWay-worktrees\proto-02-track-train'
+$MoeRailProject = Join-Path $MoeRailFeatureWorktree 'godot-project-moe-rail-way'
+$MoeRailProjectPrefix = 'godot-project-moe-rail-way/'
+$MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
+$MoeRailPrototypeApp = 'godot-project-moe-rail-way/src/app/prototype_app.gd'
+$MoeRailMirrorLeafPrefix = 'moerail-track-train-editor-'
+
+function Get-MoeRailContentSnapshot {
+    $MoeRailTracked = @(git -C $MoeRailFeatureWorktree ls-files)
+    $MoeRailTrackedExit = $LASTEXITCODE
+    $MoeRailUntracked = @(
+        git -C $MoeRailFeatureWorktree ls-files --others --exclude-standard
+    )
+    $MoeRailUntrackedExit = $LASTEXITCODE
+    if ($MoeRailTrackedExit -ne 0 -or $MoeRailUntrackedExit -ne 0) {
+        throw 'Failed to enumerate repository content.'
+    }
+    @(
+        @($MoeRailTracked + $MoeRailUntracked) | Sort-Object -Unique |
+            ForEach-Object {
+                $MoeRailAbsolute = Join-Path $MoeRailFeatureWorktree $_
+                if (-not (Test-Path -LiteralPath $MoeRailAbsolute -PathType Leaf)) {
+                    throw "Snapshot path is not a file: $_"
+                }
+                $MoeRailHash = (
+                    Get-FileHash -LiteralPath $MoeRailAbsolute -Algorithm SHA256
+                ).Hash
+                "$_`t$MoeRailHash"
+            }
+    )
+}
+function Get-MoeRailStatusSnapshot {
+    $MoeRailRows = @(
+        git -C $MoeRailFeatureWorktree status --porcelain=v1 --untracked-files=all
+    )
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to capture feature status.' }
+    @($MoeRailRows | Sort-Object)
+}
+function Stop-MoeRailOwnedChild {
+    param([System.Diagnostics.Process]$Process)
+    $MoeRailFailure = ''
+    try {
+        if (-not $Process.HasExited) { $Process.Kill() }
+    } catch {
+        $MoeRailFailure = $_.Exception.Message
+    }
+    try {
+        if (-not $Process.WaitForExit(5000)) {
+            $MoeRailFailure = (
+                $MoeRailFailure + ' Child did not exit within the 5-second reap deadline.'
+            ).Trim()
+        }
+    } catch {
+        $MoeRailFailure = ($MoeRailFailure + ' ' + $_.Exception.Message).Trim()
+    }
+    $MoeRailFailure
+}
+function Assert-MoeRailOrdinaryPathChain {
+    param([string]$Path, [string]$Boundary)
+    $MoeRailFullPath = [IO.Path]::GetFullPath($Path).TrimEnd('\')
+    $MoeRailFullBoundary = [IO.Path]::GetFullPath($Boundary).TrimEnd('\')
+    $MoeRailBoundaryPrefix = $MoeRailFullBoundary + '\'
+    if ($MoeRailFullPath -ne $MoeRailFullBoundary -and
+        -not $MoeRailFullPath.StartsWith(
+            $MoeRailBoundaryPrefix,
+            [StringComparison]::OrdinalIgnoreCase
+        )) {
+        throw "Path escaped its ordinary-file boundary: $MoeRailFullPath"
+    }
+    $MoeRailCurrent = $MoeRailFullPath
+    while ($true) {
+        if (-not (Test-Path -LiteralPath $MoeRailCurrent)) {
+            throw "Required path-chain item is missing: $MoeRailCurrent"
+        }
+        $MoeRailCurrentItem = Get-Item -LiteralPath $MoeRailCurrent -Force
+        if (($MoeRailCurrentItem.Attributes -band
+            [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Reparse point is forbidden in path chain: $MoeRailCurrent"
+        }
+        if ($MoeRailCurrent -eq $MoeRailFullBoundary) { break }
+        $MoeRailParent = [IO.Path]::GetFullPath(
+            (Split-Path -Parent $MoeRailCurrent)
+        ).TrimEnd('\')
+        if ($MoeRailParent -eq $MoeRailCurrent) {
+            throw "Path chain did not reach its boundary: $MoeRailFullPath"
+        }
+        $MoeRailCurrent = $MoeRailParent
+    }
+    $MoeRailFullPath
+}
+function Assert-MoeRailOrdinaryTree {
+    param([string]$Root)
+    $MoeRailQueue = [Collections.Generic.Queue[string]]::new()
+    $MoeRailQueue.Enqueue($Root)
+    while ($MoeRailQueue.Count -gt 0) {
+        $MoeRailDirectory = $MoeRailQueue.Dequeue()
+        foreach ($MoeRailChild in Get-ChildItem -LiteralPath $MoeRailDirectory -Force) {
+            if (($MoeRailChild.Attributes -band
+                [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "Reparse point is forbidden in mirror tree: $($MoeRailChild.FullName)"
+            }
+            if ($MoeRailChild.PSIsContainer) {
+                $MoeRailQueue.Enqueue($MoeRailChild.FullName)
+            }
+        }
+    }
+}
+function Assert-MoeRailMirrorRoot {
+    param([string]$Root)
+    $MoeRailTemp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')
+    $MoeRailFullRoot = [IO.Path]::GetFullPath($Root).TrimEnd('\')
+    $MoeRailRootParent = [IO.Path]::GetFullPath(
+        (Split-Path -Parent $MoeRailFullRoot)
+    ).TrimEnd('\')
+    if ($MoeRailRootParent -ne $MoeRailTemp -or
+        (Split-Path -Leaf $MoeRailFullRoot) -notmatch
+        '^moerail-track-train-editor-[0-9a-f]{32}$') {
+        throw "Unsafe disposable mirror root: $MoeRailFullRoot"
+    }
+    [void](Assert-MoeRailOrdinaryPathChain -Path $MoeRailTemp -Boundary $MoeRailTemp)
+    if (Test-Path -LiteralPath $MoeRailFullRoot) {
+        [void](Assert-MoeRailOrdinaryPathChain `
+            -Path $MoeRailFullRoot -Boundary $MoeRailTemp)
+    }
+    $MoeRailFullRoot
+}
+function New-MoeRailDisposableEditorMirror {
+    $MoeRailTemp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')
+    $MoeRailRoot = Assert-MoeRailMirrorRoot -Root (
+        Join-Path $MoeRailTemp (
+            $MoeRailMirrorLeafPrefix + [guid]::NewGuid().ToString('N')
+        )
+    )
+    try {
+        $MoeRailMirrorProject = Join-Path $MoeRailRoot 'project'
+        $MoeRailEnvironment = Join-Path $MoeRailRoot 'environment'
+        $MoeRailAppData = Join-Path $MoeRailEnvironment 'appdata'
+        $MoeRailLocalAppData = Join-Path $MoeRailEnvironment 'localappdata'
+        $MoeRailChildTemp = Join-Path $MoeRailEnvironment 'temp'
+        $MoeRailLogs = Join-Path $MoeRailRoot 'logs'
+        foreach ($MoeRailDirectory in @(
+            $MoeRailMirrorProject, $MoeRailAppData, $MoeRailLocalAppData,
+            $MoeRailChildTemp, $MoeRailLogs
+        )) {
+            New-Item -ItemType Directory -Path $MoeRailDirectory | Out-Null
+        }
+        $MoeRailTracked = @(git -C $MoeRailFeatureWorktree ls-files)
+        $MoeRailTrackedExit = $LASTEXITCODE
+        $MoeRailUntracked = @(
+            git -C $MoeRailFeatureWorktree ls-files --others --exclude-standard
+        )
+        $MoeRailUntrackedExit = $LASTEXITCODE
+        if ($MoeRailTrackedExit -ne 0 -or $MoeRailUntrackedExit -ne 0) {
+            throw 'Failed to select disposable mirror files.'
+        }
+        $MoeRailRepositoryPaths = @(
+            @($MoeRailTracked + $MoeRailUntracked) | Sort-Object -Unique
+        )
+        $MoeRailProjectPaths = @(
+            $MoeRailRepositoryPaths | Where-Object {
+                $_.StartsWith($MoeRailProjectPrefix, [StringComparison]::Ordinal)
+            }
+        )
+        if ($MoeRailProjectPaths.Count -eq 0) {
+            throw 'No project files were selected for the disposable mirror.'
+        }
+        $MoeRailMirrorPrefix = $MoeRailMirrorProject.TrimEnd('\') + '\'
+        $MoeRailManifest = @()
+        foreach ($MoeRailRepositoryPath in $MoeRailProjectPaths) {
+            $MoeRailRelative = $MoeRailRepositoryPath.Substring(
+                $MoeRailProjectPrefix.Length
+            )
+            if ($MoeRailRelative -match '(^|/)(\.git|\.godot)(/|$)') {
+                throw "Repository metadata or generated project data is forbidden in a mirror: $MoeRailRepositoryPath"
+            }
+            $MoeRailSource = Join-Path $MoeRailFeatureWorktree $MoeRailRepositoryPath
+            if (-not (Test-Path -LiteralPath $MoeRailSource -PathType Leaf)) {
+                throw "Mirror source is not an ordinary file: $MoeRailRepositoryPath"
+            }
+            [void](Assert-MoeRailOrdinaryPathChain `
+                -Path $MoeRailSource -Boundary $MoeRailFeatureWorktree)
+            $MoeRailDestination = [IO.Path]::GetFullPath(
+                (Join-Path $MoeRailMirrorProject $MoeRailRelative)
+            )
+            if (-not $MoeRailDestination.StartsWith(
+                $MoeRailMirrorPrefix,
+                [StringComparison]::OrdinalIgnoreCase
+            )) {
+                throw "Mirror destination escaped its root: $MoeRailRepositoryPath"
+            }
+            $MoeRailSourceHash = (
+                Get-FileHash -LiteralPath $MoeRailSource -Algorithm SHA256
+            ).Hash
+            $MoeRailManifest += [pscustomobject]@{
+                Relative = $MoeRailRelative
+                Source = $MoeRailSource
+                Destination = $MoeRailDestination
+                Hash = $MoeRailSourceHash
+            }
+        }
+        foreach ($MoeRailManifestEntry in $MoeRailManifest) {
+            New-Item -ItemType Directory -Path (
+                Split-Path -Parent $MoeRailManifestEntry.Destination
+            ) -Force | Out-Null
+            [void](Assert-MoeRailOrdinaryPathChain `
+                -Path (Split-Path -Parent $MoeRailManifestEntry.Destination) `
+                -Boundary $MoeRailMirrorProject)
+            Copy-Item -LiteralPath $MoeRailManifestEntry.Source `
+                -Destination $MoeRailManifestEntry.Destination
+            [void](Assert-MoeRailOrdinaryPathChain `
+                -Path $MoeRailManifestEntry.Destination `
+                -Boundary $MoeRailMirrorProject)
+        }
+        $MoeRailSourceRecords = @(
+            $MoeRailManifest | ForEach-Object { "$($_.Relative)`t$($_.Hash)" } |
+                Sort-Object
+        )
+        $MoeRailSecondSourceRecords = @(
+            foreach ($MoeRailManifestEntry in $MoeRailManifest) {
+                [void](Assert-MoeRailOrdinaryPathChain `
+                    -Path $MoeRailManifestEntry.Source `
+                    -Boundary $MoeRailFeatureWorktree)
+                $MoeRailSecondHash = (
+                    Get-FileHash -LiteralPath $MoeRailManifestEntry.Source `
+                        -Algorithm SHA256
+                ).Hash
+                "$($MoeRailManifestEntry.Relative)`t$MoeRailSecondHash"
+            }
+        ) | Sort-Object
+        $MoeRailMirrorRecords = @(
+            Get-ChildItem -LiteralPath $MoeRailMirrorProject -File -Recurse |
+                ForEach-Object {
+                    if (($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                        throw "Mirror contains a reparse point: $($_.FullName)"
+                    }
+                    $MoeRailRelative = $_.FullName.Substring(
+                        $MoeRailMirrorPrefix.Length
+                    ).Replace('\', '/')
+                    $MoeRailHash = (
+                        Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256
+                    ).Hash
+                    "$MoeRailRelative`t$MoeRailHash"
+                } | Sort-Object
+        )
+        if (@(Compare-Object $MoeRailSourceRecords $MoeRailSecondSourceRecords).Count -ne 0 -or
+            @(Compare-Object $MoeRailSourceRecords $MoeRailMirrorRecords).Count -ne 0) {
+            throw 'Disposable mirror file list or content differs from its selected source.'
+        }
+        [pscustomobject]@{
+            Root = $MoeRailRoot
+            Project = $MoeRailMirrorProject
+            AppData = $MoeRailAppData
+            LocalAppData = $MoeRailLocalAppData
+            Temp = $MoeRailChildTemp
+            Stdout = (Join-Path $MoeRailLogs 'stdout.log')
+            Stderr = (Join-Path $MoeRailLogs 'stderr.log')
+            EngineLog = (Join-Path $MoeRailLogs 'godot.log')
+        }
+    } catch {
+        "PRESERVED_DISPOSABLE_MIRROR=$MoeRailRoot"
+        throw
+    }
+}
+function Remove-MoeRailDisposableEditorMirror {
+    param([pscustomobject]$Mirror)
+    $MoeRailSafeRoot = Assert-MoeRailMirrorRoot -Root $Mirror.Root
+    if (-not (Test-Path -LiteralPath $MoeRailSafeRoot -PathType Container)) {
+        throw 'Disposable mirror root disappeared before approved cleanup.'
+    }
+    [void](Assert-MoeRailOrdinaryPathChain `
+        -Path $MoeRailSafeRoot `
+        -Boundary ([IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')))
+    Assert-MoeRailOrdinaryTree -Root $MoeRailSafeRoot
+    Remove-Item -LiteralPath $MoeRailSafeRoot -Recurse -Force
+}
+function Get-MoeRailLogText {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "Required editor capture is missing: $Path"
+    }
+    $MoeRailCaptureItem = Get-Item -LiteralPath $Path -Force
+    if (($MoeRailCaptureItem.Attributes -band
+        [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Editor capture is a reparse point: $Path"
+    }
+    Get-Content -LiteralPath $Path -Raw -ErrorAction Stop
+}
+function Invoke-MoeRailDisposableEditorGate {
+    param([switch]$WithGateFlag)
+    $MoeRailBeforeStatus = @(Get-MoeRailStatusSnapshot)
+    $MoeRailBeforeContent = @(Get-MoeRailContentSnapshot)
+    git -C $MoeRailFeatureWorktree diff --quiet HEAD -- $MoeRailPrototypeApp
+    if ($LASTEXITCODE -ne 0) {
+        throw 'prototype_app.gd must match feature HEAD before mirror creation.'
+    }
+    $MoeRailMirror = New-MoeRailDisposableEditorMirror
+    $MoeRailAfterCopyStatus = @(Get-MoeRailStatusSnapshot)
+    $MoeRailAfterCopyContent = @(Get-MoeRailContentSnapshot)
+    git -C $MoeRailFeatureWorktree diff --quiet HEAD -- $MoeRailPrototypeApp
+    $MoeRailAfterCopyPrototypeExit = $LASTEXITCODE
+    if ($MoeRailAfterCopyPrototypeExit -ne 0 -or
+        @(Compare-Object $MoeRailBeforeStatus $MoeRailAfterCopyStatus).Count -ne 0 -or
+        @(Compare-Object $MoeRailBeforeContent $MoeRailAfterCopyContent).Count -ne 0) {
+        "PRESERVED_DISPOSABLE_MIRROR=$($MoeRailMirror.Root)"
+        throw 'Mirror creation changed feature state; child launch is forbidden.'
+    }
+    $MoeRailProcess = $null
+    $MoeRailSuccess = $false
+    try {
+        $MoeRailArguments = @(
+            '--headless', '--path', $MoeRailMirror.Project, '--editor', '--import',
+            '--quit-after', '240', '--max-fps', '60',
+            '--log-file', $MoeRailMirror.EngineLog
+        )
+        if ($WithGateFlag) {
+            $MoeRailArguments += @('--', '--moerail-logical-field-editor-gate')
+        }
+        $MoeRailEnvironment = @{
+            APPDATA = $MoeRailMirror.AppData
+            LOCALAPPDATA = $MoeRailMirror.LocalAppData
+            TEMP = $MoeRailMirror.Temp
+            TMP = $MoeRailMirror.Temp
+        }
+        $MoeRailStartInfo = [Diagnostics.ProcessStartInfo]::new()
+        $MoeRailStartInfo.FileName = $MoeRailGodotExe
+        $MoeRailStartInfo.UseShellExecute = $false
+        $MoeRailStartInfo.CreateNoWindow = $true
+        $MoeRailStartInfo.WindowStyle = [Diagnostics.ProcessWindowStyle]::Hidden
+        $MoeRailStartInfo.RedirectStandardOutput = $true
+        $MoeRailStartInfo.RedirectStandardError = $true
+        foreach ($MoeRailArgument in $MoeRailArguments) {
+            [void]$MoeRailStartInfo.ArgumentList.Add([string]$MoeRailArgument)
+        }
+        foreach ($MoeRailEnvironmentName in $MoeRailEnvironment.Keys) {
+            $MoeRailStartInfo.Environment[$MoeRailEnvironmentName] =
+                $MoeRailEnvironment[$MoeRailEnvironmentName]
+        }
+        $MoeRailProcess = [Diagnostics.Process]::new()
+        $MoeRailProcess.StartInfo = $MoeRailStartInfo
+        if (-not $MoeRailProcess.Start()) {
+            throw 'Failed to start the exact disposable editor child.'
+        }
+        $MoeRailStdoutTask = $MoeRailProcess.StandardOutput.ReadToEndAsync()
+        $MoeRailStderrTask = $MoeRailProcess.StandardError.ReadToEndAsync()
+        $MoeRailTimedOut = -not $MoeRailProcess.WaitForExit(30000)
+        $MoeRailTerminationFailure = ''
+        if ($MoeRailTimedOut) {
+            $MoeRailTerminationFailure = Stop-MoeRailOwnedChild -Process $MoeRailProcess
+        }
+        if ($MoeRailTimedOut -and
+            -not [string]::IsNullOrWhiteSpace($MoeRailTerminationFailure)) {
+            throw "Timed-out editor child was not reaped; asynchronous capture remains bounded by preserving the mirror: $MoeRailTerminationFailure"
+        }
+        $MoeRailCaptureTasks = [Threading.Tasks.Task[]]@(
+            $MoeRailStdoutTask, $MoeRailStderrTask
+        )
+        try {
+            $MoeRailCaptureCompleted = [Threading.Tasks.Task]::WaitAll(
+                $MoeRailCaptureTasks,
+                5000
+            )
+        } catch {
+            throw "Editor output capture failed: $($_.Exception.Message)"
+        }
+        if (-not $MoeRailCaptureCompleted) {
+            try { $MoeRailProcess.StandardOutput.Dispose() } catch {}
+            try { $MoeRailProcess.StandardError.Dispose() } catch {}
+            throw 'Editor output capture exceeded its 5-second completion deadline.'
+        }
+        $MoeRailCapturedStdout = $MoeRailStdoutTask.GetAwaiter().GetResult()
+        $MoeRailCapturedStderr = $MoeRailStderrTask.GetAwaiter().GetResult()
+        [IO.File]::WriteAllText(
+            $MoeRailMirror.Stdout,
+            $MoeRailCapturedStdout,
+            [Text.UTF8Encoding]::new($false)
+        )
+        [IO.File]::WriteAllText(
+            $MoeRailMirror.Stderr,
+            $MoeRailCapturedStderr,
+            [Text.UTF8Encoding]::new($false)
+        )
+        $MoeRailStdout = Get-MoeRailLogText -Path $MoeRailMirror.Stdout
+        $MoeRailStderr = Get-MoeRailLogText -Path $MoeRailMirror.Stderr
+        $MoeRailEngineLog = Get-MoeRailLogText -Path $MoeRailMirror.EngineLog
+        $MoeRailProcessText = @($MoeRailStdout, $MoeRailStderr) -join "`n"
+        $MoeRailDiagnosticText = @(
+            $MoeRailStdout, $MoeRailStderr, $MoeRailEngineLog
+        ) -join "`n"
+        $MoeRailProcessText
+        $MoeRailPassCount = [regex]::Matches(
+            $MoeRailProcessText,
+            '(?m)^PASS: logical track field editor integration\r?$'
+        ).Count
+        $MoeRailFailCount = [regex]::Matches(
+            $MoeRailProcessText,
+            '(?m)^FAIL: logical track field editor integration\r?$'
+        ).Count
+        $MoeRailExpectedPassCount = if ($WithGateFlag) { 1 } else { 0 }
+        $MoeRailAfterStatus = @(Get-MoeRailStatusSnapshot)
+        $MoeRailAfterContent = @(Get-MoeRailContentSnapshot)
+        git -C $MoeRailFeatureWorktree diff --quiet HEAD -- $MoeRailPrototypeApp
+        $MoeRailPrototypeExit = $LASTEXITCODE
+        if ($MoeRailTimedOut -or
+            -not [string]::IsNullOrWhiteSpace($MoeRailTerminationFailure) -or
+            $MoeRailProcess.ExitCode -ne 0 -or
+            $MoeRailPassCount -ne $MoeRailExpectedPassCount -or
+            $MoeRailFailCount -ne 0 -or
+            $MoeRailDiagnosticText -match '(?m)^(FAIL:|SCRIPT ERROR:|ERROR:|FATAL:|WARNING:|CRASH:)' -or
+            $MoeRailDiagnosticText -match '(?i)(CrashHandlerException|Program crashed|signal \d+|Scan thread aborted|(?:\bRID allocations\b[^\r\n]*leaked at exit|\bRIDs?\b[^\r\n]*(?:was|were) leaked)|ObjectDB instances[^\r\n]*(?:leaked at exit|still alive))' -or
+            $MoeRailPrototypeExit -ne 0 -or
+            @(Compare-Object $MoeRailBeforeStatus $MoeRailAfterStatus).Count -ne 0 -or
+            @(Compare-Object $MoeRailBeforeContent $MoeRailAfterContent).Count -ne 0) {
+            throw 'Disposable editor gate failed its process, diagnostic, marker, or feature-state contract.'
+        }
+        $MoeRailSuccess = $true
+    } finally {
+        if ($MoeRailProcess -ne $null) { $MoeRailProcess.Dispose() }
+        if ($MoeRailSuccess) {
+            try {
+                Remove-MoeRailDisposableEditorMirror -Mirror $MoeRailMirror
+            } catch {
+                "PRESERVED_DISPOSABLE_MIRROR=$($MoeRailMirror.Root)"
+                throw "Disposable mirror cleanup failed; preserve any remaining evidence: $($_.Exception.Message)"
+            }
+        } else {
+            "PRESERVED_DISPOSABLE_MIRROR=$($MoeRailMirror.Root)"
+        }
+    }
+}
+
+$MoeRailRuns = @(
+    @{ Args = @('--headless', '--path', $MoeRailProject, '--script', 'res://tests/run_all.gd'); Markers = @('PASS: 8 prototype test suite(s)') },
+    @{ Args = @('--headless', '--path', $MoeRailProject, '--script', 'res://tests/integration/run_logical_track_field_integration.gd'); Markers = @('PASS: logical track field runtime integration') },
+    @{ Args = @('--headless', '--path', $MoeRailProject, '--script', 'res://tests/integration/run_session_shell_integration.gd'); Markers = @('PASS: session shell layout integration', 'PASS: session shell lifecycle integration') }
+)
+foreach ($MoeRailRun in $MoeRailRuns) {
+    [string[]]$MoeRailArguments = $MoeRailRun.Args
+    $MoeRailOutput = @(& $MoeRailGodotExe @MoeRailArguments 2>&1)
+    $MoeRailExit = $LASTEXITCODE
+    $MoeRailText = $MoeRailOutput -join "`n"
+    $MoeRailOutput
+    if ($MoeRailExit -ne 0 -or
+        $MoeRailText -match '(?m)^(FAIL:|SCRIPT ERROR:|ERROR:|FATAL:|WARNING:|CRASH:)' -or
+        $MoeRailText -match '(?i)(CrashHandlerException|Program crashed|signal \d+)') {
+        throw 'Task 2 non-editor runner failed.'
+    }
+    foreach ($MoeRailMarker in $MoeRailRun.Markers) {
+        if ([regex]::Matches(
+            $MoeRailText,
+            "(?m)^$([regex]::Escape($MoeRailMarker))\r?$"
+        ).Count -ne 1) {
+            throw "Task 2 marker failed: $MoeRailMarker"
+        }
+    }
+}
+Invoke-MoeRailDisposableEditorGate -WithGateFlag
+Invoke-MoeRailDisposableEditorGate
+~~~
+
+Expected: the three non-editor markers pass; the flagged mirror prints its editor marker exactly once and exits naturally; the separate no-flag mirror prints zero gate markers and exits naturally; neither run emits a prohibited diagnostic or changes any feature file; and each successful disposable root is removed only after its exact child exits. On any failure, preserve the exact mirror root and stop.
+
+- [x] **Step 5: Task 2 commit and focused correction are complete**
+
+Implementation commit `9cd0dc51bf4ffde260f42a85c3fa01b3d595225f` and correction `d472814e4b13544b52280d91a80a6cc68ff5bcea` are committed and reviewed. Task 2 file scope is complete, the feature was clean before Task 3, and the former staging and commit command is historical and removed from active instructions.
 
 ### Task 3: Implement Route Reservation, Clipping, and Free Cancellation
 
@@ -1347,7 +3642,7 @@ if ($LASTEXITCODE -ne 0 -or $MoeRailPostCommitStatus.Count -ne 0) {
 - Consumes: copied `SessionStartConfig` geometry and inventory fields plus one `TrackInputFrame` per tick.
 - Produces: ordered absolute-distance route storage, immediate reservation charge, first-limit clipping, endpoint-only stroke state, deterministic reserved-suffix cancellation, and `PASS: 9 prototype test suite(s)`.
 
-- [ ] **Step 1: Write and register the reservation RED suite**
+- [x] **Step 1: Write and register the reservation RED suite**
 
 Use a complete test config with a `1200x560` field, `100` inventory units, departure at `(100, 100)`, and the approved input radii. The test input helper copies the general cursor into the matching preserved edge position when `left_pressed` or `right_pressed` is true unless a test supplies an explicit distinct edge position. Include this exact baseline flow:
 
@@ -1396,23 +3691,312 @@ Add separate functions that prove:
 
 Register the suite ninth.
 
-- [ ] **Step 2: Run the reservation suite to verify RED**
+- [x] **Step 2: Run the reservation suite to verify RED**
+
+The missing preload prevents `run_all.gd` from reaching its own `quit(1)` path under the required Godot build, so the exact direct invocation does not return naturally. Run the same five Godot arguments through this bounded controller instead. It captures both streams in memory, accepts only a nonzero process plus the exact missing-`TrackSystem` diagnostic, terminates only the verified process tree that it started when the child remains alive after ten seconds, and proves that feature content and the protected primary files did not change. Do not add `--quit-after`, switch the test to dynamic loading, weaken the missing-path check, or terminate any pre-existing Godot or Steam process.
 
 ~~~powershell
+$ErrorActionPreference = 'Stop'
 $MoeRailFeatureWorktree = 'D:\godot\MoeRailWay-worktrees\proto-02-track-train'
 $MoeRailProject = Join-Path $MoeRailFeatureWorktree 'godot-project-moe-rail-way'
 $MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
-$MoeRailOutput = @(& $MoeRailGodotExe --headless --path $MoeRailProject --script 'res://tests/run_all.gd' 2>&1)
-$MoeRailExit = $LASTEXITCODE
-$MoeRailText = $MoeRailOutput -join "`n"
-$MoeRailOutput
-if ($MoeRailExit -eq 0 -or
-    $MoeRailText -notmatch 'res://src/domain/track/track_system\.gd') {
+$MoeRailPrimaryWorktree = 'D:\godot\MoeRailWay'
+$MoeRailExpectedProtected = [ordered]@{
+    'godot-project-moe-rail-way/tests/smoke/test_project_boot.gd' = @{
+        Status = ' M godot-project-moe-rail-way/tests/smoke/test_project_boot.gd'
+        Sha256 = '7871537D0BE68518D59CA0F6EDA8E8295662F03DF3F723591163946D54E51324'
+    }
+    'godot-project-moe-rail-way/tests/support/prototype_test.gd' = @{
+        Status = ' M godot-project-moe-rail-way/tests/support/prototype_test.gd'
+        Sha256 = 'F1046A3C22D979C60473CE64B639937EB1C35E61D76568AB53D2BB08F521985B'
+    }
+    'docs/superpowers/plans/2026-08-15-godot-mcp-project-setup.md' = @{
+        Status = '?? docs/superpowers/plans/2026-08-15-godot-mcp-project-setup.md'
+        Sha256 = '826EBE2D77A76C077D3D7F4ABE8BC89329CAE39BC302284559D2433A8F700681'
+    }
+}
+
+function Get-MoeRailTask3ContentSnapshot {
+    $MoeRailTracked = @(git -C $MoeRailFeatureWorktree ls-files)
+    $MoeRailTrackedExit = $LASTEXITCODE
+    $MoeRailUntracked = @(
+        git -C $MoeRailFeatureWorktree ls-files --others --exclude-standard
+    )
+    $MoeRailUntrackedExit = $LASTEXITCODE
+    if ($MoeRailTrackedExit -ne 0 -or $MoeRailUntrackedExit -ne 0) {
+        throw 'Failed to enumerate Task 3 RED source content.'
+    }
+    @(
+        @($MoeRailTracked + $MoeRailUntracked) | Sort-Object -Unique |
+            ForEach-Object {
+                $MoeRailAbsolute = Join-Path $MoeRailFeatureWorktree $_
+                if (-not (Test-Path -LiteralPath $MoeRailAbsolute -PathType Leaf)) {
+                    throw "Task 3 RED snapshot path is not a file: $_"
+                }
+                $MoeRailHash = (
+                    Get-FileHash -LiteralPath $MoeRailAbsolute -Algorithm SHA256
+                ).Hash
+                "$_`t$MoeRailHash"
+            }
+    )
+}
+
+function Get-MoeRailTask3StatusSnapshot {
+    $MoeRailRows = @(
+        git -C $MoeRailFeatureWorktree status --porcelain=v1 --untracked-files=all
+    )
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to capture Task 3 RED status.' }
+    @($MoeRailRows | Sort-Object)
+}
+
+function Get-MoeRailTask3MatchingProcesses {
+    @(
+        Get-CimInstance Win32_Process -Filter "Name LIKE 'Godot%'" |
+            Where-Object {
+                $_.CommandLine -like "*$MoeRailFeatureWorktree*" -and
+                $_.CommandLine -like '*res://tests/run_all.gd*'
+            }
+    )
+}
+
+function Stop-MoeRailTask3OwnedProcessTree {
+    param([System.Diagnostics.Process]$Process)
+    $MoeRailFailures = [Collections.Generic.List[string]]::new()
+    $MoeRailHasExited = $false
+    try {
+        $MoeRailHasExited = $Process.HasExited
+    } catch {
+        $MoeRailFailures.Add("Failed to inspect child exit state: $($_.Exception.Message)")
+    }
+    if (-not $MoeRailHasExited) {
+        try {
+            $Process.Kill($true)
+        } catch {
+            $MoeRailFailures.Add("Failed to terminate owned process tree: $($_.Exception.Message)")
+        }
+    }
+    try {
+        if (-not $Process.WaitForExit(5000)) {
+            $MoeRailFailures.Add('Owned process tree exceeded its 5-second reap deadline.')
+        }
+    } catch {
+        $MoeRailFailures.Add("Failed while reaping owned process tree: $($_.Exception.Message)")
+    }
+    $MoeRailFailures -join ' '
+}
+
+function Assert-MoeRailTask3ProtectedPrimary {
+    foreach ($MoeRailProtectedPath in $MoeRailExpectedProtected.Keys) {
+        $MoeRailExpected = $MoeRailExpectedProtected[$MoeRailProtectedPath]
+        $MoeRailStatus = @(
+            git -C $MoeRailPrimaryWorktree status --short -- $MoeRailProtectedPath
+        )
+        if ($LASTEXITCODE -ne 0 -or $MoeRailStatus.Count -ne 1 -or
+            $MoeRailStatus[0] -cne $MoeRailExpected.Status) {
+            $MoeRailStatus
+            throw "Protected primary status changed: $MoeRailProtectedPath"
+        }
+        $MoeRailAbsolute = Join-Path $MoeRailPrimaryWorktree $MoeRailProtectedPath
+        $MoeRailHash = (
+            Get-FileHash -LiteralPath $MoeRailAbsolute -Algorithm SHA256
+        ).Hash
+        if ($MoeRailHash -cne $MoeRailExpected.Sha256) {
+            throw "Protected primary hash changed: $MoeRailProtectedPath"
+        }
+    }
+}
+
+$MoeRailPreexistingProcessIds = @(
+    Get-MoeRailTask3MatchingProcesses | ForEach-Object { [int]$_.ProcessId }
+)
+$MoeRailBeforeStatus = @(Get-MoeRailTask3StatusSnapshot)
+$MoeRailBeforeContent = @(Get-MoeRailTask3ContentSnapshot)
+$MoeRailCachedPaths = @(
+    git -C $MoeRailFeatureWorktree diff --cached --name-only
+)
+$MoeRailCachedExit = $LASTEXITCODE
+if ($MoeRailCachedExit -ne 0 -or $MoeRailCachedPaths.Count -ne 0) {
+    throw 'Task 3 RED requires an empty feature index.'
+}
+Assert-MoeRailTask3ProtectedPrimary
+
+$MoeRailArguments = @(
+    '--headless',
+    '--path', $MoeRailProject,
+    '--script', 'res://tests/run_all.gd'
+)
+$MoeRailStartInfo = [Diagnostics.ProcessStartInfo]::new()
+$MoeRailStartInfo.FileName = $MoeRailGodotExe
+$MoeRailStartInfo.UseShellExecute = $false
+$MoeRailStartInfo.CreateNoWindow = $true
+$MoeRailStartInfo.WindowStyle = [Diagnostics.ProcessWindowStyle]::Hidden
+$MoeRailStartInfo.RedirectStandardOutput = $true
+$MoeRailStartInfo.RedirectStandardError = $true
+foreach ($MoeRailArgument in $MoeRailArguments) {
+    [void]$MoeRailStartInfo.ArgumentList.Add([string]$MoeRailArgument)
+}
+
+$MoeRailProcess = [Diagnostics.Process]::new()
+$MoeRailProcess.StartInfo = $MoeRailStartInfo
+$MoeRailStarted = $false
+$MoeRailRunFailure = $null
+$MoeRailCleanupFailure = ''
+try {
+    if (-not $MoeRailProcess.Start()) {
+        throw 'Failed to start the exact Task 3 RED child.'
+    }
+    $MoeRailStarted = $true
+    $MoeRailStdoutTask = $MoeRailProcess.StandardOutput.ReadToEndAsync()
+    $MoeRailStderrTask = $MoeRailProcess.StandardError.ReadToEndAsync()
+    $MoeRailNaturalExit = $MoeRailProcess.WaitForExit(10000)
+    if (-not $MoeRailNaturalExit) {
+        $MoeRailTerminationFailure = Stop-MoeRailTask3OwnedProcessTree `
+            -Process $MoeRailProcess
+        if (-not [string]::IsNullOrWhiteSpace($MoeRailTerminationFailure)) {
+            throw "Failed to reap the bounded Task 3 RED tree: $MoeRailTerminationFailure"
+        }
+    }
+    $MoeRailCaptureTasks = [Threading.Tasks.Task[]]@(
+        $MoeRailStdoutTask, $MoeRailStderrTask
+    )
+    try {
+        $MoeRailCaptureCompleted = [Threading.Tasks.Task]::WaitAll(
+            $MoeRailCaptureTasks,
+            5000
+        )
+    } catch {
+        throw "Task 3 RED output capture failed: $($_.Exception.Message)"
+    }
+    if (-not $MoeRailCaptureCompleted) {
+        $MoeRailStreamDisposeFailures = [Collections.Generic.List[string]]::new()
+        try {
+            $MoeRailProcess.StandardOutput.Dispose()
+        } catch {
+            $MoeRailStreamDisposeFailures.Add(
+                "stdout disposal failed: $($_.Exception.Message)"
+            )
+        }
+        try {
+            $MoeRailProcess.StandardError.Dispose()
+        } catch {
+            $MoeRailStreamDisposeFailures.Add(
+                "stderr disposal failed: $($_.Exception.Message)"
+            )
+        }
+        $MoeRailStreamDisposeDetail = ''
+        if ($MoeRailStreamDisposeFailures.Count -ne 0) {
+            $MoeRailStreamDisposeDetail = (
+                ' Stream cleanup failures: ' +
+                ($MoeRailStreamDisposeFailures -join ' ')
+            )
+        }
+        throw (
+            'Task 3 RED output capture exceeded its completion deadline.' +
+            $MoeRailStreamDisposeDetail
+        )
+    }
+    $MoeRailStdout = $MoeRailStdoutTask.GetAwaiter().GetResult()
+    $MoeRailStderr = $MoeRailStderrTask.GetAwaiter().GetResult()
+    $MoeRailExit = $MoeRailProcess.ExitCode
+} catch {
+    $MoeRailRunFailure = $_
+} finally {
+    if ($MoeRailStarted) {
+        $MoeRailCleanupFailure = Stop-MoeRailTask3OwnedProcessTree `
+            -Process $MoeRailProcess
+    }
+    try {
+        $MoeRailProcess.Dispose()
+    } catch {
+        $MoeRailDisposeFailure = "Failed to dispose Task 3 RED process: $($_.Exception.Message)"
+        $MoeRailCleanupFailure = @(
+            $MoeRailCleanupFailure, $MoeRailDisposeFailure
+        ) -join ' '
+    }
+}
+if (-not [string]::IsNullOrWhiteSpace($MoeRailCleanupFailure)) {
+    $MoeRailRunContext = ''
+    if ($null -ne $MoeRailRunFailure) {
+        $MoeRailRunContext = " Original run failure: $($MoeRailRunFailure.Exception.Message)"
+    }
+    throw "Task 3 RED cleanup failed: $MoeRailCleanupFailure$MoeRailRunContext"
+}
+if ($null -ne $MoeRailRunFailure) { throw $MoeRailRunFailure }
+
+$MoeRailText = @($MoeRailStdout, $MoeRailStderr) -join "`n"
+$MoeRailStdout
+$MoeRailStderr
+"TASK3_RED_NATURAL_EXIT=$MoeRailNaturalExit"
+"TASK3_RED_EXIT=$MoeRailExit"
+$MoeRailDiagnosticLines = @(
+    $MoeRailText -split '\r?\n' |
+        ForEach-Object { $_.TrimEnd() } |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+)
+$MoeRailExpectedScriptErrors = @(
+    '^SCRIPT ERROR: Parse Error: Preload file "res://src/domain/track/track_system\.gd" does not exist\.$',
+    '^SCRIPT ERROR: Parse Error: Preload file "res://src/domain/track/track_input_frame\.gd" does not exist\.$',
+    '^SCRIPT ERROR: Parse Error: "TrackInputFrameScript" is a constant but does not contain a type\.$',
+    '^SCRIPT ERROR: Parse Error: Cannot infer the type of "right_won" variable because the value doesn''t have a set type\.$',
+    '^SCRIPT ERROR: Compile Error: Failed to compile depended scripts\.$',
+    '^SCRIPT ERROR: Invalid call\. Nonexistent function ''new'' in base ''GDScript''\.$'
+)
+foreach ($MoeRailExpectedError in $MoeRailExpectedScriptErrors) {
+    if (@(
+        $MoeRailDiagnosticLines | Where-Object { $_ -match $MoeRailExpectedError }
+    ).Count -ne 1) {
+        throw "Task 3 RED expected one diagnostic matching: $MoeRailExpectedError"
+    }
+}
+$MoeRailUnexpectedScriptErrors = @(
+    $MoeRailDiagnosticLines | Where-Object { $_ -match '^SCRIPT ERROR:' } |
+        Where-Object {
+            $MoeRailLine = $_
+            -not @(
+                $MoeRailExpectedScriptErrors | Where-Object {
+                    $MoeRailLine -match $_
+                }
+            )
+        }
+)
+$MoeRailExpectedLoadError = (
+    '^ERROR: Failed to load script "res://tests/run_all\.gd" with error ' +
+    '"Compilation failed"\.$'
+)
+$MoeRailErrorLines = @(
+    $MoeRailDiagnosticLines | Where-Object { $_ -match '^ERROR:' }
+)
+if (@($MoeRailErrorLines | Where-Object { $_ -match $MoeRailExpectedLoadError }).Count -ne 1 -or
+    @($MoeRailErrorLines | Where-Object { $_ -notmatch $MoeRailExpectedLoadError }).Count -ne 0 -or
+    $MoeRailUnexpectedScriptErrors.Count -ne 0 -or
+    $MoeRailText -match '(?m)^(FAIL:|FATAL:|WARNING:|CRASH:)' -or
+    $MoeRailText -match '(?i)(CrashHandlerException|Program crashed|signal \d+|ObjectDB instances leaked|Resources still in use|RID allocations)') {
+    $MoeRailUnexpectedScriptErrors
+    $MoeRailErrorLines
+    throw 'Task 3 RED emitted an unexpected diagnostic.'
+}
+if ($MoeRailExit -eq 0) {
     throw 'Expected RED from the missing TrackSystem implementation.'
 }
+$MoeRailOwnedLeftovers = @(
+    Get-MoeRailTask3MatchingProcesses | Where-Object {
+        $MoeRailPreexistingProcessIds -notcontains [int]$_.ProcessId
+    }
+)
+if ($MoeRailOwnedLeftovers.Count -ne 0) {
+    $MoeRailOwnedLeftovers | Select-Object ProcessId, ParentProcessId, CommandLine
+    throw 'Task 3 RED left an owned Godot process behind.'
+}
+$MoeRailAfterStatus = @(Get-MoeRailTask3StatusSnapshot)
+$MoeRailAfterContent = @(Get-MoeRailTask3ContentSnapshot)
+if (@(Compare-Object $MoeRailBeforeStatus $MoeRailAfterStatus).Count -ne 0 -or
+    @(Compare-Object $MoeRailBeforeContent $MoeRailAfterContent).Count -ne 0) {
+    throw 'Task 3 RED changed feature status or content.'
+}
+Assert-MoeRailTask3ProtectedPrimary
 ~~~
 
-- [ ] **Step 3: Implement the concrete input value and ordered route**
+- [x] **Step 3: Implement the concrete input value and ordered route**
 
 Store route points and parallel absolute distances. Initialize both arrays with the departure point at distance `0.0`; initialize `active_start`, `built_end`, and `reserved_end` to `0.0`; initialize `available_units` and `total_units` from the copied config.
 
@@ -1471,64 +4055,1468 @@ Reject lengths at or below the technical epsilon. Otherwise append exactly one e
 
 Field clipping uses a segment-versus-axis-aligned-rectangle parameter calculation and returns the nearest forward edge. Intersection uses segment parameters, ignores only contact at the new segment's owned start with the final active segment, and finds the smallest positive new-segment distance across all active segments. Projection iterates only portions at or beyond `built_end_distance` and clamps the projection to each segment portion. Squared distances may identify the nearest candidate, but the epsilon tie is defined in linear units: compare `absf(sqrt(candidate_distance_squared) - sqrt(best_distance_squared)) <= GEOMETRY_EPSILON`, then choose the greatest route distance only inside that linear-distance tie.
 
+Godot's float32 `Vector2` may have no exact-ray cap-safe representation within `GEOMETRY_EPSILON`. Any clipped endpoint uses 48 radial iterations, then may refine each stored component in the movement direction only when the actual stored delta from the radial endpoint is at most `GEOMETRY_EPSILON`, the scalar cap recomputed from stored runtime components remains inclusively satisfied, exact field containment holds, and closeness to the accepted limit is nondecreasing. Field raw length is `sqrt(dx * dx + dy * dy)`, never `Vector2.distance_to`. Projection selection retains an immutable true global-minimum distance reference to prevent epsilon chaining. Canonical vertex normalization chooses the true nearest vertex and breaks only an exact equal-distance-delta tie toward the greatest route distance. Fixed-epsilon tests use explicit `absf` comparisons, never `is_equal_approx`.
+
+Before running the gate, set `MOERAIL_TASK3_STEP4_FEATURE_HEAD=7bfeb914141aaefdb2fc05adcaa0b876ccc69267` and `MOERAIL_TASK3_STEP4_STATE_MODE=POSTCOMMIT_FINAL`, then revalidate the exact clean committed state.
+
 - [ ] **Step 4: Run the reservation GREEN gate**
 
 ~~~powershell
-$MoeRailFeatureWorktree = 'D:\godot\MoeRailWay-worktrees\proto-02-track-train'
-$MoeRailProject = Join-Path $MoeRailFeatureWorktree 'godot-project-moe-rail-way'
-$MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
-$MoeRailOutput = @(& $MoeRailGodotExe --headless --path $MoeRailProject --script 'res://tests/run_all.gd' 2>&1)
-$MoeRailExit = $LASTEXITCODE
-$MoeRailText = $MoeRailOutput -join "`n"
-$MoeRailOutput
-if ($MoeRailExit -ne 0 -or
-    [regex]::Matches($MoeRailText, '(?m)^PASS: 9 prototype test suite\(s\)\r?$').Count -ne 1 -or
-    $MoeRailText -match '(?m)^(FAIL:|SCRIPT ERROR:|ERROR:)') {
-    throw 'Task 3 did not pass exactly nine suites.'
+# Final Task 3 Step 4 post-commit GREEN gate using a disposable editor mirror
+# Validates clean committed Task 3 bytes plus protected primary state before sixth-amendment adoption
+# This bounded gate reuses the independently reviewed disposable-editor-mirror helper from Task 2 Step 4B:
+# - exact seven SHA-256 literals (no truncation)
+# - caller-provided feature HEAD via MOERAIL_TASK3_STEP4_FEATURE_HEAD
+# exact zero feature status rows (clean post-commit state)
+# - mirror root validated before Get-Item
+# - project.godot directly under mirror project
+# - full ordinary/reparse/manifest checks from reviewed helper
+# - bounded controller-owned Process with exact ownership semantics
+# - import diagnostics on stdout/stderr/log
+# - class-cache path-based lookup (not name-only)
+# - test command exactly five args, no log-file, exact PASS cardinality
+# - CIM observation with executable+command-line match
+# - full feature/mirror/primary postchecks at all phases
+# - top-level try/catch/finally with exact child cleanup attempts
+
+$ErrorActionPreference = 'Stop'
+
+# --- Caller-provided feature HEAD ---
+$MoeRailEnvFeatureHead = $env:MOERAIL_TASK3_STEP4_FEATURE_HEAD
+if ($MoeRailEnvFeatureHead -notmatch '^[0-9a-f]{40}$') {
+    throw 'Set MOERAIL_TASK3_STEP4_FEATURE_HEAD to the exact expected feature HEAD (40 hex chars).'
 }
-~~~
 
-- [ ] **Step 5: Commit only Task 3 files**
+[string] $MoeRailTask3Step4StateMode = $env:MOERAIL_TASK3_STEP4_STATE_MODE
 
-~~~powershell
-$MoeRailFeatureWorktree = 'D:\godot\MoeRailWay-worktrees\proto-02-track-train'
-$MoeRailTaskFiles = @(
+if (-not [string]::Equals(
+    $MoeRailEnvFeatureHead,
+    '7bfeb914141aaefdb2fc05adcaa0b876ccc69267',
+    [StringComparison]::Ordinal
+)) {
+    throw "Invalid MOERAIL_TASK3_STEP4_FEATURE_HEAD: '$MoeRailEnvFeatureHead'"
+}
+if (-not [string]::Equals(
+    $MoeRailTask3Step4StateMode,
+    'POSTCOMMIT_FINAL',
+    [StringComparison]::Ordinal
+)) {
+    throw "Invalid MOERAIL_TASK3_STEP4_STATE_MODE: '$MoeRailTask3Step4StateMode'"
+}
+
+# --- Constants ---
+$MoeRailFeatureWorktree   = 'D:\godot\MoeRailWay-worktrees\proto-02-track-train'
+$MoeRailFeatureBranch     = 'proto/02-track-train'
+$MoeRailFeatureHead       = $MoeRailEnvFeatureHead
+$MoeRailMergeBase         = '4c0b9ac9a1335c8ffa8cb24f4b7eaf9434dc30c1'
+$MoeRailRemoteUrl         = 'https://github.com/2ji1/Project_MoeRailWay.git'
+$MoeRailPrimary           = 'D:\godot\MoeRailWay'
+$MoeRailPrimaryBranch     = 'Prototyping'
+$MoeRailPrimaryHead       = '4c0b9ac9a1335c8ffa8cb24f4b7eaf9434dc30c1'
+$MoeRailExpectedGitCommonDir = 'D:\godot\MoeRailWay\.git'
+$MoeRailGodotExe          = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
+$MoeRailExpectedVersion   = '4.7.1.stable.official.a13da4feb'
+
+# --- Feature seven-path scope and exact SHA-256 ---
+$MoeRailFeatureScope = @(
+    'godot-project-moe-rail-way/tests/run_all.gd',
     'godot-project-moe-rail-way/src/domain/track/track_input_frame.gd',
     'godot-project-moe-rail-way/src/domain/track/track_input_frame.gd.uid',
     'godot-project-moe-rail-way/src/domain/track/track_system.gd',
     'godot-project-moe-rail-way/src/domain/track/track_system.gd.uid',
     'godot-project-moe-rail-way/tests/unit/test_track_system_reservation.gd',
-    'godot-project-moe-rail-way/tests/unit/test_track_system_reservation.gd.uid',
-    'godot-project-moe-rail-way/tests/run_all.gd'
+    'godot-project-moe-rail-way/tests/unit/test_track_system_reservation.gd.uid'
+) | Sort-Object
+
+$MoeRailExpectedFeatureHashes = [ordered]@{
+    'godot-project-moe-rail-way/tests/run_all.gd'                                    = '017EA13E7771288CB5049BEED310EF25AEDDD092019FDC5123EF04294AA580DC'
+    'godot-project-moe-rail-way/src/domain/track/track_input_frame.gd'              = 'F02C193E583105F98782F7917FA20E9F0D02CA9ECA568CF3EC0191DF0B591A43'
+    'godot-project-moe-rail-way/src/domain/track/track_input_frame.gd.uid'          = 'E728E2E63AB09B7770163F9A30CBBA5BEBEE63109E144186776E1934387D4882'
+    'godot-project-moe-rail-way/src/domain/track/track_system.gd'                   = '7E37B8588FF7767999949CC87C3882314E0D5400270C9B7B185CB7E1973AD919'
+    'godot-project-moe-rail-way/src/domain/track/track_system.gd.uid'               = '026773E4DBF2691E41D0C450EBBD554CB076F06C0E4B5B0CB9564C39210EB768'
+    'godot-project-moe-rail-way/tests/unit/test_track_system_reservation.gd'        = '5F09BFB960C2621F4443A3C52B166D7C916C7464CF06EEE9C566C6FE731D26A2'
+    'godot-project-moe-rail-way/tests/unit/test_track_system_reservation.gd.uid'    = '35CC862A7B6E2211D6F06E713399F36D0B0A2B111D3E4A518AE5653C0E027BB5'
+}
+
+# --- Primary protected paths and exact SHA-256 ---
+$MoeRailProtectedPaths = @(
+    'godot-project-moe-rail-way/tests/smoke/test_project_boot.gd',
+    'godot-project-moe-rail-way/tests/support/prototype_test.gd',
+    'docs/superpowers/plans/2026-08-15-godot-mcp-project-setup.md'
 )
-if (@(git -C $MoeRailFeatureWorktree diff --cached --name-only).Count -ne 0) { throw 'Task 3 index is not empty.' }
-git -C $MoeRailFeatureWorktree add -- $MoeRailTaskFiles
-if ($LASTEXITCODE -ne 0) { throw 'Task 3 staging failed.' }
-$MoeRailStaged = @(git -C $MoeRailFeatureWorktree diff --cached --name-only | Sort-Object)
-if (@(Compare-Object ($MoeRailTaskFiles | Sort-Object) $MoeRailStaged).Count -ne 0) {
-    $MoeRailStaged
-    throw 'Task 3 staged set differs from its file contract.'
+$MoeRailExpectedProtectedHashes = [ordered]@{
+    'godot-project-moe-rail-way/tests/smoke/test_project_boot.gd'                 = '7871537D0BE68518D59CA0F6EDA8E8295662F03DF3F723591163946D54E51324'
+    'godot-project-moe-rail-way/tests/support/prototype_test.gd'                  = 'F1046A3C22D979C60473CE64B639937EB1C35E61D76568AB53D2BB08F521985B'
+    'docs/superpowers/plans/2026-08-15-godot-mcp-project-setup.md'               = '826EBE2D77A76C077D3D7F4ABE8BC89329CAE39BC302284559D2433A8F700681'
 }
-$MoeRailUnstagedOutput = @(git -C $MoeRailFeatureWorktree diff --name-only)
-$MoeRailUnstagedExit = $LASTEXITCODE
-$MoeRailUntracked = @(git -C $MoeRailFeatureWorktree ls-files --others --exclude-standard)
-$MoeRailUntrackedExit = $LASTEXITCODE
-if ($MoeRailUnstagedExit -ne 0 -or $MoeRailUntrackedExit -ne 0 -or
-    $MoeRailUnstagedOutput.Count -ne 0 -or $MoeRailUntracked.Count -ne 0) {
-    $MoeRailUnstagedOutput
-    $MoeRailUntracked
-    throw 'Task 3 has changes outside its staged file contract.'
+$MoeRailAllowedPrimaryStatus = [string[]]@(
+    ' M godot-project-moe-rail-way/tests/smoke/test_project_boot.gd',
+    ' M godot-project-moe-rail-way/tests/support/prototype_test.gd',
+    '?? docs/superpowers/plans/2026-08-15-godot-mcp-project-setup.md'
+)
+[Array]::Sort($MoeRailAllowedPrimaryStatus, [StringComparer]::Ordinal)
+
+# --- Helper functions (adapted from independently reviewed Task 2 Step 4B) ---
+function Get-MoeRailGitNulPaths {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string] $Worktree,
+
+        [Parameter(Mandatory = $true)]
+        [string[]] $GitArguments,
+
+        [Parameter(Mandatory = $true)]
+        [string] $Label
+    )
+
+    [string[]]$argsArray = @('-C', $Worktree) + $GitArguments
+
+    $procResult = Invoke-MoeRailBoundedProcess `
+        -Executable 'git' `
+        -Arguments $argsArray `
+        -EnvironmentOverrides @{} `
+        -Label $Label `
+        -OwnedChildren $MoeRailOwnedChildren
+
+    if ($procResult.ExitCode -ne 0) {
+        throw "[$Label] git exited with code $($procResult.ExitCode). stderr: $($procResult.Stderr)"
+    }
+
+    if (-not [string]::IsNullOrEmpty($procResult.Stderr)) {
+        throw "[$Label] git produced stderr on success: $($procResult.Stderr)"
+    }
+
+    $raw = $procResult.Stdout
+
+    if ($raw.Length -eq 0) {
+        return @()
+    }
+
+    if ($raw[$raw.Length - 1] -ne [char]0) {
+        throw "[$Label] stdout does not terminate with NUL character"
+    }
+
+    $records = $raw.Split([char]0, [System.StringSplitOptions]::RemoveEmptyEntries)
+    return $records
 }
-git -C $MoeRailFeatureWorktree diff --cached --check
-if ($LASTEXITCODE -ne 0) { throw 'Task 3 cached diff failed.' }
-git -C $MoeRailFeatureWorktree commit -m 'feat: add track reservation domain'
-if ($LASTEXITCODE -ne 0) { throw 'Task 3 commit failed.' }
-$MoeRailPostCommitStatus = @(git -C $MoeRailFeatureWorktree status --porcelain --untracked-files=all)
-if ($LASTEXITCODE -ne 0 -or $MoeRailPostCommitStatus.Count -ne 0) {
-    $MoeRailPostCommitStatus
-    throw 'Task 3 did not leave a clean feature worktree.'
+
+function Get-MoeRailContentSnapshot {
+    param([string]$Worktree)
+    $MoeRailTracked = @(Get-MoeRailGitNulPaths -Worktree $Worktree -GitArguments @('ls-files','-z') -Label 'snapshot tracked ls-files')
+    $MoeRailUntracked = @(Get-MoeRailGitNulPaths -Worktree $Worktree -GitArguments @('ls-files','-z','--others','--exclude-standard') -Label 'snapshot untracked ls-files')
+    $MoeRailSnapshotPaths = [System.Collections.Generic.SortedSet[string]]::new([StringComparer]::Ordinal)
+    @($MoeRailTracked + $MoeRailUntracked) | ForEach-Object { $null = $MoeRailSnapshotPaths.Add($_) }
+    @(
+        $MoeRailSnapshotPaths | ForEach-Object {
+            $MoeRailSnapshotPath = $_
+            $MoeRailAbsolute = Join-Path $Worktree $MoeRailSnapshotPath
+            if (-not (Test-Path -LiteralPath $MoeRailAbsolute -PathType Leaf)) {
+                throw "Snapshot path is not a file: $MoeRailSnapshotPath"
+            }
+            $MoeRailHash = (Get-FileHash -LiteralPath $MoeRailAbsolute -Algorithm SHA256).Hash
+            "$MoeRailSnapshotPath`t$MoeRailHash"
+        }
+    )
 }
+
+function Get-MoeRailStatusSnapshot {
+    param([string]$Worktree)
+    $MoeRailRows = @(git -C $Worktree status --porcelain=v1 --untracked-files=all)
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to capture status.' }
+    @($MoeRailRows | Sort-Object)
+}
+
+function Assert-MoeRailOrdinaryPathChain {
+    param([string]$Path, [string]$Boundary)
+    $MoeRailFullPath = [IO.Path]::GetFullPath($Path).TrimEnd('\')
+    $MoeRailFullBoundary = [IO.Path]::GetFullPath($Boundary).TrimEnd('\')
+    $MoeRailBoundaryPrefix = $MoeRailFullBoundary + '\'
+    if ($MoeRailFullPath -ne $MoeRailFullBoundary -and
+        -not $MoeRailFullPath.StartsWith($MoeRailBoundaryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Path escaped its ordinary-file boundary: $MoeRailFullPath"
+    }
+    $MoeRailCurrent = $MoeRailFullPath
+    while ($true) {
+        if (-not (Test-Path -LiteralPath $MoeRailCurrent)) {
+            throw "Required path-chain item is missing: $MoeRailCurrent"
+        }
+        $MoeRailCurrentItem = Get-Item -LiteralPath $MoeRailCurrent -Force
+        if (($MoeRailCurrentItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Reparse point is forbidden in path chain: $MoeRailCurrent"
+        }
+        if ($MoeRailCurrent -eq $MoeRailFullBoundary) { break }
+        $MoeRailParent = [IO.Path]::GetFullPath((Split-Path -Parent $MoeRailCurrent)).TrimEnd('\')
+        if ($MoeRailParent -eq $MoeRailCurrent) {
+            throw "Path chain did not reach its boundary: $MoeRailFullPath"
+        }
+        $MoeRailCurrent = $MoeRailParent
+    }
+    $MoeRailFullPath
+}
+
+function Assert-MoeRailOrdinaryTree {
+    param([string]$Root)
+    $MoeRailQueue = [Collections.Generic.Queue[string]]::new()
+    $MoeRailQueue.Enqueue($Root)
+    while ($MoeRailQueue.Count -gt 0) {
+        $MoeRailDirectory = $MoeRailQueue.Dequeue()
+        foreach ($MoeRailChild in Get-ChildItem -LiteralPath $MoeRailDirectory -Force) {
+            if (($MoeRailChild.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "Reparse point is forbidden in tree: $($MoeRailChild.FullName)"
+            }
+            if ($MoeRailChild.PSIsContainer) {
+                $MoeRailQueue.Enqueue($MoeRailChild.FullName)
+            }
+        }
+    }
+}
+
+function Assert-MoeRailMirrorRoot {
+    param([string]$Root)
+    $MoeRailTemp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')
+    $MoeRailFullRoot = [IO.Path]::GetFullPath($Root).TrimEnd('\')
+    $MoeRailRootParent = [IO.Path]::GetFullPath((Split-Path -Parent $MoeRailFullRoot)).TrimEnd('\')
+    if ($MoeRailRootParent -ne $MoeRailTemp -or
+        (Split-Path -Leaf $MoeRailFullRoot) -notmatch '^moerail-track-train-editor-[0-9a-f]{32}$') {
+        throw "Unsafe disposable mirror root: $MoeRailFullRoot"
+    }
+    [void](Assert-MoeRailOrdinaryPathChain -Path $MoeRailTemp -Boundary $MoeRailTemp)
+    if (Test-Path -LiteralPath $MoeRailFullRoot) {
+        [void](Assert-MoeRailOrdinaryPathChain -Path $MoeRailFullRoot -Boundary $MoeRailTemp)
+    }
+    $MoeRailFullRoot
+}
+
+function Assert-MoeRailMirrorState {
+    param(
+        [Parameter(Mandatory=$true)][string]$Phase,
+        [Parameter(Mandatory=$true)][string]$TempRoot,
+        [Parameter(Mandatory=$true)][string]$Root,
+        [Parameter(Mandatory=$true)][string]$Project,
+        [Parameter(Mandatory=$true)][string]$Environment,
+        [Parameter(Mandatory=$true)][string]$Logs,
+        [switch]$RequireProjectGodot
+    )
+
+    $MoeRailFullTempRoot = [IO.Path]::GetFullPath($TempRoot).TrimEnd('\')
+    $MoeRailFullRoot = [IO.Path]::GetFullPath($Root).TrimEnd('\')
+    $MoeRailFullProject = [IO.Path]::GetFullPath($Project).TrimEnd('\')
+    $MoeRailFullEnvironment = [IO.Path]::GetFullPath($Environment).TrimEnd('\')
+    $MoeRailFullLogs = [IO.Path]::GetFullPath($Logs).TrimEnd('\')
+
+    foreach ($MoeRailPath in @($MoeRailFullTempRoot, $MoeRailFullRoot)) {
+        if (-not (Test-Path -LiteralPath $MoeRailPath -PathType Container)) {
+            throw "Phase $Phase`: path not found or not a container: $MoeRailPath"
+        }
+        $MoeRailItem = Get-Item -LiteralPath $MoeRailPath -Force
+        if (($MoeRailItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Phase $Phase`: reparse point detected at $MoeRailPath"
+        }
+    }
+
+    $MoeRailRootParent = [IO.Path]::GetFullPath((Split-Path -Parent $MoeRailFullRoot)).TrimEnd('\')
+    if (-not $MoeRailRootParent.Equals($MoeRailFullTempRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Phase '$Phase': MoeRailRootParent '$MoeRailRootParent' does not match MoeRailFullTempRoot '$MoeRailFullTempRoot'"
+    }
+    $MoeRailRootLeaf = Split-Path -Leaf $MoeRailFullRoot
+    if ($MoeRailRootLeaf -notmatch '^moerail-track-train-editor-[0-9a-f]{32}$') {
+        throw "Phase $Phase`: unexpected root leaf '$MoeRailRootLeaf'"
+    }
+
+    [void](Assert-MoeRailOrdinaryPathChain -Path $MoeRailFullTempRoot -Boundary $MoeRailFullTempRoot)
+    [void](Assert-MoeRailOrdinaryPathChain -Path $MoeRailFullRoot -Boundary $MoeRailFullTempRoot)
+
+    $MoeRailPairs = @(
+        @($MoeRailFullProject, 'project'),
+        @($MoeRailFullEnvironment, 'environment'),
+        @($MoeRailFullLogs, 'logs')
+    )
+
+    foreach ($MoeRailPair in $MoeRailPairs) {
+        $MoeRailSupplied = $MoeRailPair[0]
+        $MoeRailLeaf = $MoeRailPair[1]
+        $MoeRailExpected = [IO.Path]::GetFullPath((Join-Path $MoeRailFullRoot $MoeRailLeaf)).TrimEnd('\')
+        if (-not $MoeRailSupplied.Equals($MoeRailExpected, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Phase $Phase`: $MoeRailLeaf path mismatch: supplied '$MoeRailSupplied' expected '$MoeRailExpected'"
+        }
+        if (-not (Test-Path -LiteralPath $MoeRailSupplied -PathType Container)) {
+            throw "Phase $Phase`: $MoeRailLeaf path not found or not a container: $MoeRailSupplied"
+        }
+        $MoeRailItem = Get-Item -LiteralPath $MoeRailSupplied -Force
+        if (($MoeRailItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Phase $Phase`: reparse point detected at $MoeRailSupplied"
+        }
+        [void](Assert-MoeRailOrdinaryPathChain -Path $MoeRailSupplied -Boundary $MoeRailFullRoot)
+    }
+
+    if ($RequireProjectGodot) {
+        $MoeRailProjectGodot = [IO.Path]::GetFullPath((Join-Path $MoeRailFullProject 'project.godot')).TrimEnd('\')
+        if (-not (Test-Path -LiteralPath $MoeRailProjectGodot -PathType Leaf)) {
+            throw "Phase $Phase`: project.godot not found at $MoeRailProjectGodot"
+        }
+        $MoeRailProjectGodotItem = Get-Item -LiteralPath $MoeRailProjectGodot -Force
+        if (($MoeRailProjectGodotItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Phase $Phase`: project.godot is a reparse point at $MoeRailProjectGodot"
+        }
+        [void](Assert-MoeRailOrdinaryPathChain -Path $MoeRailProjectGodot -Boundary $MoeRailFullProject)
+    }
+
+    [void](Assert-MoeRailOrdinaryTree -Root $MoeRailFullRoot)
+    $MoeRailFullRoot
+}
+
+function Assert-MoeRailMirrorManifest {
+    param(
+        [Parameter(Mandatory)][string]$Phase,
+        [Parameter(Mandatory)][string]$Project,
+        [Parameter(Mandatory)][string]$Root,
+        [Parameter(Mandatory)][System.Collections.IDictionary]$ExpectedManifest
+    )
+
+    $normProject = [IO.Path]::GetFullPath($Project).TrimEnd('\')
+    $normRoot    = [IO.Path]::GetFullPath($Root).TrimEnd('\')
+
+    [void](Assert-MoeRailOrdinaryPathChain -Path $normProject -Boundary $normRoot)
+    [void](Assert-MoeRailOrdinaryTree -Root $normProject)
+
+    $MoeRailActualHashes = [System.Collections.Generic.Dictionary[string,string]]::new([StringComparer]::Ordinal)
+    $files  = [IO.Directory]::EnumerateFiles($normProject, '*', [IO.SearchOption]::AllDirectories)
+    foreach ($f in $files) {
+        $attr = [IO.File]::GetAttributes($f)
+        if ($attr -band [IO.FileAttributes]::ReparsePoint) {
+            throw "Phase '$Phase': reparse point detected at '$f'"
+        }
+        $rel = $f.Substring($normProject.Length + 1).Replace('\', '/')
+        if ($rel -cmatch '^\.godot(/|$)') { continue }
+        $hash = (Get-FileHash -LiteralPath $f -Algorithm SHA256).Hash
+        if ($MoeRailActualHashes.ContainsKey($rel)) {
+            throw "Phase '$Phase': duplicate actual manifest path '$rel'"
+        }
+        $MoeRailActualHashes.Add($rel, $hash)
+    }
+
+    $MoeRailActualPaths = [string[]]@($MoeRailActualHashes.Keys)
+    $MoeRailExpectedPaths = [string[]]@($ExpectedManifest.Keys | ForEach-Object { [string]$_ })
+    [Array]::Sort($MoeRailActualPaths, [StringComparer]::Ordinal)
+    [Array]::Sort($MoeRailExpectedPaths, [StringComparer]::Ordinal)
+
+    if ($MoeRailActualPaths.Length -ne $MoeRailExpectedPaths.Length) {
+        throw "Phase '$Phase': file count mismatch (actual=$($MoeRailActualPaths.Length), expected=$($MoeRailExpectedPaths.Length))"
+    }
+
+    for ($i = 0; $i -lt $MoeRailActualPaths.Length; $i++) {
+        $a = $MoeRailActualPaths[$i]
+        $e = $MoeRailExpectedPaths[$i]
+        if (-not [string]::Equals($a, $e, [StringComparison]::Ordinal)) {
+            throw "Phase '$Phase': file-set mismatch at index $i (actual='$a', expected='$e')"
+        }
+        $expHash = $ExpectedManifest[$e]
+        $actHash = $MoeRailActualHashes[$a]
+        if (-not [string]::Equals($actHash, $expHash, [StringComparison]::Ordinal)) {
+            throw "Phase '$Phase': hash mismatch for '$a' (actual='$actHash', expected='$expHash')"
+        }
+    }
+}
+
+function Get-MoeRailLogText {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "Required capture is missing: $Path"
+    }
+    $MoeRailCaptureItem = Get-Item -LiteralPath $Path -Force
+    if (($MoeRailCaptureItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Capture is a reparse point: $Path"
+    }
+    Get-Content -LiteralPath $Path -Raw -ErrorAction Stop
+}
+
+function Assert-MoeRailFeatureState {
+    param(
+        [string]$Phase,
+        [scriptblock]$FailureHandler
+    )
+    [string[]] $MoeRailFeatureRootRows = [string[]]@(git -C $MoeRailFeatureWorktree rev-parse --show-toplevel)
+    [int] $MoeRailFeatureRootExit = $LASTEXITCODE
+    [string] $MoeRailFeatureRoot = if ($MoeRailFeatureRootRows.Count -eq 1) { $MoeRailFeatureRootRows[0].Trim() } else { $null }
+
+    [string[]] $MoeRailFeatureCommonDirRows = [string[]]@(git -C $MoeRailFeatureWorktree rev-parse --path-format=absolute --git-common-dir)
+    [int] $MoeRailFeatureCommonDirExit = $LASTEXITCODE
+    [string] $MoeRailFeatureCommonDir = if ($MoeRailFeatureCommonDirRows.Count -eq 1) { $MoeRailFeatureCommonDirRows[0].Trim() } else { $null }
+
+    [string[]] $MoeRailFeatureCurrentBranchRows = [string[]]@(git -C $MoeRailFeatureWorktree branch --show-current)
+    [int] $MoeRailFeatureCurrentBranchExit = $LASTEXITCODE
+    [string] $MoeRailFeatureCurrentBranch = if ($MoeRailFeatureCurrentBranchRows.Count -eq 1) { $MoeRailFeatureCurrentBranchRows[0].Trim() } else { $null }
+
+    [string[]] $MoeRailFeatureCurrentHeadRows = [string[]]@(git -C $MoeRailFeatureWorktree rev-parse HEAD)
+    [int] $MoeRailFeatureCurrentHeadExit = $LASTEXITCODE
+    [string] $MoeRailFeatureCurrentHead = if ($MoeRailFeatureCurrentHeadRows.Count -eq 1) { $MoeRailFeatureCurrentHeadRows[0].Trim() } else { $null }
+
+    [string[]] $MoeRailFeatureIndex = [string[]]@(git -C $MoeRailFeatureWorktree diff --cached --name-only)
+    [int] $MoeRailFeatureIndexExit = $LASTEXITCODE
+
+    [string[]] $MoeRailFeatureStatus = [string[]]@(git -C $MoeRailFeatureWorktree status --porcelain=v1 --untracked-files=all)
+    [int] $MoeRailFeatureStatusExit = $LASTEXITCODE
+    [Array]::Sort($MoeRailFeatureStatus, [StringComparer]::Ordinal)
+
+    [string[]] $MoeRailRemoteRows = [string[]]@(git -C $MoeRailFeatureWorktree remote get-url origin)
+    [int] $MoeRailRemoteExit = $LASTEXITCODE
+
+    [string[]] $MoeRailMergeBaseCheck = [string[]]@(git -C $MoeRailFeatureWorktree merge-base $MoeRailFeatureBranch Prototyping)
+    [int] $MoeRailMergeBaseExit = $LASTEXITCODE
+
+    if (
+        $MoeRailFeatureRootExit -ne 0 -or $MoeRailFeatureRootRows.Count -ne 1 -or
+        ![System.IO.Path]::GetFullPath($MoeRailFeatureRoot).Equals([System.IO.Path]::GetFullPath($MoeRailFeatureWorktree), [System.StringComparison]::OrdinalIgnoreCase) -or
+        $MoeRailFeatureCommonDirExit -ne 0 -or $MoeRailFeatureCommonDirRows.Count -ne 1 -or -not [string]::Equals([IO.Path]::GetFullPath($MoeRailFeatureCommonDir), [IO.Path]::GetFullPath($MoeRailExpectedGitCommonDir), [StringComparison]::OrdinalIgnoreCase) -or
+        $MoeRailFeatureCurrentBranchExit -ne 0 -or $MoeRailFeatureCurrentBranchRows.Count -ne 1 -or
+        !$MoeRailFeatureCurrentBranch.Equals($MoeRailFeatureBranch, [System.StringComparison]::Ordinal) -or
+        $MoeRailFeatureCurrentHeadExit -ne 0 -or $MoeRailFeatureCurrentHeadRows.Count -ne 1 -or
+        !$MoeRailFeatureCurrentHead.Equals($MoeRailFeatureHead, [System.StringComparison]::Ordinal) -or
+        $MoeRailFeatureIndexExit -ne 0 -or $MoeRailFeatureIndex.Count -ne 0 -or
+        $MoeRailFeatureStatusExit -ne 0 -or
+        $MoeRailRemoteExit -ne 0 -or $MoeRailRemoteRows.Count -ne 1 -or
+        !$MoeRailRemoteRows[0].Equals($MoeRailRemoteUrl, [System.StringComparison]::Ordinal) -or
+        $MoeRailMergeBaseExit -ne 0 -or $MoeRailMergeBaseCheck.Count -ne 1 -or
+        !$MoeRailMergeBaseCheck[0].Equals($MoeRailMergeBase, [System.StringComparison]::Ordinal)
+    ) {
+        & $FailureHandler
+        throw "Feature state invalid at ${Phase}: root=$MoeRailFeatureRoot branch=$MoeRailFeatureCurrentBranch head=$MoeRailFeatureCurrentHead index=$($MoeRailFeatureIndex.Count) status=$($MoeRailFeatureStatus.Count) remote=$MoeRailRemoteRows mergeBase=$($MoeRailMergeBaseCheck -join ';')"
+    }
+
+    [string[]] $MoeRailExpectedFeatureStatus = [string[]]@()
+
+    if ($MoeRailFeatureStatus.Count -ne $MoeRailExpectedFeatureStatus.Length -or
+        -not [System.Linq.Enumerable]::SequenceEqual($MoeRailFeatureStatus, $MoeRailExpectedFeatureStatus, [StringComparer]::Ordinal)) {
+        & $FailureHandler
+        throw "Feature status rows mismatch at ${Phase}"
+    }
+
+    $MoeRailSnapshot = Get-MoeRailContentSnapshot -Worktree $MoeRailFeatureWorktree
+    $MoeRailInitialSnapshot = $script:MoeRailInitialFeatureSnapshot
+    if (-not [System.Linq.Enumerable]::SequenceEqual[string]([string[]]@($MoeRailSnapshot), [string[]]@($MoeRailInitialSnapshot), [StringComparer]::Ordinal)) {
+        & $FailureHandler
+        throw "Feature content snapshot mismatch at ${Phase}"
+    }
+
+    foreach ($MoeRailPath in $MoeRailFeatureScope) {
+        $MoeRailAbs = Join-Path $MoeRailFeatureWorktree $MoeRailPath
+        $MoeRailHash = (Get-FileHash -LiteralPath $MoeRailAbs -Algorithm SHA256).Hash
+        if (-not [string]::Equals($MoeRailHash, $MoeRailExpectedFeatureHashes[$MoeRailPath], [StringComparison]::Ordinal)) {
+            & $FailureHandler
+            throw "Feature scope hash mismatch at ${Phase}: $MoeRailPath (expected $($MoeRailExpectedFeatureHashes[$MoeRailPath]), got $MoeRailHash)"
+        }
+    }
+}
+
+function Assert-MoeRailPrimaryState {
+    param(
+        [string]$Phase,
+        [scriptblock]$FailureHandler
+    )
+    [string[]] $MoeRailPrimaryRootRows = git -C $MoeRailPrimary rev-parse --show-toplevel
+    [int] $MoeRailPrimaryRootExit = $LASTEXITCODE
+    [string] $MoeRailPrimaryRoot = if ($MoeRailPrimaryRootRows.Count -eq 1) { $MoeRailPrimaryRootRows[0].Trim() } else { $null }
+
+    [string[]] $MoeRailPrimaryCommonDirRows = git -C $MoeRailPrimary rev-parse --path-format=absolute --git-common-dir
+    [int] $MoeRailPrimaryCommonDirExit = $LASTEXITCODE
+    [string] $MoeRailPrimaryCommonDir = if ($MoeRailPrimaryCommonDirRows.Count -eq 1) { $MoeRailPrimaryCommonDirRows[0].Trim() } else { $null }
+
+    [string[]]$MoeRailPrimaryCurrentBranchRows = @(git -C $MoeRailPrimary branch --show-current)
+    $MoeRailPrimaryCurrentBranchExit = $LASTEXITCODE
+    $MoeRailPrimaryCurrentBranch = if ($MoeRailPrimaryCurrentBranchRows.Count -eq 1) { $MoeRailPrimaryCurrentBranchRows[0].Trim() } else { $null }
+
+    [string[]]$MoeRailPrimaryCurrentHeadRows = @(git -C $MoeRailPrimary rev-parse HEAD)
+    $MoeRailPrimaryCurrentHeadExit = $LASTEXITCODE
+    $MoeRailPrimaryCurrentHead = if ($MoeRailPrimaryCurrentHeadRows.Count -eq 1) { $MoeRailPrimaryCurrentHeadRows[0].Trim() } else { $null }
+
+    $MoeRailPrimaryIndex = @(git -C $MoeRailPrimary diff --cached --name-only)
+    $MoeRailPrimaryIndexExit = $LASTEXITCODE
+
+    $MoeRailPrimaryStatus = [string[]]@(git -C $MoeRailPrimary status --porcelain=v1 --untracked-files=all)
+    $MoeRailPrimaryStatusExit = $LASTEXITCODE
+    [Array]::Sort($MoeRailPrimaryStatus, [StringComparer]::Ordinal)
+
+    [string[]]$MoeRailPrimaryRemoteRows = @(git -C $MoeRailPrimary remote get-url origin)
+    $MoeRailPrimaryRemoteExit = $LASTEXITCODE
+    $MoeRailPrimaryRemoteUrlActual = if ($MoeRailPrimaryRemoteRows.Count -eq 1) { $MoeRailPrimaryRemoteRows[0].Trim() } else { $null }
+
+    if ($MoeRailPrimaryRootExit -ne 0 -or $MoeRailPrimaryRootRows.Count -ne 1 -or -not [string]::Equals([IO.Path]::GetFullPath($MoeRailPrimaryRoot), [IO.Path]::GetFullPath($MoeRailPrimary), [StringComparison]::OrdinalIgnoreCase) -or
+        $MoeRailPrimaryCommonDirExit -ne 0 -or $MoeRailPrimaryCommonDirRows.Count -ne 1 -or -not [string]::Equals([IO.Path]::GetFullPath($MoeRailPrimaryCommonDir), [IO.Path]::GetFullPath($MoeRailExpectedGitCommonDir), [StringComparison]::OrdinalIgnoreCase) -or
+        $MoeRailPrimaryCurrentBranchExit -ne 0 -or $MoeRailPrimaryCurrentBranchRows.Count -ne 1 -or -not [string]::Equals($MoeRailPrimaryCurrentBranch, $MoeRailPrimaryBranch, [StringComparison]::Ordinal) -or
+        $MoeRailPrimaryCurrentHeadExit -ne 0 -or $MoeRailPrimaryCurrentHeadRows.Count -ne 1 -or -not [string]::Equals($MoeRailPrimaryCurrentHead, $MoeRailPrimaryHead, [StringComparison]::Ordinal) -or
+        $MoeRailPrimaryIndexExit -ne 0 -or $MoeRailPrimaryIndex.Count -ne 0 -or
+        $MoeRailPrimaryStatusExit -ne 0 -or -not [System.Linq.Enumerable]::SequenceEqual[string]($MoeRailAllowedPrimaryStatus, $MoeRailPrimaryStatus, [StringComparer]::Ordinal) -or
+        $MoeRailPrimaryRemoteExit -ne 0 -or $MoeRailPrimaryRemoteRows.Count -ne 1 -or -not [string]::Equals($MoeRailPrimaryRemoteUrlActual, $MoeRailRemoteUrl, [StringComparison]::Ordinal)) {
+        & $FailureHandler
+        throw "Primary state invalid at ${Phase}: branch=$MoeRailPrimaryCurrentBranch head=$MoeRailPrimaryCurrentHead index=$($MoeRailPrimaryIndex.Count)"
+    }
+
+    foreach ($MoeRailPath in $MoeRailProtectedPaths) {
+        $MoeRailAbs = Join-Path $MoeRailPrimary $MoeRailPath
+        [void](Assert-MoeRailOrdinaryPathChain -Path $MoeRailAbs -Boundary $MoeRailPrimary)
+        $MoeRailActual = (Get-FileHash -LiteralPath $MoeRailAbs -Algorithm SHA256).Hash
+        if (-not [string]::Equals($MoeRailActual, $MoeRailExpectedProtectedHashes[$MoeRailPath], [StringComparison]::Ordinal)) {
+            & $FailureHandler
+            throw "Protected hash mismatch at ${Phase}: $MoeRailPath (expected $($MoeRailExpectedProtectedHashes[$MoeRailPath]), got $MoeRailActual)"
+        }
+    }
+}
+
+function Get-MoeRailCimMatches {
+    param([string]$MirrorProjectPath)
+    try {
+        $MoeRailCimRows = Get-CimInstance Win32_Process -Filter "Name LIKE 'Godot%'" -ErrorAction Stop
+    } catch {
+        throw "Get-CimInstance failed: $($_.Exception.Message)"
+    }
+    @($MoeRailCimRows | Where-Object {
+        $_.ExecutablePath -and [string]::Equals($_.ExecutablePath, $MoeRailGodotExe, [StringComparison]::OrdinalIgnoreCase) -and
+        $_.CommandLine -and $_.CommandLine.IndexOf($MirrorProjectPath, [StringComparison]::OrdinalIgnoreCase) -ge 0
+    } | ForEach-Object { $_.ProcessId } | Sort-Object)
+}
+
+# --- Common bounded process helper (replaces Stop-MoeRailOwnedChild and per-call sequences) ---
+function Invoke-MoeRailBoundedProcess {
+    param(
+        [Parameter(Mandatory=$true)][string]$Executable,
+        [Parameter(Mandatory=$true)][string[]]$Arguments,
+        [Parameter(Mandatory=$true)][hashtable]$EnvironmentOverrides,
+        [Parameter(Mandatory=$true)][string]$Label,
+        [Parameter(Mandatory=$true)]
+        [AllowEmptyCollection()]
+        [System.Collections.Generic.List[psobject]]$OwnedChildren
+    )
+
+    $MoeRailPsi = [Diagnostics.ProcessStartInfo]::new()
+    $MoeRailPsi.FileName = $Executable
+    $MoeRailPsi.UseShellExecute = $false
+    $MoeRailPsi.RedirectStandardOutput = $true
+    $MoeRailPsi.RedirectStandardError = $true
+    $MoeRailPsi.CreateNoWindow = $true
+    foreach ($MoeRailArg in $Arguments) {
+        [void]$MoeRailPsi.ArgumentList.Add($MoeRailArg)
+    }
+    foreach ($MoeRailKey in $EnvironmentOverrides.Keys) {
+        $MoeRailPsi.Environment[$MoeRailKey] = $EnvironmentOverrides[$MoeRailKey]
+    }
+
+    $MoeRailProc = [Diagnostics.Process]::new()
+    $MoeRailProc.StartInfo = $MoeRailPsi
+    # External record before Start
+    $MoeRailRecord = [pscustomobject]@{
+        Label     = $Label
+        Process   = $MoeRailProc
+        StdoutReader = $null
+        StderrReader = $null
+        StdoutTask   = $null
+        StderrTask   = $null
+        Started   = $false
+        Disposed  = $false
+    }
+
+    $OwnedChildren.Add($MoeRailRecord)
+
+    $MoeRailStarted = $false
+    $MoeRailExited = $false
+    $MoeRailMainError = $null
+    $MoeRailErrors = @()
+    $MoeRailExitCode = $null
+    $MoeRailStdout = $null
+    $MoeRailStderr = $null
+
+    try {
+        $MoeRailStarted = $MoeRailProc.Start()
+        if (-not $MoeRailStarted) {
+            $MoeRailMainError = "Process start failed"
+            throw $MoeRailMainError
+        }
+        $MoeRailRecord.Started = $true
+
+        $MoeRailRecord.StdoutReader = $MoeRailProc.StandardOutput
+        $MoeRailRecord.StderrReader = $MoeRailProc.StandardError
+        $MoeRailRecord.StdoutTask = $MoeRailRecord.StdoutReader.ReadToEndAsync()
+        $MoeRailRecord.StderrTask = $MoeRailRecord.StderrReader.ReadToEndAsync()
+
+        $MoeRailExited = $MoeRailProc.WaitForExit(30000)
+        if (-not $MoeRailExited) {
+            $MoeRailMainError = "Process timed out after 30 seconds"
+        }
+        else {
+            $MoeRailExitCode = $MoeRailProc.ExitCode
+        }
+    }
+    catch {
+        if ($null -eq $MoeRailMainError) {
+            $MoeRailMainError = $_.Exception.Message
+        }
+    }
+    finally {
+        if ($MoeRailStarted -and -not $MoeRailExited) {
+            try {
+                $MoeRailHasExited = $MoeRailProc.HasExited
+            }
+            catch {
+                $MoeRailErrors += "HasExited check failed: $($_.Exception.Message)"
+                $MoeRailHasExited = $false
+            }
+
+            if (-not $MoeRailHasExited) {
+                try {
+                    $MoeRailProc.Kill($true)
+                }
+                catch {
+                    $MoeRailErrors += "Kill failed: $($_.Exception.Message)"
+                }
+            }
+
+            try {
+                $MoeRailReapResult = $MoeRailProc.WaitForExit(5000)
+                if (-not $MoeRailReapResult) {
+                    $MoeRailErrors += "Reap timed out after 5 seconds"
+                }
+                else {
+                    $MoeRailExited = $true
+                }
+            }
+            catch {
+                $MoeRailErrors += "Reap failed: $($_.Exception.Message)"
+            }
+        }
+
+        if ($null -ne $MoeRailRecord.StdoutTask -and $null -ne $MoeRailRecord.StderrTask) {
+            $MoeRailTaskArray = [System.Threading.Tasks.Task[]]@($MoeRailRecord.StdoutTask, $MoeRailRecord.StderrTask)
+            $MoeRailWaitAllResult = $false
+            try {
+                $MoeRailWaitAllResult = [System.Threading.Tasks.Task]::WaitAll($MoeRailTaskArray, 5000)
+            }
+            catch {
+                $MoeRailErrors += "WaitAll failed: $($_.Exception.Message)"
+            }
+
+            if ($MoeRailWaitAllResult) {
+                try {
+                    $MoeRailStdout = $MoeRailRecord.StdoutTask.GetAwaiter().GetResult()
+                }
+                catch {
+                    $MoeRailErrors += "Stdout GetResult failed: $($_.Exception.Message)"
+                }
+                try {
+                    $MoeRailStderr = $MoeRailRecord.StderrTask.GetAwaiter().GetResult()
+                }
+                catch {
+                    $MoeRailErrors += "Stderr GetResult failed: $($_.Exception.Message)"
+                }
+            }
+            else {
+                $MoeRailErrors += "Task WaitAll timed out or failed"
+            }
+        }
+        elseif ($MoeRailStarted) {
+            $MoeRailErrors += "Missing stdout or stderr task after process start"
+        }
+
+        if ($MoeRailStarted -and $null -eq $MoeRailExitCode) {
+            try {
+                if ($MoeRailProc.HasExited) {
+                    $MoeRailExited = $true
+                    $MoeRailExitCode = $MoeRailProc.ExitCode
+                }
+            }
+            catch {
+                $MoeRailErrors += "ExitCode read failed: $($_.Exception.Message)"
+            }
+        }
+
+        $MoeRailSafeToDispose = (-not $MoeRailStarted) -or ($MoeRailExited -eq $true)
+
+        if ($MoeRailSafeToDispose) {
+            if ($null -ne $MoeRailRecord.StdoutReader) {
+                try {
+                    $MoeRailRecord.StdoutReader.Dispose()
+                }
+                catch {
+                    $MoeRailErrors += "StdoutReader dispose failed: $($_.Exception.Message)"
+                }
+            }
+            if ($null -ne $MoeRailRecord.StderrReader) {
+                try {
+                    $MoeRailRecord.StderrReader.Dispose()
+                }
+                catch {
+                    $MoeRailErrors += "StderrReader dispose failed: $($_.Exception.Message)"
+                }
+            }
+
+            try {
+                $MoeRailProc.Dispose()
+                $MoeRailRecord.Disposed = $true
+            }
+            catch {
+                $MoeRailErrors += "Process dispose failed: $($_.Exception.Message)"
+            }
+        }
+        else {
+            $MoeRailErrors += "Disposal deferred to outer finally: process may still be alive"
+        }
+    }
+
+    if ($null -ne $MoeRailMainError) {
+        $MoeRailErrors = @($MoeRailMainError) + $MoeRailErrors
+    }
+    if ($MoeRailErrors.Count -gt 0) {
+        throw "${Label}: " + ($MoeRailErrors -join '; ')
+    }
+
+    # Return Stdout/Stderr/ExitCode only after clean cleanup
+    [pscustomobject]@{
+        Stdout   = $MoeRailStdout
+        Stderr   = $MoeRailStderr
+        ExitCode = $MoeRailExitCode
+    }
+}
+
+# --- Initialize gate state variables ---
+$MoeRailTempRoot = $null
+$MoeRailMirrorRoot = $null
+$MoeRailMirrorProject = $null
+$MoeRailOwnedChildren = [System.Collections.Generic.List[psobject]]::new()
+$MoeRailFeatureReady = $false
+$MoeRailPrimaryReady = $false
+$MoeRailCimReady = $false
+$MoeRailOriginalError = $null
+$MoeRailCleanupErrors = [System.Collections.Generic.List[string]]::new()
+$MoeRailOverallSuccess = $false
+try {
+
+# --- Preflight: verify feature state ---
+Write-Host "=== Verifying feature worktree ==="
+$script:MoeRailInitialFeatureSnapshot = Get-MoeRailContentSnapshot -Worktree $MoeRailFeatureWorktree
+Assert-MoeRailFeatureState -Phase 'preflight' -FailureHandler { }
+Write-Host "=== Verifying primary worktree ==="
+Assert-MoeRailPrimaryState -Phase 'preflight' -FailureHandler { }
+
+$MoeRailFeatureReady = $true
+$MoeRailPrimaryReady = $true
+
+# --- Verify Godot executable via bounded controller helper ---
+Write-Host "=== Verifying Godot executable ==="
+$MoeRailVersionResult = Invoke-MoeRailBoundedProcess `
+    -Executable $MoeRailGodotExe `
+    -Arguments @('--version') `
+    -EnvironmentOverrides @{} `
+    -Label 'version' `
+    -OwnedChildren $MoeRailOwnedChildren
+$MoeRailVersion = $MoeRailVersionResult.Stdout.Trim()
+if ($MoeRailVersionResult.ExitCode -ne 0 -or
+    -not [string]::Equals($MoeRailVersion, $MoeRailExpectedVersion, [StringComparison]::Ordinal) -or
+    -not [string]::IsNullOrEmpty($MoeRailVersionResult.Stderr)) {
+    throw "Unexpected Godot version probe: version=$MoeRailVersion exit=$($MoeRailVersionResult.ExitCode) stderr=$($MoeRailVersionResult.Stderr)"
+}
+
+# --- Create unique disposable mirror (adapted from reviewed helper) ---
+Write-Host "=== Creating disposable mirror ==="
+$MoeRailTempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')
+$MoeRailMirrorGuid = [Guid]::NewGuid().ToString('N')
+$MoeRailMirrorRoot = Join-Path $MoeRailTempRoot "moerail-track-train-editor-$MoeRailMirrorGuid"
+$MoeRailMirrorRoot = Assert-MoeRailMirrorRoot -Root $MoeRailMirrorRoot
+$MoeRailMirrorProject = Join-Path $MoeRailMirrorRoot 'project'
+$MoeRailMirrorEnv = Join-Path $MoeRailMirrorRoot 'environment'
+$MoeRailMirrorLogs = Join-Path $MoeRailMirrorRoot 'logs'
+
+New-Item -ItemType Directory -Path $MoeRailMirrorProject | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $MoeRailMirrorEnv 'appdata') | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $MoeRailMirrorEnv 'localappdata') | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $MoeRailMirrorEnv 'temp') | Out-Null
+New-Item -ItemType Directory -Path $MoeRailMirrorLogs | Out-Null
+
+Assert-MoeRailMirrorState `
+    -Phase 'post-create' `
+    -TempRoot $MoeRailTempRoot `
+    -Root $MoeRailMirrorRoot `
+    -Project $MoeRailMirrorProject `
+    -Environment $MoeRailMirrorEnv `
+    -Logs $MoeRailMirrorLogs |
+    Out-Null
+
+# Validate project.godot will be directly under mirror project
+$MoeRailProjectGodotDest = Join-Path $MoeRailMirrorProject 'project.godot'
+$MoeRailProjectGodotDestReal = [IO.Path]::GetFullPath($MoeRailProjectGodotDest)
+$MoeRailMirrorProjectReal = [IO.Path]::GetFullPath($MoeRailMirrorProject)
+if ($MoeRailProjectGodotDestReal -ne (Join-Path $MoeRailMirrorProjectReal 'project.godot')) {
+    throw "project.godot destination not directly under mirror project"
+}
+
+# --- Enumerate feature tracked + untracked-nonignored project files ---
+Write-Host "=== Enumerating feature source files ==="
+$MoeRailTracked = @(Get-MoeRailGitNulPaths -Worktree $MoeRailFeatureWorktree -GitArguments @('ls-files','-z') -Label 'feature tracked ls-files')
+$MoeRailUntrackedNonIgnored = @(Get-MoeRailGitNulPaths -Worktree $MoeRailFeatureWorktree -GitArguments @('ls-files','-z','--others','--exclude-standard') -Label 'feature untracked ls-files')
+$MoeRailProjectPrefixedSet = [System.Collections.Generic.SortedSet[string]]::new([StringComparer]::Ordinal)
+foreach ($MoeRailCandidatePath in @($MoeRailTracked + $MoeRailUntrackedNonIgnored)) {
+    if ($MoeRailCandidatePath.StartsWith('godot-project-moe-rail-way/', [StringComparison]::Ordinal)) {
+        [void]$MoeRailProjectPrefixedSet.Add($MoeRailCandidatePath)
+    }
+}
+$MoeRailProjectPrefixed = @($MoeRailProjectPrefixedSet)
+if ($MoeRailProjectPrefixed.Count -eq 0) {
+    throw "No project-prefixed files found in feature worktree"
+}
+
+# Strip exact godot-project-moe-rail-way/ prefix for mirror-relative keys
+$MoeRailSourceManifest = @($MoeRailProjectPrefixed | ForEach-Object {
+    if ($_ -notmatch '^godot-project-moe-rail-way/') {
+        throw "Manifest entry missing required prefix: $_"
+    }
+    $_.Substring('godot-project-moe-rail-way/'.Length)
+})
+
+# Build pre-copy manifest with hashes and full validation
+$MoeRailPreCopyManifest = [System.Collections.Generic.SortedDictionary[string,string]]::new([StringComparer]::Ordinal)
+foreach ($MoeRailRelPath in $MoeRailSourceManifest) {
+    $MoeRailSrcAbs = Join-Path $MoeRailFeatureWorktree 'godot-project-moe-rail-way' $MoeRailRelPath
+    if (-not (Test-Path -LiteralPath $MoeRailSrcAbs -PathType Leaf)) {
+        throw "Source is not an ordinary file: $MoeRailRelPath"
+    }
+    # Validate source chain
+    [void](Assert-MoeRailOrdinaryPathChain -Path $MoeRailSrcAbs -Boundary $MoeRailFeatureWorktree)
+    $MoeRailDstAbs = Join-Path $MoeRailMirrorProject $MoeRailRelPath
+    $MoeRailDstAbsReal = [IO.Path]::GetFullPath($MoeRailDstAbs)
+    $MoeRailMirrorProjectReal = [IO.Path]::GetFullPath($MoeRailMirrorProject)
+    if (-not $MoeRailDstAbsReal.StartsWith($MoeRailMirrorProjectReal + [IO.Path]::DirectorySeparatorChar)) {
+        throw "Destination escapes mirror project: $MoeRailRelPath"
+    }
+    if ($MoeRailRelPath -match '(^|/)\.git(/.*)?$' -or $MoeRailRelPath -match '(^|/)\.godot(/.*)?$') {
+        throw "Forbidden path component in manifest: $MoeRailRelPath"
+    }
+    if (Test-Path -LiteralPath $MoeRailDstAbs) {
+        throw "Destination already exists: $MoeRailRelPath"
+    }
+    [void] (Assert-MoeRailOrdinaryPathChain -Path $MoeRailMirrorProject -Boundary $MoeRailMirrorRoot)
+    [void] (Assert-MoeRailOrdinaryTree -Root $MoeRailMirrorProject)
+    $MoeRailPreCopyManifest[$MoeRailRelPath] = (Get-FileHash -LiteralPath $MoeRailSrcAbs -Algorithm SHA256).Hash
+}
+
+# --- Copy files to mirror ---
+Write-Host "=== Copying files to mirror ==="
+foreach ($MoeRailRelPath in $MoeRailPreCopyManifest.Keys) {
+    $MoeRailSrcAbs = Join-Path $MoeRailFeatureWorktree 'godot-project-moe-rail-way' $MoeRailRelPath
+    $MoeRailDstAbs = Join-Path $MoeRailMirrorProject $MoeRailRelPath
+    [void] (Assert-MoeRailOrdinaryTree -Root $MoeRailMirrorProject)
+    $MoeRailDstDir = Split-Path $MoeRailDstAbs -Parent
+    if (Test-Path -LiteralPath $MoeRailDstAbs) {
+        throw "Destination already exists: $MoeRailRelPath"
+    }
+    if (-not (Test-Path -LiteralPath $MoeRailDstDir -PathType Container)) {
+        New-Item -ItemType Directory -Path $MoeRailDstDir -ErrorAction Stop | Out-Null
+    }
+    if (-not (Test-Path -LiteralPath $MoeRailDstDir -PathType Container)) {
+        throw "Destination directory is not a container: $MoeRailRelPath"
+    }
+    [void](Assert-MoeRailOrdinaryPathChain -Path $MoeRailDstDir -Boundary $MoeRailMirrorProject)
+    if (-not (Test-Path -LiteralPath $MoeRailSrcAbs -PathType Leaf)) { throw "Source path '$MoeRailRelPath' is not a leaf file." }
+    [void] (Assert-MoeRailOrdinaryPathChain -Path $MoeRailSrcAbs -Boundary $MoeRailFeatureWorktree)
+    Copy-Item -LiteralPath $MoeRailSrcAbs -Destination $MoeRailDstAbs -Force -ErrorAction Stop
+    if (-not (Test-Path -LiteralPath $MoeRailDstAbs -PathType Leaf)) {
+        throw "Destination leaf not created: $MoeRailRelPath"
+    }
+    [void](Assert-MoeRailOrdinaryPathChain -Path $MoeRailDstAbs -Boundary $MoeRailMirrorProject)
+}
+
+# --- Verify post-copy: source unchanged, mirror matches ---
+Write-Host "=== Verifying post-copy manifest ==="
+foreach ($MoeRailRelPath in $MoeRailPreCopyManifest.Keys) {
+    $MoeRailSrcAbs = Join-Path $MoeRailFeatureWorktree 'godot-project-moe-rail-way' $MoeRailRelPath
+    $MoeRailDstAbs = Join-Path $MoeRailMirrorProject $MoeRailRelPath
+    $MoeRailSrcHash = (Get-FileHash -LiteralPath $MoeRailSrcAbs -Algorithm SHA256).Hash
+    $MoeRailDstHash = (Get-FileHash -LiteralPath $MoeRailDstAbs -Algorithm SHA256).Hash
+    if ($MoeRailSrcHash -ne $MoeRailPreCopyManifest[$MoeRailRelPath]) {
+        throw "Source file changed during copy: $MoeRailRelPath"
+    }
+    if ($MoeRailDstHash -ne $MoeRailPreCopyManifest[$MoeRailRelPath]) {
+        throw "Mirror file hash mismatch: $MoeRailRelPath"
+    }
+}
+# Independent mirror snapshot
+$MoeRailMirrorProjectReal = [IO.Path]::GetFullPath($MoeRailMirrorProject)
+$MoeRailMirrorSnapshot = @(Get-ChildItem -LiteralPath $MoeRailMirrorProject -Recurse -File | ForEach-Object {
+    if (($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Mirror contains reparse point: $($_.FullName)"
+    }
+    $MoeRailRel = $_.FullName.Substring($MoeRailMirrorProjectReal.Length + 1).Replace('\', '/')
+    @{ Path = $MoeRailRel; Hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }
+})
+$MoeRailMirrorPaths = [string[]]@($MoeRailMirrorSnapshot | ForEach-Object { $_.Path })
+$MoeRailSourcePaths = [string[]]@($MoeRailSourceManifest)
+[Array]::Sort($MoeRailMirrorPaths, [StringComparer]::Ordinal)
+[Array]::Sort($MoeRailSourcePaths, [StringComparer]::Ordinal)
+if (-not [System.Linq.Enumerable]::SequenceEqual($MoeRailSourcePaths, $MoeRailMirrorPaths, [StringComparer]::Ordinal)) {
+    throw "Mirror file set differs from source manifest: source=$($MoeRailSourcePaths.Count) mirror=$($MoeRailMirrorPaths.Count)"
+}
+foreach ($MoeRailEntry in $MoeRailMirrorSnapshot) {
+    if ($MoeRailEntry.Hash -ne $MoeRailPreCopyManifest[$MoeRailEntry.Path]) {
+        throw "Mirror snapshot hash mismatch: $($MoeRailEntry.Path)"
+    }
+}
+
+Assert-MoeRailMirrorState `
+    -Phase 'post-copy' `
+    -TempRoot $MoeRailTempRoot `
+    -Root $MoeRailMirrorRoot `
+    -Project $MoeRailMirrorProject `
+    -Environment $MoeRailMirrorEnv `
+    -Logs $MoeRailMirrorLogs `
+    -RequireProjectGodot |
+    Out-Null
+
+# --- Verify feature/primary state unchanged after copy ---
+Write-Host "=== Verifying feature/primary state unchanged after copy ==="
+Assert-MoeRailFeatureState -Phase 'post-copy' -FailureHandler { }
+Assert-MoeRailPrimaryState -Phase 'post-copy' -FailureHandler { }
+
+# --- Prepare isolated environment ---
+Write-Host "=== Preparing isolated environment ==="
+$MoeRailMirrorEnvAppData = Join-Path $MoeRailMirrorEnv 'appdata'
+$MoeRailMirrorEnvLocalAppData = Join-Path $MoeRailMirrorEnv 'localappdata'
+$MoeRailMirrorEnvTemp = Join-Path $MoeRailMirrorEnv 'temp'
+
+# --- Capture pre-launch PID baseline for Godot processes matching mirror ---
+Write-Host "=== Capturing pre-launch PID baseline ==="
+$MoeRailPreLaunchMatches = Get-MoeRailCimMatches -MirrorProjectPath $MoeRailMirrorProject
+
+$MoeRailCimReady = $true
+
+# --- Launch Godot import in mirror ---
+Write-Host "=== Launching Godot editor import ==="
+$MoeRailImportEngineLog = [IO.Path]::GetFullPath(
+    (Join-Path $MoeRailMirrorLogs 'godot_import_engine.log')
+).TrimEnd('\')
+$MoeRailExpectedImportEngineLog = [IO.Path]::GetFullPath(
+    (Join-Path $MoeRailMirrorLogs 'godot_import_engine.log')
+).TrimEnd('\')
+if (-not $MoeRailImportEngineLog.Equals(
+        $MoeRailExpectedImportEngineLog,
+        [StringComparison]::OrdinalIgnoreCase
+    )) {
+    throw "import engine log path mismatch"
+}
+if (Test-Path -LiteralPath $MoeRailImportEngineLog) {
+    throw "import engine log already exists"
+}
+
+Assert-MoeRailMirrorState `
+    -Phase 'pre-import-child' `
+    -TempRoot $MoeRailTempRoot `
+    -Root $MoeRailMirrorRoot `
+    -Project $MoeRailMirrorProject `
+    -Environment $MoeRailMirrorEnv `
+    -Logs $MoeRailMirrorLogs `
+    -RequireProjectGodot |
+    Out-Null
+
+$MoeRailImportEnv = @{
+    'APPDATA'      = $MoeRailMirrorEnvAppData
+    'LOCALAPPDATA' = $MoeRailMirrorEnvLocalAppData
+    'TEMP'         = $MoeRailMirrorEnvTemp
+    'TMP'          = $MoeRailMirrorEnvTemp
+}
+$MoeRailImportResult = Invoke-MoeRailBoundedProcess `
+    -Executable $MoeRailGodotExe `
+    -Arguments @('--headless','--editor','--path',$MoeRailMirrorProject,'--import','--quit-after','240','--log-file',$MoeRailImportEngineLog) `
+    -EnvironmentOverrides $MoeRailImportEnv `
+    -Label 'import' `
+    -OwnedChildren $MoeRailOwnedChildren
+
+Assert-MoeRailMirrorState `
+    -Phase 'post-import-child' `
+    -TempRoot $MoeRailTempRoot `
+    -Root $MoeRailMirrorRoot `
+    -Project $MoeRailMirrorProject `
+    -Environment $MoeRailMirrorEnv `
+    -Logs $MoeRailMirrorLogs `
+    -RequireProjectGodot |
+    Out-Null
+[void](Assert-MoeRailMirrorManifest -Phase 'post-import-child' -Project $MoeRailMirrorProject -Root $MoeRailMirrorRoot -ExpectedManifest $MoeRailPreCopyManifest)
+
+$MoeRailImportStdout = $MoeRailImportResult.Stdout
+$MoeRailImportStderr = $MoeRailImportResult.Stderr
+$MoeRailImportExitCode = $MoeRailImportResult.ExitCode
+
+$MoeRailActualImportEngineLog = [IO.Path]::GetFullPath($MoeRailImportEngineLog).TrimEnd('\')
+if (-not $MoeRailActualImportEngineLog.Equals(
+        $MoeRailExpectedImportEngineLog,
+        [StringComparison]::OrdinalIgnoreCase
+    )) {
+    throw "import engine log path mismatch"
+}
+if (-not (Test-Path -LiteralPath $MoeRailActualImportEngineLog -PathType Leaf)) {
+    throw "import engine log file not found"
+}
+$MoeRailImportEngineLogItem = Get-Item -LiteralPath $MoeRailActualImportEngineLog -Force
+if (($MoeRailImportEngineLogItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+    throw "import engine log is a reparse point at '$MoeRailActualImportEngineLog'"
+}
+$MoeRailActualImportEngineLog = [IO.Path]::GetFullPath(
+    $MoeRailImportEngineLogItem.FullName
+).TrimEnd('\')
+if (-not $MoeRailActualImportEngineLog.Equals(
+        $MoeRailExpectedImportEngineLog,
+        [StringComparison]::OrdinalIgnoreCase
+    )) {
+    throw "import engine log path mismatch"
+}
+[void](Assert-MoeRailOrdinaryPathChain `
+    -Path $MoeRailActualImportEngineLog `
+    -Boundary $MoeRailMirrorLogs)
+$MoeRailImportEngineText = Get-MoeRailLogText -Path $MoeRailActualImportEngineLog
+
+Write-Host "Import exit code: $MoeRailImportExitCode"
+Write-Host "Import stdout:`n$MoeRailImportStdout"
+Write-Host "Import stderr:`n$MoeRailImportStderr"
+Write-Host "Import engine log:`n$MoeRailImportEngineText"
+
+if ($MoeRailImportExitCode -ne 0) {
+    throw "Godot import exited with code $MoeRailImportExitCode"
+}
+$MoeRailStrictDiagnosticPattern = '(?m)^(FAIL:|SCRIPT ERROR:|ERROR:|FATAL:|WARNING:|CRASH:)'
+$MoeRailCrashLeakPattern = '(?i)(CrashHandlerException|Program crashed|signal\s+\d+|Scan thread aborted|RID[^\r\n]*(?:leak|allocation)|ObjectDB[^\r\n]*(?:leaked at exit|still alive)|Resources?[^\r\n]*still in use)'
+$MoeRailImportChannels = [ordered]@{
+    stdout     = $MoeRailImportStdout
+    stderr     = $MoeRailImportStderr
+    engine_log = $MoeRailImportEngineText
+}
+foreach ($MoeRailChannelName in $MoeRailImportChannels.Keys) {
+    $MoeRailChannelText = $MoeRailImportChannels[$MoeRailChannelName]
+    if ($MoeRailChannelText -match $MoeRailStrictDiagnosticPattern) {
+        throw "Prohibited diagnostic found in import $MoeRailChannelName"
+    }
+    if ($MoeRailChannelText -match $MoeRailCrashLeakPattern) {
+        throw "Crash/leak diagnostic found in import $MoeRailChannelName"
+    }
+}
+
+# --- Verify global_script_class_cache.cfg registers TrackInputFrame and TrackSystem by path ---
+Write-Host "=== Verifying global script class cache ==="
+$MoeRailCacheCfg = Join-Path $MoeRailMirrorProject '.godot/global_script_class_cache.cfg'
+if (-not (Test-Path -LiteralPath $MoeRailCacheCfg -PathType Leaf)) {
+    throw "global_script_class_cache.cfg not found at $MoeRailCacheCfg"
+}
+[void](Assert-MoeRailOrdinaryPathChain -Path $MoeRailCacheCfg -Boundary $MoeRailMirrorProject)
+$MoeRailRawLines = Get-Content -Path $MoeRailCacheCfg -Raw -Encoding UTF8 -ErrorAction Stop
+$MoeRailLines = $MoeRailRawLines -split "`r?`n"
+$MoeRailNonBlankIndices = @()
+for ($MoeRailIdx = 0; $MoeRailIdx -lt $MoeRailLines.Count; $MoeRailIdx++) {
+    if ($MoeRailLines[$MoeRailIdx].Trim() -ne '') { $MoeRailNonBlankIndices += $MoeRailIdx }
+}
+if ($MoeRailNonBlankIndices.Count -lt 2) { throw "Cache file has fewer than two nonblank lines" }
+$MoeRailFirstTrimmed = $MoeRailLines[$MoeRailNonBlankIndices[0]].Trim()
+$MoeRailLastTrimmed = $MoeRailLines[$MoeRailNonBlankIndices[-1]].Trim()
+if (-not [string]::Equals($MoeRailFirstTrimmed, 'list=[{', [StringComparison]::Ordinal)) { throw "First nonblank line is not 'list=[{' but: $MoeRailFirstTrimmed" }
+if (-not [string]::Equals($MoeRailLastTrimmed, '}]', [StringComparison]::Ordinal)) { throw "Last nonblank line is not '}]' but: $MoeRailLastTrimmed" }
+$MoeRailFirstCount = ($MoeRailLines | Where-Object { [string]::Equals($_.Trim(), 'list=[{', [StringComparison]::Ordinal) }).Count
+$MoeRailLastCount = ($MoeRailLines | Where-Object { [string]::Equals($_.Trim(), '}]', [StringComparison]::Ordinal) }).Count
+if ($MoeRailFirstCount -ne 1) { throw "Boundary 'list=[{' occurs $MoeRailFirstCount times, expected exactly one" }
+if ($MoeRailLastCount -ne 1) { throw "Boundary '}]' occurs $MoeRailLastCount times, expected exactly one" }
+$MoeRailEntries = @()
+$MoeRailCurrentEntry = @()
+$MoeRailCurrentEntryHasContent = $false
+$MoeRailUnexpectedBodyTokens = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+$null = $MoeRailUnexpectedBodyTokens.Add('{')
+$null = $MoeRailUnexpectedBodyTokens.Add('}')
+$null = $MoeRailUnexpectedBodyTokens.Add('[{')
+$null = $MoeRailUnexpectedBodyTokens.Add('}]')
+$null = $MoeRailUnexpectedBodyTokens.Add('list=[{')
+for ($MoeRailIdx = $MoeRailNonBlankIndices[0] + 1; $MoeRailIdx -lt $MoeRailNonBlankIndices[-1]; $MoeRailIdx++) {
+    $MoeRailLine = $MoeRailLines[$MoeRailIdx]
+    $MoeRailTrimmed = $MoeRailLine.Trim()
+    if ([string]::Equals($MoeRailTrimmed, '}, {', [System.StringComparison]::Ordinal)) {
+        if (-not $MoeRailCurrentEntryHasContent) { throw "Empty entry before '}, {' at line $($MoeRailIdx + 1)" }
+        $MoeRailEntries += ,$MoeRailCurrentEntry
+        $MoeRailCurrentEntry = @()
+        $MoeRailCurrentEntryHasContent = $false
+        continue
+    }
+    if ($MoeRailUnexpectedBodyTokens.Contains($MoeRailTrimmed)) {
+        throw "Unexpected structural token '$MoeRailTrimmed' inside body at line $($MoeRailIdx + 1)"
+    }
+    if ($MoeRailTrimmed -ne '') { $MoeRailCurrentEntryHasContent = $true }
+    $MoeRailCurrentEntry += $MoeRailLine
+}
+if (-not $MoeRailCurrentEntryHasContent) { throw "Final entry has no nonblank lines" }
+$MoeRailEntries += ,$MoeRailCurrentEntry
+$MoeRailClassRegex = '^"class"\s*:\s*&?"([^"]+)"\s*,?\s*$'
+$MoeRailPathRegex = '^\s*"path"\s*:\s*"([^"]+)"\s*,?\s*$'
+$MoeRailSeenClasses = [System.Collections.Generic.Dictionary[string,bool]]::new([StringComparer]::Ordinal)
+$MoeRailEntriesByPath = [System.Collections.Generic.Dictionary[string,string]]::new([StringComparer]::Ordinal)
+foreach ($MoeRailEntry in $MoeRailEntries) {
+    $MoeRailEntryClass = $null
+    $MoeRailEntryPath = $null
+    $MoeRailClassCount = 0
+    $MoeRailPathCount = 0
+    foreach ($MoeRailEntryLine in $MoeRailEntry) {
+        $MoeRailEntryTrimmed = $MoeRailEntryLine.Trim()
+        if ($MoeRailEntryTrimmed -cmatch $MoeRailClassRegex) {
+            $MoeRailClassCount++
+            if ($MoeRailClassCount -gt 1) { throw "Duplicate class field in entry" }
+            $MoeRailEntryClass = $matches[1]
+        }
+        elseif ($MoeRailEntryTrimmed -cmatch $MoeRailPathRegex) {
+            $MoeRailPathCount++
+            if ($MoeRailPathCount -gt 1) { throw "Duplicate path field in entry" }
+            $MoeRailEntryPath = $matches[1]
+        }
+    }
+    if ($MoeRailClassCount -ne 1) { throw "Entry missing exactly one class field" }
+    if ($MoeRailPathCount -ne 1) { throw "Entry missing exactly one path field" }
+    if ($MoeRailSeenClasses.ContainsKey($MoeRailEntryClass)) { throw "Duplicate class name across entries: $MoeRailEntryClass" }
+    $MoeRailSeenClasses.Add($MoeRailEntryClass, $true)
+    if ($MoeRailEntriesByPath.ContainsKey($MoeRailEntryPath)) { throw "Duplicate path across entries: $MoeRailEntryPath" }
+    $MoeRailEntriesByPath.Add($MoeRailEntryPath, $MoeRailEntryClass)
+}
+$MoeRailRequiredClassesByPath = [System.Collections.Generic.Dictionary[string,string]]::new([StringComparer]::Ordinal)
+$MoeRailRequiredClassesByPath.Add('res://src/domain/track/track_input_frame.gd', 'TrackInputFrame')
+$MoeRailRequiredClassesByPath.Add('res://src/domain/track/track_system.gd', 'TrackSystem')
+foreach ($MoeRailRequiredPath in $MoeRailRequiredClassesByPath.Keys) {
+    if (-not $MoeRailEntriesByPath.ContainsKey($MoeRailRequiredPath)) { throw "Required cache path missing: $MoeRailRequiredPath" }
+    $MoeRailExpectedClass = $MoeRailRequiredClassesByPath[$MoeRailRequiredPath]
+    $MoeRailActualClass = $MoeRailEntriesByPath[$MoeRailRequiredPath]
+    if (-not [string]::Equals($MoeRailActualClass, $MoeRailExpectedClass, [StringComparison]::Ordinal)) {
+        throw "Class mismatch for cache path $MoeRailRequiredPath`: expected $MoeRailExpectedClass, got $MoeRailActualClass"
+    }
+}
+Write-Host "global_script_class_cache.cfg contains TrackInputFrame and TrackSystem each with expected path in same entry"
+
+# --- Verify feature/primary state unchanged after import ---
+Write-Host "=== Verifying feature/primary state unchanged after import ==="
+Assert-MoeRailFeatureState -Phase 'post-import' -FailureHandler { }
+Assert-MoeRailPrimaryState -Phase 'post-import' -FailureHandler { }
+$MoeRailPostImportMatches = Get-MoeRailCimMatches -MirrorProjectPath $MoeRailMirrorProject
+$MoeRailNewPostImport = @($MoeRailPostImportMatches | Where-Object { $_ -notin $MoeRailPreLaunchMatches })
+if ($MoeRailNewPostImport.Count -ne 0) {
+    throw "New matching Godot processes after import: $($MoeRailNewPostImport -join ',')"
+}
+
+# --- Launch unit tests in mirror ---
+Write-Host "=== Launching unit tests ==="
+$MoeRailTestLogFile = Join-Path $MoeRailMirrorLogs 'godot_test.log'
+
+$MoeRailTestEnv = @{
+    'APPDATA'      = $MoeRailMirrorEnvAppData
+    'LOCALAPPDATA' = $MoeRailMirrorEnvLocalAppData
+    'TEMP'         = $MoeRailMirrorEnvTemp
+    'TMP'          = $MoeRailMirrorEnvTemp
+}
+$MoeRailTestResult = Invoke-MoeRailBoundedProcess `
+    -Executable $MoeRailGodotExe `
+    -Arguments @('--headless','--path',$MoeRailMirrorProject,'--script','res://tests/run_all.gd') `
+    -EnvironmentOverrides $MoeRailTestEnv `
+    -Label 'test' `
+    -OwnedChildren $MoeRailOwnedChildren
+
+Assert-MoeRailMirrorState `
+    -Phase 'post-test-child' `
+    -TempRoot $MoeRailTempRoot `
+    -Root $MoeRailMirrorRoot `
+    -Project $MoeRailMirrorProject `
+    -Environment $MoeRailMirrorEnv `
+    -Logs $MoeRailMirrorLogs `
+    -RequireProjectGodot |
+    Out-Null
+[void](Assert-MoeRailMirrorManifest -Phase 'post-test-child' -Project $MoeRailMirrorProject -Root $MoeRailMirrorRoot -ExpectedManifest $MoeRailPreCopyManifest)
+
+$MoeRailTestStdout = $MoeRailTestResult.Stdout
+$MoeRailTestStderr = $MoeRailTestResult.Stderr
+$MoeRailTestExitCode = $MoeRailTestResult.ExitCode
+
+# Write captures to ordinary non-reparse files
+[IO.File]::WriteAllText($MoeRailTestLogFile, $MoeRailTestStdout + "`n" + $MoeRailTestStderr, [Text.UTF8Encoding]::new($false))
+$MoeRailTestLogItem = Get-Item -LiteralPath $MoeRailTestLogFile -Force
+if (($MoeRailTestLogItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+    throw "Test log is a reparse point"
+}
+
+$MoeRailTestCombined = $MoeRailTestStdout + "`n" + $MoeRailTestStderr
+Write-Host "Test exit code: $MoeRailTestExitCode"
+Write-Host "Test combined output:`n$MoeRailTestCombined"
+
+if ($MoeRailTestExitCode -ne 0) {
+    throw "Godot test exited with code $MoeRailTestExitCode"
+}
+$MoeRailPassCount = [regex]::Matches($MoeRailTestCombined, '(?m)^PASS: 9 prototype test suite\(s\)\r?$').Count
+if ($MoeRailPassCount -ne 1) {
+    throw "Expected exactly one 'PASS: 9 prototype test suite(s)' line, found $MoeRailPassCount"
+}
+$MoeRailTestStrictDiagnosticPattern = '(?m)^(FAIL:|SCRIPT ERROR:|ERROR:|FATAL:|WARNING:|CRASH:)'
+$MoeRailTestCrashLeakPattern = '(?i)(CrashHandlerException|Program crashed|signal\s+\d+|Scan thread aborted|RID[^\r\n]*(?:leak|allocation)|ObjectDB[^\r\n]*(?:leaked at exit|still alive)|Resources?[^\r\n]*still in use)'
+if ($MoeRailTestCombined -match $MoeRailTestStrictDiagnosticPattern) {
+    throw "Prohibited diagnostic found in test output"
+}
+if ($MoeRailTestCombined -match $MoeRailTestCrashLeakPattern) {
+    throw "Crash/leak diagnostic found in test output"
+}
+
+# --- Verify feature/primary state unchanged after test ---
+Write-Host "=== Verifying feature/primary state unchanged after test ==="
+Assert-MoeRailFeatureState -Phase 'post-test' -FailureHandler { }
+Assert-MoeRailPrimaryState -Phase 'post-test' -FailureHandler { }
+$MoeRailPostTestMatches = Get-MoeRailCimMatches -MirrorProjectPath $MoeRailMirrorProject
+$MoeRailNewPostTest = @($MoeRailPostTestMatches | Where-Object { $_ -notin $MoeRailPreLaunchMatches })
+if ($MoeRailNewPostTest.Count -ne 0) {
+    throw "New matching Godot processes after test: $($MoeRailNewPostTest -join ',')"
+}
+
+$MoeRailOverallSuccess = $true
+
+}
+catch {
+    $MoeRailOriginalError = $_
+}
+finally {
+    # --- Cleanup all owned records on every path ---
+    foreach ($MoeRailOwnedRecord in $MoeRailOwnedChildren) {
+        if ($MoeRailOwnedRecord -and $MoeRailOwnedRecord.Process) {
+            $MoeRailProc = $MoeRailOwnedRecord.Process
+            if (-not $MoeRailOwnedRecord.Disposed) {
+                $MoeRailRecordExited = $false
+                if ($MoeRailOwnedRecord.Started) {
+                    try {
+                        if ($MoeRailProc.HasExited) {
+                            $MoeRailRecordExited = $true
+                        }
+                    }
+                    catch {
+                        $MoeRailCleanupErrors.Add("HasExited check error for {$($MoeRailOwnedRecord.Label)}: $($_.Exception.Message)")
+                    }
+
+                    if (-not $MoeRailRecordExited) {
+                        try {
+                            $MoeRailProc.Kill($true)
+                        }
+                        catch {
+                            $MoeRailCleanupErrors.Add("Kill error for {$($MoeRailOwnedRecord.Label)}: $($_.Exception.Message)")
+                        }
+
+                        try {
+                            if ($MoeRailProc.WaitForExit(5000)) {
+                                $MoeRailRecordExited = $true
+                            }
+                            else {
+                                $MoeRailCleanupErrors.Add("Reap timeout after kill for {$($MoeRailOwnedRecord.Label)}")
+                            }
+                        }
+                        catch {
+                            $MoeRailCleanupErrors.Add("Reap error for {$($MoeRailOwnedRecord.Label)}: $($_.Exception.Message)")
+                        }
+                    }
+                }
+                else {
+                    $MoeRailRecordExited = $true
+                }
+
+                if ($MoeRailRecordExited) {
+                    if ($null -ne $MoeRailOwnedRecord.StdoutReader) {
+                        try { $MoeRailOwnedRecord.StdoutReader.Dispose() }
+                        catch { $MoeRailCleanupErrors.Add("StdoutReader dispose error for {$($MoeRailOwnedRecord.Label)}: $($_.Exception.Message)") }
+                    }
+                    if ($null -ne $MoeRailOwnedRecord.StderrReader) {
+                        try { $MoeRailOwnedRecord.StderrReader.Dispose() }
+                        catch { $MoeRailCleanupErrors.Add("StderrReader dispose error for {$($MoeRailOwnedRecord.Label)}: $($_.Exception.Message)") }
+                    }
+
+                    try {
+                        $MoeRailProc.Dispose()
+                        $MoeRailOwnedRecord.Disposed = $true
+                    }
+                    catch {
+                        $MoeRailCleanupErrors.Add("Process dispose error for {$($MoeRailOwnedRecord.Label)}: $($_.Exception.Message)")
+                    }
+                }
+                else {
+                    $MoeRailCleanupErrors.Add("Owned process still alive after cleanup attempts for {$($MoeRailOwnedRecord.Label)}")
+                }
+            }
+        }
+    }
+
+    # --- Final state assertions ---
+    if ($MoeRailFeatureReady) {
+        try { Assert-MoeRailFeatureState -Phase 'final' -FailureHandler { } }
+        catch { $MoeRailCleanupErrors.Add("Final feature state assertion failed: $($_.Exception.Message)") }
+    }
+    if ($MoeRailPrimaryReady) {
+        try { Assert-MoeRailPrimaryState -Phase 'final' -FailureHandler { } }
+        catch { $MoeRailCleanupErrors.Add("Final primary state assertion failed: $($_.Exception.Message)") }
+    }
+    if ($MoeRailCimReady -and $MoeRailMirrorProject) {
+        try {
+            $MoeRailFinalMatches = Get-MoeRailCimMatches -MirrorProjectPath $MoeRailMirrorProject
+            $MoeRailLeftovers = @($MoeRailFinalMatches | Where-Object { $_ -notin $MoeRailPreLaunchMatches })
+            if ($MoeRailLeftovers.Count -ne 0) {
+                $MoeRailCleanupErrors.Add("Leftover matching Godot processes: $($MoeRailLeftovers -join ',')")
+            }
+        }
+        catch { $MoeRailCleanupErrors.Add("CIM final query error: $($_.Exception.Message)") }
+    }
+
+    if ($null -ne $MoeRailMirrorRoot) {
+        try {
+            if (-not (Test-Path -LiteralPath $MoeRailMirrorRoot -PathType Container)) {
+                $MoeRailCleanupErrors.Add("Final mirror state assertion failed: expected mirror root is missing: $MoeRailMirrorRoot")
+            }
+            else {
+                try {
+                    Assert-MoeRailMirrorState `
+                        -Phase 'final' `
+                        -TempRoot $MoeRailTempRoot `
+                        -Root $MoeRailMirrorRoot `
+                        -Project $MoeRailMirrorProject `
+                        -Environment $MoeRailMirrorEnv `
+                        -Logs $MoeRailMirrorLogs `
+                        -RequireProjectGodot |
+                    Out-Null
+                    [void](Assert-MoeRailMirrorManifest -Phase 'final' -Project $MoeRailMirrorProject -Root $MoeRailMirrorRoot -ExpectedManifest $MoeRailPreCopyManifest)
+                }
+                catch {
+                    $MoeRailCleanupErrors.Add("Final mirror state assertion failed: $($_.Exception.Message)")
+                }
+            }
+        }
+        catch {
+            $MoeRailCleanupErrors.Add("Final mirror state assertion probe failed: $($_.Exception.Message)")
+        }
+    }
+
+    # --- Determine mirror disposition ---
+    if ($MoeRailOverallSuccess -and [string]::IsNullOrWhiteSpace($MoeRailMirrorRoot)) {
+        $MoeRailCleanupErrors.Add("Successful gate did not retain an expected mirror root.")
+    }
+
+    $MoeRailHasErrors = (-not $MoeRailOverallSuccess) -or
+        ($null -ne $MoeRailOriginalError) -or
+        ($MoeRailCleanupErrors.Count -gt 0)
+    if ($MoeRailHasErrors) {
+        try {
+            if ($MoeRailMirrorRoot -and ($MoeRailMirrorRoot.Trim() -ne '')) {
+                try {
+                    if (Test-Path -LiteralPath $MoeRailMirrorRoot) {
+                        Write-Host "PRESERVED_DISPOSABLE_MIRROR=$MoeRailMirrorRoot"
+                    }
+                }
+                catch {
+                    $MoeRailCleanupErrors.Add("Preserved mirror probe failed: $($_.Exception.Message)")
+                }
+            }
+        }
+        catch {
+            $MoeRailCleanupErrors.Add("Preserved mirror guard failed: $($_.Exception.Message)")
+        }
+        $MoeRailAllErrors = [System.Collections.Generic.List[string]]::new()
+        if (-not $MoeRailOverallSuccess) {
+            $MoeRailAllErrors.Add("Overall success flag is false.")
+        }
+        if ($MoeRailOriginalError) {
+            $MoeRailAllErrors.Add($MoeRailOriginalError.Exception.Message)
+        }
+        foreach ($MoeRailCleanupError in $MoeRailCleanupErrors) {
+            $MoeRailAllErrors.Add($MoeRailCleanupError)
+        }
+        throw "Task 3 Step 4 GREEN gate FAILED: " + ($MoeRailAllErrors -join '; ')
+    }
+
+    # --- Clean success path: revalidate and delete exact mirror ---
+    try {
+        if (-not $MoeRailOverallSuccess) {
+            throw "OverallSuccess is false; refusing success cleanup"
+        }
+        if ([string]::IsNullOrWhiteSpace($MoeRailMirrorRoot)) {
+            throw "MirrorRoot is null or whitespace"
+        }
+        if (-not (Test-Path -LiteralPath $MoeRailMirrorRoot -PathType Container)) {
+            throw "MirrorRoot does not exist as a container: $MoeRailMirrorRoot"
+        }
+
+        $MoeRailMirrorRootRealFinal = [IO.Path]::GetFullPath($MoeRailMirrorRoot).TrimEnd('\')
+        $MoeRailTempRootReal = [IO.Path]::GetFullPath($MoeRailTempRoot).TrimEnd('\')
+        $MoeRailMirrorParentFinal = [IO.Path]::GetFullPath(
+            (Split-Path -Parent $MoeRailMirrorRootRealFinal)
+        ).TrimEnd('\')
+        $MoeRailMirrorLeafFinal = Split-Path -Leaf $MoeRailMirrorRootRealFinal
+
+        if (-not [string]::Equals(
+                $MoeRailMirrorParentFinal,
+                $MoeRailTempRootReal,
+                [StringComparison]::OrdinalIgnoreCase
+            )) {
+            throw "Parent path does not match temp root (case-insensitive)"
+        }
+        if ($MoeRailMirrorLeafFinal -notmatch '^moerail-track-train-editor-[0-9a-f]{32}$') {
+            throw "Leaf name does not match required pattern"
+        }
+
+        Assert-MoeRailFeatureState -Phase 'pre-delete' -FailureHandler { }
+        Assert-MoeRailPrimaryState -Phase 'pre-delete' -FailureHandler { }
+        $MoeRailValidatedDeleteRoot = Assert-MoeRailMirrorState `
+            -Phase 'pre-delete' `
+            -TempRoot $MoeRailTempRoot `
+            -Root $MoeRailMirrorRoot `
+            -Project $MoeRailMirrorProject `
+            -Environment $MoeRailMirrorEnv `
+            -Logs $MoeRailMirrorLogs `
+            -RequireProjectGodot
+        [void](Assert-MoeRailMirrorManifest -Phase 'pre-delete' -Project $MoeRailMirrorProject -Root $MoeRailMirrorRoot -ExpectedManifest $MoeRailPreCopyManifest)
+        $MoeRailValidatedDeleteRoot = [IO.Path]::GetFullPath(
+            $MoeRailValidatedDeleteRoot
+        ).TrimEnd('\')
+        if (-not $MoeRailValidatedDeleteRoot.Equals(
+                $MoeRailMirrorRootRealFinal,
+                [StringComparison]::OrdinalIgnoreCase
+            )) {
+            throw "Path mismatch: '$MoeRailValidatedDeleteRoot' does not equal '$MoeRailMirrorRootRealFinal' (case-insensitive)"
+        }
+
+        [void](Assert-MoeRailOrdinaryPathChain `
+            -Path $MoeRailValidatedDeleteRoot `
+            -Boundary $MoeRailTempRootReal)
+        [void](Assert-MoeRailOrdinaryTree -Root $MoeRailValidatedDeleteRoot)
+        Remove-Item -LiteralPath $MoeRailValidatedDeleteRoot `
+            -Recurse -Force -ErrorAction Stop
+        if (Test-Path -LiteralPath $MoeRailValidatedDeleteRoot) {
+            throw "Mirror still exists after deletion: $MoeRailValidatedDeleteRoot"
+        }
+    }
+    catch {
+        $MoeRailDeleteError = $_
+        if ([string]::IsNullOrWhiteSpace($MoeRailMirrorRoot) -eq $false) {
+            try {
+                if (Test-Path -LiteralPath $MoeRailMirrorRoot) {
+                    Write-Host "PRESERVED_DISPOSABLE_MIRROR=$MoeRailMirrorRoot"
+                }
+            }
+            catch {
+                $MoeRailCleanupErrors.Add("Preserved mirror probe failed after cleanup error: $($_.Exception.Message)")
+            }
+        }
+        $MoeRailCleanupErrors.Add("Mirror success cleanup failed: $($MoeRailDeleteError.Exception.Message)")
+
+        $MoeRailAllErrors = [System.Collections.Generic.List[string]]::new()
+        if ($MoeRailOverallSuccess -eq $false) {
+            $MoeRailAllErrors.Add("Overall success flag is false.")
+        }
+        if ($null -ne $MoeRailOriginalError) {
+            $MoeRailAllErrors.Add($MoeRailOriginalError.Exception.Message)
+        }
+        foreach ($e in $MoeRailCleanupErrors) {
+            $MoeRailAllErrors.Add($e)
+        }
+        throw "Task 3 Step 4 GREEN gate FAILED: " + ($MoeRailAllErrors -join '; ')
+    }
+}
+
+Write-Host "=== Task 3 Step 4 GREEN gate PASSED ==="
 ~~~
+
+- [x] **Step 5: Task 3 final commit, amend, and reviews are complete**
+
+Clean commit `7bfeb914141aaefdb2fc05adcaa0b876ccc69267` with sole parent `da65a015f4590e454876b0e93758a0c4782a254c` contains exactly seven Task 3 files; separate specification and quality reviews both PASS. Task 4 remains gated by the Step 4 final post-commit gate and sixth-amendment adoption.
 
 ### Task 4: Advance Construction and Recover Rear Track
 
@@ -1554,6 +5542,9 @@ Create one test-local config helper and separate functions that prove:
 - `recover_behind` cuts through a segment at the exact interpolated point, advances `active_start_distance`, and returns the exact partial length;
 - a recovery cutoff exactly on a canonical vertex or at `vertex_distance + GEOMETRY_EPSILON / 2.0` normalizes backward to that exact stored distance before return, inventory, and active-start calculations, reuses the vertex once, and leaves no duplicate adjacent point or distance;
 - with the preceding vertex farther than epsilon away, a cutoff at `vertex_distance - GEOMETRY_EPSILON / 2.0` remains at its raw interpolated cutoff and never recovers forward beyond that cutoff;
+- at the current maximum `CUSTOM` size of `4000 x 2160`, diagonal corner and final-endpoint recovery at cutoff offset `GEOMETRY_EPSILON / 2.0` and at `GEOMETRY_EPSILON` multiplied by each factor `1.1`, `1.2`, `1.3`, `1.4`, `1.5`, `1.8`, `2.1`, and `50.0` preserves the exact raw return and active scalar plus exact-add inventory, except that final-endpoint `GEOMETRY_EPSILON / 2.0` inventory uses the documented within-epsilon snap-to-total; every retained boundary remains distinct, headings and conservation remain correct, and any exceptional first-segment scalar-versus-geometry delta is no greater than the coordinate-aware float32 bound defined below; factor `10.0` at the same maximum-coordinate diagonal remains within `GEOMETRY_EPSILON` and therefore does not enable the exception;
+- on a fresh `4000 x 2160` track with `3000.0` units, reserving from `Vector2(2804.983642578125, 1368.7210693359375)` toward `Vector2(391.3240966796875, 905.2901000976562)` retains the concrete stored endpoint `Vector2(391.323883056640625, 905.2901611328125)` and scalar length `2457.7470703125`; recovery at raw cutoff `0.2` retains exactly `Vector2(2804.787353515625, 1368.683349609375)`, leaves remaining scalar `2457.5470703125002` versus geometric length `2457.54736328125`, enables the first-segment exception, and remains within the coordinate-and-scalar-aware bound;
+- on a separate copy of that same stored non-axis segment, recovery at raw cutoff `100.5` retains exactly `Vector2(2706.286376953125, 1349.7708740234375)`, produces both remaining scalar and geometric length `2357.2470703125`, and does not enable the exception;
 - a later recovery from that snapped boundary returns only the newly eligible distance;
 - repeated recovery at the same or earlier cutoff returns `0` and changes no inventory;
 - recovered coordinates are absent from future intersection tests and may be reserved again;
@@ -1596,6 +5587,10 @@ Region getters slice by absolute distance without mutating the canonical route. 
 5. add only `target - old_active_start` to available inventory;
 6. assert continuity, monotonic absolute distances, and conservation;
 7. return the recovered length.
+
+**Godot float32 recovered-boundary representation exception:** In the pinned default-precision Godot 4.7.1 build, GDScript route-distance scalars are float64 while `Vector2` and `PackedVector2Array` coordinates are float32. A noncanonical recovery keeps the normalized scalar unchanged for `active_start_distance`, the stored route distance, recovery accounting, inventory, and the return value. First materialize its retained start coordinate using `collision_point - previous_point.direction_to(collision_point) * remaining_scalar`, where `remaining_scalar` is the unchanged scalar distance from the recovered boundary to `collision_point`. If that direct float32 result equals `collision_point`, the existing 48-iteration bounded retreat searches earlier interpolations until it finds the first distinct retained coordinate; this fallback changes only the retained coordinate and never the normalized scalar, accounting, inventory, or return value. Let `max_abs_coordinate` be the greatest absolute x or y component of the resulting retained start point and `collision_point`, let `scalar_length` be that positive `remaining_scalar`, and define `float32_scale` as `max(max(max_abs_coordinate, scalar_length), 1.0)`. If the resulting first retained segment has `absf(scalar_length - geometric_length) > GEOMETRY_EPSILON`, it may use the exception only when that delta is no greater than `GEOMETRY_EPSILON + float32_scale * pow(2.0, -20.0)`. The `2^-20` term provides sixteen binary32 unit roundoffs for direction normalization, scalar conversion and component multiplication, coordinate subtraction, and the final `distance_to` calculation; the fixed epsilon remains the budget for surrounding float64 route-distance arithmetic.
+
+The exception flag is derived only after direct reconstruction and any required distinct-coordinate fallback, using the scalar-versus-geometry delta of the final retained coordinate. It must not be set preemptively or used to bypass any other failed invariant. The exceptional segment must still have positive scalar length and distinct adjacent coordinates. Every later segment and every nonexceptional first segment must satisfy `absf(scalar_length - geometric_length) <= GEOMETRY_EPSILON`. A repeated or earlier-cutoff no-op preserves the current flag without recomputation. Every successful advancing recovery recomputes the flag for its new first segment, including clearing it for a canonical or ordinary result, and removal of the represented first segment clears it. The widened bound applies only to this first recovered segment's scalar-versus-geometry assertion; it does not relax canonicalization, accounting, conservation, headings, intersection behavior, or any other route comparison. Changing the coordinate bounds, engine precision, reconstruction expression, or float32 operation sequence requires updating this proof and both the positive and negative maximum-range regression cases.
 
 Recovery uses the same exact-add, over-total assertion, and within-epsilon snap-to-total rule as cancellation. It must never use a saturating `min` to conceal duplicate recovery.
 
@@ -1684,18 +5679,21 @@ Create a route helper that reserves and constructs deterministic orthogonal segm
 
 Register this suite eleventh.
 
+Run invalid `TrainSystem` assertion probes in isolated child Godot processes: `test_train_system.gd` calls `OS.execute` with `OS.get_executable_path()` and arguments `--headless`, the same `--path`, `--script res://tests/run_all.gd`, `--quit-after 1`, and a unique `--train-invalid-probe=<case>` user argument after `--`. `run_all.gd` detects that user argument and runs only the selected probe. Capture combined standard output and standard error without re-emitting expected diagnostics, and require both a unique `TRAIN_INVALID_PROBE_BEGIN:<case>` marker and the expected assertion text. Never search for, kill, or reset pre-existing Godot or Steam processes. Do not add files beyond the Task 5 five-file scope. The normal GREEN output remains free of `ERROR:` and `SCRIPT ERROR:` markers.
+
 - [ ] **Step 2: Run the train suite to verify RED**
+
+**Amendment:** A missing `preload` for `res://src/domain/train/train_system.gd` prevents the direct RED process from reaching its `SceneTree` quit path under the exact Godot 4.7.1 build, so add `--quit-after 1` only to the launched RED process. RED acceptance ignores the exit code, which may be `0` despite compile diagnostics, requires the exact missing-path diagnostic, forbids `PASS: 11 prototype test suite(s)`, and never terminates an existing process.
 
 ~~~powershell
 $MoeRailFeatureWorktree = 'D:\godot\MoeRailWay-worktrees\proto-02-track-train'
 $MoeRailProject = Join-Path $MoeRailFeatureWorktree 'godot-project-moe-rail-way'
 $MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
-$MoeRailOutput = @(& $MoeRailGodotExe --headless --path $MoeRailProject --script 'res://tests/run_all.gd' 2>&1)
-$MoeRailExit = $LASTEXITCODE
+$MoeRailOutput = @(& $MoeRailGodotExe --headless --path $MoeRailProject --script 'res://tests/run_all.gd' --quit-after 1 2>&1)
 $MoeRailText = $MoeRailOutput -join "`n"
 $MoeRailOutput
-if ($MoeRailExit -eq 0 -or
-    $MoeRailText -notmatch 'res://src/domain/train/train_system\.gd') {
+if ($MoeRailText -notmatch 'res://src/domain/train/train_system\.gd' -or
+    $MoeRailText -match '(?m)^PASS: 11 prototype test suite\(s\)\r?$') {
     throw 'Expected RED from the missing TrainSystem implementation.'
 }
 ~~~
@@ -2434,7 +6432,7 @@ if ($LASTEXITCODE -ne 0 -or $MoeRailPostCommitStatus.Count -ne 0) {
 
 - [ ] **Step 1: Run the complete automated gate from a fresh process set**
 
-Close only agent-owned test processes from earlier commands. Do not close a user-owned Godot or Steam editor. Run this block at the exact Task 8 HEAD:
+Close only agent-owned test processes from earlier commands. Do not close a user-owned Godot or Steam editor. Run this block at the exact Task 8 HEAD. The two superseded functions whose text begins `Invoke-MoeRailHistoricalRealFeature` are retained only inside a non-executed here-string; they are never defined or invoked. Only `Invoke-MoeRailDisposableEditorGate` may start editor mode. When the gate target is the protected primary worktree after separately authorized integration, the clean candidate with an identical `HEAD` tree is the editor mirror source, so no protected primary file is copied.
 
 ~~~powershell
 $ErrorActionPreference = 'Stop'
@@ -2460,6 +6458,86 @@ if ($MoeRailFeatureWorktree -notin $MoeRailAllowedGateFullPaths -or
 }
 $MoeRailProject = Join-Path $MoeRailFeatureWorktree 'godot-project-moe-rail-way'
 $MoeRailGodotExe = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
+$MoeRailCandidateWorktree = [IO.Path]::GetFullPath(
+    'D:\godot\MoeRailWay-worktrees\prototype-m3-candidate'
+)
+$MoeRailPrimaryWorktree = [IO.Path]::GetFullPath('D:\godot\MoeRailWay')
+$MoeRailEditorMirrorSourceWorktree = if (
+    $MoeRailFeatureWorktree -eq $MoeRailPrimaryWorktree
+) {
+    $MoeRailCandidateWorktree
+} else {
+    $MoeRailFeatureWorktree
+}
+if (-not (Test-Path -LiteralPath $MoeRailEditorMirrorSourceWorktree -PathType Container)) {
+    throw "Missing approved editor mirror source: $MoeRailEditorMirrorSourceWorktree"
+}
+if ($MoeRailFeatureWorktree -eq $MoeRailPrimaryWorktree) {
+    $MoeRailPrimaryTree = (git -C $MoeRailFeatureWorktree rev-parse 'HEAD^{tree}').Trim()
+    $MoeRailCandidateTree = (
+        git -C $MoeRailEditorMirrorSourceWorktree rev-parse 'HEAD^{tree}'
+    ).Trim()
+    if ($LASTEXITCODE -ne 0 -or $MoeRailPrimaryTree -ne $MoeRailCandidateTree) {
+        throw 'Primary and clean candidate trees differ before editor mirroring.'
+    }
+}
+
+function Get-MoeRailContentSnapshot {
+    $MoeRailTrackedPaths = @(git -C $MoeRailFeatureWorktree ls-files)
+    $MoeRailTrackedExit = $LASTEXITCODE
+    $MoeRailUntrackedPaths = @(
+        git -C $MoeRailFeatureWorktree ls-files --others --exclude-standard
+    )
+    $MoeRailUntrackedExit = $LASTEXITCODE
+    if ($MoeRailTrackedExit -ne 0 -or $MoeRailUntrackedExit -ne 0) {
+        throw 'Failed to enumerate the repository content snapshot.'
+    }
+    @(
+        @($MoeRailTrackedPaths + $MoeRailUntrackedPaths) |
+            Sort-Object -Unique |
+            ForEach-Object {
+                $MoeRailSnapshotAbsolute = Join-Path $MoeRailFeatureWorktree $_
+                if (-not (Test-Path -LiteralPath $MoeRailSnapshotAbsolute -PathType Leaf)) {
+                    throw "Snapshot path is not a file: $_"
+                }
+                $MoeRailSnapshotHash = (
+                    Get-FileHash -LiteralPath $MoeRailSnapshotAbsolute -Algorithm SHA256
+                ).Hash
+                "$_`t$MoeRailSnapshotHash"
+            }
+    )
+}
+function Get-MoeRailStatusSnapshot {
+    $MoeRailStatusRows = @(
+        git -C $MoeRailFeatureWorktree status --porcelain=v1 --untracked-files=all
+    )
+    $MoeRailStatusExit = $LASTEXITCODE
+    if ($MoeRailStatusExit -ne 0) {
+        throw "Failed to capture repository status: exit $MoeRailStatusExit"
+    }
+    @($MoeRailStatusRows | Sort-Object)
+}
+function Stop-MoeRailOwnedChild {
+    param([System.Diagnostics.Process]$Process)
+    $MoeRailTerminationFailure = ''
+    try {
+        if (-not $Process.HasExited) { $Process.Kill() }
+    } catch {
+        $MoeRailTerminationFailure = $_.Exception.Message
+    }
+    try {
+        if (-not $Process.WaitForExit(5000)) {
+            $MoeRailTerminationFailure = (
+                $MoeRailTerminationFailure + ' Child did not exit within the 5-second reap deadline.'
+            ).Trim()
+        }
+    } catch {
+        $MoeRailTerminationFailure = (
+            $MoeRailTerminationFailure + ' ' + $_.Exception.Message
+        ).Trim()
+    }
+    $MoeRailTerminationFailure
+}
 
 function Invoke-MoeRailPassRunner {
     param(
@@ -2472,7 +6550,8 @@ function Invoke-MoeRailPassRunner {
     $MoeRailRunnerText = $MoeRailRunnerOutput -join "`n"
     $MoeRailRunnerOutput
     if ($MoeRailRunnerExit -ne 0 -or
-        $MoeRailRunnerText -match '(?m)^(FAIL:|SCRIPT ERROR:|ERROR:)') {
+        $MoeRailRunnerText -match '(?m)^(FAIL:|SCRIPT ERROR:|ERROR:|FATAL:|WARNING:|CRASH:)' -or
+        $MoeRailRunnerText -match '(?i)(CrashHandlerException|Program crashed|signal \d+)') {
         throw "$Name failed with exit code $MoeRailRunnerExit."
     }
     foreach ($MoeRailMarker in $Markers) {
@@ -2486,6 +6565,639 @@ function Invoke-MoeRailPassRunner {
     }
 }
 
+$MoeRailHistoricalRealFeatureEvidence = @'
+function Invoke-MoeRailHistoricalRealFeatureEditorGate {
+    $MoeRailMarker = 'PASS: logical track field editor integration'
+    $MoeRailBeforeStatus = @(Get-MoeRailStatusSnapshot)
+    $MoeRailBeforeContent = @(Get-MoeRailContentSnapshot)
+    $MoeRailStdoutPath = [IO.Path]::GetTempFileName()
+    $MoeRailStderrPath = [IO.Path]::GetTempFileName()
+    $MoeRailProcess = $null
+    $MoeRailPreserveLogs = $false
+    try {
+        $MoeRailArguments = @(
+            '--headless', '--editor', '--path', $MoeRailProject,
+            '--quit-after', '600', '--max-fps', '60', '--',
+            '--moerail-logical-field-editor-gate'
+        )
+        $MoeRailProcess = Start-Process -FilePath $MoeRailGodotExe `
+            -ArgumentList $MoeRailArguments -WindowStyle Hidden -PassThru `
+            -RedirectStandardOutput $MoeRailStdoutPath `
+            -RedirectStandardError $MoeRailStderrPath
+        $MoeRailTimedOut = -not $MoeRailProcess.WaitForExit(30000)
+        $MoeRailTerminationFailure = ''
+        if ($MoeRailTimedOut) {
+            $MoeRailTerminationFailure = Stop-MoeRailOwnedChild -Process $MoeRailProcess
+        }
+        $MoeRailOutput = @(
+            Get-Content -LiteralPath $MoeRailStdoutPath -ErrorAction SilentlyContinue
+            Get-Content -LiteralPath $MoeRailStderrPath -ErrorAction SilentlyContinue
+        )
+        $MoeRailText = $MoeRailOutput -join "`n"
+        $MoeRailOutput
+        $MoeRailAfterStatus = @(Get-MoeRailStatusSnapshot)
+        $MoeRailAfterContent = @(Get-MoeRailContentSnapshot)
+        if ($MoeRailTimedOut) {
+            if (-not [string]::IsNullOrWhiteSpace($MoeRailTerminationFailure)) {
+                $MoeRailPreserveLogs = $true
+                throw "Logical field editor integration timed out and exact-child cleanup failed: $MoeRailTerminationFailure; logs: $MoeRailStdoutPath ; $MoeRailStderrPath"
+            }
+            throw 'Logical field editor integration exceeded its 30-second deadline.'
+        }
+        if ($MoeRailProcess.ExitCode -ne 0 -or
+            [regex]::Matches(
+                $MoeRailText,
+                "(?m)^$([regex]::Escape($MoeRailMarker))\r?$"
+            ).Count -ne 1 -or
+            $MoeRailText -match '(?m)^(FAIL:|SCRIPT ERROR:|ERROR:|FATAL:|WARNING:|CRASH:)' -or
+            $MoeRailText -match '(?i)(CrashHandlerException|Program crashed|signal \d+|Scan thread aborted|(?:\bRID allocations\b[^\r\n]*leaked at exit|\bRIDs?\b[^\r\n]*(?:was|were) leaked)|ObjectDB instances[^\r\n]*(?:leaked at exit|still alive))' -or
+            @(Compare-Object $MoeRailBeforeStatus $MoeRailAfterStatus).Count -ne 0 -or
+            @(Compare-Object $MoeRailBeforeContent $MoeRailAfterContent).Count -ne 0) {
+            $MoeRailAfterStatus
+            throw 'Logical field editor integration failed its marker, diagnostic, exit, or file-state contract.'
+        }
+    } finally {
+        $MoeRailChildStillRunning = $false
+        if ($MoeRailProcess -ne $null) {
+            try { $MoeRailChildStillRunning = -not $MoeRailProcess.HasExited } catch {
+                $MoeRailChildStillRunning = $true
+            }
+            $MoeRailProcess.Dispose()
+        }
+        if ($MoeRailPreserveLogs -or $MoeRailChildStillRunning) {
+            "Preserved flagged editor logs: $MoeRailStdoutPath ; $MoeRailStderrPath"
+        } else {
+            Remove-Item -LiteralPath $MoeRailStdoutPath, $MoeRailStderrPath `
+                -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Invoke-MoeRailHistoricalRealFeatureNoFlagEditorSmoke {
+    $MoeRailBeforeStatus = @(Get-MoeRailStatusSnapshot)
+    $MoeRailBeforeContent = @(Get-MoeRailContentSnapshot)
+    $MoeRailStdoutPath = [IO.Path]::GetTempFileName()
+    $MoeRailStderrPath = [IO.Path]::GetTempFileName()
+    $MoeRailProcess = $null
+    $MoeRailPreserveLogs = $false
+    try {
+        $MoeRailArguments = @(
+            '--headless', '--editor', '--path', $MoeRailProject,
+            '--quit-after', '600', '--max-fps', '60'
+        )
+        $MoeRailProcess = Start-Process -FilePath $MoeRailGodotExe `
+            -ArgumentList $MoeRailArguments -WindowStyle Hidden -PassThru `
+            -RedirectStandardOutput $MoeRailStdoutPath `
+            -RedirectStandardError $MoeRailStderrPath
+        $MoeRailTimedOut = -not $MoeRailProcess.WaitForExit(30000)
+        $MoeRailTerminationFailure = ''
+        if ($MoeRailTimedOut) {
+            $MoeRailTerminationFailure = Stop-MoeRailOwnedChild -Process $MoeRailProcess
+        }
+        $MoeRailOutput = @(
+            Get-Content -LiteralPath $MoeRailStdoutPath -ErrorAction SilentlyContinue
+            Get-Content -LiteralPath $MoeRailStderrPath -ErrorAction SilentlyContinue
+        )
+        $MoeRailText = $MoeRailOutput -join "`n"
+        $MoeRailOutput
+        $MoeRailAfterStatus = @(Get-MoeRailStatusSnapshot)
+        $MoeRailAfterContent = @(Get-MoeRailContentSnapshot)
+        if ($MoeRailTimedOut) {
+            if (-not [string]::IsNullOrWhiteSpace($MoeRailTerminationFailure)) {
+                $MoeRailPreserveLogs = $true
+                throw "No-flag editor smoke timed out and exact-child cleanup failed: $MoeRailTerminationFailure; logs: $MoeRailStdoutPath ; $MoeRailStderrPath"
+            }
+            throw 'No-flag editor smoke exceeded its 30-second deadline.'
+        }
+        if ($MoeRailProcess.ExitCode -ne 0 -or
+            $MoeRailText -match '(?m)^(PASS: logical track field editor integration|FAIL:|SCRIPT ERROR:|ERROR:|FATAL:|WARNING:|CRASH:)' -or
+            $MoeRailText -match '(?i)(CrashHandlerException|Program crashed|signal \d+|Scan thread aborted|(?:\bRID allocations\b[^\r\n]*leaked at exit|\bRIDs?\b[^\r\n]*(?:was|were) leaked)|ObjectDB instances[^\r\n]*(?:leaked at exit|still alive))' -or
+            @(Compare-Object $MoeRailBeforeStatus $MoeRailAfterStatus).Count -ne 0 -or
+            @(Compare-Object $MoeRailBeforeContent $MoeRailAfterContent).Count -ne 0) {
+            $MoeRailAfterStatus
+            throw 'The enabled editor plugin was not inert and clean without its gate flag.'
+        }
+    } finally {
+        $MoeRailChildStillRunning = $false
+        if ($MoeRailProcess -ne $null) {
+            try { $MoeRailChildStillRunning = -not $MoeRailProcess.HasExited } catch {
+                $MoeRailChildStillRunning = $true
+            }
+            $MoeRailProcess.Dispose()
+        }
+        if ($MoeRailPreserveLogs -or $MoeRailChildStillRunning) {
+            "Preserved no-flag editor logs: $MoeRailStdoutPath ; $MoeRailStderrPath"
+        } else {
+            Remove-Item -LiteralPath $MoeRailStdoutPath, $MoeRailStderrPath `
+                -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+'@
+function Get-MoeRailWorktreeContentSnapshot {
+    param([string]$Worktree)
+    $MoeRailTracked = @(git -C $Worktree ls-files)
+    $MoeRailTrackedExit = $LASTEXITCODE
+    $MoeRailUntracked = @(git -C $Worktree ls-files --others --exclude-standard)
+    $MoeRailUntrackedExit = $LASTEXITCODE
+    if ($MoeRailTrackedExit -ne 0 -or $MoeRailUntrackedExit -ne 0) {
+        throw "Failed to enumerate mirror-source content: $Worktree"
+    }
+    @(
+        @($MoeRailTracked + $MoeRailUntracked) | Sort-Object -Unique |
+            ForEach-Object {
+                $MoeRailAbsolute = Join-Path $Worktree $_
+                if (-not (Test-Path -LiteralPath $MoeRailAbsolute -PathType Leaf)) {
+                    throw "Snapshot path is not a file: $_"
+                }
+                $MoeRailHash = (
+                    Get-FileHash -LiteralPath $MoeRailAbsolute -Algorithm SHA256
+                ).Hash
+                "$_`t$MoeRailHash"
+            }
+    )
+}
+function Get-MoeRailWorktreeStatusSnapshot {
+    param([string]$Worktree)
+    $MoeRailRows = @(
+        git -C $Worktree status --porcelain=v1 --untracked-files=all
+    )
+    if ($LASTEXITCODE -ne 0) { throw "Failed to capture status: $Worktree" }
+    @($MoeRailRows | Sort-Object)
+}
+
+$MoeRailProjectPrefix = 'godot-project-moe-rail-way/'
+$MoeRailPrototypeApp = 'godot-project-moe-rail-way/src/app/prototype_app.gd'
+$MoeRailMirrorLeafPrefix = 'moerail-track-train-editor-'
+function Assert-MoeRailOrdinaryPathChain {
+    param([string]$Path, [string]$Boundary)
+    $MoeRailFullPath = [IO.Path]::GetFullPath($Path).TrimEnd('\')
+    $MoeRailFullBoundary = [IO.Path]::GetFullPath($Boundary).TrimEnd('\')
+    $MoeRailBoundaryPrefix = $MoeRailFullBoundary + '\'
+    if ($MoeRailFullPath -ne $MoeRailFullBoundary -and
+        -not $MoeRailFullPath.StartsWith(
+            $MoeRailBoundaryPrefix,
+            [StringComparison]::OrdinalIgnoreCase
+        )) {
+        throw "Path escaped its ordinary-file boundary: $MoeRailFullPath"
+    }
+    $MoeRailCurrent = $MoeRailFullPath
+    while ($true) {
+        if (-not (Test-Path -LiteralPath $MoeRailCurrent)) {
+            throw "Required path-chain item is missing: $MoeRailCurrent"
+        }
+        $MoeRailCurrentItem = Get-Item -LiteralPath $MoeRailCurrent -Force
+        if (($MoeRailCurrentItem.Attributes -band
+            [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Reparse point is forbidden in path chain: $MoeRailCurrent"
+        }
+        if ($MoeRailCurrent -eq $MoeRailFullBoundary) { break }
+        $MoeRailParent = [IO.Path]::GetFullPath(
+            (Split-Path -Parent $MoeRailCurrent)
+        ).TrimEnd('\')
+        if ($MoeRailParent -eq $MoeRailCurrent) {
+            throw "Path chain did not reach its boundary: $MoeRailFullPath"
+        }
+        $MoeRailCurrent = $MoeRailParent
+    }
+    $MoeRailFullPath
+}
+function Assert-MoeRailOrdinaryTree {
+    param([string]$Root)
+    $MoeRailQueue = [Collections.Generic.Queue[string]]::new()
+    $MoeRailQueue.Enqueue($Root)
+    while ($MoeRailQueue.Count -gt 0) {
+        $MoeRailDirectory = $MoeRailQueue.Dequeue()
+        foreach ($MoeRailChild in Get-ChildItem -LiteralPath $MoeRailDirectory -Force) {
+            if (($MoeRailChild.Attributes -band
+                [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "Reparse point is forbidden in mirror tree: $($MoeRailChild.FullName)"
+            }
+            if ($MoeRailChild.PSIsContainer) {
+                $MoeRailQueue.Enqueue($MoeRailChild.FullName)
+            }
+        }
+    }
+}
+function Assert-MoeRailMirrorRoot {
+    param([string]$Root)
+    $MoeRailTemp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')
+    $MoeRailFullRoot = [IO.Path]::GetFullPath($Root).TrimEnd('\')
+    $MoeRailRootParent = [IO.Path]::GetFullPath(
+        (Split-Path -Parent $MoeRailFullRoot)
+    ).TrimEnd('\')
+    if ($MoeRailRootParent -ne $MoeRailTemp -or
+        (Split-Path -Leaf $MoeRailFullRoot) -notmatch
+        '^moerail-track-train-editor-[0-9a-f]{32}$') {
+        throw "Unsafe disposable mirror root: $MoeRailFullRoot"
+    }
+    [void](Assert-MoeRailOrdinaryPathChain -Path $MoeRailTemp -Boundary $MoeRailTemp)
+    if (Test-Path -LiteralPath $MoeRailFullRoot) {
+        [void](Assert-MoeRailOrdinaryPathChain `
+            -Path $MoeRailFullRoot -Boundary $MoeRailTemp)
+    }
+    $MoeRailFullRoot
+}
+function New-MoeRailDisposableEditorMirror {
+    $MoeRailTemp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')
+    $MoeRailRoot = Assert-MoeRailMirrorRoot -Root (
+        Join-Path $MoeRailTemp (
+            $MoeRailMirrorLeafPrefix + [guid]::NewGuid().ToString('N')
+        )
+    )
+    try {
+        $MoeRailMirrorProject = Join-Path $MoeRailRoot 'project'
+        $MoeRailEnvironment = Join-Path $MoeRailRoot 'environment'
+        $MoeRailAppData = Join-Path $MoeRailEnvironment 'appdata'
+        $MoeRailLocalAppData = Join-Path $MoeRailEnvironment 'localappdata'
+        $MoeRailChildTemp = Join-Path $MoeRailEnvironment 'temp'
+        $MoeRailLogs = Join-Path $MoeRailRoot 'logs'
+        foreach ($MoeRailDirectory in @(
+            $MoeRailMirrorProject, $MoeRailAppData, $MoeRailLocalAppData,
+            $MoeRailChildTemp, $MoeRailLogs
+        )) {
+            New-Item -ItemType Directory -Path $MoeRailDirectory | Out-Null
+        }
+        $MoeRailTracked = @(
+            git -C $MoeRailEditorMirrorSourceWorktree ls-files
+        )
+        $MoeRailTrackedExit = $LASTEXITCODE
+        $MoeRailUntracked = @(
+            git -C $MoeRailEditorMirrorSourceWorktree `
+                ls-files --others --exclude-standard
+        )
+        $MoeRailUntrackedExit = $LASTEXITCODE
+        if ($MoeRailTrackedExit -ne 0 -or $MoeRailUntrackedExit -ne 0) {
+            throw 'Failed to select disposable mirror files.'
+        }
+        $MoeRailProjectPaths = @(
+            @($MoeRailTracked + $MoeRailUntracked) | Sort-Object -Unique |
+                Where-Object {
+                    $_.StartsWith(
+                        $MoeRailProjectPrefix,
+                        [StringComparison]::Ordinal
+                    )
+                }
+        )
+        if ($MoeRailProjectPaths.Count -eq 0) {
+            throw 'No project files were selected for the disposable mirror.'
+        }
+        $MoeRailMirrorPrefix = $MoeRailMirrorProject.TrimEnd('\') + '\'
+        $MoeRailManifest = @()
+        foreach ($MoeRailRepositoryPath in $MoeRailProjectPaths) {
+            $MoeRailRelative = $MoeRailRepositoryPath.Substring(
+                $MoeRailProjectPrefix.Length
+            )
+            if ($MoeRailRelative -match '(^|/)(\.git|\.godot)(/|$)') {
+                throw "Repository metadata or generated project data is forbidden in a mirror: $MoeRailRepositoryPath"
+            }
+            $MoeRailSource = Join-Path `
+                $MoeRailEditorMirrorSourceWorktree $MoeRailRepositoryPath
+            if (-not (Test-Path -LiteralPath $MoeRailSource -PathType Leaf)) {
+                throw "Mirror source is not an ordinary file: $MoeRailRepositoryPath"
+            }
+            [void](Assert-MoeRailOrdinaryPathChain `
+                -Path $MoeRailSource `
+                -Boundary $MoeRailEditorMirrorSourceWorktree)
+            $MoeRailDestination = [IO.Path]::GetFullPath(
+                (Join-Path $MoeRailMirrorProject $MoeRailRelative)
+            )
+            if (-not $MoeRailDestination.StartsWith(
+                $MoeRailMirrorPrefix,
+                [StringComparison]::OrdinalIgnoreCase
+            )) {
+                throw "Mirror destination escaped its root: $MoeRailRepositoryPath"
+            }
+            $MoeRailSourceHash = (
+                Get-FileHash -LiteralPath $MoeRailSource -Algorithm SHA256
+            ).Hash
+            $MoeRailManifest += [pscustomobject]@{
+                Relative = $MoeRailRelative
+                Source = $MoeRailSource
+                Destination = $MoeRailDestination
+                Hash = $MoeRailSourceHash
+            }
+        }
+        foreach ($MoeRailManifestEntry in $MoeRailManifest) {
+            New-Item -ItemType Directory -Path (
+                Split-Path -Parent $MoeRailManifestEntry.Destination
+            ) -Force | Out-Null
+            [void](Assert-MoeRailOrdinaryPathChain `
+                -Path (Split-Path -Parent $MoeRailManifestEntry.Destination) `
+                -Boundary $MoeRailMirrorProject)
+            Copy-Item -LiteralPath $MoeRailManifestEntry.Source `
+                -Destination $MoeRailManifestEntry.Destination
+            [void](Assert-MoeRailOrdinaryPathChain `
+                -Path $MoeRailManifestEntry.Destination `
+                -Boundary $MoeRailMirrorProject)
+        }
+        $MoeRailSourceRecords = @(
+            $MoeRailManifest | ForEach-Object { "$($_.Relative)`t$($_.Hash)" } |
+                Sort-Object
+        )
+        $MoeRailSecondSourceRecords = @(
+            foreach ($MoeRailManifestEntry in $MoeRailManifest) {
+                [void](Assert-MoeRailOrdinaryPathChain `
+                    -Path $MoeRailManifestEntry.Source `
+                    -Boundary $MoeRailEditorMirrorSourceWorktree)
+                $MoeRailSecondHash = (
+                    Get-FileHash -LiteralPath $MoeRailManifestEntry.Source `
+                        -Algorithm SHA256
+                ).Hash
+                "$($MoeRailManifestEntry.Relative)`t$MoeRailSecondHash"
+            }
+        ) | Sort-Object
+        $MoeRailMirrorRecords = @(
+            Get-ChildItem -LiteralPath $MoeRailMirrorProject -File -Recurse |
+                ForEach-Object {
+                    if (($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                        throw "Mirror contains a reparse point: $($_.FullName)"
+                    }
+                    $MoeRailRelative = $_.FullName.Substring(
+                        $MoeRailMirrorPrefix.Length
+                    ).Replace('\', '/')
+                    $MoeRailHash = (
+                        Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256
+                    ).Hash
+                    "$MoeRailRelative`t$MoeRailHash"
+                } | Sort-Object
+        )
+        if (@(Compare-Object $MoeRailSourceRecords $MoeRailSecondSourceRecords).Count -ne 0 -or
+            @(Compare-Object $MoeRailSourceRecords $MoeRailMirrorRecords).Count -ne 0) {
+            throw 'Disposable mirror differs from its selected clean source.'
+        }
+        [pscustomobject]@{
+            Root = $MoeRailRoot
+            Project = $MoeRailMirrorProject
+            AppData = $MoeRailAppData
+            LocalAppData = $MoeRailLocalAppData
+            Temp = $MoeRailChildTemp
+            Stdout = (Join-Path $MoeRailLogs 'stdout.log')
+            Stderr = (Join-Path $MoeRailLogs 'stderr.log')
+            EngineLog = (Join-Path $MoeRailLogs 'godot.log')
+        }
+    } catch {
+        "PRESERVED_DISPOSABLE_MIRROR=$MoeRailRoot"
+        throw
+    }
+}
+function Remove-MoeRailDisposableEditorMirror {
+    param([pscustomobject]$Mirror)
+    $MoeRailSafeRoot = Assert-MoeRailMirrorRoot -Root $Mirror.Root
+    if (-not (Test-Path -LiteralPath $MoeRailSafeRoot -PathType Container)) {
+        throw 'Disposable mirror root disappeared before approved cleanup.'
+    }
+    [void](Assert-MoeRailOrdinaryPathChain `
+        -Path $MoeRailSafeRoot `
+        -Boundary ([IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')))
+    Assert-MoeRailOrdinaryTree -Root $MoeRailSafeRoot
+    Remove-Item -LiteralPath $MoeRailSafeRoot -Recurse -Force
+}
+function Get-MoeRailLogText {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "Required editor capture is missing: $Path"
+    }
+    $MoeRailCaptureItem = Get-Item -LiteralPath $Path -Force
+    if (($MoeRailCaptureItem.Attributes -band
+        [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Editor capture is a reparse point: $Path"
+    }
+    Get-Content -LiteralPath $Path -Raw -ErrorAction Stop
+}
+function Invoke-MoeRailDisposableEditorGate {
+    param([switch]$WithGateFlag)
+    $MoeRailBeforeTargetHead = (
+        git -C $MoeRailFeatureWorktree rev-parse 'HEAD^{commit}'
+    ).Trim()
+    $MoeRailBeforeTargetTree = (
+        git -C $MoeRailFeatureWorktree rev-parse 'HEAD^{tree}'
+    ).Trim()
+    $MoeRailBeforeSourceHead = (
+        git -C $MoeRailEditorMirrorSourceWorktree rev-parse 'HEAD^{commit}'
+    ).Trim()
+    $MoeRailBeforeSourceTree = (
+        git -C $MoeRailEditorMirrorSourceWorktree rev-parse 'HEAD^{tree}'
+    ).Trim()
+    if ($LASTEXITCODE -ne 0 -or
+        ($MoeRailFeatureWorktree -eq $MoeRailPrimaryWorktree -and
+            $MoeRailBeforeTargetTree -ne $MoeRailBeforeSourceTree)) {
+        throw 'Gate target and mirror-source identities are invalid before mirror creation.'
+    }
+    $MoeRailBeforeTargetStatus = @(Get-MoeRailStatusSnapshot)
+    $MoeRailBeforeTargetContent = @(Get-MoeRailContentSnapshot)
+    $MoeRailBeforeSourceStatus = @(
+        Get-MoeRailWorktreeStatusSnapshot `
+            -Worktree $MoeRailEditorMirrorSourceWorktree
+    )
+    $MoeRailBeforeSourceContent = @(
+        Get-MoeRailWorktreeContentSnapshot `
+            -Worktree $MoeRailEditorMirrorSourceWorktree
+    )
+    if ($MoeRailBeforeSourceStatus.Count -ne 0) {
+        $MoeRailBeforeSourceStatus
+        throw 'The approved editor mirror source is not clean.'
+    }
+    git -C $MoeRailEditorMirrorSourceWorktree `
+        diff --quiet HEAD -- $MoeRailPrototypeApp
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Mirror-source prototype_app.gd differs from its HEAD.'
+    }
+    $MoeRailMirror = New-MoeRailDisposableEditorMirror
+    $MoeRailAfterCopySourceStatus = @(
+        Get-MoeRailWorktreeStatusSnapshot `
+            -Worktree $MoeRailEditorMirrorSourceWorktree
+    )
+    $MoeRailAfterCopySourceContent = @(
+        Get-MoeRailWorktreeContentSnapshot `
+            -Worktree $MoeRailEditorMirrorSourceWorktree
+    )
+    $MoeRailAfterCopyTargetStatus = @(Get-MoeRailStatusSnapshot)
+    $MoeRailAfterCopyTargetContent = @(Get-MoeRailContentSnapshot)
+    $MoeRailAfterCopyTargetHead = (
+        git -C $MoeRailFeatureWorktree rev-parse 'HEAD^{commit}'
+    ).Trim()
+    $MoeRailAfterCopyTargetTree = (
+        git -C $MoeRailFeatureWorktree rev-parse 'HEAD^{tree}'
+    ).Trim()
+    $MoeRailAfterCopySourceHead = (
+        git -C $MoeRailEditorMirrorSourceWorktree rev-parse 'HEAD^{commit}'
+    ).Trim()
+    $MoeRailAfterCopySourceTree = (
+        git -C $MoeRailEditorMirrorSourceWorktree rev-parse 'HEAD^{tree}'
+    ).Trim()
+    if ($LASTEXITCODE -ne 0 -or
+        $MoeRailBeforeTargetHead -ne $MoeRailAfterCopyTargetHead -or
+        $MoeRailBeforeTargetTree -ne $MoeRailAfterCopyTargetTree -or
+        $MoeRailBeforeSourceHead -ne $MoeRailAfterCopySourceHead -or
+        $MoeRailBeforeSourceTree -ne $MoeRailAfterCopySourceTree -or
+        ($MoeRailFeatureWorktree -eq $MoeRailPrimaryWorktree -and
+            $MoeRailAfterCopyTargetTree -ne $MoeRailAfterCopySourceTree) -or
+        @(Compare-Object $MoeRailBeforeTargetStatus $MoeRailAfterCopyTargetStatus).Count -ne 0 -or
+        @(Compare-Object $MoeRailBeforeTargetContent $MoeRailAfterCopyTargetContent).Count -ne 0 -or
+        @(Compare-Object $MoeRailBeforeSourceStatus $MoeRailAfterCopySourceStatus).Count -ne 0 -or
+        @(Compare-Object $MoeRailBeforeSourceContent $MoeRailAfterCopySourceContent).Count -ne 0) {
+        "PRESERVED_DISPOSABLE_MIRROR=$($MoeRailMirror.Root)"
+        throw 'Mirror creation changed its gate target or clean source.'
+    }
+    $MoeRailProcess = $null
+    $MoeRailSuccess = $false
+    try {
+        $MoeRailArguments = @(
+            '--headless', '--path', $MoeRailMirror.Project, '--editor', '--import',
+            '--quit-after', '240', '--max-fps', '60',
+            '--log-file', $MoeRailMirror.EngineLog
+        )
+        if ($WithGateFlag) {
+            $MoeRailArguments += @('--', '--moerail-logical-field-editor-gate')
+        }
+        $MoeRailEnvironment = @{
+            APPDATA = $MoeRailMirror.AppData
+            LOCALAPPDATA = $MoeRailMirror.LocalAppData
+            TEMP = $MoeRailMirror.Temp
+            TMP = $MoeRailMirror.Temp
+        }
+        $MoeRailStartInfo = [Diagnostics.ProcessStartInfo]::new()
+        $MoeRailStartInfo.FileName = $MoeRailGodotExe
+        $MoeRailStartInfo.UseShellExecute = $false
+        $MoeRailStartInfo.CreateNoWindow = $true
+        $MoeRailStartInfo.WindowStyle = [Diagnostics.ProcessWindowStyle]::Hidden
+        $MoeRailStartInfo.RedirectStandardOutput = $true
+        $MoeRailStartInfo.RedirectStandardError = $true
+        foreach ($MoeRailArgument in $MoeRailArguments) {
+            [void]$MoeRailStartInfo.ArgumentList.Add([string]$MoeRailArgument)
+        }
+        foreach ($MoeRailEnvironmentName in $MoeRailEnvironment.Keys) {
+            $MoeRailStartInfo.Environment[$MoeRailEnvironmentName] =
+                $MoeRailEnvironment[$MoeRailEnvironmentName]
+        }
+        $MoeRailProcess = [Diagnostics.Process]::new()
+        $MoeRailProcess.StartInfo = $MoeRailStartInfo
+        if (-not $MoeRailProcess.Start()) {
+            throw 'Failed to start the exact disposable editor child.'
+        }
+        $MoeRailStdoutTask = $MoeRailProcess.StandardOutput.ReadToEndAsync()
+        $MoeRailStderrTask = $MoeRailProcess.StandardError.ReadToEndAsync()
+        $MoeRailTimedOut = -not $MoeRailProcess.WaitForExit(30000)
+        $MoeRailTerminationFailure = ''
+        if ($MoeRailTimedOut) {
+            $MoeRailTerminationFailure = Stop-MoeRailOwnedChild -Process $MoeRailProcess
+        }
+        if ($MoeRailTimedOut -and
+            -not [string]::IsNullOrWhiteSpace($MoeRailTerminationFailure)) {
+            throw "Timed-out editor child was not reaped; asynchronous capture remains bounded by preserving the mirror: $MoeRailTerminationFailure"
+        }
+        $MoeRailCaptureTasks = [Threading.Tasks.Task[]]@(
+            $MoeRailStdoutTask, $MoeRailStderrTask
+        )
+        try {
+            $MoeRailCaptureCompleted = [Threading.Tasks.Task]::WaitAll(
+                $MoeRailCaptureTasks,
+                5000
+            )
+        } catch {
+            throw "Editor output capture failed: $($_.Exception.Message)"
+        }
+        if (-not $MoeRailCaptureCompleted) {
+            try { $MoeRailProcess.StandardOutput.Dispose() } catch {}
+            try { $MoeRailProcess.StandardError.Dispose() } catch {}
+            throw 'Editor output capture exceeded its 5-second completion deadline.'
+        }
+        $MoeRailCapturedStdout = $MoeRailStdoutTask.GetAwaiter().GetResult()
+        $MoeRailCapturedStderr = $MoeRailStderrTask.GetAwaiter().GetResult()
+        [IO.File]::WriteAllText(
+            $MoeRailMirror.Stdout,
+            $MoeRailCapturedStdout,
+            [Text.UTF8Encoding]::new($false)
+        )
+        [IO.File]::WriteAllText(
+            $MoeRailMirror.Stderr,
+            $MoeRailCapturedStderr,
+            [Text.UTF8Encoding]::new($false)
+        )
+        $MoeRailStdout = Get-MoeRailLogText -Path $MoeRailMirror.Stdout
+        $MoeRailStderr = Get-MoeRailLogText -Path $MoeRailMirror.Stderr
+        $MoeRailEngineLog = Get-MoeRailLogText -Path $MoeRailMirror.EngineLog
+        $MoeRailProcessText = @($MoeRailStdout, $MoeRailStderr) -join "`n"
+        $MoeRailDiagnosticText = @(
+            $MoeRailStdout, $MoeRailStderr, $MoeRailEngineLog
+        ) -join "`n"
+        $MoeRailProcessText
+        $MoeRailPassCount = [regex]::Matches(
+            $MoeRailProcessText,
+            '(?m)^PASS: logical track field editor integration\r?$'
+        ).Count
+        $MoeRailFailCount = [regex]::Matches(
+            $MoeRailProcessText,
+            '(?m)^FAIL: logical track field editor integration\r?$'
+        ).Count
+        $MoeRailExpectedPassCount = if ($WithGateFlag) { 1 } else { 0 }
+        $MoeRailAfterTargetStatus = @(Get-MoeRailStatusSnapshot)
+        $MoeRailAfterTargetContent = @(Get-MoeRailContentSnapshot)
+        $MoeRailAfterSourceStatus = @(
+            Get-MoeRailWorktreeStatusSnapshot `
+                -Worktree $MoeRailEditorMirrorSourceWorktree
+        )
+        $MoeRailAfterSourceContent = @(
+            Get-MoeRailWorktreeContentSnapshot `
+                -Worktree $MoeRailEditorMirrorSourceWorktree
+        )
+        $MoeRailAfterTargetHead = (
+            git -C $MoeRailFeatureWorktree rev-parse 'HEAD^{commit}'
+        ).Trim()
+        $MoeRailAfterTargetTree = (
+            git -C $MoeRailFeatureWorktree rev-parse 'HEAD^{tree}'
+        ).Trim()
+        $MoeRailAfterSourceHead = (
+            git -C $MoeRailEditorMirrorSourceWorktree rev-parse 'HEAD^{commit}'
+        ).Trim()
+        $MoeRailAfterSourceTree = (
+            git -C $MoeRailEditorMirrorSourceWorktree rev-parse 'HEAD^{tree}'
+        ).Trim()
+        $MoeRailIdentityExit = $LASTEXITCODE
+        git -C $MoeRailEditorMirrorSourceWorktree `
+            diff --quiet HEAD -- $MoeRailPrototypeApp
+        $MoeRailPrototypeExit = $LASTEXITCODE
+        if ($MoeRailTimedOut -or
+            -not [string]::IsNullOrWhiteSpace($MoeRailTerminationFailure) -or
+            $MoeRailIdentityExit -ne 0 -or
+            $MoeRailBeforeTargetHead -ne $MoeRailAfterTargetHead -or
+            $MoeRailBeforeTargetTree -ne $MoeRailAfterTargetTree -or
+            $MoeRailBeforeSourceHead -ne $MoeRailAfterSourceHead -or
+            $MoeRailBeforeSourceTree -ne $MoeRailAfterSourceTree -or
+            ($MoeRailFeatureWorktree -eq $MoeRailPrimaryWorktree -and
+                $MoeRailAfterTargetTree -ne $MoeRailAfterSourceTree) -or
+            $MoeRailProcess.ExitCode -ne 0 -or
+            $MoeRailPassCount -ne $MoeRailExpectedPassCount -or
+            $MoeRailFailCount -ne 0 -or
+            $MoeRailDiagnosticText -match '(?m)^(FAIL:|SCRIPT ERROR:|ERROR:|FATAL:|WARNING:|CRASH:)' -or
+            $MoeRailDiagnosticText -match '(?i)(CrashHandlerException|Program crashed|signal \d+|Scan thread aborted|(?:\bRID allocations\b[^\r\n]*leaked at exit|\bRIDs?\b[^\r\n]*(?:was|were) leaked)|ObjectDB instances[^\r\n]*(?:leaked at exit|still alive))' -or
+            $MoeRailPrototypeExit -ne 0 -or
+            @(Compare-Object $MoeRailBeforeTargetStatus $MoeRailAfterTargetStatus).Count -ne 0 -or
+            @(Compare-Object $MoeRailBeforeTargetContent $MoeRailAfterTargetContent).Count -ne 0 -or
+            @(Compare-Object $MoeRailBeforeSourceStatus $MoeRailAfterSourceStatus).Count -ne 0 -or
+            @(Compare-Object $MoeRailBeforeSourceContent $MoeRailAfterSourceContent).Count -ne 0) {
+            throw 'Disposable editor gate failed its strict process or state contract.'
+        }
+        $MoeRailSuccess = $true
+    } finally {
+        if ($MoeRailProcess -ne $null) { $MoeRailProcess.Dispose() }
+        if ($MoeRailSuccess) {
+            try {
+                Remove-MoeRailDisposableEditorMirror -Mirror $MoeRailMirror
+            } catch {
+                "PRESERVED_DISPOSABLE_MIRROR=$($MoeRailMirror.Root)"
+                throw "Disposable mirror cleanup failed; preserve any remaining evidence: $($_.Exception.Message)"
+            }
+        } else {
+            "PRESERVED_DISPOSABLE_MIRROR=$($MoeRailMirror.Root)"
+        }
+    }
+}
+
+$MoeRailGateBeforeStatus = @(Get-MoeRailStatusSnapshot)
+$MoeRailGateBeforeContent = @(Get-MoeRailContentSnapshot)
 $MoeRailVersionOutput = @(& $MoeRailGodotExe --version 2>&1)
 $MoeRailVersionExit = $LASTEXITCODE
 $MoeRailVersion = ($MoeRailVersionOutput -join "`n").Trim()
@@ -2514,10 +7226,8 @@ Invoke-MoeRailPassRunner `
     -Name 'Logical field runtime integration' `
     -Arguments @('--headless', '--path', $MoeRailProject, '--script', 'res://tests/integration/run_logical_track_field_integration.gd') `
     -Markers @('PASS: logical track field runtime integration')
-Invoke-MoeRailPassRunner `
-    -Name 'Logical field editor integration' `
-    -Arguments @('--headless', '--editor', '--path', $MoeRailProject, '--script', 'res://tests/integration/run_logical_track_field_editor_integration.gd') `
-    -Markers @('PASS: logical track field editor integration')
+Invoke-MoeRailDisposableEditorGate -WithGateFlag
+Invoke-MoeRailDisposableEditorGate
 Invoke-MoeRailPassRunner `
     -Name 'Track input integration' `
     -Arguments @('--headless', '--path', $MoeRailProject, '--script', 'res://tests/integration/run_track_train_input_integration.gd') `
@@ -2559,11 +7269,9 @@ if ($MoeRailInvalidExit -ne 2 -or
     throw 'Invalid track/train startup did not fail closed with its exact owner and field.'
 }
 
-$MoeRailPostGateStatus = @(
-    git -C $MoeRailFeatureWorktree status --porcelain=v1 --untracked-files=all |
-        Sort-Object
-)
-$MoeRailExpectedGateStatus = if (
+$MoeRailPostGateStatus = @(Get-MoeRailStatusSnapshot)
+$MoeRailPostGateContent = @(Get-MoeRailContentSnapshot)
+$MoeRailExpectedGateStatus = @(if (
     $MoeRailFeatureWorktree -eq [IO.Path]::GetFullPath('D:\godot\MoeRailWay')
 ) {
     @(
@@ -2573,9 +7281,10 @@ $MoeRailExpectedGateStatus = if (
     ) | Sort-Object
 } else {
     @()
-}
-if ($LASTEXITCODE -ne 0 -or
-    @(Compare-Object $MoeRailExpectedGateStatus $MoeRailPostGateStatus).Count -ne 0) {
+})
+if (@(Compare-Object $MoeRailExpectedGateStatus $MoeRailPostGateStatus).Count -ne 0 -or
+    @(Compare-Object $MoeRailGateBeforeStatus $MoeRailPostGateStatus).Count -ne 0 -or
+    @(Compare-Object $MoeRailGateBeforeContent $MoeRailPostGateContent).Count -ne 0) {
     $MoeRailPostGateStatus
     throw 'The automated gate changed tracked or untracked feature files.'
 }
@@ -2584,11 +7293,11 @@ if ($MoeRailHadGateOverride) {
 }
 ~~~
 
-The expected evidence is one unit marker, two accepted-shell markers, one runtime logical-field marker, one editor logical-field marker, one input marker, three app markers, one main-ready marker, and one intentional invalid-start exit `2`. Any missing, duplicate, unexpected `FAIL:`, `SCRIPT ERROR:`, or `ERROR:` line fails the positive runners.
+The expected evidence is one unit marker, two accepted-shell markers, one runtime logical-field marker, one editor-owned logical-field marker followed by engine-owned natural exit before 30 seconds, one clean no-flag editor smoke with zero gate markers, one input marker, three app markers, one main-ready marker, and one intentional invalid-start exit `2`. The flagged and no-flag processes each use a separate exact ordinary-file mirror, isolated `APPDATA`, `LOCALAPPDATA`, `TEMP`, and `TMP`, `--import --quit-after 240`, and mirror-local logs. Any missing or duplicate marker, nonzero positive-run exit, or unexpected `FAIL:`, `SCRIPT ERROR:`, `ERROR:`, `FATAL:`, `WARNING:`, or `CRASH:` line fails the positive runners. Crash-handler, signal-crash, `Scan thread aborted`, RID-allocation leak, or ObjectDB-leak diagnostics also fail both editor commands regardless of prefix.
 
 - [ ] **Step 2: Perform the Windows editor/runtime smoke and write the completed English record**
 
-Use the exact Godot executable above and the real feature project. If a user-owned editor has the project open or an import/editor lock prevents isolated testing, stop and ask the user; never terminate that process. Create `tests/manual/track_train_windows.md` only after running the checks, and record the date, Windows version, exact Godot build, Task 8 commit SHA, tester, each tested window size, an exact PASS status per item, and every host-only warning. If any item fails, keep Task 9 incomplete, correct the defect, and rerun affected checks before creating the final evidence record.
+Use the exact Godot executable above. Runtime-only checks may use the clean committed feature project. Every visible editor-only check must use one new ordinary-file disposable copy of that clean committed feature project, selected by the same tracked plus untracked-nonignored, no-reparse-point, no-copy-back contract as Step 1. Give the visible editor mirror-local `APPDATA`, `LOCALAPPDATA`, `TEMP`, and `TMP`, record the exact source commit and mirror provenance, close that visible editor normally, verify the feature status and content are unchanged, then remove only the revalidated exact temporary root after evidence is complete. Never terminate a user-owned Godot or Steam process. If an editor lock or user-owned process prevents isolated testing, stop and ask the user. Create `tests/manual/track_train_windows.md` only after running the checks, and record the date, Windows version, exact Godot build, Task 8 commit SHA, tester, each tested window size, an exact PASS status per item, and every host-only warning. If any item fails, keep Task 9 incomplete, preserve the exact failed mirror, correct the defect, and rerun affected checks before creating the final evidence record.
 
 The completed record must cover:
 
@@ -2615,24 +7324,84 @@ Represent the 18 required items above, in the same order, as exactly 18 Markdown
 
 - [ ] **Step 3: Verify feature ownership, sidecars, scope, and protected primary files**
 
-Before staging the manual record, run:
+Before staging the manual record, set `MOERAIL_APPROVED_THIRD_AMENDMENT` to the exact reviewed third-amendment SHA reported when this design, plan, and briefing were committed, then run:
 
 ~~~powershell
 $MoeRailPrimary = 'D:\godot\MoeRailWay'
 $MoeRailFeatureWorktree = 'D:\godot\MoeRailWay-worktrees\proto-02-track-train'
 $MoeRailCodeBase = '4e9fc7e39d3c07c51cf5b823fc0963fee01f0f97'
+$MoeRailPlanCommit = '4c0b9ac9a1335c8ffa8cb24f4b7eaf9434dc30c1'
+$MoeRailFirstEditorGateDesignCommit = '36730aa6bc6f05d7e01b96e79aff37ac73d0d11a'
+$MoeRailFirstPlanAmendment = '9047301da36c18b94e6e5be24d8dfd7423966828'
+$MoeRailSecondAmendment = 'aaca77325acb3ecd722894f133c5319152554eb6'
+$MoeRailApprovedThirdAmendment = $env:MOERAIL_APPROVED_THIRD_AMENDMENT
 $MoeRailPlanPath = 'docs/superpowers/plans/2026-08-16-prototype-track-train.md'
 $MoeRailBriefPath = 'docs/briefings/ko/2026-08-16-prototype-track-train-plan-briefing.md'
-$MoeRailPlanCommit = (
-    git -C $MoeRailFeatureWorktree log HEAD -1 --format=%H -- $MoeRailPlanPath $MoeRailBriefPath
-).Trim()
+$MoeRailFirstDesignPath = 'docs/superpowers/specs/2026-08-17-prototype-track-train-editor-gate-amendment-design.md'
+$MoeRailSecondDesignPath = 'docs/superpowers/specs/2026-08-21-prototype-track-train-editor-shutdown-amendment-design.md'
+$MoeRailThirdDesignPath = 'docs/superpowers/specs/2026-08-22-prototype-track-train-disposable-editor-mirror-amendment-design.md'
+if ($MoeRailApprovedThirdAmendment -notmatch '^[0-9a-f]{40}$') {
+    throw 'Set MOERAIL_APPROVED_THIRD_AMENDMENT to the reviewed third amendment commit.'
+}
 $MoeRailPlanParent = (git -C $MoeRailFeatureWorktree rev-parse "$MoeRailPlanCommit^").Trim()
+$MoeRailPlanFiles = @(
+    git -C $MoeRailFeatureWorktree diff-tree --no-commit-id --name-only -r `
+        $MoeRailPlanCommit | Sort-Object
+)
+$MoeRailDesignParent = (
+    git -C $MoeRailFeatureWorktree rev-parse "$MoeRailFirstEditorGateDesignCommit^"
+).Trim()
+$MoeRailDesignFiles = @(
+    git -C $MoeRailFeatureWorktree diff-tree --no-commit-id --name-only -r `
+        $MoeRailFirstEditorGateDesignCommit | Sort-Object
+)
+$MoeRailFirstAmendmentParent = (
+    git -C $MoeRailFeatureWorktree rev-parse "$MoeRailFirstPlanAmendment^"
+).Trim()
+$MoeRailFirstAmendmentFiles = @(
+    git -C $MoeRailFeatureWorktree diff-tree --no-commit-id --name-only -r `
+        $MoeRailFirstPlanAmendment | Sort-Object
+)
+$MoeRailSecondAmendmentParent = (
+    git -C $MoeRailFeatureWorktree rev-parse "$MoeRailSecondAmendment^"
+).Trim()
+$MoeRailSecondAmendmentFiles = @(
+    git -C $MoeRailFeatureWorktree diff-tree --no-commit-id --name-only -r `
+        $MoeRailSecondAmendment | Sort-Object
+)
+$MoeRailThirdAmendmentParent = (
+    git -C $MoeRailFeatureWorktree rev-parse "$MoeRailApprovedThirdAmendment^"
+).Trim()
+$MoeRailThirdAmendmentParentTokens = @(
+    (git -C $MoeRailFeatureWorktree rev-list --parents -n 1 `
+        $MoeRailApprovedThirdAmendment).Trim() -split '\s+'
+)
+$MoeRailThirdAmendmentFiles = @(
+    git -C $MoeRailFeatureWorktree diff-tree --no-commit-id --name-only -r `
+        $MoeRailApprovedThirdAmendment | Sort-Object
+)
 $MoeRailPrototypeHead = (git -C $MoeRailFeatureWorktree rev-parse 'Prototyping^{commit}').Trim()
-if ($LASTEXITCODE -ne 0 -or
-    $MoeRailPlanCommit -notmatch '^[0-9a-f]{40}$' -or
-    $MoeRailPlanParent -ne $MoeRailCodeBase -or
-    $MoeRailPrototypeHead -ne $MoeRailPlanCommit) {
-    throw 'Approved planning commit or Prototyping base changed before the feature gate.'
+$MoeRailFeatureBase = (
+    git -C $MoeRailFeatureWorktree merge-base $MoeRailPlanCommit HEAD
+).Trim()
+git -C $MoeRailFeatureWorktree merge-base --is-ancestor `
+    $MoeRailApprovedThirdAmendment HEAD
+$MoeRailThirdAmendmentAncestorExit = $LASTEXITCODE
+if ($MoeRailPlanParent -ne $MoeRailCodeBase -or
+    @(Compare-Object @($MoeRailPlanPath, $MoeRailBriefPath) $MoeRailPlanFiles).Count -ne 0 -or
+    $MoeRailDesignParent -ne $MoeRailPlanCommit -or
+    @(Compare-Object @($MoeRailFirstDesignPath) $MoeRailDesignFiles).Count -ne 0 -or
+    $MoeRailFirstAmendmentParent -ne $MoeRailFirstEditorGateDesignCommit -or
+    @(Compare-Object @($MoeRailPlanPath, $MoeRailBriefPath) $MoeRailFirstAmendmentFiles).Count -ne 0 -or
+    $MoeRailSecondAmendmentParent -ne $MoeRailFirstPlanAmendment -or
+    @(Compare-Object @($MoeRailSecondDesignPath, $MoeRailPlanPath, $MoeRailBriefPath) $MoeRailSecondAmendmentFiles).Count -ne 0 -or
+    $MoeRailThirdAmendmentParentTokens.Count -ne 2 -or
+    $MoeRailThirdAmendmentParent -ne $MoeRailSecondAmendment -or
+    @(Compare-Object @($MoeRailThirdDesignPath, $MoeRailPlanPath, $MoeRailBriefPath) $MoeRailThirdAmendmentFiles).Count -ne 0 -or
+    $MoeRailPrototypeHead -ne $MoeRailPlanCommit -or
+    $MoeRailFeatureBase -ne $MoeRailPlanCommit -or
+    $MoeRailThirdAmendmentAncestorExit -ne 0) {
+    throw 'Starting plan, reviewed amendment ancestry, or Prototyping base changed before the feature gate.'
 }
 $MoeRailManualPath = 'godot-project-moe-rail-way/tests/manual/track_train_windows.md'
 $MoeRailProtectedPaths = @(
@@ -2701,6 +7470,20 @@ $MoeRailProhibitedTracked = @(
 if ($MoeRailProhibitedTracked.Count -ne 0) {
     $MoeRailProhibitedTracked
     throw 'Generated, local, export, Android, or godot_mcp paths are tracked.'
+}
+$MoeRailExpectedAddonPaths = @(
+    'godot-project-moe-rail-way/addons/moerail_test_editor_gate/plugin.cfg',
+    'godot-project-moe-rail-way/addons/moerail_test_editor_gate/logical_track_field_editor_gate.gd',
+    'godot-project-moe-rail-way/addons/moerail_test_editor_gate/logical_track_field_editor_gate.gd.uid'
+) | Sort-Object
+$MoeRailTrackedAddonPaths = @(
+    $MoeRailTracked | Where-Object {
+        $_ -match '^godot-project-moe-rail-way/addons/'
+    } | Sort-Object
+)
+if (@(Compare-Object $MoeRailExpectedAddonPaths $MoeRailTrackedAddonPaths).Count -ne 0) {
+    $MoeRailTrackedAddonPaths
+    throw 'Tracked add-ons differ from the one approved first-party editor gate.'
 }
 
 $MoeRailChangedPaths = @(
@@ -2828,7 +7611,7 @@ At the Task 9 commit, rerun the complete Step 1 block unchanged. Rerun Step 3 wi
 
 Then use `superpowers:requesting-code-review` for two independent read-only passes:
 
-1. specification compliance against this plan, `docs/superpowers/specs/2026-08-16-prototype-track-train-design.md`, `docs/superpowers/specs/2026-08-15-warp-rail-prototype-design.md`, and `docs/superpowers/specs/2026-08-15-prototype-development-strategy-design.md`;
+1. specification compliance against this plan, `docs/superpowers/specs/2026-08-22-prototype-track-train-disposable-editor-mirror-amendment-design.md`, `docs/superpowers/specs/2026-08-21-prototype-track-train-editor-shutdown-amendment-design.md`, `docs/superpowers/specs/2026-08-17-prototype-track-train-editor-gate-amendment-design.md`, `docs/superpowers/specs/2026-08-16-prototype-track-train-design.md`, `docs/superpowers/specs/2026-08-15-warp-rail-prototype-design.md`, and `docs/superpowers/specs/2026-08-15-prototype-development-strategy-design.md`;
 2. code and test quality, with special attention to arc-distance conservation, field/intersection clipping, fixed-tick ordering, signal reentrancy, scene/Resource validation, GUI event buffering, copied snapshot data, protected paths, and scope creep.
 
 If any gate or review finds a defect, make the smallest focused correction commit, rerun every affected RED/GREEN contract plus the entire Step 1 gate, repeat Windows checks affected by the change, add a new English evidence update that names the new HEAD, and repeat both reviews. Do not claim an exact nine-task-commit history after correction commits; the later squash candidate intentionally collapses all reviewed feature commits.
@@ -2843,7 +7626,7 @@ These commands belong to the later development session. They are not authorized 
 
 ### Gate A: Build a Reviewed Squash Candidate
 
-After the user accepts the complete feature evidence, set `MOERAIL_ACCEPTED_FEATURE` to the exact reviewed `FEATURE_SHA`. Candidate construction does not move `Prototyping`:
+After the user accepts the complete feature evidence, set `MOERAIL_ACCEPTED_FEATURE` to the exact reviewed `FEATURE_SHA` and keep `MOERAIL_APPROVED_THIRD_AMENDMENT` set to the exact reviewed third-amendment SHA. Candidate construction does not move `Prototyping`:
 
 ~~~powershell
 $ErrorActionPreference = 'Stop'
@@ -2853,23 +7636,75 @@ $MoeRailCandidateWorktree = 'D:\godot\MoeRailWay-worktrees\prototype-m3-candidat
 $MoeRailFeatureBranch = 'proto/02-track-train'
 $MoeRailCandidateBranch = 'codex/prototype-m3-candidate'
 $MoeRailCodeBase = '4e9fc7e39d3c07c51cf5b823fc0963fee01f0f97'
+$MoeRailPlanCommit = '4c0b9ac9a1335c8ffa8cb24f4b7eaf9434dc30c1'
+$MoeRailFirstEditorGateDesignCommit = '36730aa6bc6f05d7e01b96e79aff37ac73d0d11a'
+$MoeRailFirstPlanAmendment = '9047301da36c18b94e6e5be24d8dfd7423966828'
+$MoeRailSecondAmendment = 'aaca77325acb3ecd722894f133c5319152554eb6'
+$MoeRailApprovedThirdAmendment = $env:MOERAIL_APPROVED_THIRD_AMENDMENT
+$MoeRailAcceptedFeature = $env:MOERAIL_ACCEPTED_FEATURE
 $MoeRailPlanPath = 'docs/superpowers/plans/2026-08-16-prototype-track-train.md'
 $MoeRailBriefPath = 'docs/briefings/ko/2026-08-16-prototype-track-train-plan-briefing.md'
-$MoeRailPlanCommit = (
-    git -C $MoeRailFeatureWorktree log HEAD -1 --format=%H -- $MoeRailPlanPath $MoeRailBriefPath
-).Trim()
+$MoeRailFirstDesignPath = 'docs/superpowers/specs/2026-08-17-prototype-track-train-editor-gate-amendment-design.md'
+$MoeRailSecondDesignPath = 'docs/superpowers/specs/2026-08-21-prototype-track-train-editor-shutdown-amendment-design.md'
+$MoeRailThirdDesignPath = 'docs/superpowers/specs/2026-08-22-prototype-track-train-disposable-editor-mirror-amendment-design.md'
+if ($MoeRailAcceptedFeature -notmatch '^[0-9a-f]{40}$' -or
+    $MoeRailApprovedThirdAmendment -notmatch '^[0-9a-f]{40}$') {
+    throw 'Set the accepted feature and reviewed third-amendment SHAs before Gate A.'
+}
 $MoeRailPlanParent = (git -C $MoeRailFeatureWorktree rev-parse "$MoeRailPlanCommit^").Trim()
 $MoeRailPlanFiles = @(
     git -C $MoeRailFeatureWorktree diff-tree --no-commit-id --name-only -r $MoeRailPlanCommit |
         Sort-Object
 )
 $MoeRailExpectedPlanFiles = @($MoeRailPlanPath, $MoeRailBriefPath) | Sort-Object
-$MoeRailAcceptedFeature = $env:MOERAIL_ACCEPTED_FEATURE
-if ($MoeRailAcceptedFeature -notmatch '^[0-9a-f]{40}$' -or
-    $MoeRailPlanCommit -notmatch '^[0-9a-f]{40}$' -or
-    $MoeRailPlanParent -ne $MoeRailCodeBase -or
-    @(Compare-Object $MoeRailExpectedPlanFiles $MoeRailPlanFiles).Count -ne 0) {
-    throw 'Accepted feature or approved planning-commit identity is invalid.'
+$MoeRailDesignParent = (
+    git -C $MoeRailFeatureWorktree rev-parse "$MoeRailFirstEditorGateDesignCommit^"
+).Trim()
+$MoeRailDesignFiles = @(
+    git -C $MoeRailFeatureWorktree diff-tree --no-commit-id --name-only -r `
+        $MoeRailFirstEditorGateDesignCommit | Sort-Object
+)
+$MoeRailFirstAmendmentParent = (
+    git -C $MoeRailFeatureWorktree rev-parse "$MoeRailFirstPlanAmendment^"
+).Trim()
+$MoeRailFirstAmendmentFiles = @(
+    git -C $MoeRailFeatureWorktree diff-tree --no-commit-id --name-only -r `
+        $MoeRailFirstPlanAmendment | Sort-Object
+)
+$MoeRailSecondAmendmentParent = (
+    git -C $MoeRailFeatureWorktree rev-parse "$MoeRailSecondAmendment^"
+).Trim()
+$MoeRailSecondAmendmentFiles = @(
+    git -C $MoeRailFeatureWorktree diff-tree --no-commit-id --name-only -r `
+        $MoeRailSecondAmendment | Sort-Object
+)
+$MoeRailThirdAmendmentParent = (
+    git -C $MoeRailFeatureWorktree rev-parse "$MoeRailApprovedThirdAmendment^"
+).Trim()
+$MoeRailThirdAmendmentParentTokens = @(
+    (git -C $MoeRailFeatureWorktree rev-list --parents -n 1 `
+        $MoeRailApprovedThirdAmendment).Trim() -split '\s+'
+)
+$MoeRailThirdAmendmentFiles = @(
+    git -C $MoeRailFeatureWorktree diff-tree --no-commit-id --name-only -r `
+        $MoeRailApprovedThirdAmendment | Sort-Object
+)
+git -C $MoeRailFeatureWorktree merge-base --is-ancestor `
+    $MoeRailApprovedThirdAmendment $MoeRailAcceptedFeature
+$MoeRailThirdAmendmentAncestorExit = $LASTEXITCODE
+if ($MoeRailPlanParent -ne $MoeRailCodeBase -or
+    @(Compare-Object $MoeRailExpectedPlanFiles $MoeRailPlanFiles).Count -ne 0 -or
+    $MoeRailDesignParent -ne $MoeRailPlanCommit -or
+    @(Compare-Object @($MoeRailFirstDesignPath) $MoeRailDesignFiles).Count -ne 0 -or
+    $MoeRailFirstAmendmentParent -ne $MoeRailFirstEditorGateDesignCommit -or
+    @(Compare-Object $MoeRailExpectedPlanFiles $MoeRailFirstAmendmentFiles).Count -ne 0 -or
+    $MoeRailSecondAmendmentParent -ne $MoeRailFirstPlanAmendment -or
+    @(Compare-Object @($MoeRailSecondDesignPath, $MoeRailPlanPath, $MoeRailBriefPath) $MoeRailSecondAmendmentFiles).Count -ne 0 -or
+    $MoeRailThirdAmendmentParentTokens.Count -ne 2 -or
+    $MoeRailThirdAmendmentParent -ne $MoeRailSecondAmendment -or
+    @(Compare-Object @($MoeRailThirdDesignPath, $MoeRailPlanPath, $MoeRailBriefPath) $MoeRailThirdAmendmentFiles).Count -ne 0 -or
+    $MoeRailThirdAmendmentAncestorExit -ne 0) {
+    throw 'Accepted feature, starting plan, or reviewed amendment identity is invalid.'
 }
 if (Test-Path -LiteralPath $MoeRailCandidateWorktree) {
     throw "Candidate worktree already exists: $MoeRailCandidateWorktree"
@@ -3240,12 +8075,13 @@ Report the remote branch commit, annotated tag object, peeled commit, atomic-pus
 
 ## Definition of Done
 
-- `proto/02-track-train` starts from the approved planning commit on `Prototyping`, not from `main` or `Development`.
-- The fixed default gate reports exactly `PASS: 14 prototype test suite(s)` plus every anchored integration and boot marker.
+- `proto/02-track-train` has immutable merge base `4c0b9ac9a1335c8ffa8cb24f4b7eaf9434dc30c1` on `Prototyping`, contains all three reviewed editor-gate amendments in its feature history, and never uses `main` or `Development`.
+- The fixed default gate reports exactly `PASS: 14 prototype test suite(s)` plus every anchored integration and boot marker, including the editor-owned logical-field marker and the zero-marker no-flag editor smoke.
 - The approved preparation, route reservation, construction, train, recovery, warning, cancellation, termination, logical-field, candidate, Inspector, and Windows-resize contracts are automated or manually evidenced as assigned above.
 - Only right-click reserved-unbuilt cancellation is implemented; built-track paid demolition and crossings remain deferred to `proto/04-risk-investment`.
 - No production abstraction pass occurs. The prototype remains concrete and leaves abstraction-scope decisions to later `Development` specifications.
 - Every balance-sensitive value is Inspector-owned by its feature Resource or spatial node, while the active session reads only copied values.
+- The only tracked add-on is the inert-by-default first-party editor gate under `addons/moerail_test_editor_gate`; no third-party or production plugin framework is introduced.
 - User-owned primary changes retain their exact status and SHA-256 fingerprints.
 - Agent-facing Markdown is English; the paired user briefing is Korean and names this plan as canonical.
 - Merge, annotated tag, and push remain separately approved and separately verified.
