@@ -4,7 +4,7 @@ This repository contains the design documents and Godot prototype foundation for
 
 The project is in early prototype development. The immediate goal is to validate whether the core route-drawing loop remains readable, tense, and strategically interesting before committing to campaign content or production-scale architecture.
 
-> **Current status:** `Prototyping` is at the tagged `prototype-m1` foundation milestone. The committed milestone contains a bootable placeholder scene, validated Resource-based balance configuration, deterministic session RNG, and native tests. The playable track, cargo, contract, debt, and bankruptcy loops remain planned work.
+> **Current status:** Milestone M4 is integrated on `main`. The playable prototype includes the deterministic session shell, a centered logical-cell grid, mouse-driven endpoint track extension, curve fitting with overlap downgrade, per-cell track inventory, construction and recovery, and continuous movement for one train. Cargo, contracts, hazards, debt, and company economy remain planned work.
 
 ## Game Concept
 
@@ -52,37 +52,49 @@ Future expansion boundaries reserve surplus-currency sinks without removing the 
 |   |-- superpowers/specs/            English canonical design specifications
 |   |-- superpowers/plans/            English implementation plans
 |   `-- briefings/ko/                 Korean user-review briefings
-`-- godot-project-moe-rail-way/       Godot prototype project on Prototyping
+`-- godot-project-moe-rail-way/       Playable Godot prototype project on main
 ```
 
 The English files under `docs/superpowers` are the implementation source of truth. Korean briefings summarize those documents for user review and are not canonical specifications.
 
 ## Branch Model
 
-- **`main`** holds reviewed project-level documentation and repository guidance.
-- **`Prototyping`** is the integration base for prototype implementation and playtest findings.
-- **`proto/*`** branches isolate focused prototype milestones before integration into `Prototyping`.
-- **`Development`** is reserved for later production work. `Prototyping` is never merged wholesale into it; only explicitly reviewed, reusable units are ported.
+- **`main`** is the only active integration branch and the local playtest branch.
+- **`feature/*`** branches start from the latest verified `main` in dedicated external worktrees and return through reviewed pull requests using merge commits.
+- **`Prototyping`**, **`Development`**, and existing **`proto/*`** branches are legacy read-only references for new work. `Prototyping` is never merged wholesale into `Development`.
+
+The canonical workflow is defined in [Main-First Feature Branch Management Design](docs/superpowers/specs/2026-08-25-main-first-branch-management-design.md).
 
 ## Getting Started
 
-The tracked Godot project lives on the `Prototyping` branch and targets Godot `4.7.1.stable.official.a13da4feb`. After that branch is available in your checkout:
+The integrated Godot project targets `4.7.1.stable.official.a13da4feb`. On this development host, the immediately playable checkout is expected at `D:\godot\MoeRailWay` on a clean local `main` tracking `origin/main`. Protect and resolve any dirty or divergent state under the branch-management design before synchronizing it.
 
 ```powershell
-git switch Prototyping
-$MoeRailGodot = 'C:\path\to\Godot_v4.7.1-stable_win64_console.exe'
+git branch --show-current
+git status --short
+$MoeRailGodot = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
+$MoeRailProject = '.\godot-project-moe-rail-way'
 & $MoeRailGodot --version
-& $MoeRailGodot --editor --path '.\godot-project-moe-rail-way'
+& $MoeRailGodot --editor --path $MoeRailProject
 ```
 
-Run the native headless prototype test suite with:
+Run the registered suite and four standalone integrations with:
 
 ```powershell
-& $MoeRailGodot --headless --path '.\godot-project-moe-rail-way' --script 'res://tests/run_all.gd'
-& $MoeRailGodot --headless --path '.\godot-project-moe-rail-way' --quit-after 2
+$MoeRailScripts = @(
+    'res://tests/run_all.gd',
+    'res://tests/integration/run_session_shell_integration.gd',
+    'res://tests/integration/run_logical_track_field_integration.gd',
+    'res://tests/integration/run_track_train_input_integration.gd',
+    'res://tests/integration/run_track_train_app_integration.gd'
+)
+foreach ($MoeRailScript in $MoeRailScripts) {
+    & $MoeRailGodot --headless --path $MoeRailProject --script $MoeRailScript
+    if ($LASTEXITCODE -ne 0) { throw "Prototype gate failed: $MoeRailScript" }
+}
 ```
 
-The committed `prototype-m1` baseline passes four suites covering project boot, Resource-based balance validation, deterministic seeded session RNG, and project settings. It also boots the placeholder scene headlessly. Graphical editor interaction has not been manually verified by this README change.
+The current automated baseline reports `PASS: 19 prototype test suite(s)` and passes the session-shell, logical-track-field, track-input, and track-and-train-app integrations.
 
 ## Canonical Documents
 
@@ -90,7 +102,11 @@ The committed `prototype-m1` baseline passes four suites covering project boot, 
 - [Prototype Development Strategy](docs/superpowers/specs/2026-08-15-prototype-development-strategy-design.md)
 - [Prototype Foundation Plan](docs/superpowers/plans/2026-08-15-prototype-foundation.md)
 - [Korean Review Briefings](docs/briefings/ko/)
+- [Main-First Feature Branch Management Design](docs/superpowers/specs/2026-08-25-main-first-branch-management-design.md)
+- [Main-First Branch Management Implementation Plan](docs/superpowers/plans/2026-08-25-main-first-branch-management.md)
+- [Grid Track Amendment Design](docs/superpowers/specs/2026-08-24-prototype-grid-track-amendment-design.md)
+- [Grid Track Amendment Plan](docs/superpowers/plans/2026-08-24-prototype-grid-track-amendment.md)
 
 ## Current Scope
 
-The current milestone is a deterministic, testable foundation for rapid prototype work. Campaign structure, narrative progression, production architecture, and full meta-progression content remain outside the first playable scope.
+The integrated M4 scope is a deterministic session shell with one continuously moving train and a playable logical-cell track loop: endpoint-only mouse input, centered grid mapping, curve fitting and overlap downgrade, per-cell reservation and inventory, progressive construction, atomic completion, and ordered recovery. The next prototype slices add warp cargo, risk and investment, contracts and economy, credit survival, and playtest-ready polish. Campaign structure, narrative progression, and production architecture remain outside the current prototype.
