@@ -4,3 +4,4 @@
 
 [resource]
 script = ExtResource("1_train")
+speed_cells_per_second = 1.5

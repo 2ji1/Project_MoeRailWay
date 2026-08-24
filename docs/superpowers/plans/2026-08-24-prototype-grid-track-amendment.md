@@ -593,6 +593,61 @@ func get_departure_cell() -> Vector2i
 
 Every array getter recursively duplicates its records, pieces, dictionaries, and nested arrays before returning.
 
+### Task 7 Cutover Clarifications
+
+1. **Locked-ledger ownership:** `TrackSystem` owns exactly one `GridTrackRuntime` facade object. The runtime is the sole internal owner of the persistent locked-piece ledger. No duplicate ledger is permitted.
+
+2. **`SessionSnapshot` construction:** The exact typed constructor is:
+
+```gdscript
+func _init(
+    total_ticks_value: int,
+    elapsed_ticks_value: int,
+    remaining_ticks_value: int,
+    ticks_per_second_value: int,
+    has_track_train_data_value: bool = false,
+    state_value: int = 0,
+    cell_records_value: Array[TrackCellRecord] = [],
+    geometry_pieces_value: Array[TrackGeometryPiece] = [],
+    contact_observations_value: Array[Dictionary] = [],
+    built_end_distance_cells_value: float = 0.0,
+    available_track_cells_value: int = 0,
+    total_track_cells_value: int = 0,
+    grid_origin_units_value: Vector2 = Vector2.ZERO,
+    departure_built_cells_value: int = 0,
+    departure_required_cells_value: int = 0,
+    built_distance_ahead_cells_value: float = 0.0,
+    train_active_value: bool = false,
+    train_route_distance_cells_value: float = 0.0,
+    train_position_value: Vector2 = Vector2.ZERO,
+    train_heading_value: Vector2 = Vector2.RIGHT,
+    estimated_track_end_seconds_value: float = 0.0,
+    track_end_warning_urgent_value: bool = false,
+    selected_departure_candidate_id_value: StringName = StringName(),
+    departure_cell_value: Vector2i = Vector2i(-1, -1)
+) -> void
+```
+
+The constructor recursively copies every array, record, piece, dictionary, and nested array argument.
+
+3. **Render observation:** `TrackFieldView.get_render_observation()` returns exactly `logical_size`, `grid_rect`, `cells`, `pieces`, `contacts`, `intervals`, `selected_departure_id`, `selected_departure_position`, `train_active`, `train_position`, `train_heading`, and `hover_cancel_cell`. Every composite value is detached. Each interval dictionary contains exactly `route_serial`, `piece_group_id`, `state`, `build_progress`, `nominal_start_cells`, `nominal_end_cells`, `points`, and `locked`.
+
+4. **Right-input consumption:** `apply_right_input()` returns `true` for every `right_pressed` edge, including an outside-grid edge or a miss. Cancellation is attempted only for an inside-grid cell. The return value means that the edge consumed the frame, so buffered left input is ignored for that frame. Every right edge also terminates the `TrackSystem` left capture; held-left cells remain ignored until a new valid `left_pressed` edge starts another capture.
+
+5. **Left capture:** Left capture begins only when `left_pressed` is inside the grid and `left_press_cell` equals the current endpoint. Buffered crossings are processed only while capture is active. Release-frame crossings are processed before capture is cleared. An invalid initial press discards the buffer and does not begin capture.
+
+6. **Preset coverage:** Unit and smoke tests cover `STANDARD`. Both required real-app integration runners cover `COMPACT` and `EXPANSIVE`.
+
+7. **Curve intervals:** Presentation joins a piece serial range to its cell records and emits one interval dictionary per nominal cell. A `CURVE_3X3` therefore exposes five intervals. Rendering and tests consume the same detached interval observations. Each interval's nominal offset is `record.route_distance_start_cells - owner.absolute_start_distance_cells`, never a subtraction of route serials, so cancellation gaps do not collapse later intervals.
+
+8. **Composition snapping regression:** `PrototypeApp` stores `grid_cell_center(departure_cell)` as the runtime departure position without mutating the authored marker. The accepted Task 1 test at `tests/unit/test_departure_selection.gd` joins the Task 7 allowlist and replaces its transitional authored-position expectation with runtime snapping and source-node immutability assertions.
+
+9. **Post-recovery continuation:** Route serials are monotonic identities and cancellation never reuses them. When recovery removes an earlier cell from locked geometry, a refunded cell appended on the next tick may resolve to an unlocked successor whose recomputed start differs from the locked predecessor's immutable end. After sorting active pieces by route order, `TrackGeometryResolver` considers an unlocked successor only when it follows the locked predecessor in that active order and `successor.absolute_start_distance_cells` equals `predecessor.absolute_start_distance_cells + predecessor.nominal_length_cells` within epsilon. It stitches only if the original endpoints already match or the gap vector points forward and is collinear within epsilon with both the predecessor's final tangent and successor's initial tangent; otherwise runtime continuity rejects the branch. It changes only the successor's first centerline point and never mutates locked geometry. `src/domain/track/track_geometry_resolver.gd` joins the Task 7 allowlist.
+
+10. **Editor composition verification:** Non-`@tool` app and session scripts instantiate as placeholders inside an editor process. The editor gate therefore invokes the existing `tests/integration/run_track_train_app_integration.gd` runner as an external fresh headless harness for composition snapping and source-node immutability. The gate requires exit code `0`, the runner's PASS marker, and no `SCRIPT ERROR`, `Parse Error`, or `FAIL:` diagnostic. No production script becomes `@tool`, and no new harness file is added.
+
+These rulings resolve Task 7 ambiguity and verified cutover regressions without pulling Task 8 cleanup forward.
+
 ## Task 1: Add Grid Configuration and Coordinate Mapping
 
 **Files:**
@@ -818,14 +873,14 @@ func test_curve_growth_reclassifies_without_changing_cell_count() -> void:
 func test_overlapping_curves_downgrade_both() -> void:
     var result := resolver.resolve(DEPARTURE, close_double_turn_records(), [], [], Vector2.ZERO, Vector2i(12, 12), 40.0)
     assert_true(result.is_valid, "Double turn resolves")
-    assert_equal(curve_sizes(result.pieces), [2, 2], "Both curves downgrade")
+    assert_equal(curve_sizes(result.pieces), [1, 1], "Both curves downgrade until ownership is disjoint")
 
 func test_anchor_forces_centerline_contact() -> void:
     var anchor := RouteContactAnchorScript.new(&"warp_d", Vector2i(2, 1))
     var result := resolver.resolve(DEPARTURE, abcde_records(), [], [anchor], Vector2.ZERO, Vector2i(8, 8), 40.0)
     assert_true(result.is_valid, "Anchored route resolves")
     assert_true(piece_covering_serial(result.pieces, 3).contacts_cell(anchor.cell, Vector2.ZERO, 40.0), "Centerline contacts anchor")
-    assert_equal(piece_covering_serial(result.pieces, 3).kind, CURVE_1X1, "Anchor forces 1x1")
+    assert_equal(piece_covering_serial(result.pieces, 3).kind, CURVE_2X2, "Anchor selects the largest contacting curve")
 
 func test_nonzero_grid_origin_translates_every_centerline() -> void:
     var records := abcde_records()
@@ -891,7 +946,7 @@ func assert_piece_kinds(
         assert_equal(pieces[index].kind, expected[index], "Piece kind %d" % index)
 ```
 
-Also assert `1x1/2x2/3x3` nominal lengths `1/3/5`, grid-bound downgrade, locked-piece identity preservation, deterministic repeated resolution, and rejection of an unresolved final `1x1` conflict.
+Also assert `1x1/2x2/3x3` nominal lengths `1/3/5`, grid-bound validation and rejection, locked-piece identity preservation, deterministic repeated resolution, and rejection of an unresolved final `1x1` conflict. Grid bounds reject any out-of-bounds route record before curve sizing; `3x3 -> 2x2 -> 1x1` downgrade applies only to overlap, locked-footprint conflict, or contact-anchor failure.
 
 - [ ] **Step 2: Run RED**
 
@@ -1330,6 +1385,7 @@ $MoeRailTaskPaths = @(
     'godot-project-moe-rail-way/src/app/prototype_app.gd',
     'godot-project-moe-rail-way/src/domain/session/session_controller.gd',
     'godot-project-moe-rail-way/src/domain/session/session_snapshot.gd',
+    'godot-project-moe-rail-way/src/domain/track/track_geometry_resolver.gd',
     'godot-project-moe-rail-way/src/domain/track/track_input_frame.gd',
     'godot-project-moe-rail-way/src/domain/track/track_system.gd',
     'godot-project-moe-rail-way/src/domain/train/train_system.gd',
@@ -1341,6 +1397,7 @@ $MoeRailTaskPaths = @(
     'godot-project-moe-rail-way/tests/integration/run_track_train_app_integration.gd',
     'godot-project-moe-rail-way/tests/integration/run_track_train_input_integration.gd',
     'godot-project-moe-rail-way/tests/smoke/test_track_train_app_composition.gd',
+    'godot-project-moe-rail-way/tests/unit/test_departure_selection.gd',
     'godot-project-moe-rail-way/tests/unit/test_session_controller.gd',
     'godot-project-moe-rail-way/tests/unit/test_track_field_view_input.gd',
     'godot-project-moe-rail-way/tests/unit/test_track_system_construction_recovery.gd',
@@ -1363,7 +1420,13 @@ Run fresh specification and quality reviews before Task 8.
 
 **Files:**
 
-- Modify only the remaining configuration, data, fixture, route-sensitive test, runner-registration, and manual-checklist paths already listed in the target map that still name obsolete unit-distance or freeform behavior.
+- Modify only the remaining configuration, data, fixture, route-sensitive test, runner-registration, and manual-checklist paths already listed in the target map that still name obsolete unit-distance or freeform behavior, plus these six Task 7 positional callers omitted from the cleanup staging list:
+  - `godot-project-moe-rail-way/tests/integration/run_track_train_input_integration.gd`
+  - `godot-project-moe-rail-way/tests/unit/test_track_field_view_input.gd`
+  - `godot-project-moe-rail-way/tests/unit/test_track_system_construction_recovery.gd`
+  - `godot-project-moe-rail-way/tests/unit/test_track_system_reservation.gd`
+  - `godot-project-moe-rail-way/tests/unit/test_track_train_session_controller.gd`
+  - `godot-project-moe-rail-way/tests/unit/test_train_system.gd`
 - Delete no historical plan or tag.
 
 **Interfaces:**
@@ -1371,15 +1434,29 @@ Run fresh specification and quality reviews before Task 8.
 - Consumes: completed Tasks 1-7.
 - Produces: one grid-only active runtime surface, updated test registration, manual evidence, and a clean reviewed feature branch.
 
+- [ ] **Step 0: Prove legacy contract removal is RED**
+
+Add property-absence assertions to the already registered `tests/unit/test_track_train_config_validator.gd`, then run:
+
+```powershell
+$MoeRailGodot = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
+$MoeRailProject = 'D:\godot\MoeRailWay-worktrees\proto-03-grid-track-amendment\godot-project-moe-rail-way'
+& $MoeRailGodot --headless --path $MoeRailProject --script res://tests/run_all.gd
+```
+
+Expected: nonzero exit with assertions naming still-present transitional properties. The failure must be caused by the legacy surface only; parse errors, unrelated assertions, or process diagnostics do not qualify as RED evidence.
+
 - [ ] **Step 1: Remove transitional aliases and obsolete assertions**
 
 Run:
 
 ```powershell
-rg -n "total_units|recovery_distance_units|speed_units_per_second|required_built_units|endpoint_grab_radius_units|route_hit_radius_units|minimum_sample_distance_units|intersection_clearance_units|_route_points|_route_distances|partial segment|projection tie" godot-project-moe-rail-way/src godot-project-moe-rail-way/data godot-project-moe-rail-way/tests
+rg -n "total_units|total_track_units|recovery_distance_units|speed_units_per_second|required_built_units|endpoint_grab_radius_units|route_hit_radius_units|minimum_sample_distance_units|intersection_clearance_units|train_speed_value|total_track_value|recovery_distance_value|construction_speed_value|endpoint_grab_radius_value|route_hit_radius_value|minimum_sample_distance_value|intersection_clearance_value|departure_required_built_value|_route_points|_route_distances|partial segment|projection tie" godot-project-moe-rail-way/src godot-project-moe-rail-way/data godot-project-moe-rail-way/tests
 ```
 
 Expected before cleanup: only explicitly transitional code and legacy tests are listed. Remove or rewrite every active occurrence. Historical Markdown is excluded from this scan by design.
+
+The six positional callers listed under **Files** contain no searchable legacy identifiers, but their numeric arguments still follow the transitional 25-argument order. Migrating all six to the final 16-argument `SessionStartConfig` order is mandatory.
 
 Run the same `rg` command after cleanup. Expected: exit `1` with no matches. Any remaining active match blocks the commit.
 
@@ -1454,12 +1531,18 @@ $MoeRailCleanupPaths = @(
     'godot-project-moe-rail-way/tests/fixtures/nondefault_track_train_balance.tres',
     'godot-project-moe-rail-way/tests/integration/run_session_shell_integration.gd',
     'godot-project-moe-rail-way/tests/integration/run_track_train_app_integration.gd',
+    'godot-project-moe-rail-way/tests/integration/run_track_train_input_integration.gd',
     'godot-project-moe-rail-way/tests/manual/track_train_windows.md',
     'godot-project-moe-rail-way/tests/run_all.gd',
     'godot-project-moe-rail-way/tests/unit/test_config_validator.gd',
     'godot-project-moe-rail-way/tests/unit/test_departure_selection.gd',
     'godot-project-moe-rail-way/tests/unit/test_session_controller.gd',
-    'godot-project-moe-rail-way/tests/unit/test_track_train_config_validator.gd'
+    'godot-project-moe-rail-way/tests/unit/test_track_field_view_input.gd',
+    'godot-project-moe-rail-way/tests/unit/test_track_system_construction_recovery.gd',
+    'godot-project-moe-rail-way/tests/unit/test_track_system_reservation.gd',
+    'godot-project-moe-rail-way/tests/unit/test_track_train_session_controller.gd',
+    'godot-project-moe-rail-way/tests/unit/test_track_train_config_validator.gd',
+    'godot-project-moe-rail-way/tests/unit/test_train_system.gd'
 ) | Sort-Object
 git add -- $MoeRailCleanupPaths
 $MoeRailStaged = @(git diff --cached --name-only) | Sort-Object

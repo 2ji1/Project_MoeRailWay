@@ -5,111 +5,163 @@ const SessionStartConfigScript = preload("res://src/domain/session/session_start
 const SessionControllerScript = preload("res://src/domain/session/session_controller.gd")
 const SessionSnapshotScript = preload("res://src/domain/session/session_snapshot.gd")
 const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
-const TrackSystemScript = preload("res://src/domain/track/track_system.gd")
+const TrackCellRecordScript = preload("res://src/domain/track/track_cell_record.gd")
+const TrackGeometryPieceScript = preload("res://src/domain/track/track_geometry_piece.gd")
 const LogicalTrackFieldScript = preload("res://src/presentation/track/logical_track_field.gd")
+const GridPointerRasterizerScript = preload("res://src/presentation/track/grid_pointer_rasterizer.gd")
 
+const INVALID_CELL := Vector2i(-1, -1)
 const BUILT_COLOR := Color(0.12, 0.18, 0.20, 1.0)
 const RESERVED_COLOR := Color(0.12, 0.18, 0.20, 0.38)
-const HEAD_COLOR := Color(0.91, 0.73, 0.29, 1.0)
 const DEPARTURE_COLOR := Color(0.22, 0.55, 0.38, 1.0)
 const TRAIN_COLOR := Color(0.82, 0.26, 0.20, 1.0)
 const HOVER_COLOR := Color(0.91, 0.73, 0.29, 0.72)
 const BUILT_WIDTH := 7.0
 const RESERVED_WIDTH := 4.0
-const HOVER_WIDTH := 5.0
-const HEAD_RADIUS := 7.0
 const DEPARTURE_RADIUS := 9.0
 const TRAIN_LENGTH := 13.0
 const TRAIN_HALF_WIDTH := 7.0
+const INTERVAL_SAMPLE_COUNT := 9
 
 var _session_configured := false
 var _session_logical_size := Vector2.ZERO
+var _grid_rect := Rect2()
+var _grid_size := Vector2i.ZERO
 var _selected_candidate_id := StringName()
 var _selected_departure_position := Vector2.ZERO
-var _route_hit_radius := 0.0
-var _warning_threshold := 0.0
-var _latest_cursor_local := Vector2.ZERO
-var _left_press_local := Vector2.ZERO
-var _left_press_pending := false
+
+var _rasterizer = GridPointerRasterizerScript.new()
+var _crossed_cells: Array[Vector2i] = []
+var _left_press_cell := INVALID_CELL
+var _left_press_inside_grid := false
+var _right_press_cell := INVALID_CELL
+var _right_press_inside_grid := false
+var _left_pressed_pending := false
 var _left_held := false
 var _left_released_pending := false
-var _right_press_local := Vector2.ZERO
-var _right_press_pending := false
+var _right_pressed_pending := false
 var _left_capture_active := false
+var _release_clears_capture := false
+var _last_pointer_logical := Vector2.ZERO
+var _previous_pointer_cell := INVALID_CELL
+var _latest_cursor_local := Vector2.ZERO
 var _cursor_observed := false
+
 var _presented_state := SessionControllerScript.State.READY
 var _has_track_train_data := false
-var _built_route := PackedVector2Array()
-var _reserved_route := PackedVector2Array()
-var _construction_head := Vector2.ZERO
+var _presented_cells: Array[TrackCellRecordScript] = []
+var _presented_pieces: Array[TrackGeometryPieceScript] = []
+var _presented_contacts: Array[Dictionary] = []
+var _presented_intervals: Array[Dictionary] = []
 var _train_active := false
 var _train_position := Vector2.ZERO
 var _train_heading := Vector2.RIGHT
-var _hover_cancel_route := PackedVector2Array()
+var _hover_cancel_cell := INVALID_CELL
 
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		_latest_cursor_local = event.position
 		_cursor_observed = true
-		_update_hover_preview(event.position)
+		if _left_capture_active and _left_held:
+			_rasterize_to(event.position)
+		_update_hover_cell(event.position)
 		return
 	if not event is InputEventMouseButton:
 		return
+
 	_latest_cursor_local = event.position
+	_cursor_observed = true
 	if event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
-			if not _left_press_pending:
-				_left_press_local = event.position
-				_left_press_pending = true
-				_left_capture_active = _local_point_is_inside(event.position)
-			_left_held = true
+			_begin_left_press(event.position)
 		else:
-			if _left_held:
-				_left_released_pending = true
-			_left_held = false
-			_left_capture_active = false
+			_end_left_press(event.position)
 		accept_event()
 		return
 	if event.button_index == MOUSE_BUTTON_RIGHT:
-		if event.pressed and not _right_press_pending:
-			_right_press_local = event.position
-			_right_press_pending = true
-			_clear_hover_preview()
+		if event.pressed and not _right_pressed_pending:
+			var mapping := _map_local_to_grid(event.position)
+			_right_pressed_pending = true
+			_right_press_inside_grid = mapping.inside_grid
+			_right_press_cell = mapping.cell
+			_clear_hover_cell()
 		accept_event()
 
 
-func consume_input_frame() -> TrackInputFrameScript:
-	var cursor_mapping := _map_local_point(
-		_latest_cursor_local,
-		_left_capture_active
+func _begin_left_press(local_position: Vector2) -> void:
+	if _left_held:
+		return
+	var mapping := _map_local_to_grid(local_position)
+	_left_pressed_pending = true
+	_left_press_inside_grid = mapping.inside_grid
+	_left_press_cell = mapping.cell
+	_left_held = true
+	_left_capture_active = mapping.inside_grid
+	_release_clears_capture = false
+	_crossed_cells.clear()
+	if _left_capture_active:
+		_last_pointer_logical = mapping.logical
+		_previous_pointer_cell = mapping.cell
+	else:
+		_previous_pointer_cell = INVALID_CELL
+
+
+func _end_left_press(local_position: Vector2) -> void:
+	if not _left_held:
+		return
+	if _left_capture_active:
+		_rasterize_to(local_position)
+	_left_released_pending = true
+	_left_held = false
+	_release_clears_capture = true
+
+
+func _rasterize_to(local_position: Vector2) -> void:
+	var mapping := _map_local_to_grid(local_position, true)
+	var segment_cells: Array[Vector2i] = _rasterizer.rasterize_motion(
+		_last_pointer_logical,
+		mapping.logical,
+		_grid_rect,
+		_grid_size,
+		_previous_pointer_cell
 	)
-	var left_mapping := _map_local_point(_left_press_local)
-	var right_mapping := _map_local_point(_right_press_local)
+	for cell in segment_cells:
+		if _crossed_cells.is_empty() or _crossed_cells[-1] != cell:
+			_crossed_cells.append(cell)
+	if not segment_cells.is_empty():
+		_previous_pointer_cell = segment_cells[-1]
+	_last_pointer_logical = mapping.logical
+
+
+func consume_input_frame():
 	var frame = TrackInputFrameScript.new(
-		cursor_mapping["position"],
-		cursor_mapping["inside"],
-		_left_press_pending,
+		_crossed_cells,
+		_left_press_cell,
+		_left_press_inside_grid,
+		_right_press_cell,
+		_right_press_inside_grid,
+		_left_pressed_pending,
 		_left_held,
 		_left_released_pending,
-		_right_press_pending,
-		left_mapping["position"],
-		_left_press_pending and left_mapping["inside"],
-		right_mapping["position"],
-		_right_press_pending and right_mapping["inside"]
+		_right_pressed_pending
 	)
-	_left_press_pending = false
-	_left_press_local = Vector2.ZERO
+	_crossed_cells.clear()
+	_left_pressed_pending = false
+	_left_press_cell = INVALID_CELL
+	_left_press_inside_grid = false
 	_left_released_pending = false
-	_right_press_pending = false
-	_right_press_local = Vector2.ZERO
+	_right_pressed_pending = false
+	_right_press_cell = INVALID_CELL
+	_right_press_inside_grid = false
+	if _release_clears_capture:
+		_left_capture_active = false
+		_release_clears_capture = false
+		_previous_pointer_cell = INVALID_CELL
 	return frame
 
 
-func _map_local_point(
-	local_position: Vector2,
-	allow_unclamped := false
-) -> Dictionary:
+func _map_local_to_grid(local_position: Vector2, allow_unclamped := false) -> Dictionary:
 	var viewport_position := get_global_transform_with_canvas() * local_position
 	var mapped: Variant = try_viewport_to_logical(viewport_position)
 	var logical_position := Vector2.ZERO
@@ -117,15 +169,20 @@ func _map_local_point(
 		logical_position = Vector2(mapped)
 	elif allow_unclamped:
 		logical_position = viewport_to_logical_unclamped(viewport_position)
+	logical_position = logical_position.snapped(Vector2(0.0001, 0.0001))
+	var inside_grid := mapped != null and _grid_rect.has_point(logical_position)
+	var cell := INVALID_CELL
+	if inside_grid:
+		var cell_size := Vector2(
+			_grid_rect.size.x / float(_grid_size.x),
+			_grid_rect.size.y / float(_grid_size.y)
+		)
+		cell = Vector2i(floor((logical_position - _grid_rect.position) / cell_size))
 	return {
-		"position": logical_position,
-		"inside": mapped != null,
+		"logical": logical_position,
+		"inside_grid": inside_grid,
+		"cell": cell,
 	}
-
-
-func _local_point_is_inside(local_position: Vector2) -> bool:
-	var viewport_position := get_global_transform_with_canvas() * local_position
-	return try_viewport_to_logical(viewport_position) != null
 
 
 func _notification(what: int) -> void:
@@ -134,10 +191,10 @@ func _notification(what: int) -> void:
 		queue_redraw()
 	elif what == NOTIFICATION_MOUSE_EXIT:
 		_cursor_observed = false
-		_clear_hover_preview()
+		_clear_hover_cell()
 
 
-func get_logical_track_field() -> LogicalTrackFieldScript:
+func get_logical_track_field():
 	return get_node_or_null("LogicalTrackField") as LogicalTrackFieldScript
 
 
@@ -155,7 +212,12 @@ func get_logical_content_rect() -> Rect2:
 func try_viewport_to_logical(viewport_position: Vector2) -> Variant:
 	var local_position := get_global_transform_with_canvas().affine_inverse() * viewport_position
 	var content_rect := get_logical_content_rect()
-	if local_position.x < content_rect.position.x or local_position.x > content_rect.end.x or local_position.y < content_rect.position.y or local_position.y > content_rect.end.y:
+	if (
+		local_position.x < content_rect.position.x
+		or local_position.x > content_rect.end.x
+		or local_position.y < content_rect.position.y
+		or local_position.y > content_rect.end.y
+	):
 		return null
 	return viewport_to_logical_unclamped(viewport_position)
 
@@ -174,10 +236,13 @@ func configure_session(start_config: SessionStartConfigScript) -> void:
 		push_error("TrackFieldView requires LogicalTrackField before session configuration")
 		return
 	_session_logical_size = Vector2(start_config.logical_field_size)
+	_grid_size = Vector2i(start_config.grid_size)
+	_grid_rect = Rect2(
+		Vector2(start_config.grid_origin_units),
+		Vector2(_grid_size) * float(start_config.grid_cell_size_units)
+	)
 	_selected_candidate_id = StringName(start_config.departure_candidate_id)
 	_selected_departure_position = Vector2(start_config.departure_position)
-	_route_hit_radius = float(start_config.route_hit_radius_units)
-	_warning_threshold = float(start_config.urgent_warning_seconds)
 	if not _session_logical_size.is_equal_approx(field.get_logical_size()):
 		push_error("Configured logical field size must equal the authored field size")
 		return
@@ -221,34 +286,98 @@ func present(snapshot: SessionSnapshotScript) -> void:
 		return
 	_presented_state = snapshot.get_state()
 	_has_track_train_data = snapshot.has_track_train_data()
-	_built_route = snapshot.get_built_route()
-	_reserved_route = snapshot.get_reserved_route()
-	_construction_head = snapshot.get_construction_head()
+	_presented_cells = snapshot.get_cell_records()
+	_presented_pieces = snapshot.get_geometry_pieces()
+	_presented_contacts = snapshot.get_contact_observations()
+	_presented_intervals = _build_intervals(_presented_cells, _presented_pieces)
 	_train_active = snapshot.is_train_active()
 	_train_position = snapshot.get_train_position()
 	_train_heading = snapshot.get_train_heading()
 	if _presented_state == SessionControllerScript.State.COMPLETED:
-		_clear_hover_preview()
+		_clear_hover_cell()
 	elif _cursor_observed:
-		_update_hover_preview(_latest_cursor_local)
+		_update_hover_cell(_latest_cursor_local)
 	else:
-		_clear_hover_preview()
+		_clear_hover_cell()
 	queue_redraw()
+
+
+func _build_intervals(records: Array, pieces: Array) -> Array[Dictionary]:
+	var intervals: Array[Dictionary] = []
+	for record in records:
+		var owner = null
+		for piece in pieces:
+			if piece.contains_serial(record.route_serial):
+				owner = piece
+				break
+		if owner == null:
+			continue
+		var nominal_start: float = (
+			record.route_distance_start_cells - owner.absolute_start_distance_cells
+		)
+		var nominal_end := nominal_start + 1.0
+		var points := PackedVector2Array()
+		for sample_index in range(INTERVAL_SAMPLE_COUNT):
+			var weight := float(sample_index) / float(INTERVAL_SAMPLE_COUNT - 1)
+			points.append(owner.sample_nominal(lerpf(nominal_start, nominal_end, weight)).position)
+		intervals.append({
+			"route_serial": record.route_serial,
+			"piece_group_id": owner.group_id,
+			"state": record.state,
+			"build_progress": record.build_progress,
+			"nominal_start_cells": nominal_start,
+			"nominal_end_cells": nominal_end,
+			"points": points,
+			"locked": owner.locked,
+		})
+	return intervals
 
 
 func get_render_observation() -> Dictionary:
 	return {
 		"logical_size": Vector2(_get_mapping_logical_size()),
-		"built_route": _built_route.duplicate(),
-		"reserved_route": _reserved_route.duplicate(),
-		"construction_head": Vector2(_construction_head),
+		"grid_rect": Rect2(_grid_rect),
+		"cells": _duplicate_records(_presented_cells),
+		"pieces": _duplicate_pieces(_presented_pieces),
+		"contacts": _presented_contacts.duplicate(true),
+		"intervals": _duplicate_intervals(_presented_intervals),
 		"selected_departure_id": StringName(_selected_candidate_id),
 		"selected_departure_position": Vector2(_selected_departure_position),
 		"train_active": _train_active,
 		"train_position": Vector2(_train_position),
 		"train_heading": Vector2(_train_heading),
-		"hover_cancel_route": _hover_cancel_route.duplicate(),
+		"hover_cancel_cell": Vector2i(_hover_cancel_cell),
 	}
+
+
+func _duplicate_records(source: Array) -> Array:
+	var copies: Array = []
+	for record in source:
+		copies.append(record.duplicate_record())
+	return copies
+
+
+func _duplicate_pieces(source: Array) -> Array:
+	var copies: Array = []
+	for piece in source:
+		copies.append(piece.duplicate_piece())
+	return copies
+
+
+func _duplicate_intervals(source: Array) -> Array:
+	var copies: Array = []
+	for interval in source:
+		copies.append({
+			"route_serial": interval.route_serial,
+			"piece_group_id": interval.piece_group_id,
+			"state": interval.state,
+			"build_progress": interval.build_progress,
+			"nominal_start_cells": interval.nominal_start_cells,
+			"nominal_end_cells": interval.nominal_end_cells,
+			"points": interval.points.duplicate(),
+			"locked": interval.locked,
+		})
+	return copies
 
 
 func _draw() -> void:
@@ -260,14 +389,26 @@ func _draw() -> void:
 		return
 	var uniform_scale: float = content_rect.size.x / logical_size.x
 	draw_set_transform(content_rect.position, 0.0, Vector2.ONE * uniform_scale)
-	if _built_route.size() >= 2:
-		draw_polyline(_built_route, BUILT_COLOR, BUILT_WIDTH, true)
-	if _reserved_route.size() >= 2:
-		draw_polyline(_reserved_route, RESERVED_COLOR, RESERVED_WIDTH, true)
-	if _hover_cancel_route.size() >= 2:
-		draw_polyline(_hover_cancel_route, HOVER_COLOR, HOVER_WIDTH, true)
-	if _has_track_train_data:
-		draw_circle(_construction_head, HEAD_RADIUS, HEAD_COLOR, true)
+	for interval in _presented_intervals:
+		var points: PackedVector2Array = interval.points
+		if points.size() < 2:
+			continue
+		if interval.state == TrackCellRecordScript.State.BUILT:
+			draw_polyline(points, BUILT_COLOR, BUILT_WIDTH, true)
+		elif interval.state == TrackCellRecordScript.State.BUILDING:
+			draw_polyline(points, RESERVED_COLOR, RESERVED_WIDTH, true)
+			var prefix := _polyline_prefix(points, interval.build_progress)
+			if prefix.size() >= 2:
+				draw_polyline(prefix, BUILT_COLOR, BUILT_WIDTH, true)
+		else:
+			draw_polyline(points, RESERVED_COLOR, RESERVED_WIDTH, true)
+	if _hover_cancel_cell != INVALID_CELL and _grid_size.x > 0 and _grid_size.y > 0:
+		var cell_size := Vector2(
+			_grid_rect.size.x / float(_grid_size.x),
+			_grid_rect.size.y / float(_grid_size.y)
+		)
+		var hover_rect := Rect2(_grid_rect.position + Vector2(_hover_cancel_cell) * cell_size, cell_size)
+		draw_rect(hover_rect, HOVER_COLOR, false, 3.0, true)
 	if _session_configured:
 		draw_circle(_selected_departure_position, DEPARTURE_RADIUS, DEPARTURE_COLOR, true)
 	if _train_active:
@@ -284,71 +425,42 @@ func _draw() -> void:
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
-func _clear_hover_preview() -> void:
-	if _hover_cancel_route.is_empty():
-		return
-	_hover_cancel_route = PackedVector2Array()
-	queue_redraw()
+func _polyline_prefix(points: PackedVector2Array, progress: float) -> PackedVector2Array:
+	var prefix := PackedVector2Array()
+	if points.is_empty() or progress <= 0.0:
+		return prefix
+	var scaled := clampf(progress, 0.0, 1.0) * float(points.size() - 1)
+	var complete_segments := int(floor(scaled))
+	for index in range(mini(complete_segments + 1, points.size())):
+		prefix.append(points[index])
+	if complete_segments < points.size() - 1:
+		var weight := scaled - float(complete_segments)
+		prefix.append(points[complete_segments].lerp(points[complete_segments + 1], weight))
+	return prefix
 
 
-func _update_hover_preview(local_position: Vector2) -> void:
-	if (
-		_presented_state == SessionControllerScript.State.COMPLETED
-		or _reserved_route.size() < 2
-		or _route_hit_radius <= 0.0
-	):
-		_clear_hover_preview()
+func _update_hover_cell(local_position: Vector2) -> void:
+	if _presented_state == SessionControllerScript.State.COMPLETED:
+		_clear_hover_cell()
 		return
-	var mapping := _map_local_point(local_position)
-	if not mapping["inside"]:
-		_clear_hover_preview()
+	var mapping := _map_local_to_grid(local_position)
+	if not mapping.inside_grid or not _is_cancelable_cell(mapping.cell):
+		_clear_hover_cell()
 		return
-	var cursor: Vector2 = mapping["position"]
-	var minimum_distance := INF
-	var selected_distance := INF
-	var best_route_distance := -INF
-	var best_projection := Vector2.ZERO
-	var best_segment := -1
-	var route_distance := 0.0
-	for segment_index in range(_reserved_route.size() - 1):
-		var start: Vector2 = _reserved_route[segment_index]
-		var finish: Vector2 = _reserved_route[segment_index + 1]
-		var segment := finish - start
-		var segment_length := segment.length()
-		if segment_length <= TrackSystemScript.GEOMETRY_EPSILON:
-			continue
-		var weight := clampf((cursor - start).dot(segment) / segment.length_squared(), 0.0, 1.0)
-		var projection := start + segment * weight
-		var distance := cursor.distance_to(projection)
-		var candidate_route_distance := route_distance + segment_length * weight
-		var should_select := false
-		if best_segment < 0:
-			minimum_distance = distance
-			should_select = true
-		elif distance < minimum_distance:
-			minimum_distance = distance
-			should_select = (
-				selected_distance - distance > TrackSystemScript.GEOMETRY_EPSILON
-				or candidate_route_distance > best_route_distance
-			)
-		elif (
-			distance - minimum_distance <= TrackSystemScript.GEOMETRY_EPSILON
-			and candidate_route_distance > best_route_distance
-		):
-			should_select = true
-		if should_select:
-			selected_distance = distance
-			best_route_distance = candidate_route_distance
-			best_projection = projection
-			best_segment = segment_index
-		route_distance += segment_length
-	if best_segment < 0 or minimum_distance > _route_hit_radius:
-		_clear_hover_preview()
+	if _hover_cancel_cell != mapping.cell:
+		_hover_cancel_cell = mapping.cell
+		queue_redraw()
+
+
+func _is_cancelable_cell(cell: Vector2i) -> bool:
+	for record in _presented_cells:
+		if record.cell == cell:
+			return record.state == TrackCellRecordScript.State.RESERVED_GHOST
+	return false
+
+
+func _clear_hover_cell() -> void:
+	if _hover_cancel_cell == INVALID_CELL:
 		return
-	var suffix := PackedVector2Array([best_projection])
-	for point_index in range(best_segment + 1, _reserved_route.size()):
-		var point: Vector2 = _reserved_route[point_index]
-		if suffix[-1] != point:
-			suffix.append(point)
-	_hover_cancel_route = suffix
+	_hover_cancel_cell = INVALID_CELL
 	queue_redraw()

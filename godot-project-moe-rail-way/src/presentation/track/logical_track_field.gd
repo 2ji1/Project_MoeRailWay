@@ -17,6 +17,12 @@ const PRESET_SIZES := {
 	SizePreset.EXPANSIVE: Vector2(1500.0, 700.0),
 }
 
+const PRESET_GRID_SIZES := {
+	SizePreset.COMPACT: Vector2i(22, 10),
+	SizePreset.STANDARD: Vector2i(30, 14),
+	SizePreset.EXPANSIVE: Vector2i(36, 16),
+}
+
 @export var size_preset: SizePreset = SizePreset.STANDARD:
 	set(value):
 		var old_size := get_logical_size()
@@ -38,6 +44,21 @@ const PRESET_SIZES := {
 		_rescale_candidates(old_size, get_logical_size())
 		queue_redraw()
 
+@export var grid_cell_size_units := 40.0:
+	set(value):
+		grid_cell_size_units = value
+		queue_redraw()
+
+@export_range(1, 100, 1) var custom_grid_columns := 30:
+	set(value):
+		custom_grid_columns = value
+		queue_redraw()
+
+@export_range(1, 100, 1) var custom_grid_rows := 14:
+	set(value):
+		custom_grid_rows = value
+		queue_redraw()
+
 
 func get_logical_size() -> Vector2:
 	if size_preset == SizePreset.CUSTOM:
@@ -47,6 +68,47 @@ func get_logical_size() -> Vector2:
 
 func get_editor_boundary_rect() -> Rect2:
 	return Rect2(Vector2.ZERO, get_logical_size())
+
+
+func get_grid_size() -> Vector2i:
+	if size_preset == SizePreset.CUSTOM:
+		return Vector2i(custom_grid_columns, custom_grid_rows)
+	return PRESET_GRID_SIZES[size_preset]
+
+
+func get_grid_cell_size_units() -> float:
+	return grid_cell_size_units
+
+
+func get_grid_rect() -> Rect2:
+	var grid_size := get_grid_size()
+	var grid_extent := Vector2(grid_size) * grid_cell_size_units
+	var origin := (get_logical_size() - grid_extent) * 0.5
+	return Rect2(origin, grid_extent)
+
+
+func logical_to_grid_cell(position: Vector2) -> Vector2i:
+	var grid_size := get_grid_size()
+	if grid_cell_size_units <= 0.0 or grid_size.x <= 0 or grid_size.y <= 0:
+		return Vector2i(-1, -1)
+	var grid_rect := get_grid_rect()
+	if not grid_rect.has_point(position):
+		return Vector2i(-1, -1)
+	var local_position := position - grid_rect.position
+	var cell := Vector2i(
+		int(floor(local_position.x / grid_cell_size_units)),
+		int(floor(local_position.y / grid_cell_size_units))
+	)
+	if cell.x < 0 or cell.x >= grid_size.x or cell.y < 0 or cell.y >= grid_size.y:
+		return Vector2i(-1, -1)
+	return cell
+
+
+func grid_cell_center(cell: Vector2i) -> Vector2:
+	return (
+		get_grid_rect().position
+		+ (Vector2(cell) + Vector2(0.5, 0.5)) * grid_cell_size_units
+	)
 
 
 func get_sorted_candidate_records() -> Array[Dictionary]:
@@ -78,6 +140,19 @@ func validate_configuration() -> PackedStringArray:
 			errors.append("custom_width must be at most 4000")
 		if custom_height > 2160.0:
 			errors.append("custom_height must be at most 2160")
+	if grid_cell_size_units <= 0.0:
+		errors.append("grid_cell_size_units must be greater than 0")
+	var grid_size := get_grid_size()
+	if grid_size.x <= 0 or grid_size.y <= 0:
+		errors.append("grid dimensions must be greater than 0")
+	elif (
+		grid_cell_size_units > 0.0
+		and (
+			float(grid_size.x) * grid_cell_size_units > logical_size.x
+			or float(grid_size.y) * grid_cell_size_units > logical_size.y
+		)
+	):
+		errors.append("grid dimensions must fit within logical bounds")
 	var candidate_parent = get_node_or_null("DepartureCandidates")
 	var candidate_count := 0
 	if candidate_parent != null:

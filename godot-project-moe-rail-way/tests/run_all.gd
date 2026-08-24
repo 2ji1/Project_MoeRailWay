@@ -15,6 +15,11 @@ const SUITES = [
     preload("res://tests/unit/test_track_field_view_input.gd"),
     preload("res://tests/unit/test_track_train_session_controller.gd"),
     preload("res://tests/smoke/test_track_train_app_composition.gd"),
+    preload("res://tests/unit/test_track_cell_sequence.gd"),
+    preload("res://tests/unit/test_track_geometry_resolver.gd"),
+    preload("res://tests/unit/test_grid_track_runtime.gd"),
+    preload("res://tests/unit/test_nominal_train_motion.gd"),
+    preload("res://tests/unit/test_grid_pointer_rasterizer.gd"),
 ]
 
 
@@ -23,12 +28,12 @@ func _initialize() -> void:
 
 
 func _run_suites() -> void:
-    var probe_prefix := "--train-invalid-probe="
+    var probe_prefix := "--track-invalid-probe="
     for argument in OS.get_cmdline_user_args():
         if argument.begins_with(probe_prefix):
             var probe_case := argument.trim_prefix(probe_prefix)
-            print("TRAIN_INVALID_PROBE_BEGIN:" + probe_case)
-            SUITES[10].new().run_invalid_probe(probe_case)
+            print("TRACK_INVALID_PROBE_BEGIN:" + probe_case)
+            SUITES[8].new().run_invalid_probe(probe_case)
             quit(0)
             return
 

@@ -4,3 +4,5 @@
 
 [resource]
 script = ExtResource("1_inventory")
+total_track_cells = 18
+recovery_lag_cells = 6

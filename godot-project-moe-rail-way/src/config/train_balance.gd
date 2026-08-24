@@ -1,4 +1,4 @@
 class_name TrainBalance
 extends Resource
 
-@export var speed_units_per_second := 60.0
+@export var speed_cells_per_second: float = 1.5

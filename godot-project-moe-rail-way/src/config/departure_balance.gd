@@ -1,4 +1,4 @@
 class_name DepartureBalance
 extends Resource
 
-@export var required_built_units := 360.0
+@export var required_built_cells: int = 9

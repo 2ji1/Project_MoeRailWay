@@ -341,6 +341,16 @@ func _verify_app_lifecycle() -> void:
         return
 
     var app = packed_app.instantiate()
+    app.balance = app.balance.duplicate(true)
+    app.balance.session_balance = app.balance.session_balance.duplicate(true)
+    app.balance.train_balance = app.balance.train_balance.duplicate(true)
+    app.balance.track_inventory_balance = app.balance.track_inventory_balance.duplicate(true)
+    app.balance.track_construction_balance = app.balance.track_construction_balance.duplicate(true)
+    app.balance.departure_balance = app.balance.departure_balance.duplicate(true)
+    app.balance.train_balance.speed_cells_per_second = 0.1
+    app.balance.track_inventory_balance.total_track_cells = 12
+    app.balance.track_construction_balance.build_cells_per_second = 60.0
+    app.balance.departure_balance.required_built_cells = 1
     var presented_results := []
     var connect_error := app.connect(
         "session_result_presented",
@@ -376,12 +386,12 @@ func _verify_app_lifecycle() -> void:
     var preparation_observation: Dictionary = shell.get_layout_observation()
     _assert_equal(
         preparation_observation.hud_texts[3],
-        "720.0 / 720.0",
+        "12 / 12",
         "The real preparation HUD must show available and total track"
     )
     _assert_equal(
         preparation_observation.hud_texts[13],
-        "0.0 / 360.0",
+        "0 / 1",
         "The real preparation HUD must show built and required track"
     )
     _assert_equal(
@@ -389,30 +399,24 @@ func _verify_app_lifecycle() -> void:
         false,
         "The real preparation HUD must use normal warning style"
     )
-    var departure: Vector2 = start_config.departure_position
-    var logical_width: float = start_config.logical_field_size.x
-    var target_x := logical_width if logical_width - departure.x >= departure.x else 0.0
-    var target := Vector2(target_x, departure.y)
-    _assert_true(
-        departure.distance_to(target) >= start_config.departure_required_built_units + 8.0,
-        "The selected horizontal edge must hold the required departure route"
-    )
+    var departure_cell: Vector2i = start_config.departure_cell
+    var target_cell := departure_cell + Vector2i.RIGHT
+    if target_cell.x >= start_config.grid_size.x:
+        target_cell = departure_cell + Vector2i.LEFT
+    var crossed: Array[Vector2i] = [target_cell]
     var draw_frame = TrackInputFrameScript.new(
-        target,
+        crossed,
+        departure_cell,
         true,
+        Vector2i(-1, -1),
+        false,
         true,
         true,
         false,
-        false,
-        departure,
-        true
+        false
     )
     controller.advance_tick(draw_frame)
-    var preparation_safety := int(ceil(
-        start_config.departure_required_built_units
-        / (start_config.construction_speed_units_per_second
-            / float(start_config.simulation_ticks_per_second))
-    )) + 2
+    var preparation_safety: int = start_config.simulation_ticks_per_second + 2
     while (
         controller.get_state() == SessionControllerScript.State.PREPARING_DEPARTURE
         and preparation_safety > 0
@@ -435,7 +439,7 @@ func _verify_app_lifecycle() -> void:
     )
     _assert_equal(
         shell.get_layout_observation().hud_texts[13],
-        "6.0 s",
+        "10.0 s",
         "The real running HUD must show built-end seconds with one decimal"
     )
 
@@ -504,25 +508,29 @@ func _verify_track_end_urgent_presentation() -> void:
         10,
         true,
         SessionControllerScript.State.RUNNING,
-        PackedVector2Array([Vector2(100.0, 100.0), Vector2(120.0, 100.0)]),
-        PackedVector2Array([Vector2(120.0, 100.0), Vector2(130.0, 100.0)]),
-        Vector2(120.0, 100.0),
-        true,
-        Vector2(117.0, 100.0),
-        Vector2.RIGHT,
-        10.0,
-        20.0,
-        20.0,
-        10.0,
+        [],
+        [],
+        [],
         3.0,
+        10,
+        20,
+        Vector2.ZERO,
+        1,
+        1,
+        3.0,
+        true,
+        2.0,
+        Vector2(100.0, 100.0),
+        Vector2.RIGHT,
         1.5,
         true,
-        &"departure_01"
+        &"departure_01",
+        Vector2i(0, 0)
     )
     shell.present(urgent_snapshot)
     await _wait_for_layout()
     var urgent_observation: Dictionary = shell.get_layout_observation()
-    _assert_equal(urgent_observation.hud_texts[3], "10.0 / 20.0", "Urgent probe inventory text")
+    _assert_equal(urgent_observation.hud_texts[3], "10 / 20", "Urgent probe inventory text")
     _assert_equal(urgent_observation.hud_texts[13], "1.5 s", "Urgent probe seconds text")
     _assert_true(urgent_observation.track_end_urgent, "Urgent snapshot must expose urgent style")
 

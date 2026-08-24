@@ -161,9 +161,13 @@ Straight pieces fill every route cell not owned by a curve.
 
 Resolve unlocked turns in ascending route order, then detect incompatible footprint overlap. When two unlocked curves overlap, downgrade both by one size and resolve the set again. Repeat until no overlap remains.
 
+A shared owned route cell is still an incompatible overlap. In the approved close-double-turn fixture, both candidates therefore downgrade from `3x3` through `2x2` to disjoint `1x1` curves. This preserves the invariant that every active route-cell record belongs to exactly one geometry piece.
+
 If one side is locked, only the unlocked curve downgrades. Two `1x1` curves cannot occupy the same active route cell because route cells are unique; a remaining `1x1` conflict rejects the newly appended suffix rather than changing locked or previously accepted geometry.
 
 The same route cells, locked prefix, anchor set, grid bounds, and seed-independent configuration always produce the same pieces.
+
+Grid bounds reject an out-of-bounds route record before curve sizing. Because a curve footprint is the inclusive axis-aligned bounding box of its owned in-bounds route cells, grid bounds do not trigger a curve-size downgrade; the downgrade cascade is reserved for overlap, locked-footprint conflict, and contact-anchor failure.
 
 Resolution returns an explicit accepted or rejected result. An empty accepted route is distinct from an invalid candidate. `TrackSystem` tentatively appends one cell, resolves, and rolls back that exact unlocked cell without charge if resolution rejects it.
 
@@ -182,8 +186,10 @@ A-B-C
 ```
 
 - an anchor at `C` can be contacted by the straight approach before the turn;
-- an anchor at `D` can force the fitting `1x1` curve;
-- an anchor at `E` can permit the fitting `2x2` curve.
+- an anchor at `D` forces the fitting `2x2` curve because a continuous `2x2` exit enters `D` immediately before the `D-E` boundary;
+- an anchor at `E` can permit the fitting `3x3` curve.
+
+This fixture still exercises the generic `3x3 -> 2x2 -> 1x1` retry. It stops at `2x2` because that is the largest template whose continuous centerline contacts `D`; requiring `1x1` at `D` would contradict both the `D-E` boundary endpoint and the outgoing tangent.
 
 The exact resolved template is determined by the route span and contact coverage, not by a special-case label for `C`, `D`, or `E`.
 

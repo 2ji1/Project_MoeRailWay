@@ -93,17 +93,17 @@ func present(snapshot: SessionSnapshotScript) -> void:
         _track_end_value.text = "—"
         _set_track_end_urgent(false)
         return
-    _track_value.text = "%.1f / %.1f" % [
-        snapshot.get_available_track_units(),
-        snapshot.get_total_track_units(),
+    _track_value.text = "%d / %d" % [
+        snapshot.get_available_track_cells(),
+        snapshot.get_total_track_cells(),
     ]
     if snapshot.get_state() in [
         SessionControllerScript.State.READY,
         SessionControllerScript.State.PREPARING_DEPARTURE,
     ]:
-        _track_end_value.text = "%.1f / %.1f" % [
-            snapshot.get_departure_built_units(),
-            snapshot.get_departure_required_units(),
+        _track_end_value.text = "%d / %d" % [
+            snapshot.get_departure_built_cells(),
+            snapshot.get_departure_required_cells(),
         ]
         _set_track_end_urgent(false)
     else:

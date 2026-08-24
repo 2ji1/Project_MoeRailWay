@@ -1,6 +1,7 @@
 extends "res://tests/support/prototype_test.gd"
 
 const FIELD_SCENE_PATH := "res://src/presentation/track/logical_track_field.tscn"
+const APP_SCENE_PATH := "res://src/app/prototype_app.tscn"
 const SessionRngScript = preload("res://src/domain/random/session_rng.gd")
 
 
@@ -12,6 +13,49 @@ func run() -> PackedStringArray:
 	var field = packed.instantiate()
 	assert_equal(field.get_logical_size(), Vector2(1200.0, 560.0), "STANDARD must be default")
 	assert_equal(field.get_editor_boundary_rect(), Rect2(Vector2.ZERO, Vector2(1200.0, 560.0)), "Editor boundary must match logical size")
+
+	# Task 1 grid API assertions for STANDARD preset
+	assert_equal(field.get_grid_size(), Vector2i(30, 14), "STANDARD grid size must be 30x14")
+	assert_equal(field.get_grid_cell_size_units(), 40.0, "STANDARD grid cell size must be 40.0")
+	assert_equal(field.get_grid_rect().position, Vector2.ZERO, "STANDARD grid rect origin must be zero")
+	assert_equal(field.logical_to_grid_cell(Vector2(0, 0)), Vector2i(0, 0), "logical_to_grid_cell(0,0) must be (0,0)")
+	assert_equal(field.grid_cell_center(Vector2i(29, 13)), Vector2(1180, 540), "grid_cell_center(29,13) must be (1180,540)")
+
+	# Boundary mapping: reject outside, accept exact valid points
+	var outside_positions = [
+		Vector2(-1, 0), Vector2(1200, 0),
+		Vector2(0, -1), Vector2(0, 560),
+		Vector2(1201, 560), Vector2(-1, 561)
+	]
+	for pos in outside_positions:
+		var cell = field.logical_to_grid_cell(pos)
+		assert_equal(
+			cell,
+			Vector2i(-1, -1),
+			"logical_to_grid_cell must return the sentinel for outside position " + str(pos)
+		)
+	var valid_positions = [
+		Vector2(0, 0), Vector2(1199.999, 559.999),
+		Vector2(1180, 540), Vector2(40, 40)
+	]
+	for pos in valid_positions:
+		var cell = field.logical_to_grid_cell(pos)
+		assert_true(cell.x >= 0 and cell.x < 30 and cell.y >= 0 and cell.y < 14,
+			"logical_to_grid_cell must return in-bounds cell for valid position " + str(pos))
+
+	# COMPACT preset grid assertions (temporary instance)
+	var compact_field = packed.instantiate()
+	compact_field.size_preset = compact_field.SizePreset.COMPACT
+	assert_equal(compact_field.get_grid_rect().position, Vector2(10, 10), "COMPACT grid origin must be (10,10)")
+	assert_equal(compact_field.grid_cell_center(Vector2i(0, 0)), Vector2(30, 30), "COMPACT first cell center must be (30,30)")
+	compact_field.free()
+
+	# EXPANSIVE preset grid assertions (temporary instance)
+	var expansive_field = packed.instantiate()
+	expansive_field.size_preset = expansive_field.SizePreset.EXPANSIVE
+	assert_equal(expansive_field.get_grid_rect().position, Vector2(30, 30), "EXPANSIVE grid origin must be (30,30)")
+	assert_equal(expansive_field.grid_cell_center(Vector2i(0, 0)), Vector2(50, 50), "EXPANSIVE first cell center must be (50,50)")
+	expansive_field.free()
 	var records: Array[Dictionary] = field.get_sorted_candidate_records()
 	assert_equal(records.size(), 8, "Default field must contain eight candidates")
 	var expected_standard_positions := [
@@ -104,6 +148,19 @@ func run() -> PackedStringArray:
 	_assert_contains(custom_errors, "custom_height", "CUSTOM height above 2160 must be rejected")
 	field.custom_width = 1200.0
 	field.custom_height = 560.0
+	field.custom_grid_columns = 30
+	field.custom_grid_rows = 14
+	assert_equal(field.get_grid_size(), Vector2i(30, 14), "Valid CUSTOM grid must be 30x14")
+	assert_equal(field.validate_configuration().size(), 0, "Valid CUSTOM grid must pass validation")
+	field.custom_grid_columns = 31
+	_assert_contains(field.validate_configuration(), "grid dimensions", "Oversized CUSTOM columns must be rejected")
+	field.custom_grid_columns = 30
+	field.custom_grid_rows = 15
+	_assert_contains(field.validate_configuration(), "grid dimensions", "Oversized CUSTOM rows must be rejected")
+	field.custom_grid_rows = 14
+	field.grid_cell_size_units = 0.0
+	_assert_contains(field.validate_configuration(), "grid_cell_size_units", "Zero grid cell size must name its field")
+	field.grid_cell_size_units = 40.0
 
 	var candidate_parent = field.get_node("DepartureCandidates")
 	candidate_parent.get_child(1).candidate_id = candidate_parent.get_child(0).candidate_id
@@ -141,6 +198,45 @@ func run() -> PackedStringArray:
 	)
 	empty_field.free()
 	field.free()
+
+	var app_packed = load(APP_SCENE_PATH) as PackedScene
+	assert_not_null(app_packed, "PrototypeApp scene must load")
+	if app_packed == null:
+		return finish()
+	var app = app_packed.instantiate()
+	assert_not_null(app, "PrototypeApp must instantiate")
+	var app_field = app.get_node("SessionShell").get_track_field_view().get_logical_track_field()
+	var app_records: Array[Dictionary] = app_field.get_sorted_candidate_records()
+	var selected_index := SessionRngScript.new(app.startup_seed).peek_index(app_records.size())
+	var selected_id: StringName = app_records[selected_index].candidate_id
+	var selected_marker = null
+	for candidate in app_field.get_node("DepartureCandidates").get_children():
+		if candidate.candidate_id == selected_id:
+			selected_marker = candidate
+			break
+	assert_not_null(selected_marker, "Selected authored marker must exist")
+	if selected_marker != null:
+		selected_marker.position = Vector2(1200.0, 560.0)
+		var authored_position := Vector2(selected_marker.position)
+		var compose_errors: PackedStringArray = app.compose_session_dependencies()
+		assert_equal(compose_errors, PackedStringArray(), "Inclusive edge departure must compose")
+		if app.session_start_config != null:
+			assert_equal(app.session_start_config.departure_cell, Vector2i(29, 13), "Inclusive edge must snap to the last grid cell")
+			assert_equal(
+				app.session_start_config.departure_position,
+				app_field.grid_cell_center(app.session_start_config.departure_cell),
+				"Runtime departure position must snap to the selected grid cell center"
+			)
+			assert_equal(
+				selected_marker.position,
+				authored_position,
+				"Composition snapping must not mutate the authored marker"
+			)
+			assert_equal(app.session_start_config.grid_size, Vector2i(30, 14), "Composed grid size must match")
+			assert_equal(app.session_start_config.grid_origin_units, Vector2.ZERO, "Composed grid origin must match")
+			assert_equal(app.session_start_config.grid_cell_size_units, 40.0, "Composed cell size must match")
+		assert_equal(selected_marker.position, authored_position, "Composition must not mutate the authored marker")
+	app.free()
 	return finish()
 
 

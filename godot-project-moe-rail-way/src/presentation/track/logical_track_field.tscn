@@ -5,6 +5,9 @@
 
 [node name="LogicalTrackField" type="Node2D"]
 script = ExtResource("1_field")
+grid_cell_size_units = 40.0
+custom_grid_columns = 30
+custom_grid_rows = 14
 
 [node name="DepartureCandidates" type="Node2D" parent="."]
 

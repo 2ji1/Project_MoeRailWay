@@ -4,3 +4,4 @@
 
 [resource]
 script = ExtResource("1_construction")
+build_cells_per_second = 3.0
