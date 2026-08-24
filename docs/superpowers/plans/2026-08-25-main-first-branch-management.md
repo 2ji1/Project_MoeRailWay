@@ -729,6 +729,9 @@ if (@(Compare-Object $MoeRailExpected $MoeRailActual).Count -ne 0) {
 $MoeRailExpectedBySubject = @{
     'docs: define main-first branch management' = @('docs/superpowers/specs/2026-08-25-main-first-branch-management-design.md')
     'docs: plan main-first policy migration' = @('docs/superpowers/plans/2026-08-25-main-first-branch-management.md', 'docs/superpowers/specs/2026-08-25-main-first-branch-management-design.md')
+    'docs: correct legacy notice insertion proof' = @('docs/superpowers/plans/2026-08-25-main-first-branch-management.md')
+    'docs: clarify legacy merge-gate supersession' = @('docs/superpowers/plans/2026-08-25-main-first-branch-management.md')
+    'docs: align plan amendment audit' = @('docs/superpowers/plans/2026-08-25-main-first-branch-management.md')
     'docs: adopt main-first agent branch policy' = @('AGENTS.md')
     'docs: address agent policy review findings' = @('AGENTS.md')
     'docs: mark legacy prototype branch policy superseded' = @('docs/superpowers/specs/2026-08-15-prototype-development-strategy-design.md')
