@@ -1,14 +1,15 @@
 # Warp Rail Endless Survival Prototype Design
 
 - Date: 2026-08-15
-- Status: Approved design, amended by the approved track-and-train milestone design
+- Status: Approved design, amended by the accepted track-and-train baseline and approved grid-track amendment
 - Audience: Agent-facing canonical specification
 - Target: Prototype for validating the core game loop
-- Track-and-train detail: docs/superpowers/specs/2026-08-16-prototype-track-train-design.md
+- Historical track-and-train baseline: docs/superpowers/specs/2026-08-16-prototype-track-train-design.md
+- Current grid-track detail: docs/superpowers/specs/2026-08-24-prototype-grid-track-amendment-design.md
 
 ## 1. One-Sentence Definition
 
-Warp Rail is a timed, single-stroke route-drawing game in which the player continuously extends limited track ahead of one train that never stops, serves randomly generated warp cargo requests with finite lifetimes, and keeps both delivery performance and company cash flow alive.
+Warp Rail is a timed, single-stroke grid-route game in which the player continuously places limited track cells ahead of one train that never stops, serves randomly generated warp cargo requests with finite lifetimes, and keeps both delivery performance and company cash flow alive.
 
 ## 2. Prototype Goals
 
@@ -28,7 +29,7 @@ Warp locations and lifetimes are never rerolled or adjusted after generation to 
 - Campaign progression, endings, and narrative progression
 - Purchasable train models and office-upgrade content; Section 16 reserves extension boundaries only
 - Guaranteed reachability or post-generation rerolls
-- Manual loading or unloading, and free manual recovery of built track; paid early demolition is an approved `proto/04` investment action
+- Manual loading or unloading, and free manual recovery of built track; paid early demolition is reserved for `proto/05-risk-investment`
 - Borrowing during a warp session
 - Mobile, touch, and gamepad support
 
@@ -61,18 +62,19 @@ The final prototype must support the complete repeatable loop from contract sele
 
 ### 5.2 Track and Single-Stroke Drawing
 
-- The player may extend track only from the current end of the one continuous reserved route.
-- Drawing reserves track immediately, costs no cash, and consumes track inventory before physical construction reaches the reserved endpoint.
-- Reserved unbuilt track is constructed from the built endpoint in route order at a tunable fixed speed. The train may travel only on built track.
-- Right-clicking reserved unbuilt track cancels from the clicked route position through the reserved endpoint for free and immediately returns that reserved length.
-- Track behind a fixed recovery point is removed automatically and its length immediately returns to inventory. It provides no cash refund.
-- Coordinates occupied only by recovered track may be crossed freely again.
-- Beginning in `proto/04`, right-clicking built untraveled track pays one major-track-action cost and removes the clicked position through the forward endpoint. Right-clicking traveled retained track pays the same cost and removes the active rear start through the clicked position. Both actions return removed length once and preserve one connected route around the train.
-- Crossing active track requires a costly grade-separated crossing. It never creates a branch or merge.
-- The train never pauses when inventory is empty. If it reaches the end before rear track is recovered, the operation ends.
+- The player may extend track only from the current end of one continuous ordered grid route.
+- Held mouse motion reserves the orthogonally adjacent cells actually crossed. The system never creates a diagonal shortcut or finds a route to a destination.
+- Every newly accepted unique route cell immediately consumes exactly one track-inventory cell. Reclassifying owned cells as a larger curve costs nothing extra.
+- The system resolves the ordered cells into straight or `1x1`, `2x2`, and `3x3` curves with nominal lengths `1`, `3`, and `5` cells. Mandatory warp-cell contact and nearby-curve overlap may force a smaller curve.
+- Unbuilt route appears as translucent ghost track and may reflow until construction begins. A piece locks when its first cell begins construction.
+- Each cell changes through `RESERVED_GHOST`, `BUILDING`, and `BUILT`; the train may enter only the contiguous built prefix.
+- Right-clicking an entirely unlocked ghost cell cancels that cell and the later ghost suffix for free and immediately returns one inventory cell per removed cell.
+- Track behind the recovery lag is removed automatically in route order and returns one cell at a time. It provides no cash refund, and recovered coordinates may be reused.
+- `proto/05-risk-investment` owns the future cell-based paid demolition and costly grade-separated crossing rules. Crossings never create a branch or merge.
+- The train never pauses when inventory is empty. If it reaches the completed endpoint before rear cells are recovered or construction finishes, the operation ends.
 - The player may buy additional track inventory with session cash. The increase disappears at every regular or early session end.
 
-The challenge is not only shortest-path planning. The player must read upcoming recovery, inventory timing, and self-crossing risk while maintaining one continuous line.
+The challenge is not only shortest-path planning. The player must read upcoming recovery, integer inventory timing, curve footprint, mandatory warp contact, and self-crossing risk while maintaining one continuous line.
 
 ### 5.3 Warp Origins and Destinations
 

@@ -1,5 +1,7 @@
 # 프로토타입 선로·열차 구현 계획 브리핑
 
+> **역사 문서 안내(2026-08-24):** 이 계획은 커밋 `67518fc8dc4c106dfc6e20f901bcb2ef832efcb5`, 태그 `prototype-m3`로 구현 완료되었습니다. 아래의 중단 상태와 미완료 체크리스트는 당시 이력이며 재개 지시가 아닙니다. 현재 격자 선로 개발 기준은 `docs/superpowers/plans/2026-08-24-prototype-grid-track-amendment.md`와 `docs/briefings/ko/2026-08-24-prototype-grid-track-amendment-plan-briefing.md`입니다.
+
 영어 정본: `docs/superpowers/plans/2026-08-16-prototype-track-train.md`
 
 이 문서는 사용자 검토용 한국어 브리핑입니다. 실제 구현 시 판단 기준은 위 영어 정본이며, 두 문서가 다르게 읽히면 영어 정본을 우선하고 차이를 수정한 뒤 개발을 재개합니다.

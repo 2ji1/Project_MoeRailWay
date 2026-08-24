@@ -1,5 +1,7 @@
 # 선로·열차 프로토타입 설계 브리핑
 
+> **역사 문서 안내(2026-08-24):** 이 설계는 `prototype-m3`로 구현 완료된 연속 선로 기준입니다. 현재 격자 선로 정본은 `docs/superpowers/specs/2026-08-24-prototype-grid-track-amendment-design.md`이며, 사용자용 수정 요약은 `docs/briefings/ko/2026-08-24-prototype-grid-track-amendment-plan-briefing.md`입니다.
+
 > 이 문서는 사용자 검토용 한국어 브리핑입니다. 에이전트가 실제 구현 기준으로 사용하는 영어 정본은 `docs/superpowers/specs/2026-08-16-prototype-track-train-design.md`입니다.
 
 - 작성일: 2026-08-16

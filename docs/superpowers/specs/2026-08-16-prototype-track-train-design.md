@@ -1,5 +1,7 @@
 # Prototype Track and Train Design
 
+> **Historical status (2026-08-24):** This specification was delivered at commit `67518fc8dc4c106dfc6e20f901bcb2ef832efcb5` and accepted as tag `prototype-m3`. Its continuous-polyline route rules remain milestone evidence, not current implementation authority. Current route authority is `docs/superpowers/specs/2026-08-24-prototype-grid-track-amendment-design.md`.
+
 - Date: 2026-08-16
 - Status: Approved
 - Audience: Agent-facing canonical specification
@@ -334,20 +336,9 @@ Errors identify the owning Resource or node and exact field. Runtime assertions 
 
 Input that cannot produce valid route geometry is a no-op. It never consumes inventory. Right-clicking built track during `proto/02` is a no-op because cash-backed demolition has not arrived. Completed sessions ignore later input and tick calls.
 
-## 13. `proto/04` Paid Demolition Boundary
+## 13. Historical Paid-Demolition Pointer
 
-`proto/04-risk-investment` extends the already-defined right-click command without changing left-drag drawing:
-
-- Built untraveled click: remove the clicked route position through the forward route endpoint.
-- Traveled retained click: remove the active rear start through the clicked route position, which must remain strictly behind the train.
-- A command that touches built geometry pays one `major_track_action_cost`, even if its removed forward suffix also includes reserved geometry.
-- Removed built and canceled reserved length return to inventory once.
-- Cash never refunds.
-- Insufficient cash rejects payment, geometry change, and inventory return atomically.
-- Removing route never leaves an isolated middle section, branch, or merge.
-- A grade-separated crossing pays the same authoritative action cost and permits overlap without creating route connectivity.
-
-Paid early rear demolition is an intentional cash-for-emergency-inventory trade-off. Automatic rear recovery remains the baseline free behavior. Its balance is validated through use frequency, early-returned length, and resulting cash pressure rather than assumed from price equality alone.
+The former continuous-polyline paid-demolition and crossing rules were removed from active future authority on 2026-08-24 because they duplicate and conflict with the grid-cell route model. `proto/05-risk-investment` owns a future cell-based specification for paid demolition, early rear recovery, and grade-separated crossings. The deletion is recorded in `docs/superpowers/plans/2026-08-24-prototype-grid-track-amendment.md`.
 
 ## 14. Verification Strategy
 

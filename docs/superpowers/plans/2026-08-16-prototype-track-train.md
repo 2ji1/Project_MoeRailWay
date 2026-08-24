@@ -1,5 +1,7 @@
 # Prototype Track and Train Implementation Plan
 
+> **Historical status (2026-08-24):** This plan was delivered at commit `67518fc8dc4c106dfc6e20f901bcb2ef832efcb5` and accepted as tag `prototype-m3`. Its task checkboxes and amendment gates are retained as provenance and must not be resumed. The sole active route-replacement plan is `docs/superpowers/plans/2026-08-24-prototype-grid-track-amendment.md`; its supersession and deletion ledger identifies every active contract removed from this plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 > **Execution boundary:** Tasks 1–3 are complete and Task 3 is clean, independently specification-and-quality-reviewed at commit `7bfeb914141aaefdb2fc05adcaa0b876ccc69267`; Task 4 must not start until the reviewed final post-commit gate and sixth-amendment adoption gate pass; Gate A, `Prototyping` integration, `prototype-m3` tag, push, PR, and cleanup remain unauthorized.
