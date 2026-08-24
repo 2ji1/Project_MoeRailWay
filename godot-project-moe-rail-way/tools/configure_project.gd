@@ -37,6 +37,16 @@ func _initialize() -> void:
         }
     )
 
+    var right_click := InputEventMouseButton.new()
+    right_click.button_index = MOUSE_BUTTON_RIGHT
+    ProjectSettings.set_setting(
+        "input/track_cancel",
+        {
+            "deadzone": 0.5,
+            "events": [right_click],
+        }
+    )
+
     var save_result := ProjectSettings.save()
     if save_result != OK:
         push_error(

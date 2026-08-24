@@ -1,0 +1,6 @@
+[gd_resource type="Resource" script_class="SessionBalance" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/config/session_balance.gd" id="1_session"]
+
+[resource]
+script = ExtResource("1_session")

@@ -32,15 +32,44 @@ func run() -> PackedStringArray:
         "expand",
         "Aspect mode must remain expand"
     )
+    var features: PackedStringArray = ProjectSettings.get_setting(
+        "application/config/features",
+        PackedStringArray()
+    )
+    assert_true(
+        features.has("Forward Plus"),
+        "Renderer feature must remain Forward Plus"
+    )
+    assert_equal(
+        ProjectSettings.get_setting("rendering/rendering_device/driver.windows"),
+        "d3d12",
+        "Windows rendering driver must remain D3D12"
+    )
 
-    assert_true(InputMap.has_action("track_draw"), "track_draw action must exist")
-    var has_left_mouse := false
-    for event in InputMap.action_get_events("track_draw"):
-        if event is InputEventMouseButton:
-            has_left_mouse = (
-                event.button_index == MOUSE_BUTTON_LEFT
-                or has_left_mouse
-            )
-    assert_true(has_left_mouse, "track_draw must bind the left mouse button")
+    _assert_single_mouse_binding(
+        &"track_draw",
+        MOUSE_BUTTON_LEFT,
+        "track_draw must bind exactly one left mouse button"
+    )
+    _assert_single_mouse_binding(
+        &"track_cancel",
+        MOUSE_BUTTON_RIGHT,
+        "track_cancel must bind the right mouse button"
+    )
 
     return finish()
+
+
+func _assert_single_mouse_binding(
+    action_name: StringName,
+    expected_button: int,
+    message: String
+) -> void:
+    assert_true(InputMap.has_action(action_name), message)
+    var events := InputMap.action_get_events(action_name)
+    assert_equal(events.size(), 1, message)
+    if events.size() != 1:
+        return
+    assert_true(events[0] is InputEventMouseButton, message)
+    if events[0] is InputEventMouseButton:
+        assert_equal(events[0].button_index, expected_button, message)

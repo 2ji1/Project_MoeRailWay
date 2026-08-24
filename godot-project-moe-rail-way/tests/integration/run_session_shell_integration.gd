@@ -5,6 +5,7 @@ const SHORT_APP_SCENE_PATH := "res://tests/integration/short_session_app.tscn"
 const SessionControllerScript = preload("res://src/domain/session/session_controller.gd")
 const SessionResultScript = preload("res://src/domain/session/session_result.gd")
 const SessionSnapshotScript = preload("res://src/domain/session/session_snapshot.gd")
+const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
 const UILayoutProfileScript = preload("res://src/presentation/layout/ui_layout_profile.gd")
 const UILayoutValidatorScript = preload("res://src/presentation/layout/ui_layout_validator.gd")
 
@@ -33,9 +34,20 @@ func _run() -> void:
         quit(1)
         return
 
+    var out_of_tree_shell = _shell_scene.instantiate()
+    var out_of_tree_view = out_of_tree_shell.get_track_field_view()
+    _assert_true(out_of_tree_view != null, "Out-of-tree shell must resolve its direct TrackFieldView")
+    if out_of_tree_view != null:
+        _assert_true(
+            out_of_tree_view.get_logical_track_field() != null,
+            "Out-of-tree TrackFieldView must resolve its direct LogicalTrackField"
+        )
+    out_of_tree_shell.free()
+
     await _verify_supported_layouts()
     await _verify_profile_metric_consumers()
     await _verify_app_lifecycle()
+    await _verify_track_end_urgent_presentation()
 
     if _failures.is_empty():
         print("PASS: session shell layout integration")
@@ -63,6 +75,7 @@ func _verify_supported_layouts() -> void:
         var description: String = case[2]
         var fixture: Dictionary = await _create_fixture(viewport_size, profile)
         var shell = fixture.shell
+        var track_field_view = shell.get_track_field_view()
         var observation: Dictionary = shell.get_layout_observation()
         var top_rect: Rect2 = observation.top_hud_rect
         var field_rect: Rect2 = observation.field_rect
@@ -135,6 +148,32 @@ func _verify_supported_layouts() -> void:
             null,
             "%s must reject a point below the field" % description
         )
+        _assert_true(track_field_view != null, "%s shell must own one TrackFieldView" % description)
+        if track_field_view != null:
+            _assert_equal(
+                _count_named_children(shell.get_node("OuterMargin/MainColumn/Field"), "TrackFieldView"),
+                1,
+                "%s field must own exactly one TrackFieldView" % description
+            )
+            var content_rect: Rect2 = track_field_view.get_logical_content_rect()
+            var logical_center = shell.try_viewport_to_logical_field(
+                track_field_view.get_global_transform_with_canvas() * content_rect.get_center()
+            )
+            _assert_vector_close(
+                logical_center,
+                Vector2(600.0, 280.0),
+                "%s logical delegate must map a content point" % description
+            )
+            var letterbox_point := Vector2(content_rect.get_center().x, 0.5)
+            if content_rect.position.x > 0.5:
+                letterbox_point = Vector2(0.5, content_rect.get_center().y)
+            _assert_equal(
+                shell.try_viewport_to_logical_field(
+                    track_field_view.get_global_transform_with_canvas() * letterbox_point
+                ),
+                null,
+                "%s logical delegate must reject its internal letterbox" % description
+            )
 
         fixture.host.queue_free()
         await process_frame
@@ -302,6 +341,16 @@ func _verify_app_lifecycle() -> void:
         return
 
     var app = packed_app.instantiate()
+    app.balance = app.balance.duplicate(true)
+    app.balance.session_balance = app.balance.session_balance.duplicate(true)
+    app.balance.train_balance = app.balance.train_balance.duplicate(true)
+    app.balance.track_inventory_balance = app.balance.track_inventory_balance.duplicate(true)
+    app.balance.track_construction_balance = app.balance.track_construction_balance.duplicate(true)
+    app.balance.departure_balance = app.balance.departure_balance.duplicate(true)
+    app.balance.train_balance.speed_cells_per_second = 0.1
+    app.balance.track_inventory_balance.total_track_cells = 12
+    app.balance.track_construction_balance.build_cells_per_second = 60.0
+    app.balance.departure_balance.required_built_cells = 1
     var presented_results := []
     var connect_error := app.connect(
         "session_result_presented",
@@ -323,8 +372,8 @@ func _verify_app_lifecycle() -> void:
 
     _assert_equal(
         controller.get_state(),
-        SessionControllerScript.State.RUNNING,
-        "Adding the app to the tree must start the session without input"
+        SessionControllerScript.State.PREPARING_DEPARTURE,
+        "Adding the app to the tree must start departure preparation"
     )
     _assert_equal(
         shell.get_layout_observation().time_text,
@@ -333,9 +382,70 @@ func _verify_app_lifecycle() -> void:
     )
 
     app.set_physics_process(false)
+    var start_config = app.get("session_start_config")
+    var preparation_observation: Dictionary = shell.get_layout_observation()
+    _assert_equal(
+        preparation_observation.hud_texts[3],
+        "12 / 12",
+        "The real preparation HUD must show available and total track"
+    )
+    _assert_equal(
+        preparation_observation.hud_texts[13],
+        "0 / 1",
+        "The real preparation HUD must show built and required track"
+    )
+    _assert_equal(
+        preparation_observation.track_end_urgent,
+        false,
+        "The real preparation HUD must use normal warning style"
+    )
+    var departure_cell: Vector2i = start_config.departure_cell
+    var target_cell := departure_cell + Vector2i.RIGHT
+    if target_cell.x >= start_config.grid_size.x:
+        target_cell = departure_cell + Vector2i.LEFT
+    var crossed: Array[Vector2i] = [target_cell]
+    var draw_frame = TrackInputFrameScript.new(
+        crossed,
+        departure_cell,
+        true,
+        Vector2i(-1, -1),
+        false,
+        true,
+        true,
+        false,
+        false
+    )
+    controller.advance_tick(draw_frame)
+    var preparation_safety: int = start_config.simulation_ticks_per_second + 2
+    while (
+        controller.get_state() == SessionControllerScript.State.PREPARING_DEPARTURE
+        and preparation_safety > 0
+    ):
+        controller.advance_tick(TrackInputFrameScript.empty())
+        preparation_safety -= 1
+    _assert_equal(
+        controller.get_state(),
+        SessionControllerScript.State.RUNNING,
+        "The exact construction threshold tick must start the train"
+    )
+    _assert_equal(
+        controller.get_snapshot().get_elapsed_ticks(),
+        1,
+        "The departure threshold tick must start the timer"
+    )
+    _assert_true(
+        controller.get_snapshot().is_train_active(),
+        "The departure threshold tick must publish an active train"
+    )
+    _assert_equal(
+        shell.get_layout_observation().hud_texts[13],
+        "10.0 s",
+        "The real running HUD must show built-end seconds with one decimal"
+    )
+
     var safety_ticks: int = controller.get_snapshot().get_total_ticks() + 1
     while controller.get_state() == SessionControllerScript.State.RUNNING and safety_ticks > 0:
-        controller.advance_tick()
+        controller.advance_tick(TrackInputFrameScript.empty())
         safety_ticks -= 1
 
     _assert_equal(
@@ -385,6 +495,65 @@ func _verify_app_lifecycle() -> void:
     Engine.physics_ticks_per_second = previous_physics_ticks
 
 
+func _verify_track_end_urgent_presentation() -> void:
+    var fixture: Dictionary = await _create_fixture(
+        Vector2i(1280, 720),
+        UILayoutProfileScript.new()
+    )
+    var shell = fixture.shell
+    var urgent_snapshot = SessionSnapshotScript.new(
+        40,
+        10,
+        30,
+        10,
+        true,
+        SessionControllerScript.State.RUNNING,
+        [],
+        [],
+        [],
+        3.0,
+        10,
+        20,
+        Vector2.ZERO,
+        1,
+        1,
+        3.0,
+        true,
+        2.0,
+        Vector2(100.0, 100.0),
+        Vector2.RIGHT,
+        1.5,
+        true,
+        &"departure_01",
+        Vector2i(0, 0)
+    )
+    shell.present(urgent_snapshot)
+    await _wait_for_layout()
+    var urgent_observation: Dictionary = shell.get_layout_observation()
+    _assert_equal(urgent_observation.hud_texts[3], "10 / 20", "Urgent probe inventory text")
+    _assert_equal(urgent_observation.hud_texts[13], "1.5 s", "Urgent probe seconds text")
+    _assert_true(urgent_observation.track_end_urgent, "Urgent snapshot must expose urgent style")
+
+    shell.show_result(SessionResultScript.new(
+        SessionResultScript.Reason.TRACK_END_REACHED,
+        40,
+        10,
+        30
+    ))
+    await _wait_for_layout()
+    _assert_equal(
+        shell.get_layout_observation().result_texts,
+        PackedStringArray([
+            "SESSION COMPLETE",
+            "TRACK END REACHED",
+            "Settlement is not available in this milestone.",
+        ]),
+        "Track-end result overlay must contain only approved text"
+    )
+    fixture.host.queue_free()
+    await process_frame
+
+
 func _find_session_shell(node):
     if node.has_method("get_layout_observation") and node.has_method("try_viewport_to_field"):
         return node
@@ -393,6 +562,14 @@ func _find_session_shell(node):
         if found != null:
             return found
     return null
+
+
+func _count_named_children(parent: Node, child_name: StringName) -> int:
+    var count := 0
+    for child in parent.get_children():
+        if child.name == child_name:
+            count += 1
+    return count
 
 
 func _create_fixture(viewport_size: Vector2i, profile) -> Dictionary:

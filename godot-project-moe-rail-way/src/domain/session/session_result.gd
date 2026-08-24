@@ -3,6 +3,7 @@ extends RefCounted
 
 enum Reason {
     REGULAR_TIME_EXPIRED,
+    TRACK_END_REACHED,
 }
 
 var _reason: Reason

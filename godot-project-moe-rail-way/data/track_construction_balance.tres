@@ -1,0 +1,7 @@
+[gd_resource type="Resource" script_class="TrackConstructionBalance" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/config/track_construction_balance.gd" id="1_construction"]
+
+[resource]
+script = ExtResource("1_construction")
+build_cells_per_second = 3.0

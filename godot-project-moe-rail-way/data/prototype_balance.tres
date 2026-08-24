@@ -1,8 +1,16 @@
-[gd_resource type="Resource" script_class="PrototypeBalance" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="PrototypeBalance" load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://src/config/prototype_balance.gd" id="1_balance"]
+[ext_resource type="Resource" path="res://data/session_balance.tres" id="2_session"]
+[ext_resource type="Resource" path="res://data/train_balance.tres" id="3_train"]
+[ext_resource type="Resource" path="res://data/track_inventory_balance.tres" id="4_inventory"]
+[ext_resource type="Resource" path="res://data/track_construction_balance.tres" id="5_construction"]
+[ext_resource type="Resource" path="res://data/departure_balance.tres" id="6_departure"]
 
 [resource]
 script = ExtResource("1_balance")
-session_duration_seconds = 180.0
-simulation_ticks_per_second = 60
+session_balance = ExtResource("2_session")
+train_balance = ExtResource("3_train")
+track_inventory_balance = ExtResource("4_inventory")
+track_construction_balance = ExtResource("5_construction")
+departure_balance = ExtResource("6_departure")

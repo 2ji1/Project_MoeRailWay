@@ -1,0 +1,92 @@
+class_name TrackGeometryPiece
+extends RefCounted
+
+enum Kind { STRAIGHT, CURVE_1X1, CURVE_2X2, CURVE_3X3 }
+
+var group_id: int = -1
+var kind: Kind = Kind.STRAIGHT
+var first_route_serial: int = -1
+var last_route_serial: int = -1
+var nominal_length_cells: int = 0
+var absolute_start_distance_cells: float = 0.0
+var footprint_cells: Array[Vector2i] = []
+var centerline := PackedVector2Array()
+var locked := false
+var active_local_start_cells := 0.0
+var active_local_end_cells := 0.0
+
+
+func contains_serial(route_serial: int) -> bool:
+    return route_serial >= first_route_serial and route_serial <= last_route_serial
+
+
+func contacts_cell(
+    cell: Vector2i,
+    grid_origin_units: Vector2,
+    cell_size_units: float
+) -> bool:
+    if cell_size_units <= 0.0 or centerline.is_empty():
+        return false
+    for index in range(maxi(centerline.size() - 1, 1)):
+        var start: Vector2 = centerline[index]
+        var finish: Vector2 = centerline[mini(index + 1, centerline.size() - 1)]
+        var steps := maxi(1, int(ceil(start.distance_to(finish) / (cell_size_units / 8.0))))
+        for step in range(steps + 1):
+            var sample := start.lerp(finish, float(step) / float(steps))
+            var mapped := Vector2i(
+                int(floor((sample.x - grid_origin_units.x) / cell_size_units)),
+                int(floor((sample.y - grid_origin_units.y) / cell_size_units))
+            )
+            if mapped == cell:
+                return true
+    return false
+
+
+func sample_nominal(local_distance_cells: float) -> Dictionary:
+    if centerline.is_empty():
+        return {"position": Vector2.ZERO, "heading": Vector2.RIGHT}
+    if centerline.size() == 1:
+        return {"position": Vector2(centerline[0]), "heading": Vector2.RIGHT}
+    var fraction := 0.0
+    if nominal_length_cells > 0:
+        fraction = clampf(local_distance_cells, 0.0, float(nominal_length_cells)) / float(nominal_length_cells)
+    var scaled := fraction * float(centerline.size() - 1)
+    var segment := mini(int(floor(scaled)), centerline.size() - 2)
+    var weight := scaled - float(segment)
+    var position: Vector2 = centerline[segment].lerp(centerline[segment + 1], weight)
+    var heading: Vector2 = (centerline[segment + 1] - centerline[segment]).normalized()
+    if heading.is_zero_approx():
+        for offset in range(1, centerline.size()):
+            var fallback_index := mini(segment + offset, centerline.size() - 2)
+            heading = (centerline[fallback_index + 1] - centerline[fallback_index]).normalized()
+            if not heading.is_zero_approx():
+                break
+    if heading.is_zero_approx():
+        heading = Vector2.RIGHT
+    return {"position": position, "heading": heading}
+
+
+func duplicate_active_slice(
+    local_start_cells: float,
+    local_end_cells: float
+) -> RefCounted:
+    var copy = duplicate_piece()
+    copy.active_local_start_cells = clampf(local_start_cells, 0.0, float(nominal_length_cells))
+    copy.active_local_end_cells = clampf(local_end_cells, copy.active_local_start_cells, float(nominal_length_cells))
+    return copy
+
+
+func duplicate_piece() -> RefCounted:
+    var copy = get_script().new()
+    copy.group_id = group_id
+    copy.kind = kind
+    copy.first_route_serial = first_route_serial
+    copy.last_route_serial = last_route_serial
+    copy.nominal_length_cells = nominal_length_cells
+    copy.absolute_start_distance_cells = absolute_start_distance_cells
+    copy.footprint_cells = footprint_cells.duplicate()
+    copy.centerline = centerline.duplicate()
+    copy.locked = locked
+    copy.active_local_start_cells = active_local_start_cells
+    copy.active_local_end_cells = active_local_end_cells
+    return copy

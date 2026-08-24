@@ -1,0 +1,405 @@
+class_name TrackGeometryResolver
+extends RefCounted
+
+const TrackGeometryPieceScript = preload("res://src/domain/track/track_geometry_piece.gd")
+const TrackGeometryResolutionScript = preload("res://src/domain/track/track_geometry_resolution.gd")
+const DISTANCE_EPSILON := 0.0001
+const TANGENT_DOT_EPSILON := 0.0001
+
+
+func resolve(
+    departure_cell: Vector2i,
+    records: Array,
+    locked_pieces: Array,
+    anchors: Array,
+    grid_origin_units: Vector2,
+    grid_size: Vector2i,
+    cell_size_units: float
+) -> RefCounted:
+    if records.is_empty():
+        return TrackGeometryResolutionScript.accepted([])
+    var newest_serial: int = records[-1].route_serial
+    if grid_size.x <= 0 or grid_size.y <= 0 or cell_size_units <= 0.0:
+        return TrackGeometryResolutionScript.rejected(newest_serial, &"invalid_grid")
+    for record in records:
+        if not _cell_in_grid(record.cell, grid_size):
+            return TrackGeometryResolutionScript.rejected(newest_serial, &"grid_bounds")
+
+    var covered := {}
+    var pieces: Array[TrackGeometryPieceScript] = []
+    var blocking_locked: Array = []
+    for source in locked_pieces:
+        var first_active := -1
+        var last_active := -1
+        for index in range(records.size()):
+            if source.contains_serial(records[index].route_serial):
+                if first_active < 0:
+                    first_active = index
+                last_active = index
+                covered[index] = true
+        if first_active < 0:
+            blocking_locked.append(source)
+            continue
+        var local_start: float = records[first_active].route_distance_start_cells - source.absolute_start_distance_cells
+        var local_end: float = records[last_active].route_distance_start_cells + 1.0 - source.absolute_start_distance_cells
+        pieces.append(source.duplicate_active_slice(local_start, local_end))
+        blocking_locked.append(source)
+
+    var candidates := _turn_candidates(departure_cell, records, covered)
+    var changed := true
+    while changed:
+        changed = false
+        for first_index in range(candidates.size()):
+            for second_index in range(first_index + 1, candidates.size()):
+                var overlap := _intersection_count(
+                    _candidate_footprint(candidates[first_index], records),
+                    _candidate_footprint(candidates[second_index], records)
+                )
+                if overlap <= 0:
+                    continue
+                if candidates[first_index].radius <= 1 or candidates[second_index].radius <= 1:
+                    return TrackGeometryResolutionScript.rejected(newest_serial, &"final_overlap")
+                candidates[first_index].radius -= 1
+                candidates[second_index].radius -= 1
+                changed = true
+
+    for candidate in candidates:
+        while candidate.radius > 0:
+            var span := _candidate_span(candidate, records.size())
+            var footprint := _candidate_footprint(candidate, records)
+            var valid := span.x >= 0 and span.y < records.size()
+            if valid:
+                for cell in footprint:
+                    valid = valid and _cell_in_grid(cell, grid_size)
+            if valid:
+                for index in range(span.x, span.y + 1):
+                    if covered.has(index):
+                        valid = false
+            if valid and _footprint_contains_non_owned_record(candidate, records):
+                valid = false
+            if valid and _conflicts_with_locked(footprint, blocking_locked):
+                valid = false
+            if valid:
+                var preview = _curve_piece(
+                    -1, candidate, span.x, span.y,
+                    departure_cell, records, grid_origin_units, cell_size_units
+                )
+                for anchor in anchors:
+                    if footprint.has(anchor.cell) and not preview.contacts_cell(
+                        anchor.cell, grid_origin_units, cell_size_units
+                    ):
+                        valid = false
+            if valid:
+                break
+            candidate.radius -= 1
+        if candidate.radius <= 0:
+            return TrackGeometryResolutionScript.rejected(newest_serial, &"curve_unresolved")
+
+    candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+        return a.turn_index < b.turn_index
+    )
+    var last_assigned := -1
+    var group_id := pieces.size()
+    for candidate in candidates:
+        var desired := _candidate_span(candidate, records.size())
+        var start_index: int = desired.x
+        var end_index: int = desired.y
+        if start_index <= last_assigned or start_index < 0:
+            return TrackGeometryResolutionScript.rejected(newest_serial, &"serial_overlap")
+        for index in range(last_assigned + 1, start_index):
+            if not covered.has(index):
+                pieces.append(_straight_piece(group_id, index, departure_cell, records, grid_origin_units, cell_size_units))
+                group_id += 1
+        var curve = _curve_piece(
+            group_id, candidate, start_index, end_index,
+            departure_cell, records, grid_origin_units, cell_size_units
+        )
+        if _conflicts_with_locked(curve.footprint_cells, blocking_locked):
+            return TrackGeometryResolutionScript.rejected(newest_serial, &"locked_overlap")
+        for anchor in anchors:
+            if curve.footprint_cells.has(anchor.cell) and not curve.contacts_cell(
+                anchor.cell, grid_origin_units, cell_size_units
+            ):
+                return TrackGeometryResolutionScript.rejected(newest_serial, &"anchor_contact")
+        pieces.append(curve)
+        group_id += 1
+        last_assigned = end_index
+    for index in range(last_assigned + 1, records.size()):
+        if covered.has(index):
+            continue
+        var straight = _straight_piece(group_id, index, departure_cell, records, grid_origin_units, cell_size_units)
+        if _conflicts_with_locked(straight.footprint_cells, blocking_locked):
+            return TrackGeometryResolutionScript.rejected(newest_serial, &"locked_overlap")
+        pieces.append(straight)
+        group_id += 1
+    pieces.sort_custom(func(a, b) -> bool:
+        return a.absolute_start_distance_cells < b.absolute_start_distance_cells
+    )
+    _stitch_unlocked_successors_to_locked_pieces(pieces)
+    return TrackGeometryResolutionScript.accepted(pieces)
+
+
+func _stitch_unlocked_successors_to_locked_pieces(
+    pieces: Array[TrackGeometryPieceScript]
+) -> void:
+    for index in range(1, pieces.size()):
+        var predecessor: TrackGeometryPieceScript = pieces[index - 1]
+        var successor: TrackGeometryPieceScript = pieces[index]
+        if (
+            not predecessor.locked
+            or successor.locked
+            or absf(
+                successor.absolute_start_distance_cells
+                - predecessor.absolute_start_distance_cells
+                - float(predecessor.nominal_length_cells)
+            ) > DISTANCE_EPSILON
+            or predecessor.centerline.is_empty()
+            or successor.centerline.is_empty()
+            or not _centerline_gap_is_forward(predecessor, successor)
+        ):
+            continue
+        var stitched_centerline := successor.centerline.duplicate()
+        stitched_centerline[0] = predecessor.centerline[-1]
+        successor.centerline = stitched_centerline
+
+
+func _centerline_gap_is_forward(
+    predecessor: TrackGeometryPieceScript,
+    successor: TrackGeometryPieceScript
+) -> bool:
+    var gap: Vector2 = successor.centerline[0] - predecessor.centerline[-1]
+    if gap.is_zero_approx():
+        return true
+    if predecessor.centerline.size() < 2 or successor.centerline.size() < 2:
+        return false
+    var predecessor_heading: Vector2 = (
+        predecessor.centerline[-1] - predecessor.centerline[-2]
+    ).normalized()
+    var successor_heading: Vector2 = (
+        successor.centerline[1] - successor.centerline[0]
+    ).normalized()
+    var gap_heading := gap.normalized()
+    return (
+        gap_heading.dot(predecessor_heading) >= 1.0 - TANGENT_DOT_EPSILON
+        and gap_heading.dot(successor_heading) >= 1.0 - TANGENT_DOT_EPSILON
+    )
+
+
+func _turn_candidates(
+    departure_cell: Vector2i,
+    records: Array,
+    covered: Dictionary
+) -> Array:
+    var result := []
+    for index in range(records.size() - 1):
+        if covered.has(index):
+            continue
+        var previous: Vector2i = departure_cell if index == 0 else records[index - 1].cell
+        var incoming: Vector2i = records[index].cell - previous
+        var outgoing: Vector2i = records[index + 1].cell - records[index].cell
+        if incoming == outgoing:
+            continue
+        var radius := 3
+        radius = mini(radius, index + 1)
+        radius = mini(radius, records.size() - index)
+        result.append({"turn_index": index, "radius": radius})
+    return result
+
+
+func _candidate_span(candidate: Dictionary, record_count: int) -> Vector2i:
+    var offset: int = candidate.radius - 1
+    return Vector2i(
+        candidate.turn_index - offset,
+        mini(candidate.turn_index + offset, record_count - 1)
+    )
+
+
+func _candidate_footprint(candidate: Dictionary, records: Array) -> Array[Vector2i]:
+    var span := _candidate_span(candidate, records.size())
+    if span.x < 0 or span.y >= records.size():
+        return []
+    var minimum: Vector2i = records[span.x].cell
+    var maximum := minimum
+    for index in range(span.x, span.y + 1):
+        minimum.x = mini(minimum.x, records[index].cell.x)
+        minimum.y = mini(minimum.y, records[index].cell.y)
+        maximum.x = maxi(maximum.x, records[index].cell.x)
+        maximum.y = maxi(maximum.y, records[index].cell.y)
+    var result: Array[Vector2i] = []
+    for y in range(minimum.y, maximum.y + 1):
+        for x in range(minimum.x, maximum.x + 1):
+            result.append(Vector2i(x, y))
+    return result
+
+
+func _footprint_contains_non_owned_record(candidate: Dictionary, records: Array) -> bool:
+    var span := _candidate_span(candidate, records.size())
+    var footprint := _candidate_footprint(candidate, records)
+    for index in range(records.size()):
+        if index < span.x or index > span.y:
+            if footprint.has(records[index].cell):
+                return true
+    return false
+
+
+func _curve_piece(
+    group_id: int,
+    candidate: Dictionary,
+    start_index: int,
+    end_index: int,
+    departure_cell: Vector2i,
+    records: Array,
+    origin: Vector2,
+    cell_size: float
+) -> RefCounted:
+    var piece = TrackGeometryPieceScript.new()
+    piece.group_id = group_id
+    piece.kind = candidate.radius
+    piece.first_route_serial = records[start_index].route_serial
+    piece.last_route_serial = records[end_index].route_serial
+    piece.nominal_length_cells = end_index - start_index + 1
+    piece.absolute_start_distance_cells = records[start_index].route_distance_start_cells
+    piece.footprint_cells = _candidate_footprint(candidate, records)
+    piece.centerline = _curve_centerline(
+        candidate, start_index, end_index,
+        departure_cell, records, origin, cell_size
+    )
+    piece.active_local_end_cells = float(piece.nominal_length_cells)
+    return piece
+
+
+func _straight_piece(
+    group_id: int,
+    index: int,
+    departure_cell: Vector2i,
+    records: Array,
+    origin: Vector2,
+    cell_size: float
+) -> RefCounted:
+    var piece = TrackGeometryPieceScript.new()
+    piece.group_id = group_id
+    piece.first_route_serial = records[index].route_serial
+    piece.last_route_serial = records[index].route_serial
+    piece.nominal_length_cells = 1
+    piece.absolute_start_distance_cells = records[index].route_distance_start_cells
+    var footprint: Array[Vector2i] = [records[index].cell]
+    piece.footprint_cells = footprint
+    piece.centerline = PackedVector2Array([
+        _boundary_before(index, departure_cell, records, origin, cell_size),
+        _boundary_after(index, records, origin, cell_size),
+    ])
+    piece.active_local_end_cells = 1.0
+    return piece
+
+
+func _boundary_before(index: int, departure: Vector2i, records: Array, origin: Vector2, size: float) -> Vector2:
+    if index == 0 and is_zero_approx(records[index].route_distance_start_cells):
+        return _cell_center(departure, origin, size)
+    var previous: Vector2i
+    if index == 0:
+        previous = departure
+    else:
+        previous = records[index - 1].cell
+    var current_center := _cell_center(records[index].cell, origin, size)
+    var previous_center := _cell_center(previous, origin, size)
+    return (current_center + previous_center) * 0.5
+
+
+func _boundary_after(index: int, records: Array, origin: Vector2, size: float) -> Vector2:
+    var current := _cell_center(records[index].cell, origin, size)
+    if index + 1 >= records.size():
+        return current
+    return (current + _cell_center(records[index + 1].cell, origin, size)) * 0.5
+
+
+func _quadratic_centerline(start: Vector2, control: Vector2, finish: Vector2) -> PackedVector2Array:
+    var points := PackedVector2Array()
+    for step in range(17):
+        var weight := float(step) / 16.0
+        points.append(
+            start * (1.0 - weight) * (1.0 - weight)
+            + control * 2.0 * (1.0 - weight) * weight
+            + finish * weight * weight
+        )
+    return points
+
+
+func _curve_centerline(
+    candidate: Dictionary,
+    start_index: int,
+    end_index: int,
+    departure_cell: Vector2i,
+    records: Array,
+    origin: Vector2,
+    cell_size: float
+) -> PackedVector2Array:
+    var start := _boundary_before(start_index, departure_cell, records, origin, cell_size)
+    var finish := _boundary_after(end_index, records, origin, cell_size)
+    var turn_index: int = candidate.turn_index
+    var previous: Vector2i = departure_cell if turn_index == 0 else records[turn_index - 1].cell
+    var incoming: Vector2i = records[turn_index].cell - previous
+    var outgoing: Vector2i = records[turn_index + 1].cell - records[turn_index].cell
+    if candidate.radius <= 1:
+        var centerline := _quadratic_centerline(
+            start,
+            _cell_center(records[turn_index].cell, origin, cell_size),
+            finish
+        )
+        var incoming_units := Vector2(incoming)
+        var outgoing_units := Vector2(outgoing)
+        var entry_distance := maxf(
+            (centerline[1] - start).dot(incoming_units),
+            cell_size * 0.001
+        )
+        var exit_distance := maxf(
+            (finish - centerline[-2]).dot(outgoing_units),
+            cell_size * 0.001
+        )
+        centerline[1] = start + incoming_units * entry_distance
+        centerline[-2] = finish - outgoing_units * exit_distance
+        return centerline
+    if candidate.radius == 2:
+        return PackedVector2Array([
+            start,
+            start + Vector2(incoming) * cell_size * 0.25,
+            finish - Vector2(outgoing) * cell_size * 0.25,
+            finish,
+        ])
+    var inner_cell: Vector2i = records[turn_index].cell - incoming + outgoing
+    var inner_center := _cell_center(inner_cell, origin, cell_size)
+    var corner := (
+        inner_center
+        + (Vector2(incoming) + Vector2(outgoing)) * cell_size * 0.5
+    )
+    var before_finish := finish - Vector2(outgoing) * cell_size * 0.25
+    return PackedVector2Array([
+        start,
+        start + Vector2(incoming) * cell_size * 0.25,
+        inner_center,
+        corner,
+        before_finish,
+        finish,
+    ])
+
+
+func _cell_center(cell: Vector2i, origin: Vector2, size: float) -> Vector2:
+    return origin + (Vector2(cell) + Vector2(0.5, 0.5)) * size
+
+
+func _cell_in_grid(cell: Vector2i, grid_size: Vector2i) -> bool:
+    return cell.x >= 0 and cell.y >= 0 and cell.x < grid_size.x and cell.y < grid_size.y
+
+
+func _intersection_count(first: Array, second: Array) -> int:
+    var count := 0
+    for cell in first:
+        if second.has(cell):
+            count += 1
+    return count
+
+
+func _conflicts_with_locked(footprint: Array, locked_pieces: Array) -> bool:
+    for locked in locked_pieces:
+        if _intersection_count(footprint, locked.footprint_cells) > 0:
+            return true
+    return false

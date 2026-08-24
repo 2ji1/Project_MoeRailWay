@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="TrackInventoryBalance" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/config/track_inventory_balance.gd" id="1_inventory"]
+
+[resource]
+script = ExtResource("1_inventory")
+total_track_cells = 18
+recovery_lag_cells = 6

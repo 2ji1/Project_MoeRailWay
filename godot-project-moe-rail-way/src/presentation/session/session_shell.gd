@@ -1,9 +1,16 @@
 class_name SessionShell
 extends Control
 
+const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
+const SessionControllerScript = preload("res://src/domain/session/session_controller.gd")
 const SessionResultScript = preload("res://src/domain/session/session_result.gd")
 const SessionSnapshotScript = preload("res://src/domain/session/session_snapshot.gd")
+const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
 const UILayoutProfileScript = preload("res://src/presentation/layout/ui_layout_profile.gd")
+const TrackFieldViewScript = preload("res://src/presentation/track/track_field_view.gd")
+
+const TRACK_END_NORMAL_COLOR := Color(0.925, 0.945, 0.929, 1.0)
+const TRACK_END_URGENT_COLOR := Color(0.95, 0.35, 0.22, 1.0)
 
 @onready var _outer_margin: MarginContainer = %OuterMargin
 @onready var _main_column: VBoxContainer = %MainColumn
@@ -19,6 +26,8 @@ const UILayoutProfileScript = preload("res://src/presentation/layout/ui_layout_p
 @onready var _result_content: MarginContainer = %ResultContent
 @onready var _result_rows: VBoxContainer = %ResultRows
 @onready var _time_value: Label = %TimeValue
+@onready var _track_value: Label = %TrackValue
+@onready var _track_end_value: Label = %TrackEndValue
 
 @onready var _top_item_controls: Array[Control] = [
     %TimeItem,
@@ -48,6 +57,7 @@ const UILayoutProfileScript = preload("res://src/presentation/layout/ui_layout_p
 
 var _profile: UILayoutProfileScript
 var _showing_result := false
+var _track_end_urgent := false
 
 
 func _ready() -> void:
@@ -56,10 +66,15 @@ func _ready() -> void:
 
 func configure(
     profile: UILayoutProfileScript,
-    initial_snapshot: SessionSnapshotScript
+    initial_snapshot: SessionSnapshotScript,
+    start_config: SessionStartConfigScript = null
 ) -> void:
     _profile = profile
     _apply_profile()
+    if start_config != null:
+        var track_field_view = get_track_field_view()
+        if track_field_view != null:
+            track_field_view.configure_session(start_config)
     present(initial_snapshot)
 
 
@@ -70,14 +85,44 @@ func present(snapshot: SessionSnapshotScript) -> void:
     var minutes := int(display_seconds / 60)
     var seconds := display_seconds % 60
     _time_value.text = "%d:%02d" % [minutes, seconds]
+    var track_field_view = get_track_field_view()
+    if track_field_view != null:
+        track_field_view.present(snapshot)
+    if not snapshot.has_track_train_data():
+        _track_value.text = "—"
+        _track_end_value.text = "—"
+        _set_track_end_urgent(false)
+        return
+    _track_value.text = "%d / %d" % [
+        snapshot.get_available_track_cells(),
+        snapshot.get_total_track_cells(),
+    ]
+    if snapshot.get_state() in [
+        SessionControllerScript.State.READY,
+        SessionControllerScript.State.PREPARING_DEPARTURE,
+    ]:
+        _track_end_value.text = "%d / %d" % [
+            snapshot.get_departure_built_cells(),
+            snapshot.get_departure_required_cells(),
+        ]
+        _set_track_end_urgent(false)
+    else:
+        _track_end_value.text = "%.1f s" % snapshot.get_estimated_track_end_seconds()
+        _set_track_end_urgent(snapshot.is_track_end_warning_urgent())
 
 
 func show_result(result: SessionResultScript) -> void:
     if _showing_result or result == null:
         return
-    if result.get_reason() != SessionResultScript.Reason.REGULAR_TIME_EXPIRED:
+    var reason_text := ""
+    if result.get_reason() == SessionResultScript.Reason.REGULAR_TIME_EXPIRED:
+        reason_text = "REGULAR TIME EXPIRED"
+    elif result.get_reason() == SessionResultScript.Reason.TRACK_END_REACHED:
+        reason_text = "TRACK END REACHED"
+    else:
         return
     _showing_result = true
+    %ResultReason.text = reason_text
     _result_overlay.show()
 
 
@@ -99,6 +144,24 @@ func try_viewport_to_field(viewport_position: Vector2) -> Variant:
     if not Rect2(Vector2.ZERO, _field.size).has_point(field_position):
         return null
     return field_position
+
+
+func get_track_field_view() -> TrackFieldViewScript:
+    return get_node_or_null("OuterMargin/MainColumn/Field/TrackFieldView") as TrackFieldViewScript
+
+
+func consume_track_input_frame() -> TrackInputFrameScript:
+    var track_field_view = get_track_field_view()
+    if track_field_view == null:
+        return null
+    return track_field_view.consume_input_frame()
+
+
+func try_viewport_to_logical_field(viewport_position: Vector2) -> Variant:
+    var track_field_view = get_track_field_view()
+    if track_field_view == null:
+        return null
+    return track_field_view.try_viewport_to_logical(viewport_position)
 
 
 func get_layout_observation() -> Dictionary:
@@ -132,6 +195,7 @@ func get_layout_observation() -> Dictionary:
         "result_row_gaps": _vertical_gaps(result_row_rects),
         "root_separation": float(_main_column.get_theme_constant("separation")),
         "time_text": _time_value.text,
+        "track_end_urgent": _track_end_urgent,
         "hud_texts": PackedStringArray([
             %TimeTitle.text,
             _time_value.text,
@@ -154,6 +218,14 @@ func get_layout_observation() -> Dictionary:
             %ResultNotice.text,
         ]),
     }
+
+
+func _set_track_end_urgent(urgent: bool) -> void:
+    _track_end_urgent = urgent
+    _track_end_value.add_theme_color_override(
+        "font_color",
+        TRACK_END_URGENT_COLOR if urgent else TRACK_END_NORMAL_COLOR
+    )
 
 
 func _apply_profile() -> void:

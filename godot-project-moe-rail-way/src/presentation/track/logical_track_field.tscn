@@ -1,0 +1,52 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/presentation/track/logical_track_field.gd" id="1_field"]
+[ext_resource type="Script" path="res://src/presentation/track/departure_candidate.gd" id="2_candidate"]
+
+[node name="LogicalTrackField" type="Node2D"]
+script = ExtResource("1_field")
+grid_cell_size_units = 40.0
+custom_grid_columns = 30
+custom_grid_rows = 14
+
+[node name="DepartureCandidates" type="Node2D" parent="."]
+
+[node name="Departure01" type="Marker2D" parent="DepartureCandidates"]
+position = Vector2(216, 123.2)
+script = ExtResource("2_candidate")
+candidate_id = &"departure_01"
+
+[node name="Departure02" type="Marker2D" parent="DepartureCandidates"]
+position = Vector2(600, 100.8)
+script = ExtResource("2_candidate")
+candidate_id = &"departure_02"
+
+[node name="Departure03" type="Marker2D" parent="DepartureCandidates"]
+position = Vector2(984, 123.2)
+script = ExtResource("2_candidate")
+candidate_id = &"departure_03"
+
+[node name="Departure04" type="Marker2D" parent="DepartureCandidates"]
+position = Vector2(264, 280)
+script = ExtResource("2_candidate")
+candidate_id = &"departure_04"
+
+[node name="Departure05" type="Marker2D" parent="DepartureCandidates"]
+position = Vector2(936, 280)
+script = ExtResource("2_candidate")
+candidate_id = &"departure_05"
+
+[node name="Departure06" type="Marker2D" parent="DepartureCandidates"]
+position = Vector2(216, 436.8)
+script = ExtResource("2_candidate")
+candidate_id = &"departure_06"
+
+[node name="Departure07" type="Marker2D" parent="DepartureCandidates"]
+position = Vector2(600, 459.2)
+script = ExtResource("2_candidate")
+candidate_id = &"departure_07"
+
+[node name="Departure08" type="Marker2D" parent="DepartureCandidates"]
+position = Vector2(984, 436.8)
+script = ExtResource("2_candidate")
+candidate_id = &"departure_08"

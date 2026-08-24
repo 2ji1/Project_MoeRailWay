@@ -4,6 +4,8 @@
 - Status: Approved
 - Audience: Agent-facing canonical specification
 - Related gameplay specification: docs/superpowers/specs/2026-08-15-warp-rail-prototype-design.md
+- Accepted track-and-train baseline: docs/superpowers/specs/2026-08-16-prototype-track-train-design.md
+- Current route authority: docs/superpowers/specs/2026-08-24-prototype-grid-track-amendment-design.md
 - User briefing: docs/briefings/ko/2026-08-15-prototype-development-strategy-briefing.md
 - Execution boundary: Finalize strategy and implementation plans in the current planning session; create branches and implement the prototype only in a separate development session explicitly started by the user.
 
@@ -66,7 +68,7 @@ Use these conceptual units:
 - RunState: cash, cycle count, company trust, and company debt during a run
 - SessionStartConfig: immutable composed inputs for one session
 - SessionController: fixed-tick orchestration and event ordering
-- TrackSystem and TrainSystem: route inventory, recovery, movement, and track-end failure
+- TrackSystem and TrainSystem: ordered grid-cell ownership, curve resolution, per-cell construction and recovery, nominal-distance movement, and track-end failure
 - WarpPairSystem and CargoSystem: request lifecycle and automatic cargo transitions
 - RiskSystem: deterministic distance-based hazard damage
 - ContractSystem: contracted deliveries, attainment, cash result, and trust
@@ -82,15 +84,18 @@ Do not use a global event bus. A composition controller wires explicit dependenc
 
 Each physics tick uses this order:
 
-1. Accept sampled mouse input as track commands.
-2. Advance the train and record track-end requests.
-3. Resolve swept origin and destination pass-through.
-4. Resolve deterministic hazard damage.
-5. Resolve warp expiry.
-6. Resolve session-time expiry.
-7. Prioritize all end requests.
-8. Execute settlement at most once.
-9. Publish a read-only presentation snapshot.
+1. Apply right-click ghost-cell cancellation or authorized future demolition commands.
+2. Accept the ordered orthogonal cells crossed by left-drag as track reservations and resolve unlocked curve geometry.
+3. Advance the active cell's physical construction and resolve departure readiness only after atomic cell completion.
+4. Advance the train over the contiguous built centerline and record built-track-end requests.
+5. Resolve swept origin and destination pass-through.
+6. Resolve deterministic hazard damage.
+7. Recover eligible rear track one logical cell at a time.
+8. Resolve warp expiry.
+9. Resolve session-time expiry.
+10. Prioritize all end requests.
+11. Execute settlement at most once.
+12. Publish a read-only presentation snapshot and then any one-shot result.
 
 Presentation observes state and never writes cash, trust, debt, or contract delivery counts directly.
 
@@ -189,32 +194,70 @@ Acceptance:
 
 ### 7.3 proto/02-track-train
 
-Purpose: validate continuous track maintenance.
+Status: delivered as accepted tag `prototype-m3`.
+
+Purpose: establish the historical continuous-track baseline and validate one-train maintenance pressure.
 
 Scope:
 
-- Endpoint-only track extension
-- Track-inventory consumption
-- Automatic rear recovery
-- Fixed-speed train movement
-- Track-end early termination
-- Remaining-distance or remaining-time warning
+- Seeded selection from editor-placed departure candidate nodes
+- Untimed departure preparation followed by automatic timed-session start
+- Endpoint-only left-drag reservation and ordered physical construction
+- Immediate inventory reservation and free right-click cancellation of unbuilt route suffixes
+- Track-inventory consumption and continuous partial rear recovery
+- Fixed-speed train movement on built track only
+- Built-track-end early termination and estimated-time warning
+- Inspector-adjustable logical field presets and feature-specific balance Resources
 
 Acceptance:
 
 - Inventory never becomes negative.
+- Available, built, and reserved lengths conserve total inventory.
+- Free cancellation returns only the canceled unbuilt length once.
+- The train departs only after the configured built length exists.
 - Every recovered segment returns length once.
 - The train never stops to wait for inventory.
-- Reaching the end ends operation once.
+- Reaching the built end ends operation once even when unbuilt reservation remains.
 - A player can sustain the train by drawing and timing recovery.
+- Same seeds select the same departure candidate while the candidate set is unchanged.
 
-### 7.4 proto/03-warp-cargo
+The freeform-polyline route contracts in this historical slice are superseded by `proto/03-grid-track-amendment`. Its accepted session lifecycle, seeded departure selection, fixed-tick ownership, and one-shot completion remain the implementation baseline.
+
+### 7.4 proto/03-grid-track-amendment
+
+Purpose: replace freeform drawing with discrete route ownership while preserving continuous one-train pressure.
+
+Scope:
+
+- Square-grid coordinate mapping and endpoint-only ordered cell input
+- Exact integer inventory charge per unique reserved route cell
+- Deterministic straight and `1x1`, `2x2`, or `3x3` curve resolution over `1`, `3`, or `5` owned route cells
+- Mandatory generic route-contact anchors for later warp cells
+- Unlocked ghost reflow, overlap downgrade, and construction-time geometry lock
+- Per-cell `RESERVED_GHOST`, `BUILDING`, and `BUILT` transitions
+- Continuous train movement on the built centerline at nominal cells per second
+- One-cell-at-a-time rear recovery and integer inventory return
+- Grid-cell, curve, construction-progress, train, and inventory presentation
+
+Acceptance:
+
+- Drag input records the orthogonal cells actually crossed and never creates a diagonal shortcut or destination path.
+- Inventory conserves exactly and curve reclassification never charges an already owned cell again.
+- `1x1`, `2x2`, and `3x3` pieces own and take travel time for exactly `1`, `3`, and `5` nominal cells.
+- Overlapping unlocked curves downgrade deterministically; locked geometry never changes.
+- Supplied route-contact anchors are accepted without reroll, relocation, reachability filtering, or route correction.
+- A building cell remains blocked until it atomically becomes built.
+- A multi-cell curve constructs, becomes traversable, and recovers one logical cell at a time.
+- The accepted `prototype-m3` session lifecycle, resize behavior, departure selection, and completion priority remain covered.
+
+### 7.5 proto/04-warp-cargo
 
 Purpose: create selective delivery decisions.
 
 Scope:
 
-- Seeded pair generation and forecast
+- Seeded pair generation over every in-bounds grid cell with no reachability correction, reroll, or route-dependent filtering
+- Forecast presentation and conversion of each active endpoint into the grid amendment's `RouteContactAnchor` contract
 - Activation, loading, transit, delivery, expiry, and void states
 - Automatic load and unload
 - Cargo-slot capacity
@@ -229,7 +272,9 @@ Acceptance:
 - Regular end voids remaining cargo without penalty.
 - Fixed seeds reproduce pair and event order.
 
-### 7.5 proto/04-risk-investment
+Warp Cargo consumes grid ownership, curve fitting, construction, train sampling, and contact observation from `proto/03`; it does not reimplement or correct them.
+
+### 7.6 proto/05-risk-investment
 
 Purpose: introduce route, durability, and temporary-spending trade-offs.
 
@@ -238,19 +283,23 @@ Scope:
 - Visible hazard terrain
 - Distance-based deterministic damage
 - Durability and repair-cost basis
-- Planned-track edits
-- Costly grade-separated crossings without branching
+- Paid demolition of built untraveled route suffixes
+- Paid early demolition of traveled retained rear prefixes
+- Costly grade-separated crossings without branching, sharing the demolition action cost
 - Temporary track and cargo-capacity purchases
 
 Acceptance:
 
 - Damage is deterministic for the traveled path.
-- Purchases and edits charge cash once.
+- Purchases, demolition actions, and crossings charge cash once or make no state change when unaffordable.
+- Demolition returns removed track length once without refunding cash.
 - Crossings never create branches or merges.
 - Zero durability ends operation once.
 - Every end condition removes temporary increases.
 
-### 7.6 proto/05-contract-economy
+Risk Investment consumes base cell ownership, curve fitting, construction, train sampling, and free rear recovery from `proto/03`. Its own specification defines paid cell demolition, crossing, and hazard semantics without redefining the base route model.
+
+### 7.7 proto/06-contract-economy
 
 Purpose: complete one contract and settlement cycle.
 
@@ -271,7 +320,7 @@ Acceptance:
 - Settlement order matches the gameplay specification.
 - One full contract-selection-to-settlement cycle is playable.
 
-### 7.7 proto/06-credit-survival
+### 7.8 proto/07-credit-survival
 
 Purpose: complete the endless company-survival loop.
 
@@ -293,7 +342,7 @@ Acceptance:
 - Updated trust and freed credit are available immediately after settlement.
 - The loop repeats until bankruptcy.
 
-### 7.8 proto/07-playtest-ready
+### 7.9 proto/08-playtest-ready
 
 Purpose: deliver a reproducible external playtest build.
 
@@ -335,7 +384,7 @@ Required merge conditions:
 - No generated cache, local run log, or playtest personal data is tracked.
 - Prototyping remains executable and playable after merge.
 
-Squash each accepted feature branch into Prototyping and create sequential tags prototype-m1 through prototype-m8. The tag identifies the accepted playable state after each branch.
+Squash each accepted feature branch into Prototyping and create sequential tags prototype-m1 through prototype-m9. The tag identifies the accepted playable state after each branch. `prototype-m3` is the accepted continuous-track baseline and `prototype-m4` is the first accepted grid-track state.
 
 ## 9. Error Handling and Invariants
 
