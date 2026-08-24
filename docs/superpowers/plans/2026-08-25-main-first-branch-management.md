@@ -352,12 +352,13 @@ $MoeRailNumstat = (git diff --cached --numstat -- $MoeRailAllowed).Trim()
 $MoeRailPatch = @(git diff --cached --unified=0 -- $MoeRailAllowed)
 $MoeRailAdded = @($MoeRailPatch | Where-Object { $_ -match '^\+(?!\+\+)' })
 $MoeRailDeleted = @($MoeRailPatch | Where-Object { $_ -match '^-(?!--)' })
-if ($MoeRailNumstat -ne "1`t0`t$MoeRailAllowed" -or
-    $MoeRailAdded.Count -ne 1 -or
+if ($MoeRailNumstat -ne "2`t0`t$MoeRailAllowed" -or
+    $MoeRailAdded.Count -ne 2 -or
     $MoeRailAdded[0] -ne "+$MoeRailNotice" -or
+    $MoeRailAdded[1] -ne "+" -or
     $MoeRailDeleted.Count -ne 0 -or
     ($MoeRailPatch -join "`n") -match '\\ No newline at end of file') {
-    throw 'Task 2 must be an exact one-line Git-blob insertion with no deletion or EOF change.'
+    throw 'Task 2 must be an exact two-line Git-blob insertion with no deletion or EOF change.'
 }
 git diff --cached --check
 if ($LASTEXITCODE -ne 0) { throw 'Task 2 staged whitespace check failed.' }
@@ -367,7 +368,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Task 2 commit failed.' }
 
 - [ ] **Step 5: Run independent Sol specification review**
 
-Require `gpt-5.6-sol` to verify the notice's supersession boundary, exact link, active and legacy branches, and the staged `1` addition / `0` deletion proof. Require severity-ranked actionable findings or exactly `APPROVED: no actionable findings`. The reviewer must not edit files.
+Require `gpt-5.6-sol` to verify the notice's supersession boundary, exact link, active and legacy branches, and the staged `2` additions / `0` deletions proof comprising the notice plus one blank separator. Require severity-ranked actionable findings or exactly `APPROVED: no actionable findings`. The reviewer must not edit files.
 
 - [ ] **Step 6: Run independent Sol quality review**
 
@@ -779,7 +780,7 @@ if ($MoeRailAgents -match 'Use Prototyping as the integration base' -or
 }
 ```
 
-- [ ] **Step 3: Re-prove the final Task 2 tree is one exact insertion**
+- [ ] **Step 3: Re-prove the final Task 2 tree is one exact two-line insertion**
 
 ```powershell
 $MoeRailLegacyPath = 'docs/superpowers/specs/2026-08-15-prototype-development-strategy-design.md'
@@ -788,14 +789,15 @@ $MoeRailNumstat = (git diff --numstat $MoeRailBase HEAD -- $MoeRailLegacyPath).T
 $MoeRailPatch = @(git diff --unified=0 $MoeRailBase HEAD -- $MoeRailLegacyPath)
 $MoeRailAdded = @($MoeRailPatch | Where-Object { $_ -match '^\+(?!\+\+)' })
 $MoeRailDeleted = @($MoeRailPatch | Where-Object { $_ -match '^-(?!--)' })
-if ($MoeRailNumstat -ne "1`t0`t$MoeRailLegacyPath" -or
-    $MoeRailAdded.Count -ne 1 -or
+if ($MoeRailNumstat -ne "2`t0`t$MoeRailLegacyPath" -or
+    $MoeRailAdded.Count -ne 2 -or
     $MoeRailAdded[0] -ne "+$MoeRailNotice" -or
+    $MoeRailAdded[1] -ne "+" -or
     $MoeRailDeleted.Count -ne 0 -or
     ($MoeRailPatch -join "`n") -match '\\ No newline at end of file') {
-    throw 'Final legacy strategy is not the exact one-line insertion.'
+    throw 'Final legacy strategy is not the exact two-line insertion.'
 }
-'GREEN: final legacy strategy is one exact Git-blob line insertion'
+'GREEN: final legacy strategy is one exact two-line Git-blob insertion'
 ```
 
 - [ ] **Step 4: Run all five Godot gates again**
@@ -915,7 +917,7 @@ __TASK_COMMITS__
 
 ## Task evidence and reviews
 - Task 1: RED confirmed the active `Prototyping` instruction; GREEN confirmed the main-first agent contract; specification and quality reviews returned `APPROVED: no actionable findings` after any listed correction commit.
-- Task 2: RED confirmed the missing supersession link; GREEN proved one exact added Git-blob line and zero deletions; specification and quality reviews returned `APPROVED: no actionable findings` after any listed correction commit.
+- Task 2: RED confirmed the missing supersession link; GREEN proved two exact added Git-blob lines and zero deletions; specification and quality reviews returned `APPROVED: no actionable findings` after any listed correction commit.
 - Task 3: RED confirmed the obsolete M1/`Prototyping` README; GREEN confirmed M4/`main`, five test entry points, and current links; specification and quality reviews returned `APPROVED: no actionable findings` after any listed correction commit.
 - Task 4: RED confirmed the briefing was absent; GREEN confirmed both English canonical sources, lifecycle, protection refs, and no-tag boundary; specification and quality reviews returned `APPROVED: no actionable findings` after any listed correction commit.
 - Final feature review: both independent `gpt-5.6-sol` reviews returned `APPROVED: no actionable findings` for the exact feature SHA.
