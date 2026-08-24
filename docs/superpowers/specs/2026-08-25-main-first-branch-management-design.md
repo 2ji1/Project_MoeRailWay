@@ -1,7 +1,7 @@
 # Main-First Feature Branch Management Design
 
 **Date:** 2026-08-25
-**Status:** Review requested
+**Status:** Approved for implementation
 
 ## 1. Outcome
 
@@ -9,11 +9,11 @@
 
 When no repository transition is in progress, `D:\godot\MoeRailWay` is a clean checkout of local `main` tracking `origin/main`. The project at `D:\godot\MoeRailWay\godot-project-moe-rail-way` is therefore the immediately playable integrated build.
 
-This review-requested document defines the target policy but has no active operational authority yet. The recorded M4 synchronization and safety refs already exist. This document becomes the canonical branch-management source only after it is approved and merged together with the accompanying implementation work.
+This user-approved document defines the target policy but has no active operational authority yet. The recorded M4 synchronization and safety refs already exist. This document becomes the canonical branch-management source only after it is merged together with the accompanying implementation work.
 
 ## 2. Scope and Authority
 
-After approval and merge, this document is the canonical English source for branch management, feature integration, and primary-workspace synchronization and applies to human contributors, agents, and automation operating in this repository. Until then, it is a candidate canonical source under review and must not be treated as binding policy.
+After merge, this document is the canonical English source for branch management, feature integration, and primary-workspace synchronization and applies to human contributors, agents, and automation operating in this repository. Until then, it is an approved candidate canonical source and must not be treated as binding policy.
 
 It supersedes only the branch topology, integration-base, and active delivery policy in `docs/superpowers/specs/2026-08-15-prototype-development-strategy-design.md`. That document remains authoritative for product direction, runtime architecture, test strategy, and the production-handoff boundary except where this document explicitly changes branch use.
 
