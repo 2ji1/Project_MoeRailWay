@@ -9,7 +9,7 @@
 - User briefing: docs/briefings/ko/2026-08-15-prototype-development-strategy-briefing.md
 - Execution boundary: Finalize strategy and implementation plans in the current planning session; create branches and implement the prototype only in a separate development session explicitly started by the user.
 
-> **Branch-policy supersession (2026-08-25):** For new work, the branch-related directives in **Fixed Constraints**, **Branch Topology**, **Delivery Strategy**, **Feature Branches**, and **Git and Review Policy** are historical and superseded by `docs/superpowers/specs/2026-08-25-main-first-branch-management-design.md`. Active work uses `main` plus short-lived `feature/*` branches; `Prototyping`, `Development`, and existing `proto/*` branches are legacy read-only references. This document remains authoritative for product direction, runtime architecture, test strategy, and production handoff.
+> **Branch-policy supersession (2026-08-25):** For new work, the branch-related directives in **Fixed Constraints**, **Branch Topology**, **Delivery Strategy**, **Feature Branches**, **Git and Review Policy**, and **Test Strategy and Merge Gates** are historical and superseded by `docs/superpowers/specs/2026-08-25-main-first-branch-management-design.md`. Active work uses `main` plus short-lived `feature/*` branches; `Prototyping`, `Development`, and existing `proto/*` branches are legacy read-only references. This document remains authoritative for product direction, runtime architecture, testing methods, and quality gates, while branch bases, integration targets, merge modes, tag sequencing, and other branch-lifecycle directives are superseded.
 
 ## 1. Outcome
 
