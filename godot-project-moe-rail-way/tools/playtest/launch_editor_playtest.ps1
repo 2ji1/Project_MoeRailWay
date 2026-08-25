@@ -51,7 +51,7 @@ function Assert-CleanGitEnvironment {
 
 # Resolve GitExecutable and read-only fsutil with controlled preflight
 try {
-    if ($null -eq $GitExecutable) { $GitExecutable = (Get-Command git.exe -ErrorAction Stop).Source }
+    if ([string]::IsNullOrWhiteSpace($GitExecutable)) { $GitExecutable = (Get-Command git.exe -ErrorAction Stop).Source }
     $FsutilExecutable = (Get-Command fsutil.exe -ErrorAction Stop).Source
 }
 catch {
@@ -606,7 +606,7 @@ try {
 # 1. Resolve RepositoryRoot, tools, exact Godot version
 Assert-CleanGitEnvironment -Environment ([Environment]::GetEnvironmentVariables([EnvironmentVariableTarget]::Process))
 $RepositoryRoot = Get-CanonicalPath -Path $RepositoryRoot
-if ($null -eq $TempParent) { $TempParent = [IO.Path]::GetTempPath() }
+if ([string]::IsNullOrWhiteSpace($TempParent)) { $TempParent = [IO.Path]::GetTempPath() }
 $TempParent = Get-CanonicalPath -Path $TempParent
 $hasTestReadyEvent = -not [string]::IsNullOrWhiteSpace($TestReadyEventName)
 $hasTestReleaseEvent = -not [string]::IsNullOrWhiteSpace($TestReleaseEventName)

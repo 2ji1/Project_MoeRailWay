@@ -425,6 +425,51 @@ function Invoke-Launcher {
     }
 }
 
+function Invoke-LauncherWithDefaultGitAndTemp {
+    param(
+        [string]$LauncherPath,
+        [string]$RepositoryRoot,
+        [string]$GodotExecutable,
+        [ValidateSet('Omitted','Whitespace')]
+        [string]$Case
+    )
+    $psi = [Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = (Get-Command pwsh.exe -ErrorAction Stop).Source
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    foreach ($argument in @(
+        '-NoProfile','-File',$LauncherPath,
+        '-RepositoryRoot',$RepositoryRoot,
+        '-GodotExecutable',$GodotExecutable,
+        '-Mode','VerifyMirror'
+    )) { $psi.ArgumentList.Add($argument) }
+    if ($Case -eq 'Whitespace') {
+        foreach ($argument in @('-GitExecutable',' ','-TempParent',' ')) {
+            $psi.ArgumentList.Add($argument)
+        }
+    }
+    $null = $psi.Environment.Remove('MOERAIL_FAKE_VERSION')
+    $process = [Diagnostics.Process]::Start($psi)
+    try {
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $process.WaitForExit()
+        if (-not [Threading.Tasks.Task]::WaitAll(
+            [Threading.Tasks.Task[]]@($stdoutTask,$stderrTask),
+            [TimeSpan]::FromSeconds(5)
+        )) { throw 'Default Git/Temp capture drain timed out' }
+        return [pscustomobject]@{
+            ExitCode = $process.ExitCode
+            Stdout = $stdoutTask.Result
+            Stderr = $stderrTask.Result
+        }
+    }
+    finally {
+        $process.Dispose()
+    }
+}
+
 function Wait-TestLauncherReadyOrThrow {
     param(
         [Threading.EventWaitHandle]$ReadyEvent,
@@ -663,6 +708,26 @@ Write-BinaryFixture -ProjectRoot $projectRoot -RelativePath 'assets/선로-🚆.
 
 # Helper to capture moerail dirs before/after
 function CaptureMoerailDirs { return Get-MoerailDirs -TempParent $testTempParent }
+
+foreach ($defaultCase in @('Omitted','Whitespace')) {
+    $defaultFixtureBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+    $defaultRootsBefore = @(Get-MoerailDirs -TempParent $systemTempParent)
+    $defaultResult = Invoke-LauncherWithDefaultGitAndTemp `
+        -LauncherPath $launcherPath `
+        -RepositoryRoot $cloneRoot `
+        -GodotExecutable $fakeGodotExe `
+        -Case $defaultCase
+    Assert-ExitCode -Expected 0 -Actual $defaultResult.ExitCode `
+        -Message " (default Git/Temp $defaultCase; stderr=$($defaultResult.Stderr.Trim()))"
+    Assert-OutputContains -Needle 'PASS: editor playtest mirror verified' `
+        -Haystack $defaultResult.Stdout -Message " (default Git/Temp $defaultCase marker)"
+    $defaultRootsAfter = @(Get-MoerailDirs -TempParent $systemTempParent)
+    Assert-DirectorySetUnchanged -TempParent $systemTempParent `
+        -Before $defaultRootsBefore -After $defaultRootsAfter `
+        -Message " (default Git/Temp $defaultCase)"
+    $defaultFixtureAfter = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+    Assert-FixtureSnapshotUnchanged -Before $defaultFixtureBefore -After $defaultFixtureAfter
+}
 
 # ---- CASE 1: Wrong version -> exit 2, no root ----
 $dirsBefore = CaptureMoerailDirs
