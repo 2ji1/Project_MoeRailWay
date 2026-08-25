@@ -3,6 +3,9 @@ extends "res://tests/support/prototype_test.gd"
 const FIELD_SCENE_PATH := "res://src/presentation/track/logical_track_field.tscn"
 const SHELL_SCENE_PATH := "res://src/presentation/session/session_shell.tscn"
 const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
+const SessionControllerScript = preload("res://src/domain/session/session_controller.gd")
+const SessionSnapshotScript = preload("res://src/domain/session/session_snapshot.gd")
+const TrackCellRecordScript = preload("res://src/domain/track/track_cell_record.gd")
 const TrackFieldViewScript = preload("res://src/presentation/track/track_field_view.gd")
 
 
@@ -11,6 +14,8 @@ func run() -> PackedStringArray:
 	_test_corner_order_and_consume_once()
 	_test_outside_and_right_cell_mapping()
 	_test_resize_and_nonzero_canvas_offset_preserve_cells()
+	_test_grid_observation_matches_authoritative_field()
+	_test_valid_start_observation_tracks_endpoint_and_completion()
 	return finish()
 
 
@@ -153,4 +158,51 @@ func _test_resize_and_nonzero_canvas_offset_preserve_cells() -> void:
 	_deliver(view, _motion(_local_for_logical(view, Vector2(100.0, 20.0))))
 	assert_equal(view.consume_input_frame().crossed_cells, before, "Resize changes scale, not grid cells")
 	assert_equal(fixture.parent.position, Vector2(137.0, 83.0), "Nonzero canvas offset is preserved")
+	fixture.parent.free()
+
+
+func _test_grid_observation_matches_authoritative_field() -> void:
+	var fixture := _fixture()
+	var observation: Dictionary = fixture.view.get_render_observation()
+	assert_equal(
+		observation.grid_rect,
+		Rect2(Vector2.ZERO, Vector2(1200.0, 560.0)),
+		"Grid observation preserves the configured authoritative field rectangle"
+	)
+	assert_equal(
+		fixture.view.grid_line_color,
+		Color(0.5, 0.5, 0.5, 1.0),
+		"Grid lines default to opaque fifty-percent gray"
+	)
+	fixture.view.grid_line_color = Color(0.25, 0.75, 1.0, 0.2)
+	assert_equal(
+		fixture.view.grid_line_color,
+		Color(0.25, 0.75, 1.0, 1.0),
+		"Grid lines remain opaque after programmatic color assignment"
+	)
+	fixture.parent.free()
+
+
+func _test_valid_start_observation_tracks_endpoint_and_completion() -> void:
+	var fixture := _fixture()
+	var first_record := TrackCellRecordScript.new(0, Vector2i(1, 0))
+	var last_record := TrackCellRecordScript.new(1, Vector2i(1, 1))
+	fixture.view.present(SessionSnapshotScript.new(
+		1, 0, 1, 60, true, SessionControllerScript.State.PREPARING_DEPARTURE,
+		[first_record, last_record]
+	))
+	assert_equal(
+		fixture.view.call("_get_valid_start_cell"),
+		Vector2i(1, 1),
+		"Valid-start highlight follows the last ordered active route cell"
+	)
+	fixture.view.present(SessionSnapshotScript.new(
+		1, 1, 0, 60, true, SessionControllerScript.State.COMPLETED,
+		[first_record, last_record]
+	))
+	assert_equal(
+		fixture.view.call("_get_valid_start_cell"),
+		Vector2i(-1, -1),
+		"Completed sessions hide the valid-start highlight"
+	)
 	fixture.parent.free()

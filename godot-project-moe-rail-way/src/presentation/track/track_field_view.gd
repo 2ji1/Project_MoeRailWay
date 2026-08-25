@@ -16,6 +16,7 @@ const RESERVED_COLOR := Color(0.12, 0.18, 0.20, 0.38)
 const DEPARTURE_COLOR := Color(0.22, 0.55, 0.38, 1.0)
 const TRAIN_COLOR := Color(0.82, 0.26, 0.20, 1.0)
 const HOVER_COLOR := Color(0.91, 0.73, 0.29, 0.72)
+const VALID_START_COLOR := Color(0.78, 0.88, 0.90, 0.16)
 const BUILT_WIDTH := 7.0
 const RESERVED_WIDTH := 4.0
 const DEPARTURE_RADIUS := 9.0
@@ -23,12 +24,17 @@ const TRAIN_LENGTH := 13.0
 const TRAIN_HALF_WIDTH := 7.0
 const INTERVAL_SAMPLE_COUNT := 9
 
+@export_color_no_alpha var grid_line_color := Color(0.5, 0.5, 0.5, 1.0):
+	set(value):
+		grid_line_color = Color(value.r, value.g, value.b, 1.0)
+
 var _session_configured := false
 var _session_logical_size := Vector2.ZERO
 var _grid_rect := Rect2()
 var _grid_size := Vector2i.ZERO
 var _selected_candidate_id := StringName()
 var _selected_departure_position := Vector2.ZERO
+var _selected_departure_cell := INVALID_CELL
 
 var _rasterizer = GridPointerRasterizerScript.new()
 var _crossed_cells: Array[Vector2i] = []
@@ -243,6 +249,7 @@ func configure_session(start_config: SessionStartConfigScript) -> void:
 	)
 	_selected_candidate_id = StringName(start_config.departure_candidate_id)
 	_selected_departure_position = Vector2(start_config.departure_position)
+	_selected_departure_cell = Vector2i(start_config.departure_cell)
 	if not _session_logical_size.is_equal_approx(field.get_logical_size()):
 		push_error("Configured logical field size must equal the authored field size")
 		return
@@ -350,6 +357,14 @@ func get_render_observation() -> Dictionary:
 	}
 
 
+func _get_valid_start_cell() -> Vector2i:
+	if not _session_configured or _presented_state == SessionControllerScript.State.COMPLETED:
+		return INVALID_CELL
+	if _presented_cells.is_empty():
+		return _selected_departure_cell
+	return _presented_cells[-1].cell
+
+
 func _duplicate_records(source: Array) -> Array:
 	var copies: Array = []
 	for record in source:
@@ -389,6 +404,21 @@ func _draw() -> void:
 		return
 	var uniform_scale: float = content_rect.size.x / logical_size.x
 	draw_set_transform(content_rect.position, 0.0, Vector2.ONE * uniform_scale)
+	if _session_configured and _grid_size.x > 0 and _grid_size.y > 0:
+		var cell_size := Vector2(
+			_grid_rect.size.x / float(_grid_size.x),
+			_grid_rect.size.y / float(_grid_size.y)
+		)
+		for column in range(_grid_size.x + 1):
+			var x := _grid_rect.position.x + float(column) * cell_size.x
+			draw_line(Vector2(x, _grid_rect.position.y), Vector2(x, _grid_rect.end.y), grid_line_color)
+		for row in range(_grid_size.y + 1):
+			var y := _grid_rect.position.y + float(row) * cell_size.y
+			draw_line(Vector2(_grid_rect.position.x, y), Vector2(_grid_rect.end.x, y), grid_line_color)
+		var valid_start_cell := _get_valid_start_cell()
+		if valid_start_cell != INVALID_CELL:
+			var valid_start_rect := Rect2(_grid_rect.position + Vector2(valid_start_cell) * cell_size, cell_size)
+			draw_rect(valid_start_rect, VALID_START_COLOR, true)
 	for interval in _presented_intervals:
 		var points: PackedVector2Array = interval.points
 		if points.size() < 2:
