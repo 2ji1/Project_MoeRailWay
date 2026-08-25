@@ -6,6 +6,7 @@ const TrackCellRecordScript = preload("res://src/domain/track/track_cell_record.
 const RouteContactAnchorScript = preload("res://src/domain/track/route_contact_anchor.gd")
 const TrackGeometryPieceScript = preload("res://src/domain/track/track_geometry_piece.gd")
 const TrackGeometryResolverScript = preload("res://src/domain/track/track_geometry_resolver.gd")
+const TrackGeometryResolutionScript = preload("res://src/domain/track/track_geometry_resolution.gd")
 
 var _departure_cell: Vector2i
 var _grid_origin_units: Vector2
@@ -38,25 +39,58 @@ func _init(
 func append_cells(cells: Array[Vector2i]) -> int:
     var accepted_count := 0
     for cell in cells:
-        var tentative = _sequence.try_append_candidate(cell)
+        var candidate_sequence = _sequence.duplicate_sequence()
+        var tentative = candidate_sequence.try_append_candidate(cell)
         if tentative == null:
             break
-        var resolution = _resolve_records()
-        if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
-            _sequence.rollback_last_unlocked_ghost(tentative.route_serial)
+        var candidate_ledger = _duplicate_pieces(_locked_ledger)
+        var candidate_anchors = _duplicate_anchors(_anchors)
+        var resolution = _stage_horizon(candidate_sequence, candidate_ledger, candidate_anchors)
+        if not resolution.is_valid:
             break
-        _replace_pieces(resolution.pieces)
+        _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
+        candidate_sequence.apply_resolved_geometry(resolution.pieces)
+        if not _validate_candidate(candidate_sequence, candidate_ledger, resolution):
+            break
+        _commit_candidate(candidate_sequence, candidate_ledger, resolution)
         accepted_count += 1
     _refresh_contact_observations()
     return accepted_count
 
 
 func cancel_ghost_suffix(cell: Vector2i) -> bool:
-    if _sequence.cancel_ghost_suffix(cell) <= 0:
+    var records = _sequence.get_records()
+    var target_index := -1
+    for index in range(records.size()):
+        if records[index].cell == cell:
+            target_index = index
+            break
+    if target_index < 0:
         return false
-    var resolution = _resolve_records()
-    if resolution.is_valid:
-        _replace_pieces(resolution.pieces)
+    for index in range(target_index, records.size()):
+        var record = records[index]
+        if (
+            record.state != TrackCellRecordScript.State.RESERVED_GHOST
+            or record.geometry_locked
+            or is_exit_support_route_serial(record.route_serial)
+        ):
+            return false
+        for piece in _pieces:
+            if piece.contains_serial(record.route_serial) and piece.locked:
+                return false
+    var candidate_sequence = _sequence.duplicate_sequence()
+    if candidate_sequence.cancel_ghost_suffix(cell) <= 0:
+        return false
+    var candidate_ledger = _duplicate_pieces(_locked_ledger)
+    var candidate_anchors = _duplicate_anchors(_anchors)
+    var resolution = _stage_horizon(candidate_sequence, candidate_ledger, candidate_anchors)
+    if not resolution.is_valid:
+        return false
+    _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
+    candidate_sequence.apply_resolved_geometry(resolution.pieces)
+    if not _validate_candidate(candidate_sequence, candidate_ledger, resolution):
+        return false
+    _commit_candidate(candidate_sequence, candidate_ledger, resolution)
     _refresh_contact_observations()
     return true
 
@@ -79,7 +113,6 @@ func advance_construction(progress_cells: float) -> float:
         if target == null:
             break
         if target.state == TrackCellRecordScript.State.RESERVED_GHOST:
-            _lock_piece_for_serial(target.route_serial)
             _sequence.start_building(target.route_serial)
         var consumed: float = _sequence.add_build_progress(remaining)
         if consumed <= 0.0:
@@ -91,20 +124,51 @@ func advance_construction(progress_cells: float) -> float:
 
 
 func recover_behind(cutoff_distance_cells: float) -> int:
-    var recovered: Array = _sequence.recover_eligible_cells(cutoff_distance_cells)
+    var candidate_sequence = _sequence.duplicate_sequence()
+    var recovered: Array = candidate_sequence.recover_eligible_cells(cutoff_distance_cells)
     if recovered.is_empty():
         return 0
+    var candidate_ledger = _duplicate_pieces(_locked_ledger)
+    var candidate_recovered_cells_by_piece: Dictionary = _recovered_cells_by_piece.duplicate(true)
+    var candidate_recovered_end_distance_cells := _recovered_end_distance_cells
     for record in recovered:
-        _remember_recovered_piece_cell(record)
-        _recovered_end_distance_cells = maxf(
-            _recovered_end_distance_cells,
+        _remember_recovered_piece_cell_in(
+            candidate_ledger,
+            candidate_recovered_cells_by_piece,
+            record
+        )
+        candidate_recovered_end_distance_cells = maxf(
+            candidate_recovered_end_distance_cells,
             record.route_distance_start_cells + 1.0
         )
-    _prune_locked_ledger(_sequence.get_records())
-    var resolution = _resolve_records()
-    if resolution.is_valid:
-        _replace_pieces(resolution.pieces)
-    _refresh_contact_observations()
+    _prune_locked_ledger_in(
+        candidate_ledger,
+        candidate_sequence.get_records(),
+        candidate_recovered_cells_by_piece
+    )
+    var candidate_anchors = _duplicate_anchors(_anchors)
+    var resolution = _resolve_candidate(candidate_sequence, candidate_ledger, candidate_anchors)
+    if not resolution.is_valid:
+        return 0
+    _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
+    candidate_sequence.apply_resolved_geometry(resolution.pieces)
+    if not _validate_candidate(
+        candidate_sequence,
+        candidate_ledger,
+        resolution,
+        candidate_recovered_cells_by_piece,
+        candidate_recovered_end_distance_cells
+    ):
+        return 0
+    var candidate_contacts = _build_contact_observations(
+        resolution.pieces,
+        candidate_anchors,
+        candidate_recovered_cells_by_piece
+    )
+    _commit_candidate(candidate_sequence, candidate_ledger, resolution)
+    _recovered_cells_by_piece = candidate_recovered_cells_by_piece.duplicate(true)
+    _recovered_end_distance_cells = candidate_recovered_end_distance_cells
+    _contact_observations = candidate_contacts.duplicate(true)
     return recovered.size()
 
 
@@ -165,12 +229,43 @@ func get_contact_observations() -> Array[Dictionary]:
     return _contact_observations.duplicate(true)
 
 
+func is_exit_support_route_serial(route_serial: int) -> bool:
+    if route_serial < 0:
+        return false
+    for piece in _locked_ledger:
+        if piece.exit_support_route_serial == route_serial:
+            return true
+    return false
+
+
 func _resolve_records():
+    return _resolve_candidate(_sequence, _locked_ledger, _anchors)
+
+
+func _duplicate_anchors(source: Array[RouteContactAnchorScript]) -> Array[RouteContactAnchorScript]:
+    var copies: Array[RouteContactAnchorScript] = []
+    for anchor in source:
+        copies.append(anchor.duplicate_anchor())
+    return copies
+
+
+func _duplicate_pieces(source: Array[TrackGeometryPieceScript]) -> Array[TrackGeometryPieceScript]:
+    var copies: Array[TrackGeometryPieceScript] = []
+    for piece in source:
+        copies.append(piece.duplicate_piece())
+    return copies
+
+
+func _resolve_candidate(
+    sequence: TrackCellSequenceScript,
+    ledger: Array[TrackGeometryPieceScript],
+    anchors: Array[RouteContactAnchorScript]
+) -> RefCounted:
     return _resolver.resolve(
-        _sequence.get_active_predecessor_cell(),
-        _sequence.get_records(),
-        _locked_ledger,
-        _anchors,
+        sequence.get_active_predecessor_cell(),
+        sequence.get_records(),
+        ledger,
+        anchors,
         _grid_origin_units,
         _grid_size,
         _cell_size_units
@@ -181,19 +276,169 @@ func _replace_pieces(source: Array) -> void:
     _pieces.clear()
     for piece in source:
         _pieces.append(piece.duplicate_piece())
-    _assign_unique_unlocked_group_ids()
+    _assign_unique_unlocked_group_ids(_pieces, _locked_ledger)
     _sequence.apply_resolved_geometry(_pieces)
 
 
-func _assign_unique_unlocked_group_ids() -> void:
+func _assign_unique_unlocked_group_ids(
+    pieces: Array[TrackGeometryPieceScript],
+    ledger: Array[TrackGeometryPieceScript]
+) -> void:
     var next_group_id := 0
-    for locked in _locked_ledger:
+    for locked in ledger:
         next_group_id = maxi(next_group_id, locked.group_id + 1)
-    for piece in _pieces:
+    for piece in pieces:
         if piece.locked:
             continue
         piece.group_id = next_group_id
         next_group_id += 1
+
+
+func _count_provisional_records(
+    pieces: Array[TrackGeometryPieceScript],
+    records: Array[TrackCellRecordScript]
+) -> int:
+    var count := 0
+    for record in records:
+        for piece in pieces:
+            if piece.contains_serial(record.route_serial):
+                if not piece.locked:
+                    count += 1
+                break
+    return count
+
+
+func _earliest_provisional_piece(
+    pieces: Array[TrackGeometryPieceScript]
+) -> TrackGeometryPieceScript:
+    for piece in pieces:
+        if not piece.locked:
+            return piece
+    return null
+
+
+func _exit_support_serial(
+    piece: TrackGeometryPieceScript,
+    records: Array[TrackCellRecordScript]
+) -> int:
+    for index in range(records.size()):
+        if records[index].route_serial != piece.last_route_serial:
+            continue
+        if index + 1 < records.size():
+            return records[index + 1].route_serial
+        return -1
+    return -1
+
+
+func _stage_horizon(
+    sequence: TrackCellSequenceScript,
+    ledger: Array[TrackGeometryPieceScript],
+    anchors: Array[RouteContactAnchorScript]
+) -> RefCounted:
+    var resolution = _resolve_candidate(sequence, ledger, anchors)
+    if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
+        return TrackGeometryResolutionScript.rejected(-1, &"candidate_resolution")
+    var records: Array[TrackCellRecordScript] = sequence.get_records()
+    var provisional_count := _count_provisional_records(resolution.pieces, records)
+    while provisional_count > 5:
+        var earliest = _earliest_provisional_piece(resolution.pieces)
+        if earliest == null:
+            return TrackGeometryResolutionScript.rejected(-1, &"missing_provisional_piece")
+        var ledger_piece = earliest.duplicate_piece()
+        ledger_piece.locked = true
+        ledger_piece.exit_support_route_serial = _exit_support_serial(ledger_piece, records)
+        if (
+            ledger_piece.exit_support_route_serial >= 0
+            and ledger_piece.exit_support_route_serial <= ledger_piece.last_route_serial
+        ):
+            return TrackGeometryResolutionScript.rejected(-1, &"invalid_exit_support")
+        ledger.append(ledger_piece)
+        resolution = _resolve_candidate(sequence, ledger, anchors)
+        if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
+            return TrackGeometryResolutionScript.rejected(-1, &"horizon_resolution")
+        provisional_count = _count_provisional_records(resolution.pieces, records)
+    return resolution
+
+
+func _validate_candidate(
+    sequence: TrackCellSequenceScript,
+    ledger: Array[TrackGeometryPieceScript],
+    resolution: RefCounted,
+    recovered_cells_by_piece: Dictionary = {},
+    recovered_end_distance_cells := 0.0
+) -> bool:
+    if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
+        return false
+    var records: Array[TrackCellRecordScript] = sequence.get_records()
+    if _count_provisional_records(resolution.pieces, records) > 5:
+        return false
+    var saw_provisional := false
+    for piece in resolution.pieces:
+        if piece.locked:
+            if saw_provisional:
+                return false
+        else:
+            saw_provisional = true
+    for record in records:
+        var owner_count := 0
+        var owner = null
+        for piece in resolution.pieces:
+            if piece.contains_serial(record.route_serial):
+                owner_count += 1
+                owner = piece
+        if (
+            owner_count != 1
+            or owner == null
+            or record.geometry_group_id != owner.group_id
+            or record.geometry_locked != owner.locked
+        ):
+            return false
+    for locked in ledger:
+        var matched_piece = null
+        var match_count := 0
+        for piece in resolution.pieces:
+            if (
+                piece.locked
+                and piece.first_route_serial == locked.first_route_serial
+                and piece.last_route_serial == locked.last_route_serial
+            ):
+                matched_piece = piece
+                match_count += 1
+        if match_count != 1 or matched_piece == null:
+            return false
+        if matched_piece.exit_support_route_serial != locked.exit_support_route_serial:
+            return false
+        if locked.exit_support_route_serial >= 0:
+            var support_exists := false
+            for record in records:
+                if record.route_serial == locked.exit_support_route_serial:
+                    support_exists = true
+                    break
+            if not support_exists:
+                return false
+    for key in recovered_cells_by_piece:
+        var has_active_ledger_piece := false
+        for locked in ledger:
+            if _piece_key(locked) == key:
+                has_active_ledger_piece = true
+                break
+        if not has_active_ledger_piece:
+            return false
+    if recovered_end_distance_cells < 0.0:
+        return false
+    if not records.is_empty() and recovered_end_distance_cells > records[0].route_distance_start_cells:
+        return false
+    return sequence.is_conservation_valid()
+
+
+func _commit_candidate(
+    sequence: TrackCellSequenceScript,
+    ledger: Array[TrackGeometryPieceScript],
+    resolution: RefCounted
+) -> void:
+    _sequence.replace_with(sequence)
+    _locked_ledger = _duplicate_pieces(ledger)
+    _pieces = _duplicate_pieces(resolution.pieces)
 
 
 func _first_unbuilt_record():
@@ -203,46 +448,33 @@ func _first_unbuilt_record():
     return null
 
 
-func _lock_piece_for_serial(route_serial: int) -> void:
-    var source = null
-    for piece in _pieces:
-        if piece.contains_serial(route_serial):
-            source = piece
-            break
-    if source == null:
-        return
-    for locked in _locked_ledger:
-        if (
-            locked.first_route_serial == source.first_route_serial
-            and locked.last_route_serial == source.last_route_serial
-        ):
-            source.locked = true
-            return
-    var ledger_piece = source.duplicate_piece()
-    ledger_piece.locked = true
-    _locked_ledger.append(ledger_piece)
-    source.locked = true
-
-
-func _prune_locked_ledger(records: Array) -> void:
-    for index in range(_locked_ledger.size() - 1, -1, -1):
+func _prune_locked_ledger_in(
+    ledger: Array[TrackGeometryPieceScript],
+    records: Array,
+    recovered_cells_by_piece: Dictionary
+) -> void:
+    for index in range(ledger.size() - 1, -1, -1):
         var survives := false
         for record in records:
-            if _locked_ledger[index].contains_serial(record.route_serial):
+            if ledger[index].contains_serial(record.route_serial):
                 survives = true
                 break
         if not survives:
-            _recovered_cells_by_piece.erase(_piece_key(_locked_ledger[index]))
-            _locked_ledger.remove_at(index)
+            recovered_cells_by_piece.erase(_piece_key(ledger[index]))
+            ledger.remove_at(index)
 
 
-func _remember_recovered_piece_cell(record) -> void:
-    for locked in _locked_ledger:
+func _remember_recovered_piece_cell_in(
+    ledger: Array[TrackGeometryPieceScript],
+    recovered_cells_by_piece: Dictionary,
+    record
+) -> void:
+    for locked in ledger:
         if locked.contains_serial(record.route_serial):
             var key := _piece_key(locked)
-            if not _recovered_cells_by_piece.has(key):
-                _recovered_cells_by_piece[key] = {}
-            _recovered_cells_by_piece[key][record.cell] = true
+            if not recovered_cells_by_piece.has(key):
+                recovered_cells_by_piece[key] = {}
+            recovered_cells_by_piece[key][record.cell] = true
             return
 
 
@@ -281,23 +513,40 @@ func _sample_at_distance(route_distance_cells: float) -> Dictionary:
 
 
 func _refresh_contact_observations() -> void:
-    _contact_observations.clear()
-    for anchor in _anchors:
+    _contact_observations = _build_contact_observations(
+        _pieces,
+        _anchors,
+        _recovered_cells_by_piece
+    )
+
+
+func _build_contact_observations(
+    pieces: Array[TrackGeometryPieceScript],
+    anchors: Array[RouteContactAnchorScript],
+    recovered_cells_by_piece: Dictionary
+) -> Array[Dictionary]:
+    var observations: Array[Dictionary] = []
+    for anchor in anchors:
         var contacted := false
-        for piece in _pieces:
-            if _active_piece_contacts_cell(piece, anchor.cell):
+        for piece in pieces:
+            if _active_piece_contacts_cell(piece, anchor.cell, recovered_cells_by_piece):
                 contacted = true
                 break
-        _contact_observations.append({
+        observations.append({
             "anchor_id": anchor.anchor_id,
             "cell": anchor.cell,
             "contact_possible": contacted,
             "contacted": contacted,
         })
+    return observations
 
 
-func _active_piece_contacts_cell(piece, cell: Vector2i) -> bool:
-    var recovered_cells: Dictionary = _recovered_cells_by_piece.get(_piece_key(piece), {})
+func _active_piece_contacts_cell(
+    piece,
+    cell: Vector2i,
+    recovered_cells_by_piece: Dictionary = _recovered_cells_by_piece
+) -> bool:
+    var recovered_cells: Dictionary = recovered_cells_by_piece.get(_piece_key(piece), {})
     if recovered_cells.has(cell):
         return false
     var local_start: float = piece.active_local_start_cells

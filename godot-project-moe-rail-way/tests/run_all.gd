@@ -37,16 +37,29 @@ func _run_suites() -> void:
             quit(0)
             return
 
+    var requested_suite := ""
+    for argument in OS.get_cmdline_user_args():
+        if argument.begins_with("--suite="):
+            requested_suite = argument.trim_prefix("--suite=")
+    var selected_suites := SUITES
+    if not requested_suite.is_empty():
+        selected_suites = []
+        for suite_script in SUITES:
+            if suite_script.resource_path.get_file() == requested_suite:
+                selected_suites.append(suite_script)
+        if selected_suites.is_empty():
+            push_error("Unknown prototype suite: " + requested_suite)
+            quit(1)
+            return
     var failures := PackedStringArray()
-
-    for suite_script in SUITES:
+    for suite_script in selected_suites:
         var suite = suite_script.new()
         var suite_failures: PackedStringArray = suite.run()
         for failure in suite_failures:
             failures.append("%s: %s" % [suite_script.resource_path, failure])
 
     if failures.is_empty():
-        print("PASS: %d prototype test suite(s)" % SUITES.size())
+        print("PASS: %d prototype test suite(s)" % selected_suites.size())
         quit(0)
         return
 

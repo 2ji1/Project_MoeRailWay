@@ -27,6 +27,7 @@ func run() -> PackedStringArray:
 	_test_locked_piece_identity_and_determinism()
 	_test_empty_acceptance_and_final_conflict_rejection()
 	_test_detached_duplicates()
+	_test_exit_support_metadata_copies_with_active_slices()
 	return finish()
 
 
@@ -242,6 +243,21 @@ func _test_detached_duplicates() -> void:
 	var slice = result.pieces[0].duplicate_active_slice(1.0, 3.0)
 	assert_equal(slice.active_local_start_cells, 1.0, "Active slice copies start")
 	assert_equal(slice.active_local_end_cells, 3.0, "Active slice copies end")
+
+
+func _test_exit_support_metadata_copies_with_active_slices() -> void:
+	var result = _resolve(_abcde_records())
+	var piece = result.pieces[0]
+	piece.locked = true
+	piece.exit_support_route_serial = 6
+	var piece_copy = piece.duplicate_piece()
+	var active_slice = piece.duplicate_active_slice(1.0, 4.0)
+	assert_equal(piece_copy.exit_support_route_serial, 6, "Piece copy retains immutable support metadata")
+	assert_equal(active_slice.exit_support_route_serial, 6, "Active slice retains immutable support metadata")
+	assert_equal(active_slice.active_local_start_cells, 1.0, "Support slice stores its active start")
+	assert_equal(active_slice.active_local_end_cells, 4.0, "Support slice stores its active end")
+	active_slice.exit_support_route_serial = 7
+	assert_equal(piece.exit_support_route_serial, 6, "Active slice support metadata is detached")
 
 
 func _records_for(source_cells: Array) -> Array:

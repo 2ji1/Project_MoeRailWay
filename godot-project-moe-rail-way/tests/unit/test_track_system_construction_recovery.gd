@@ -45,6 +45,17 @@ func _curve_track() -> TrackSystemScript:
 	return track
 
 
+func _append_curve_support(track: TrackSystemScript) -> void:
+	track.apply_left_input(TrackInputFrameScript.new(
+		[Vector2i(3, 3)], Vector2i(3, 2), true, Vector2i(-1, -1), false,
+		true, true, false, false
+	))
+	assert_equal(track.get_cell_records().size(), 6, "G appends after the provisional B through F curve")
+	var pieces = track.get_geometry_pieces()
+	assert_true(pieces[0].locked, "G causes the whole B through F curve to enter the ledger")
+	assert_equal(pieces[0].exit_support_route_serial, 6, "G is the curve exit support")
+
+
 func _test_fractional_construction_locks_and_builds_atomically() -> void:
 	var track = _curve_track()
 	assert_equal(track.advance_construction(0.25), 0.25, "Quarter-cell progress consumed")
@@ -52,9 +63,9 @@ func _test_fractional_construction_locks_and_builds_atomically() -> void:
 	assert_equal(records[0].state, TrackCellRecordScript.State.BUILDING, "First interval building")
 	assert_equal(records[0].build_progress, 0.25, "Fractional build progress retained")
 	assert_equal(track.get_built_end_distance_cells(), 0.0, "Building interval is blocked")
-	assert_true(track.get_geometry_pieces()[0].locked, "Starting construction locks the piece")
+	assert_false(track.get_geometry_pieces()[0].locked, "Starting construction leaves the piece provisional")
 	for record in records:
-		assert_true(record.geometry_locked, "The whole owning piece locks together")
+		assert_false(record.geometry_locked, "Construction does not assign geometry locks")
 	assert_equal(track.advance_construction(1.25), 1.25, "Excess construction is consumed")
 	records = track.get_cell_records()
 	assert_equal(records[0].state, TrackCellRecordScript.State.BUILT, "First interval built atomically")
@@ -66,6 +77,8 @@ func _test_fractional_construction_locks_and_builds_atomically() -> void:
 func _test_locked_piece_rejects_reflow_and_cancellation() -> void:
 	var track = _curve_track()
 	track.advance_construction(0.25)
+	assert_false(track.get_geometry_pieces()[0].locked, "Construction alone leaves the curve provisional")
+	_append_curve_support(track)
 	var before = track.get_geometry_pieces()[0]
 	var anchors: Array[RouteContactAnchorScript] = [
 		RouteContactAnchorScript.new(&"late_anchor", Vector2i(7, 7)),
@@ -80,19 +93,20 @@ func _test_locked_piece_rejects_reflow_and_cancellation() -> void:
 		[], Vector2i(-1, -1), false, Vector2i(3, 1), true,
 		false, false, false, true
 	)), "Right edge is consumed")
-	assert_equal(track.get_cell_records().size(), record_count, "Cancellation cannot cut a locked piece")
+	assert_equal(track.get_cell_records().size(), record_count, "Cancellation cannot cut a horizon-locked piece")
 
 
 func _test_recovery_refunds_one_cell_without_renormalizing_geometry() -> void:
 	var track = _curve_track()
-	assert_equal(track.advance_construction(5.0), 5.0, "All five intervals build")
+	_append_curve_support(track)
+	assert_equal(track.advance_construction(6.0), 6.0, "All six intervals build")
 	var recovered_position := track.get_position_at_distance_cells(0.5)
 	var surviving_position := track.get_position_at_distance_cells(4.5)
 	assert_equal(track.recover_behind(1.0), 1, "First cutoff recovers one cell")
-	assert_equal(track.get_available_track_cells(), 14, "First cell refunds exactly once")
+	assert_equal(track.get_available_track_cells(), 13, "First cell refunds exactly once")
 	assert_equal(track.recover_behind(2.0), 1, "Second cutoff recovers one cell")
-	assert_equal(track.get_available_track_cells(), 15, "Second cell refunds exactly once")
-	assert_equal(track.get_built_end_distance_cells(), 5.0, "Built distance remains absolute")
+	assert_equal(track.get_available_track_cells(), 14, "Second cell refunds exactly once")
+	assert_equal(track.get_built_end_distance_cells(), 6.0, "Built distance remains absolute")
 	assert_equal(
 		track.get_position_at_distance_cells(0.5),
 		recovered_position,
@@ -109,43 +123,19 @@ func _test_recovery_refunds_one_cell_without_renormalizing_geometry() -> void:
 
 
 func _test_refunded_cell_stitches_to_immutable_locked_predecessor() -> void:
-	var track = TrackSystemScript.new(_config())
-	var initial_cells: Array[Vector2i] = [
-		Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0),
-	]
-	track.apply_left_input(TrackInputFrameScript.new(
-		initial_cells, Vector2i(0, 0), true, Vector2i(-1, -1), false,
-		true, false, true, false
-	))
-	assert_true(track.apply_right_input(TrackInputFrameScript.new(
-		[], Vector2i(-1, -1), false, Vector2i(3, 0), true,
-		false, false, false, true
-	)), "Canceling the third serial creates an identity gap")
-	assert_equal(track.advance_construction(2.0), 2.0, "Initial cells build before recovery")
-	var original_pieces = track.get_geometry_pieces()
-	assert_equal(original_pieces.size(), 2, "Straight fixture has two pieces")
-	if original_pieces.size() != 2:
-		return
-	var surviving_before = original_pieces[1].duplicate_piece()
-	assert_equal(track.recover_behind(1.0), 1, "Rear cell refunds for the next input phase")
-	var refunded_cell: Array[Vector2i] = [Vector2i(3, 0)]
-	track.apply_left_input(TrackInputFrameScript.new(
-		refunded_cell, Vector2i(2, 0), true, Vector2i(-1, -1), false,
-		true, false, true, false
-	))
+	var track = _curve_track()
+	_append_curve_support(track)
+	assert_equal(track.advance_construction(6.0), 6.0, "B through G build before recovery")
+	var locked_before = track.get_geometry_pieces()[0].duplicate_piece()
+	assert_equal(track.recover_behind(1.0), 1, "Rear cell refunds one curve interval")
 	var continued_pieces = track.get_geometry_pieces()
-	assert_equal(continued_pieces.size(), 2, "Refunded cell creates one unlocked successor")
+	assert_equal(continued_pieces.size(), 2, "Active locked curve retains one provisional support successor")
 	if continued_pieces.size() != 2:
 		return
 	var predecessor = continued_pieces[0]
 	var successor = continued_pieces[1]
-	var continued_records = track.get_cell_records()
-	assert_true(
-		continued_records[-1].route_serial - continued_records[-2].route_serial > 1,
-		"Cancellation leaves a monotonic route serial gap"
-	)
-	assert_true(predecessor.locked, "Surviving predecessor remains locked")
-	assert_false(successor.locked, "Refunded successor remains unlocked")
+	assert_true(predecessor.locked, "Surviving B through F ledger remains locked")
+	assert_false(successor.locked, "The G support remains provisional")
 	assert_equal(
 		successor.absolute_start_distance_cells,
 		predecessor.absolute_start_distance_cells + float(predecessor.nominal_length_cells),
@@ -153,8 +143,8 @@ func _test_refunded_cell_stitches_to_immutable_locked_predecessor() -> void:
 	)
 	assert_equal(
 		predecessor.centerline,
-		surviving_before.centerline,
-		"Stitching never mutates the locked predecessor"
+		locked_before.centerline,
+		"Recovery never mutates the locked predecessor"
 	)
 	assert_equal(
 		successor.centerline[0],

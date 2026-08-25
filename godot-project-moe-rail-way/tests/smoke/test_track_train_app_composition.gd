@@ -159,19 +159,27 @@ func _test_standard_curve_intervals_and_integer_hud() -> void:
 	for interval in ghost.intervals:
 		assert_equal(interval.state, TrackCellRecordScript.State.RESERVED_GHOST, "Unbuilt interval is ghost")
 	track.advance_construction(0.5)
-	var locked_piece = track.get_geometry_pieces()[0].duplicate_piece()
 	shell.present(_snapshot(config, track, SessionControllerScript.State.PREPARING_DEPARTURE))
 	var building = shell.get_track_field_view().get_render_observation()
 	assert_equal(building.intervals[0].state, TrackCellRecordScript.State.BUILDING, "Active interval building")
 	assert_equal(building.intervals[0].build_progress, 0.5, "Active interval exposes fade")
-	assert_true(building.intervals[0].locked, "Owning piece is locked")
+	assert_false(building.intervals[0].locked, "Construction leaves the B through F curve provisional")
 	assert_equal(track.get_built_end_distance_cells(), 0.0, "Building interval remains blocked")
 	track.advance_construction(4.5)
-	shell.present(_snapshot(config, track, SessionControllerScript.State.RUNNING, true))
+	var available_before_support := track.get_available_track_cells()
+	var support_cells: Array[Vector2i] = [Vector2i(3, 3)]
+	track.apply_left_input(TrackInputFrameScript.new(
+		support_cells, Vector2i(3, 2), true, Vector2i(-1, -1), false,
+		true, true, false, false
+	))
+	var locked_piece = track.get_geometry_pieces()[0].duplicate_piece()
+	assert_true(locked_piece.locked, "G locks the whole B through F curve at the horizon")
+	shell.present(_snapshot(config, track, SessionControllerScript.State.PREPARING_DEPARTURE))
 	var built = shell.get_track_field_view().get_render_observation()
-	for interval in built.intervals:
+	for interval in built.intervals.slice(0, 5):
 		assert_equal(interval.state, TrackCellRecordScript.State.BUILT, "Completed interval is solid")
-	assert_equal(track.get_geometry_pieces()[0].centerline, locked_piece.centerline, "Locked curve never reflows")
+	assert_equal(built.intervals[5].state, TrackCellRecordScript.State.RESERVED_GHOST, "G remains a ghost support interval")
+	assert_equal(track.get_geometry_pieces()[0].centerline, locked_piece.centerline, "Horizon-locked curve never reflows")
 	var gap_track = _gap_curve_track(config)
 	assert_equal(
 		gap_track.get_geometry_pieces()[0].kind,
@@ -192,7 +200,7 @@ func _test_standard_curve_intervals_and_integer_hud() -> void:
 	var layout: Dictionary = shell.get_layout_observation()
 	assert_equal(
 		layout.hud_texts[3],
-		"%d / %d" % [track.get_available_track_cells(), track.get_total_track_cells()],
+		"%d / %d" % [available_before_support, track.get_total_track_cells()],
 		"TRACK HUD uses exact integers"
 	)
 	shell.free()
