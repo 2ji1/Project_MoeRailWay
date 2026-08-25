@@ -1468,7 +1468,7 @@ app.session_result_presented.connect(func(_result): fixture.event_order.append("
 _assert_equal(fixture.event_order.slice(-2), ["snapshot", "result"], "Terminal snapshot publishes before result")
 ```
 
-Do not edit the manual evidence in this step. Step 5 appends one new dated English evidence section only after the launcher/manual observation succeeds; it must cover the B–F/G slow route, solid B–E while F builds and reclassifies, G hover/right-click no-op, extension from G, entry without jump, rejected append preservation, and terminal snapshot before overlay. Do not rewrite the historical 2026-08-24 observations.
+Do not edit the manual evidence in this step. Step 7 appends one new dated English evidence section only after the launcher/manual observation succeeds; it must cover the B–F/G slow route, solid B–E while F builds and reclassifies, G hover/right-click no-op, extension from G, entry without jump, rejected append preservation, and terminal snapshot before overlay. Do not rewrite the historical 2026-08-24 observations.
 
 - [ ] **Step 2: Run focused RED evidence**
 
@@ -1510,27 +1510,393 @@ Invoke-ReflowFullGate
 
 Expected: built intervals are still solid while unlocked geometry may reflow; ordinary ghost suffixes hover; support ghosts and locked ghosts do not hover; all full-gate anchors pass.
 
-- [ ] **Step 5: Perform the Windows manual play after automated GREEN**
+#### Task 3 Safety Ledger Ruling
 
-Run `pwsh -NoProfile -File .\godot-project-moe-rail-way\tools\playtest\launch_editor_playtest.ps1` in the feature worktree; interact only with the launched editor/game window. Only after a successful observation, append the new dated English evidence section with actual date, feature `HEAD`, Godot version, observed route results, launcher exit `0`, `PASS: editor playtest completed`, and `DIAGNOSTICS_SCANNED:`. If launch, observation, or any marker is absent, stop without editing a PASS/pending manual record, committing, or terminating another user's editor process.
+**Ruling — seal the tested Task 3 source, then use a preserved, task-owned local-`main` wrapper with a sanitized child Git environment.** The unchanged editor launcher deliberately accepts only a clean `main` worktree tracking `origin/main` at divergence `0/0` and archives only committed `HEAD`; a dirty feature branch is therefore not a valid launcher source. The implementation commit is the durable tested source, while the later evidence-only commit must never be represented as the source that was playtested. The wrapper’s bare origin receives the verified commit only through local sanitized `fetch`, never an outward push. **Cost if wrong:** bypassing the launcher’s branch/HEAD contract, inheriting Git routing/config injection, treating a reparse-point or identity-mismatched wrapper as preserved, or deleting an identity-lost wrapper can misrepresent uncommitted source as tested or destroy evidence; weakening those controls invalidates the launcher’s HEAD-only, source-preservation, and diagnostics guarantees.
 
-- [ ] **Step 6: Stage exactly the Task 3 allowlist and create the focused commit**
+The final Task 3 allowlist remains exactly the five paths in the parent **Files** block. The normal Task 3 sequence deliberately has two focused commits: the four implementation/test paths first, then the manual-evidence path only. Do not stage the plan, any other documentation, or any unrelated path in either commit. The task-owned wrapper is preserved at handoff; this Task does not authorize its cleanup, worktree cleanup, branch deletion, remote mutation, copy-back, process enumeration, process termination, or timeout termination.
+
+#### Task 3 Git and Wrapper Safety Helpers
+
+Run this block before the revised sequence’s first Git command. `Assert-Task3CleanGitEnvironment` is the launcher’s exact routing/config-injection preflight. `Invoke-Task3FeatureGit` gives every feature Git command immediate captured exit-code enforcement without mutating its environment. `Invoke-Task3WrapperGit` is the only helper permitted for wrapper mutations: it starts a child `ProcessStartInfo`, removes every inherited `GIT_*` variable, sets only child-local `GIT_CONFIG_NOSYSTEM=1` and `GIT_CONFIG_GLOBAL=NUL`, captures stdout/stderr, and throws on a nonzero result. Neither helper mutates the parent environment.
 
 ```powershell
-git add -- `
-  godot-project-moe-rail-way/src/presentation/track/track_field_view.gd `
-  godot-project-moe-rail-way/tests/unit/test_track_field_view_input.gd `
-  godot-project-moe-rail-way/tests/integration/run_track_train_input_integration.gd `
-  godot-project-moe-rail-way/tests/integration/run_track_train_app_integration.gd `
-  godot-project-moe-rail-way/tests/manual/track_train_windows.md
-git diff --cached --check
-git diff --cached --name-only
-git commit -m "feat: preserve solid reflow rendering and support hover rules"
+function Assert-Task3CleanGitEnvironment {
+  $exactNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+  foreach ($name in @(
+    'GIT_DIR','GIT_WORK_TREE','GIT_COMMON_DIR','GIT_INDEX_FILE',
+    'GIT_OBJECT_DIRECTORY','GIT_ALTERNATE_OBJECT_DIRECTORIES','GIT_NAMESPACE',
+    'GIT_CEILING_DIRECTORIES','GIT_DISCOVERY_ACROSS_FILESYSTEM',
+    'GIT_CONFIG','GIT_CONFIG_PARAMETERS','GIT_CONFIG_COUNT','GIT_CONFIG_SYSTEM',
+    'GIT_CONFIG_GLOBAL','GIT_CONFIG_NOSYSTEM','GIT_EXEC_PATH','GIT_PREFIX',
+    'GIT_INTERNAL_SUPER_PREFIX'
+  )) { $exactNames.Add($name) | Out-Null }
+  foreach ($keyObject in @([Environment]::GetEnvironmentVariables([EnvironmentVariableTarget]::Process).Keys | Sort-Object)) {
+    $key = [string]$keyObject
+    if ($exactNames.Contains($key) -or
+      $key.StartsWith('GIT_CONFIG_KEY_',[StringComparison]::OrdinalIgnoreCase) -or
+      $key.StartsWith('GIT_CONFIG_VALUE_',[StringComparison]::OrdinalIgnoreCase)) {
+      throw "STOP: prohibited Git environment variable: $key"
+    }
+  }
+}
+
+function Invoke-Task3GitProcess {
+  param([string]$WorkingDirectory, [string[]]$Arguments, [bool]$SanitizeChildGit)
+  $psi = [Diagnostics.ProcessStartInfo]::new()
+  $psi.FileName = $Task3GitExecutable
+  $psi.WorkingDirectory = $WorkingDirectory
+  $psi.UseShellExecute = $false
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  if ($SanitizeChildGit) {
+    foreach ($keyObject in @($psi.Environment.Keys)) {
+      if (([string]$keyObject).StartsWith('GIT_',[StringComparison]::OrdinalIgnoreCase)) {
+        $psi.Environment.Remove([string]$keyObject) | Out-Null
+      }
+    }
+    $psi.Environment['GIT_CONFIG_NOSYSTEM'] = '1'
+    $psi.Environment['GIT_CONFIG_GLOBAL'] = 'NUL'
+  }
+  foreach ($argument in $Arguments) { $psi.ArgumentList.Add($argument) }
+  $process = [Diagnostics.Process]::Start($psi)
+  if ($null -eq $process) { throw "STOP: Git process did not start: $($Arguments -join ' ')" }
+  try {
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    $process.WaitForExit()
+    [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($stdoutTask, $stderrTask))
+    $result = [pscustomobject]@{ ExitCode = $process.ExitCode; Stdout = $stdoutTask.Result; Stderr = $stderrTask.Result }
+    if ($result.ExitCode -ne 0) { throw "STOP: Git failed ($($result.ExitCode)): $($Arguments -join ' '); $($result.Stderr)" }
+    return $result
+  }
+  finally { $process.Dispose() }
+}
+
+function Invoke-Task3FeatureGit { param([string[]]$Arguments) return Invoke-Task3GitProcess -WorkingDirectory $Task3FeatureRoot -Arguments $Arguments -SanitizeChildGit $false }
+function Invoke-Task3WrapperGit { param([string]$WorkingDirectory, [string[]]$Arguments) return Invoke-Task3GitProcess -WorkingDirectory $WorkingDirectory -Arguments $Arguments -SanitizeChildGit $true }
+function Get-Task3Lines([string]$Text) { return @($Text -split "`r?`n" | Where-Object { $_ -ne '' }) }
+function Get-Task3CanonicalPath([string]$Path) {
+  $full = [IO.Path]::GetFullPath($Path)
+  $volumeRoot = [IO.Path]::GetPathRoot($full)
+  if ($full.Equals($volumeRoot,[StringComparison]::OrdinalIgnoreCase)) { return $volumeRoot }
+  return $full.TrimEnd([IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar)
+}
+function Get-Task3DirectoryIdentity([string]$Path) {
+  $canonical = Get-Task3CanonicalPath $Path
+  $result = Invoke-Task3Native -Executable $Task3FsutilExecutable -Arguments @('file','queryfileid',$canonical) -WorkingDirectory $canonical
+  $matches = [regex]::Matches($result.Stdout,'(?i)0x[0-9a-f]{32}')
+  if ($matches.Count -ne 1) { throw "STOP: unexpected fsutil identity output for $canonical" }
+  return "$([IO.Path]::GetPathRoot($canonical).ToUpperInvariant())|$($matches[0].Value.ToLowerInvariant())"
+}
+function Invoke-Task3Native {
+  param([string]$Executable, [string[]]$Arguments, [string]$WorkingDirectory)
+  $psi = [Diagnostics.ProcessStartInfo]::new()
+  $psi.FileName = $Executable; $psi.WorkingDirectory = $WorkingDirectory; $psi.UseShellExecute = $false
+  $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
+  foreach ($argument in $Arguments) { $psi.ArgumentList.Add($argument) }
+  $process = [Diagnostics.Process]::Start($psi)
+  if ($null -eq $process) { throw "STOP: native process did not start: $Executable" }
+  try {
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync(); $stderrTask = $process.StandardError.ReadToEndAsync()
+    $process.WaitForExit(); [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($stdoutTask, $stderrTask))
+    $result = [pscustomobject]@{ ExitCode = $process.ExitCode; Stdout = $stdoutTask.Result; Stderr = $stderrTask.Result }
+    if ($result.ExitCode -ne 0) { throw "STOP: native command failed ($($result.ExitCode)): $Executable $($Arguments -join ' '); $($result.Stderr)" }
+    return $result
+  }
+  finally { $process.Dispose() }
+}
+function Assert-Task3ExistingOrdinaryPathChain([string]$Path, [string]$Boundary) {
+  $canonicalPath = Get-Task3CanonicalPath $Path; $canonicalBoundary = Get-Task3CanonicalPath $Boundary
+  $prefix = $canonicalBoundary
+  if (-not $prefix.EndsWith([IO.Path]::DirectorySeparatorChar) -and -not $prefix.EndsWith([IO.Path]::AltDirectorySeparatorChar)) { $prefix += [IO.Path]::DirectorySeparatorChar }
+  if ($canonicalPath -ne $canonicalBoundary -and -not $canonicalPath.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) { throw "STOP: path escapes boundary: $canonicalPath" }
+  if (-not (Test-Path -LiteralPath $canonicalPath)) { throw "STOP: path missing: $canonicalPath" }
+  $current = $canonicalPath
+  while ($true) {
+    if (([IO.File]::GetAttributes($current)).HasFlag([IO.FileAttributes]::ReparsePoint)) { throw "STOP: reparse point in path chain: $current" }
+    if ($current.Equals($canonicalBoundary,[StringComparison]::OrdinalIgnoreCase)) { break }
+    $parent = [IO.Path]::GetDirectoryName($current)
+    if ([string]::IsNullOrEmpty($parent) -or $parent.Equals($current,[StringComparison]::OrdinalIgnoreCase)) { throw "STOP: boundary was not reached from: $canonicalPath" }
+    $current = Get-Task3CanonicalPath $parent
+  }
+  return $canonicalPath
+}
+function Assert-Task3TempParentOutsideRepositoryIdentity([string]$TempParent, [string]$RepositoryIdentity) {
+  $cursor = Get-Task3CanonicalPath $TempParent
+  while ($true) {
+    if ((Get-Task3DirectoryIdentity $cursor) -ceq $RepositoryIdentity) { throw "STOP: temp parent ancestor resolves to repository identity: $cursor" }
+    $parent = [IO.Path]::GetDirectoryName($cursor)
+    if ([string]::IsNullOrEmpty($parent) -or $parent.Equals($cursor,[StringComparison]::OrdinalIgnoreCase)) { break }
+    $cursor = Get-Task3CanonicalPath $parent
+  }
+}
+function Assert-Task3OwnedWrapper([bool]$RequireExists) {
+  Assert-Task3ExistingOrdinaryPathChain $Task3TempParent ([IO.Path]::GetPathRoot($Task3TempParent)) | Out-Null
+  if ((Get-Task3DirectoryIdentity $Task3TempParent) -cne $Task3CapturedTempParentIdentity) { throw 'STOP: task wrapper parent identity changed' }
+  if ([IO.Path]::GetDirectoryName($Task3Wrapper) -cne $Task3TempParent) { throw 'STOP: task wrapper immediate parent changed' }
+  if ([IO.Path]::GetFileName($Task3Wrapper) -notmatch '^moerail-task3-playtest-[0-9a-f]{32}$') { throw 'STOP: task wrapper leaf is not owned' }
+  $exists = Test-Path -LiteralPath $Task3Wrapper
+  if ($exists -ne $RequireExists) { throw "STOP: task wrapper existence mismatch: $Task3Wrapper" }
+  if ($RequireExists) {
+    Assert-Task3ExistingOrdinaryPathChain $Task3Wrapper $Task3TempParent | Out-Null
+    if ((Get-Task3DirectoryIdentity $Task3Wrapper) -cne $Task3CapturedWrapperIdentity) { throw 'STOP: task wrapper identity changed' }
+  }
+}
+function Assert-Task3WrapperDescendants {
+  Assert-Task3OwnedWrapper $true
+  $directories = @($Task3Wrapper); $index = 0
+  while ($index -lt $directories.Count) {
+    $directory = $directories[$index]
+    if (([IO.File]::GetAttributes($directory)).HasFlag([IO.FileAttributes]::ReparsePoint)) { throw "STOP: reparse point in task wrapper: $directory" }
+    try { $children = [IO.Directory]::GetFileSystemEntries($directory) }
+    catch { throw "STOP: failed to enumerate task wrapper descendant ${directory}: $($_.Exception.Message)" }
+    foreach ($child in $children) {
+      $attributes = [IO.File]::GetAttributes($child)
+      if ($attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) { throw "STOP: reparse point in task wrapper descendant: $child" }
+      if ($attributes.HasFlag([IO.FileAttributes]::Directory)) { $directories += $child }
+    }
+    $index++
+  }
+}
+function Assert-Task3CapturedWrapperDirectory([string]$Path, [string]$CapturedIdentity, [string]$Label) {
+  if ([string]::IsNullOrWhiteSpace($CapturedIdentity)) { throw "STOP: $Label identity was not captured" }
+  if (-not (Test-Path -LiteralPath $Path -PathType Container)) { throw "STOP: $Label directory is missing" }
+  Assert-Task3ExistingOrdinaryPathChain $Path $Task3Wrapper | Out-Null
+  if ((Get-Task3DirectoryIdentity $Path) -cne $CapturedIdentity) { throw "STOP: $Label identity changed" }
+}
+function Assert-Task3WrapperState([bool]$RequireBare, [bool]$RequireClone) {
+  Assert-Task3WrapperDescendants
+  if ($RequireBare) { Assert-Task3CapturedWrapperDirectory $Task3BareOrigin $Task3CapturedBareIdentity 'task bare origin' }
+  if ($RequireClone) { Assert-Task3CapturedWrapperDirectory $Task3LauncherRepository $Task3CapturedCloneIdentity 'task launcher clone' }
+}
+function Get-Task3CapturedIdentityText([string]$Identity) {
+  if ([string]::IsNullOrWhiteSpace($Identity)) { return '<not-captured>' }
+  return $Identity
+}
+function Write-Task3WrapperFailureMarker {
+  try {
+    Assert-Task3WrapperState $true $true
+    Write-Host "TASK3_PRESERVED_WRAPPER: $Task3Wrapper"
+  }
+  catch {
+    Write-Host "TASK3_WRAPPER_IDENTITY_LOST: last-known-wrapper=$Task3Wrapper captured-parent=$(Get-Task3CapturedIdentityText $Task3CapturedTempParentIdentity) captured-root=$(Get-Task3CapturedIdentityText $Task3CapturedWrapperIdentity) captured-bare=$(Get-Task3CapturedIdentityText $Task3CapturedBareIdentity) captured-clone=$(Get-Task3CapturedIdentityText $Task3CapturedCloneIdentity)"
+  }
+}
+function Get-Task3CapturedDirectoryIdentityOrReport([string]$Path) {
+  try { return Get-Task3DirectoryIdentity $Path }
+  catch { Write-Task3WrapperFailureMarker; throw }
+}
+function Assert-Task3WrapperStateOrReport([bool]$RequireBare, [bool]$RequireClone) {
+  try { Assert-Task3WrapperState $RequireBare $RequireClone }
+  catch { Write-Task3WrapperFailureMarker; throw }
+}
+function Invoke-Task3GuardedWrapperGit {
+  param([string]$WorkingDirectory, [string[]]$Arguments, [bool]$RequireBare, [bool]$RequireClone)
+  Assert-Task3WrapperStateOrReport $RequireBare $RequireClone
+  return Invoke-Task3WrapperGit -WorkingDirectory $WorkingDirectory -Arguments $Arguments
+}
 ```
 
-- [ ] **Step 7: Obtain independent Sol reviews**
+- [ ] **Step 5: Establish pre-Git identity gates and seal the automated-GREEN implementation**
 
-Request a Sol specification review against spec Sections 1, 5, 10, 12, and 14, then a separate Sol quality review for detached observation use, hover correctness, event timing, multi-frame physical input, manual evidence integrity, no leaked domain mutation, and absence of provisional visual styling. Assign every accepted finding to a fresh Terra output worker using this allowlist only; rerun focused tests, both integrations, the full gate, and affected manual play, then repeat both Sol reviews.
+Before any Git command, run the exact ambient-variable rejection above, resolve the two executables, and prove that the feature and primary chains are ordinary. Capture their identities. The task wrapper is created later only below an ordinary system temp parent whose entire path chain reaches the volume root without a reparse point and whose ancestor identities contain neither repository identity.
+
+```powershell
+Assert-Task3CleanGitEnvironment
+$Task3GitExecutable = (Get-Command git.exe -ErrorAction Stop).Source
+$Task3FsutilExecutable = (Get-Command fsutil.exe -ErrorAction Stop).Source
+$Task3FeatureRoot = (Resolve-Path -LiteralPath 'D:\godot\MoeRailWay-worktrees\feature-reflowable-track-head').Path
+$Task3PrimaryRoot = (Resolve-Path -LiteralPath 'D:\godot\MoeRailWay').Path
+Assert-Task3ExistingOrdinaryPathChain $Task3FeatureRoot ([IO.Path]::GetPathRoot($Task3FeatureRoot)) | Out-Null
+Assert-Task3ExistingOrdinaryPathChain $Task3PrimaryRoot ([IO.Path]::GetPathRoot($Task3PrimaryRoot)) | Out-Null
+$Task3FeatureIdentity = Get-Task3DirectoryIdentity $Task3FeatureRoot
+$Task3PrimaryIdentity = Get-Task3DirectoryIdentity $Task3PrimaryRoot
+$Task3FeatureTopLevel = Get-Task3CanonicalPath (Invoke-Task3FeatureGit @('rev-parse','--show-toplevel')).Stdout.Trim()
+if ($Task3FeatureTopLevel -ne (Get-Task3CanonicalPath $Task3FeatureRoot)) { throw 'STOP: feature worktree identity mismatch' }
+$Task3ExpectedFeatureBranch = 'feature/reflowable-track-head'
+if ((Invoke-Task3FeatureGit @('branch','--show-current')).Stdout.Trim() -ne $Task3ExpectedFeatureBranch) { throw 'STOP: feature branch mismatch' }
+$Task3Base = (Invoke-Task3FeatureGit @('rev-parse','HEAD')).Stdout.Trim()
+$Task3CodePaths = @(
+  'godot-project-moe-rail-way/src/presentation/track/track_field_view.gd',
+  'godot-project-moe-rail-way/tests/unit/test_track_field_view_input.gd',
+  'godot-project-moe-rail-way/tests/integration/run_track_train_input_integration.gd',
+  'godot-project-moe-rail-way/tests/integration/run_track_train_app_integration.gd'
+)
+$Task3ManualPath = 'godot-project-moe-rail-way/tests/manual/track_train_windows.md'
+$Task3Unstaged = Get-Task3Lines (Invoke-Task3FeatureGit @('diff','--name-only')).Stdout | Sort-Object
+if (Compare-Object $Task3Unstaged ($Task3CodePaths | Sort-Object)) { throw 'STOP: Task 3 unstaged paths differ from the four implementation/test paths' }
+if ((Get-Task3Lines (Invoke-Task3FeatureGit @('diff','--cached','--name-only')).Stdout).Count -ne 0) { throw 'STOP: index is not empty before Task 3 staging' }
+if ((Get-Task3Lines (Invoke-Task3FeatureGit @('diff','--name-only','--',$Task3ManualPath)).Stdout).Count -ne 0) { throw 'STOP: manual evidence changed before launcher success' }
+Invoke-Task3FeatureGit -Arguments (@('add','--') + $Task3CodePaths) | Out-Null
+Invoke-Task3FeatureGit @('diff','--cached','--check') | Out-Null
+$Task3Staged = Get-Task3Lines (Invoke-Task3FeatureGit @('diff','--cached','--name-only')).Stdout | Sort-Object
+if (Compare-Object $Task3Staged ($Task3CodePaths | Sort-Object)) { throw 'STOP: staged Task 3 implementation path set is not exact' }
+Invoke-Task3FeatureGit @('commit','-m','feat: preserve solid reflow rendering and support hover rules') | Out-Null
+$Task3TestedImplementationSha = (Invoke-Task3FeatureGit @('rev-parse','HEAD')).Stdout.Trim()
+if ((Invoke-Task3FeatureGit @('rev-parse',($Task3TestedImplementationSha + '^'))).Stdout.Trim() -ne $Task3Base) { throw 'STOP: implementation parent differs from TASK3_BASE' }
+if ((Invoke-Task3FeatureGit @('rev-parse','--verify',('refs/heads/' + $Task3ExpectedFeatureBranch))).Stdout.Trim() -ne $Task3TestedImplementationSha) { throw 'STOP: verified feature branch does not name tested implementation SHA' }
+$Task3ImplementationPaths = Get-Task3Lines (Invoke-Task3FeatureGit @('diff-tree','--no-commit-id','--name-only','-r',($Task3Base + '..' + $Task3TestedImplementationSha))).Stdout | Sort-Object
+if (Compare-Object $Task3ImplementationPaths ($Task3CodePaths | Sort-Object)) { throw 'STOP: durable implementation commit path set is not exact' }
+Invoke-Task3FeatureGit @('diff','--check',($Task3Base + '..' + $Task3TestedImplementationSha)) | Out-Null
+if ((Get-Task3Lines (Invoke-Task3FeatureGit @('status','--porcelain=v1','-uall')).Stdout).Count -ne 0) { throw 'STOP: implementation commit did not leave a clean worktree' }
+Write-Host "TASK3_BASE: $Task3Base"
+Write-Host "TASK3_TESTED_IMPLEMENTATION_SHA: $Task3TestedImplementationSha"
+```
+
+Expected: the four code/test paths are the only durable implementation diff and commit as `feat: preserve solid reflow rendering and support hover rules`. Retain `TASK3_TESTED_IMPLEMENTATION_SHA`; it is the only feature SHA that the later manual evidence may call tested.
+
+- [ ] **Step 6: Materialize the preserved local-`main` wrapper and run the manual editor play**
+
+Verify exact GUI Godot through the captured native helper. Only then create the wrapper, capture its root/bare/clone identities, and use `Invoke-Task3WrapperGit` for its bare-repository initialization, local fetch, and clone. The helper receives `TASK3_TESTED_IMPLEMENTATION_SHA` into `refs/heads/main` without contacting or changing the actual `origin/main`; it receives no other heads ref. Before every wrapper mutation or safety read, enumerate every existing wrapper descendant, reject reparse points, and revalidate captured parent/root/bare/clone identities. Compare committed objects only: clean tracked state, project tree OIDs, and four exact code-path blob OIDs. Ignored/generated files are deliberately excluded from these object comparisons; the unchanged launcher independently verifies the clone’s working bytes against its pinned tracked manifest.
+
+```powershell
+$Task3ExpectedGodot = '4.7.1.stable.official.a13da4feb'
+$Task3EditorGodot = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64.exe'
+$Task3GodotVersionResult = Invoke-Task3Native -Executable $Task3EditorGodot -Arguments @('--version') -WorkingDirectory $Task3FeatureRoot
+$Task3GodotVersionLines = @(Get-Task3Lines $Task3GodotVersionResult.Stdout)
+if ($Task3GodotVersionLines.Count -ne 1 -or $Task3GodotVersionLines[0].Trim() -ne $Task3ExpectedGodot -or -not [string]::IsNullOrWhiteSpace($Task3GodotVersionResult.Stderr)) { throw 'STOP: exact GUI Godot version output mismatch' }
+$Task3TempParent = Get-Task3CanonicalPath ([IO.Path]::GetTempPath())
+Assert-Task3ExistingOrdinaryPathChain $Task3TempParent ([IO.Path]::GetPathRoot($Task3TempParent)) | Out-Null
+Assert-Task3TempParentOutsideRepositoryIdentity $Task3TempParent $Task3FeatureIdentity
+Assert-Task3TempParentOutsideRepositoryIdentity $Task3TempParent $Task3PrimaryIdentity
+$Task3CapturedTempParentIdentity = Get-Task3DirectoryIdentity $Task3TempParent
+$Task3Wrapper = Get-Task3CanonicalPath (Join-Path $Task3TempParent ("moerail-task3-playtest-" + [Guid]::NewGuid().ToString('N')))
+$Task3BareOrigin = Join-Path $Task3Wrapper 'tested-origin.git'
+$Task3LauncherRepository = Join-Path $Task3Wrapper 'launcher-repository'
+Assert-Task3OwnedWrapper $false
+New-Item -ItemType Directory -LiteralPath $Task3Wrapper -ErrorAction Stop | Out-Null
+$Task3CapturedWrapperIdentity = Get-Task3CapturedDirectoryIdentityOrReport $Task3Wrapper
+Assert-Task3WrapperStateOrReport $false $false
+Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3Wrapper -Arguments @('init','--bare',$Task3BareOrigin) -RequireBare $false -RequireClone $false | Out-Null
+$Task3CapturedBareIdentity = Get-Task3CapturedDirectoryIdentityOrReport $Task3BareOrigin
+Assert-Task3WrapperStateOrReport $true $false
+Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3BareOrigin -Arguments @('fetch','--no-tags',$Task3FeatureRoot,($Task3TestedImplementationSha + ':refs/heads/main')) -RequireBare $true -RequireClone $false | Out-Null
+Assert-Task3WrapperStateOrReport $true $false
+if ((Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3BareOrigin -Arguments @('rev-parse','refs/heads/main') -RequireBare $true -RequireClone $false).Stdout.Trim() -ne $Task3TestedImplementationSha) { throw 'STOP: local origin main SHA mismatch' }
+$Task3BareHeads = Get-Task3Lines (Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3BareOrigin -Arguments @('for-each-ref','--format=%(refname) %(objectname)','refs/heads') -RequireBare $true -RequireClone $false).Stdout | Sort-Object
+if (Compare-Object $Task3BareHeads @("refs/heads/main $Task3TestedImplementationSha")) { throw 'STOP: task-owned bare origin contains a head other than tested main' }
+Assert-Task3WrapperStateOrReport $true $false
+if (Test-Path -LiteralPath $Task3LauncherRepository) { throw 'STOP: task launcher clone target already exists' }
+Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3Wrapper -Arguments @('clone','--no-local','--branch','main','--single-branch',$Task3BareOrigin,$Task3LauncherRepository) -RequireBare $true -RequireClone $false | Out-Null
+$Task3CapturedCloneIdentity = Get-Task3CapturedDirectoryIdentityOrReport $Task3LauncherRepository
+Assert-Task3WrapperStateOrReport $true $true
+if ((Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3LauncherRepository -Arguments @('rev-parse','--is-inside-work-tree') -RequireBare $true -RequireClone $true).Stdout.Trim() -ne 'true') { throw 'STOP: launcher repository is not a worktree' }
+if ((Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3LauncherRepository -Arguments @('branch','--show-current') -RequireBare $true -RequireClone $true).Stdout.Trim() -ne 'main') { throw 'STOP: launcher repository branch is not main' }
+if ((Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3LauncherRepository -Arguments @('rev-parse','--abbrev-ref','@{upstream}') -RequireBare $true -RequireClone $true).Stdout.Trim() -ne 'origin/main') { throw 'STOP: launcher repository upstream is not origin/main' }
+if ((Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3LauncherRepository -Arguments @('rev-list','--left-right','--count','@{upstream}...HEAD') -RequireBare $true -RequireClone $true).Stdout -notmatch '^\s*0\s+0\s*$') { throw 'STOP: launcher repository divergence is not 0/0' }
+if ((Get-Task3Lines (Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3LauncherRepository -Arguments @('status','--porcelain=v1','-uall') -RequireBare $true -RequireClone $true).Stdout).Count -ne 0) { throw 'STOP: launcher repository is not clean' }
+if ((Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3LauncherRepository -Arguments @('rev-parse','HEAD') -RequireBare $true -RequireClone $true).Stdout.Trim() -ne $Task3TestedImplementationSha) { throw 'STOP: launcher repository HEAD SHA mismatch' }
+$Task3CloneOrigin = Get-Task3CanonicalPath (Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3LauncherRepository -Arguments @('remote','get-url','origin') -RequireBare $true -RequireClone $true).Stdout.Trim()
+if ($Task3CloneOrigin -ne $Task3BareOrigin) { throw 'STOP: launcher repository origin is not the task-owned bare origin' }
+$Task3ProjectTreeSpec = $Task3TestedImplementationSha + ':godot-project-moe-rail-way'
+$Task3FeatureProjectTree = (Invoke-Task3FeatureGit @('rev-parse',$Task3ProjectTreeSpec)).Stdout.Trim()
+$Task3CloneProjectTree = (Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3LauncherRepository -Arguments @('rev-parse',('HEAD:godot-project-moe-rail-way')) -RequireBare $true -RequireClone $true).Stdout.Trim()
+if ($Task3FeatureProjectTree -ne $Task3CloneProjectTree) { throw 'STOP: launcher project tree OID differs from tested source' }
+foreach ($Task3CodePath in $Task3CodePaths) {
+  $Task3FeatureBlob = (Invoke-Task3FeatureGit @('rev-parse',($Task3TestedImplementationSha + ':' + $Task3CodePath))).Stdout.Trim()
+  $Task3CloneBlob = (Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3LauncherRepository -Arguments @('rev-parse',('HEAD:' + $Task3CodePath)) -RequireBare $true -RequireClone $true).Stdout.Trim()
+  if ($Task3FeatureBlob -ne $Task3CloneBlob) { throw "STOP: exact-path blob OID mismatch: $Task3CodePath" }
+}
+Assert-Task3WrapperStateOrReport $true $true
+Write-Host "TASK3_PRESERVED_WRAPPER: $Task3Wrapper"
+```
+
+Run the unchanged launcher from the clone. `Invoke-Task3Launcher` intentionally returns process-start, stdout, stderr, and nonzero exit results as data instead of throwing, so every started launch reaches the post-launch identity/source checks. It never enumerates or terminates a process.
+
+```powershell
+function Invoke-Task3Launcher {
+  param([string]$LauncherPath, [string]$RepositoryRoot, [string]$GodotExecutable)
+  $psi = [Diagnostics.ProcessStartInfo]::new()
+  $psi.FileName = (Get-Command pwsh.exe -ErrorAction Stop).Source
+  $psi.UseShellExecute = $false; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
+  foreach ($argument in @('-NoProfile','-File',$LauncherPath,'-RepositoryRoot',$RepositoryRoot,'-GodotExecutable',$GodotExecutable)) { $psi.ArgumentList.Add($argument) }
+  try { $process = [Diagnostics.Process]::Start($psi) }
+  catch { return [pscustomobject]@{ Started = $false; ExitCode = $null; Stdout = ''; Stderr = $_.Exception.Message } }
+  if ($null -eq $process) { return [pscustomobject]@{ Started = $false; ExitCode = $null; Stdout = ''; Stderr = 'PowerShell launcher process did not start' } }
+  try {
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync(); $stderrTask = $process.StandardError.ReadToEndAsync()
+    $process.WaitForExit(); [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($stdoutTask, $stderrTask))
+    return [pscustomobject]@{ Started = $true; ExitCode = $process.ExitCode; Stdout = $stdoutTask.Result; Stderr = $stderrTask.Result }
+  }
+  finally { $process.Dispose() }
+}
+
+Assert-Task3WrapperStateOrReport $true $true
+$Task3Launcher = Join-Path $Task3LauncherRepository 'godot-project-moe-rail-way\tools\playtest\launch_editor_playtest.ps1'
+$Task3LauncherResult = Invoke-Task3Launcher -LauncherPath $Task3Launcher -RepositoryRoot $Task3LauncherRepository -GodotExecutable $Task3EditorGodot
+$Task3LauncherOutput = $Task3LauncherResult.Stdout + $Task3LauncherResult.Stderr
+Write-Host $Task3LauncherOutput
+```
+
+Interact only with the launched editor/game window: perform the slow B–F/G route, observe solid B–E while F builds and reclassifies, verify that G has neither cancel hover nor right-click cancellation, extend from G, enter track without a jump, verify rejected input preserves the last valid route, and verify the terminal snapshot appears before the result overlay. Allow the editor to exit naturally. After it exits, type the exact confirmation only if every observation occurred.
+
+```powershell
+$Task3ObservationPassed = $false
+$Task3PostLaunchFailures = [Collections.Generic.List[string]]::new()
+if ($Task3LauncherResult.Started) {
+  try {
+    Assert-Task3WrapperStateOrReport $true $true
+    if ((Invoke-Task3FeatureGit @('rev-parse','HEAD')).Stdout.Trim() -ne $Task3TestedImplementationSha) { throw 'feature HEAD changed' }
+    if ((Get-Task3Lines (Invoke-Task3FeatureGit @('status','--porcelain=v1','-uall')).Stdout).Count -ne 0) { throw 'feature worktree is dirty' }
+    if ((Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3LauncherRepository -Arguments @('rev-parse','HEAD') -RequireBare $true -RequireClone $true).Stdout.Trim() -ne $Task3TestedImplementationSha) { throw 'launcher HEAD changed' }
+    if ((Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3LauncherRepository -Arguments @('branch','--show-current') -RequireBare $true -RequireClone $true).Stdout.Trim() -ne 'main') { throw 'launcher branch changed' }
+    if ((Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3LauncherRepository -Arguments @('rev-parse','--abbrev-ref','@{upstream}') -RequireBare $true -RequireClone $true).Stdout.Trim() -ne 'origin/main') { throw 'launcher upstream changed' }
+    if ((Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3LauncherRepository -Arguments @('rev-list','--left-right','--count','@{upstream}...HEAD') -RequireBare $true -RequireClone $true).Stdout -notmatch '^\s*0\s+0\s*$') { throw 'launcher divergence changed' }
+    if ((Get-Task3Lines (Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3LauncherRepository -Arguments @('status','--porcelain=v1','-uall') -RequireBare $true -RequireClone $true).Stdout).Count -ne 0) { throw 'launcher repository is dirty' }
+    if ((Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3BareOrigin -Arguments @('rev-parse','refs/heads/main') -RequireBare $true -RequireClone $true).Stdout.Trim() -ne $Task3TestedImplementationSha) { throw 'local origin main changed' }
+    $Task3PostLaunchHeads = Get-Task3Lines (Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3BareOrigin -Arguments @('for-each-ref','--format=%(refname) %(objectname)','refs/heads') -RequireBare $true -RequireClone $true).Stdout | Sort-Object
+    if (Compare-Object $Task3PostLaunchHeads @("refs/heads/main $Task3TestedImplementationSha")) { throw 'local origin heads changed' }
+    if ((Invoke-Task3FeatureGit @('rev-parse',$Task3ProjectTreeSpec)).Stdout.Trim() -ne (Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3LauncherRepository -Arguments @('rev-parse','HEAD:godot-project-moe-rail-way') -RequireBare $true -RequireClone $true).Stdout.Trim()) { throw 'project tree OID changed' }
+    foreach ($Task3CodePath in $Task3CodePaths) {
+      if ((Invoke-Task3FeatureGit @('rev-parse',($Task3TestedImplementationSha + ':' + $Task3CodePath))).Stdout.Trim() -ne (Invoke-Task3GuardedWrapperGit -WorkingDirectory $Task3LauncherRepository -Arguments @('rev-parse',('HEAD:' + $Task3CodePath)) -RequireBare $true -RequireClone $true).Stdout.Trim()) { throw "exact-path blob OID changed: $Task3CodePath" }
+    }
+  }
+  catch { $Task3PostLaunchFailures.Add($_.Exception.Message) }
+  $Task3Observation = Read-Host 'Type TASK3_MANUAL_OBSERVATION_CONFIRMED only after all required observations'
+  $Task3ObservationPassed = $Task3Observation -ceq 'TASK3_MANUAL_OBSERVATION_CONFIRMED'
+}
+$Task3LauncherPassed = $Task3LauncherResult.Started -and $Task3LauncherResult.ExitCode -eq 0 -and
+  [regex]::Matches($Task3LauncherOutput, '(?m)^PASS: editor playtest completed\s*$').Count -eq 1 -and
+  [regex]::Matches($Task3LauncherOutput, '(?m)^DIAGNOSTICS_SCANNED:\s+\d+\s*$').Count -eq 1
+if (-not $Task3LauncherPassed -or -not $Task3ObservationPassed -or $Task3PostLaunchFailures.Count -ne 0) {
+  Write-Task3WrapperFailureMarker
+  throw "STOP: manual launcher/observation/check gate failed; tested SHA=$Task3TestedImplementationSha; exit=$($Task3LauncherResult.ExitCode); started=$($Task3LauncherResult.Started); post-launch=$($Task3PostLaunchFailures -join '; ')"
+}
+```
+
+On any launcher start, exit, marker, observation, or post-launch check failure, do not edit `track_train_windows.md`, do not create the evidence commit, and do not write PASS evidence. Keep the durable implementation commit and report `TASK3_TESTED_IMPLEMENTATION_SHA`, launcher output/exit/start state, and all check failures. `Write-Task3WrapperFailureMarker` reports `TASK3_PRESERVED_WRAPPER` only after full captured-identity and descendant validation; otherwise it reports the English `TASK3_WRAPPER_IDENTITY_LOST` marker with the last-known wrapper path and every captured identity. Do not delete the wrapper or any launcher-owned mirror/remnant.
+
+- [ ] **Step 7: Append successful manual evidence and create the evidence-only commit**
+
+Proceed only when Step 6’s launcher, manual observation, and post-launch checks all passed. Append one dated English section to `track_train_windows.md`—without rewriting the 2026-08-24 history—recording the actual local date, `TASK3_TESTED_IMPLEMENTATION_SHA` explicitly labeled **Durable tested implementation SHA**, the exact Godot version, all seven observed route/entry/rejection/terminal-order results, launcher exit `0`, the exact `PASS: editor playtest completed` marker, and the observed `DIAGNOSTICS_SCANNED: <count>` line. Do not describe the following evidence commit SHA as tested source.
+
+Stage and commit only the manual evidence path, then require a distinct direct child of the tested implementation SHA with no other changed path and a clean worktree:
+
+```powershell
+Assert-Task3WrapperStateOrReport $true $true
+Invoke-Task3FeatureGit @('add','--',$Task3ManualPath) | Out-Null
+Invoke-Task3FeatureGit @('diff','--cached','--check') | Out-Null
+$Task3EvidenceStaged = Get-Task3Lines (Invoke-Task3FeatureGit @('diff','--cached','--name-only')).Stdout | Sort-Object
+if (Compare-Object $Task3EvidenceStaged @($Task3ManualPath)) { throw 'STOP: evidence commit path set is not exact' }
+Invoke-Task3FeatureGit @('commit','-m','test: record reflowable track head Windows playtest') | Out-Null
+$Task3EvidenceCommitSha = (Invoke-Task3FeatureGit @('rev-parse','HEAD')).Stdout.Trim()
+if ($Task3EvidenceCommitSha -eq $Task3TestedImplementationSha) { throw 'STOP: evidence commit SHA did not advance' }
+if ((Invoke-Task3FeatureGit @('rev-parse',($Task3EvidenceCommitSha + '^'))).Stdout.Trim() -ne $Task3TestedImplementationSha) { throw 'STOP: evidence commit is not a direct child of tested implementation' }
+$Task3EvidencePaths = Get-Task3Lines (Invoke-Task3FeatureGit @('diff-tree','--no-commit-id','--name-only','-r',$Task3EvidenceCommitSha)).Stdout | Sort-Object
+if (Compare-Object $Task3EvidencePaths @($Task3ManualPath)) { throw 'STOP: evidence commit changed a non-manual path' }
+Invoke-Task3FeatureGit @('diff','--check',($Task3TestedImplementationSha + '..' + $Task3EvidenceCommitSha)) | Out-Null
+if ((Get-Task3Lines (Invoke-Task3FeatureGit @('status','--porcelain=v1','-uall')).Stdout).Count -ne 0) { throw 'STOP: evidence commit did not leave a clean worktree' }
+Write-Host "TASK3_EVIDENCE_COMMIT_SHA: $Task3EvidenceCommitSha"
+Assert-Task3WrapperStateOrReport $true $true
+Write-Host "TASK3_PRESERVED_WRAPPER: $Task3Wrapper"
+```
+
+Expected: `TASK3_TESTED_IMPLEMENTATION_SHA` remains the already-playtested four-path implementation commit; the second commit records only successful manual evidence, and the preserved wrapper remains available for inspection without any cleanup action.
+
+- [ ] **Step 8: Obtain independent Sol reviews over the complete Task 3 range**
+
+Review the complete Task 3 range `TASK3_BASE..HEAD`, not only the later manual-evidence commit. Request a Sol specification review against spec Sections 1, 5, 10, 12, and 14, then a separate Sol quality review for detached observation use, hover correctness, event timing, multi-frame physical input, the two-commit evidence boundary, sanitized local-origin launcher safety, ordinary-path/identity preservation, manual evidence integrity, no leaked domain mutation, and absence of provisional visual styling. The normal Task 3 delivery contains the two focused commits above, while the final Task 3 allowlist remains unchanged. Assign every accepted finding to a fresh Terra output worker using that allowlist only; rerun focused tests, both integrations, the full gate, and any affected manual play, then repeat both Sol reviews.
 
 ## Final Feature Verification and Handoff
 
@@ -1552,7 +1918,7 @@ Request a Sol specification review against spec Sections 1, 5, 10, 12, and 14, t
 | Endpoint-only multiframe input, hover/cancel behavior, manual Windows evidence | 3 |
 | Inventory, serial, nominal motion, game premises, fixed-tick priorities | 1–3 full gates and final review |
 
-The plan contains three implementation tasks, defines every interface before a later task consumes it, uses no new scripts, keeps `SessionResult` unchanged, and scopes every commit to exact paths. Every task reaches its only commit after its complete 19-suite/four-integration gate is green. Before execution, scan this plan with:
+The plan contains three implementation tasks, defines every interface before a later task consumes it, uses no new scripts, keeps `SessionResult` unchanged, and scopes every commit to exact paths. Tasks 1 and 2 each reach their one implementation commit after the complete 19-suite/four-integration gate is green; Task 3 first reaches its four-path durable implementation commit at that gate, then records only successful launcher/manual evidence in its second focused commit. Before execution, scan this plan with:
 
 ```powershell
 $hangul_marker = [string]([char]0xD55C) + [string]([char]0xAE00)
