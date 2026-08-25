@@ -1242,7 +1242,7 @@ function Assert-CleanGitEnvironment {
 
 # Resolve GitExecutable and read-only fsutil with controlled preflight
 try {
-    if ($null -eq $GitExecutable) { $GitExecutable = (Get-Command git.exe -ErrorAction Stop).Source }
+    if ([string]::IsNullOrWhiteSpace($GitExecutable)) { $GitExecutable = (Get-Command git.exe -ErrorAction Stop).Source }
     $FsutilExecutable = (Get-Command fsutil.exe -ErrorAction Stop).Source
 }
 catch {
@@ -1675,7 +1675,7 @@ try {
 # 1. Resolve RepositoryRoot, tools, exact Godot version
 Assert-CleanGitEnvironment -Environment ([Environment]::GetEnvironmentVariables([EnvironmentVariableTarget]::Process))
 $RepositoryRoot = Get-CanonicalPath -Path $RepositoryRoot
-if ($null -eq $TempParent) { $TempParent = [IO.Path]::GetTempPath() }
+if ([string]::IsNullOrWhiteSpace($TempParent)) { $TempParent = [IO.Path]::GetTempPath() }
 $TempParent = Get-CanonicalPath -Path $TempParent
 $hasTestReadyEvent = -not [string]::IsNullOrWhiteSpace($TestReadyEventName)
 $hasTestReleaseEvent = -not [string]::IsNullOrWhiteSpace($TestReleaseEventName)
@@ -2642,6 +2642,141 @@ if ($out -notmatch 'PASS: track train app integration') { exit 1 }
   if ($LASTEXITCODE -ne 0 -or $porcelain.Count -ne 0) { exit 1 }
   ```
 - [ ] Continue to manual verification before requesting either review so reviewers receive its evidence.
+
+---
+
+### Task 2 Default-Argument Manual Finding Amendment
+
+The first committed Task 2 manual attempt exited 2 before any Godot window opened with `Preflight failed: Exception calling "GetFullPath" with "1" argument(s): "The path is empty."` The manual fixture, feature worktree, and protected primary worktree remained byte-identical and clean, and both validated manual roots were removed. The cause is binding behavior for omitted typed PowerShell strings: null-only guards do not recognize the empty `GitExecutable` and `TempParent` values used by the documented no-override command.
+
+Before retrying manual verification:
+
+1. Require independent Sol specification and quality review of this amendment. Then compare the full porcelain output with this exact two-document allowlist, stage only these paths, verify the staged set order-independently, commit, and require clean porcelain:
+
+   ```powershell
+   $expectedDocsPorcelain = @(
+       ' M docs/superpowers/plans/2026-08-25-godot-editor-playtest-safety.md',
+       ' M docs/superpowers/specs/2026-08-25-godot-editor-playtest-safety-design.md'
+   ) | Sort-Object
+   $actualDocsPorcelain = @(git status --porcelain=v1 -u | Sort-Object)
+   if ($LASTEXITCODE -ne 0 -or ($actualDocsPorcelain -join "`n") -ne ($expectedDocsPorcelain -join "`n")) { exit 1 }
+   git add -- `
+       docs/superpowers/plans/2026-08-25-godot-editor-playtest-safety.md `
+       docs/superpowers/specs/2026-08-25-godot-editor-playtest-safety-design.md
+   if ($LASTEXITCODE -ne 0) { exit 1 }
+   $expectedDocsStaged = @(
+       'docs/superpowers/plans/2026-08-25-godot-editor-playtest-safety.md',
+       'docs/superpowers/specs/2026-08-25-godot-editor-playtest-safety-design.md'
+   ) | Sort-Object
+   $actualDocsStaged = @(git diff --cached --name-only | Sort-Object)
+   if ($LASTEXITCODE -ne 0 -or ($actualDocsStaged -join "`n") -ne ($expectedDocsStaged -join "`n")) { exit 1 }
+   git commit -m "docs: cover default launcher arguments"
+   if ($LASTEXITCODE -ne 0) { exit 1 }
+   $porcelain = @(git status --porcelain=v1 -u)
+   if ($LASTEXITCODE -ne 0 -or $porcelain.Count -ne 0) { exit 1 }
+   ```
+
+2. Add this focused test helper beside `Invoke-Launcher`. Its `Omitted` case intentionally adds neither optional argument; its `Whitespace` case explicitly adds both whitespace-only values:
+
+   ```powershell
+   function Invoke-LauncherWithDefaultGitAndTemp {
+       param(
+           [string]$LauncherPath,
+           [string]$RepositoryRoot,
+           [string]$GodotExecutable,
+           [ValidateSet('Omitted','Whitespace')]
+           [string]$Case
+       )
+       $psi = [Diagnostics.ProcessStartInfo]::new()
+       $psi.FileName = (Get-Command pwsh.exe -ErrorAction Stop).Source
+       $psi.UseShellExecute = $false
+       $psi.RedirectStandardOutput = $true
+       $psi.RedirectStandardError = $true
+       foreach ($argument in @(
+           '-NoProfile','-File',$LauncherPath,
+           '-RepositoryRoot',$RepositoryRoot,
+           '-GodotExecutable',$GodotExecutable,
+           '-Mode','VerifyMirror'
+       )) { $psi.ArgumentList.Add($argument) }
+       if ($Case -eq 'Whitespace') {
+           foreach ($argument in @('-GitExecutable',' ','-TempParent',' ')) {
+               $psi.ArgumentList.Add($argument)
+           }
+       }
+       $null = $psi.Environment.Remove('MOERAIL_FAKE_VERSION')
+       $process = [Diagnostics.Process]::Start($psi)
+       try {
+           $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+           $stderrTask = $process.StandardError.ReadToEndAsync()
+           $process.WaitForExit()
+           if (-not [Threading.Tasks.Task]::WaitAll(
+               [Threading.Tasks.Task[]]@($stdoutTask,$stderrTask),
+               [TimeSpan]::FromSeconds(5)
+           )) { throw 'Default Git/Temp capture drain timed out' }
+           return [pscustomobject]@{
+               ExitCode = $process.ExitCode
+               Stdout = $stdoutTask.Result
+               Stderr = $stderrTask.Result
+           }
+       }
+       finally {
+           $process.Dispose()
+       }
+   }
+   ```
+
+3. Add these parameterized assertions after the clean fixture is created. They cover omitted and whitespace-only values, source preservation, and the complete top-level system-temp mirror-root set:
+
+   ```powershell
+   foreach ($defaultCase in @('Omitted','Whitespace')) {
+       $defaultFixtureBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+       $defaultRootsBefore = @(Get-MoerailDirs -TempParent $systemTempParent)
+       $defaultResult = Invoke-LauncherWithDefaultGitAndTemp `
+           -LauncherPath $launcherPath `
+           -RepositoryRoot $cloneRoot `
+           -GodotExecutable $fakeGodotExe `
+           -Case $defaultCase
+       Assert-ExitCode -Expected 0 -Actual $defaultResult.ExitCode `
+           -Message " (default Git/Temp $defaultCase; stderr=$($defaultResult.Stderr.Trim()))"
+       Assert-OutputContains -Needle 'PASS: editor playtest mirror verified' `
+           -Haystack $defaultResult.Stdout -Message " (default Git/Temp $defaultCase marker)"
+       $defaultRootsAfter = @(Get-MoerailDirs -TempParent $systemTempParent)
+       Assert-DirectorySetUnchanged -TempParent $systemTempParent `
+           -Before $defaultRootsBefore -After $defaultRootsAfter `
+           -Message " (default Git/Temp $defaultCase)"
+       $defaultFixtureAfter = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+       Assert-FixtureSnapshotUnchanged -Before $defaultFixtureBefore -After $defaultFixtureAfter
+   }
+   ```
+
+4. With only the test file modified, require the exact porcelain line ` M godot-project-moe-rail-way/tests/tooling/test_launch_editor_playtest.ps1`, run `pwsh -NoProfile -File godot-project-moe-rail-way/tests/tooling/test_launch_editor_playtest.ps1`, and require nonzero RED against `6030a003d4d895e1dd4c0643db9a16eb742b76a5`. The failure must report exit 2 and the empty-path preflight diagnostic for the `Omitted` case.
+5. Replace only the two null-only default guards with `[string]::IsNullOrWhiteSpace`, then require tooling GREEN and the exact five Godot regressions.
+6. Compare the full porcelain output with this exact implementation allowlist, stage only these paths, verify the staged set order-independently, commit, and require clean porcelain:
+
+   ```powershell
+   $expectedFixPorcelain = @(
+       ' M godot-project-moe-rail-way/tests/tooling/test_launch_editor_playtest.ps1',
+       ' M godot-project-moe-rail-way/tools/playtest/launch_editor_playtest.ps1'
+   ) | Sort-Object
+   $actualFixPorcelain = @(git status --porcelain=v1 -u | Sort-Object)
+   if ($LASTEXITCODE -ne 0 -or ($actualFixPorcelain -join "`n") -ne ($expectedFixPorcelain -join "`n")) { exit 1 }
+   git add -- `
+       godot-project-moe-rail-way/tests/tooling/test_launch_editor_playtest.ps1 `
+       godot-project-moe-rail-way/tools/playtest/launch_editor_playtest.ps1
+   if ($LASTEXITCODE -ne 0) { exit 1 }
+   $expectedFixStaged = @(
+       'godot-project-moe-rail-way/tests/tooling/test_launch_editor_playtest.ps1',
+       'godot-project-moe-rail-way/tools/playtest/launch_editor_playtest.ps1'
+   ) | Sort-Object
+   $actualFixStaged = @(git diff --cached --name-only | Sort-Object)
+   if ($LASTEXITCODE -ne 0 -or ($actualFixStaged -join "`n") -ne ($expectedFixStaged -join "`n")) { exit 1 }
+   git commit -m "fix: resolve launcher default arguments"
+   if ($LASTEXITCODE -ne 0) { exit 1 }
+   $porcelain = @(git status --porcelain=v1 -u)
+   if ($LASTEXITCODE -ne 0 -or $porcelain.Count -ne 0) { exit 1 }
+   ```
+
+7. Restart the complete manual verification from its first step. Record both the failed attempt and the successful retry in the ignored English Task 2 report before separate Sol specification and quality/code reviews.
 
 ---
 

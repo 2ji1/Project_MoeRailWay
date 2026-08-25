@@ -21,6 +21,7 @@ This specification is the binding design for the repository's editor playtest sa
 | 11 | Controlled probe copied 145 tracked Godot-project files to a unique ordinary-file mirror, excluded `.git` and `.godot`, used child-only `APPDATA`, `LOCALAPPDATA`, `TEMP`, `TMP`, launched visible exact 4.7.1 editor, ran F6, saw zero editor errors/warnings and zero prohibited diagnostics, kept 145 of 145 files byte-identical, left source worktrees clean | Fact |
 | 12 | The combined exact-version, fresh-project-state, isolated-child-environment path is proven | Fact |
 | 13 | Windows 11 `tar.exe` listed but failed to extract the Git archive entry `assets/선로-🚆.bin` with `Invalid empty pathname`; `.NET System.Formats.Tar.TarFile` extracted the same archive and preserved every file | Fact |
+| 14 | The first committed Task 2 manual attempt exited 2 before opening Godot because omitted typed string parameters bind as empty strings; null-only default guards left both `GitExecutable` and `TempParent` unresolved | Fact |
 
 ## Root-Cause Boundary
 
@@ -31,6 +32,7 @@ The gutter diagnostic originates from Godot's editor internals (`TextEdit::set_l
 One concrete repository PowerShell visible-playtest launcher with behavior tests and README usage. The launcher:
 
 - Rejects ambient Git repository-routing and command-config injection variables before any Git command; then invokes from clean local `main` tracking `origin/main`, where dirty, staged, untracked, or divergent state fails before temp creation
+- Resolves omitted or whitespace-only `GitExecutable` and `TempParent` values with `[string]::IsNullOrWhiteSpace` before their first use, so the documented no-override launcher command reaches the same gates as explicit test invocations
 - Verifies exact canonical version (4.7.1.stable.official.a13da4feb) before temp creation
 - Mirrors only committed tracked `godot-project-moe-rail-way` ordinary files from `HEAD`; reads Git path records as strict UTF-8, NUL-delimited bytes; excludes `.git`, `.godot`, reparse points, invalid UTF-8, CR/LF/TAB path characters, and path escape; rejects every Git entry except blob mode `100644` or `100755` before archive creation; materializes the pinned Git tar archive with `.NET System.Formats.Tar.TarFile`; rejects post-extraction reparse points before any other recursive traversal; produces SHA-256 manifest before and after copy
 - Requires the complete `RepositoryRoot` and temp-parent chains to be ordinary/non-reparse before any Git command; captures the repository directory identity; rejects a temp parent equal to/below the lexical repository or whose ancestor identities include the repository identity; creates a unique validated temp root containing project, child `APPDATA`, `LOCALAPPDATA`, `TEMP`, `TMP`, and logs
@@ -44,6 +46,7 @@ One concrete repository PowerShell visible-playtest launcher with behavior tests
 | Requirement | Binding Rule |
 |-------------|--------------|
 | Invocation state | Ambient Git routing/config-injection variables rejected before any Git command; clean local `main` tracking `origin/main` only; any divergence fails pre-temp |
+| Optional defaults | Omitted or whitespace-only `GitExecutable` and `TempParent` values resolve to the discovered `git.exe` and canonical system temp path before path or process use |
 | Version gate | Exact canonical 4.7.1.stable.official.a13da4feb verified before temp creation |
 | Mirror scope | Committed tracked ordinary files from `HEAD` only; strict UTF-8/NUL Git path records; only blob mode `100644`/`100755` accepted before archive creation; `.NET System.Formats.Tar.TarFile` extraction; `.git`, `.godot`, reparse points, invalid UTF-8, CR/LF/TAB path characters, and path escape excluded |
 | Integrity proof | SHA-256 manifest before and after copy; byte-identical verification |
@@ -68,6 +71,7 @@ One concrete repository PowerShell visible-playtest launcher with behavior tests
 7. Source preservation (Git status + SHA-256 unchanged)
 8. Failure preservation (exact mirror path reported while identity remains reachable; honest identity-loss marker and last-known path/identity otherwise)
 9. Safe cleanup, including deterministic ordinary ancestor replacement with the original root object restored at the same lexical leaf, detected by captured parent identity before any recursive deletion
+10. Parameterized default-resolution probes that supply only `RepositoryRoot`, `GodotExecutable`, and `Mode=VerifyMirror` in the omitted case and explicitly whitespace-only `GitExecutable` and `TempParent` in the second case; both prove success, source preservation, and no leaked system-temp mirror roots
 
 Tests use test-owned temp Git fixtures or doubles. Never open or interfere with user GUI.
 
