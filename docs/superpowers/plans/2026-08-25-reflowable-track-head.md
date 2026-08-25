@@ -138,7 +138,8 @@ git -C $Feature merge-base --is-ancestor $FeatureStart HEAD
 if ($LASTEXITCODE -ne 0) { throw 'STOP: approved design start is not in feature history' }
 if ((git -C $Feature status --porcelain=v1 -uall)) { throw 'STOP: feature worktree is not clean' }
 if ((& $ReflowGodot --version).Trim() -ne $ExpectedGodot) { throw 'STOP: Godot version mismatch' }
-$worktree_entries = (git worktree list --porcelain) -split "(?:\r?\n){2,}" | Where-Object { $_.Trim().Length -gt 0 }
+$worktree_porcelain = (git worktree list --porcelain | Out-String)
+$worktree_entries = $worktree_porcelain -split "(?:\r?\n){2,}" | Where-Object { $_.Trim().Length -gt 0 }
 $expected_worktree = $worktree_entries | Where-Object {
 	$worktree_line = ($_ -split "\r?\n" | Where-Object { $_.StartsWith('worktree ') } | Select-Object -First 1)
 	$worktree_line -and (Normalize-ReflowPath $worktree_line.Substring('worktree '.Length)) -eq $FeaturePath
