@@ -6,7 +6,7 @@
 
 **Architecture:** Two PowerShell scripts — a launcher (`launch_editor_playtest.ps1`) and its behavior test (`test_launch_editor_playtest.ps1`) — operating on the Godot project at `godot-project-moe-rail-way`. The launcher uses `git archive` + `tar` for byte-safe mirror materialization from a pinned HEAD, `System.Diagnostics.Process` with `UseShellExecute=false` and `ArgumentList` for controlled visible GUI editor execution with child-only `APPDATA`/`LOCALAPPDATA`/`TEMP`/`TMP` overrides, SHA-256 manifests for source integrity verification before and after, and anchored log scanning for `FAIL:`, `ERROR:`, `SCRIPT ERROR:`, `FATAL:`, `WARNING:`, `CRASH:`, exact gutter diagnostic, and established RID/ObjectDB leak terms from the disposable-mirror amendment.
 
-**Tech Stack:** PowerShell 7.4+ (`pwsh`) on modern .NET, .NET SDK 9.0.100 with an installed compatible .NET 9 runtime (`dotnet publish` for a framework-dependent single-file test executable only), Git for Windows, Git Bash 5.2.37 at `C:\Program Files\Git\bin\bash.exe`, tar (bsdtar 3.8.4), Godot 4.7.1.stable.official.a13da4feb (canonical GUI executable at `D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64.exe`; console sibling at `D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe`).
+**Tech Stack:** PowerShell 7.4+ (`pwsh`) on modern .NET, .NET SDK 9.0.100 with an installed compatible .NET 9 runtime (`dotnet publish` for a framework-dependent test executable plus its runtime metadata only), Git for Windows, Git Bash 5.2.37 at `C:\Program Files\Git\bin\bash.exe`, tar (bsdtar 3.8.4), Godot 4.7.1.stable.official.a13da4feb (canonical GUI executable at `D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64.exe`; console sibling at `D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe`).
 
 **Spec:** `docs/superpowers/specs/2026-08-25-godot-editor-playtest-safety-design.md`
 
@@ -361,7 +361,7 @@ public class FakeGodot {
     <TargetFramework>net9.0</TargetFramework>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
-    <PublishSingleFile>true</PublishSingleFile>
+    <PublishSingleFile>false</PublishSingleFile>
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
     <AssemblyName>FakeGodot</AssemblyName>
@@ -430,14 +430,51 @@ public class FakeGodot {
     & $assertBuildTree
     $publishResult = & $invokeDotnet -Arguments @(
         'publish',$projectFile,'-c','Release','-r','win-x64','--self-contained','false','--no-restore',
-        '-p:PublishSingleFile=true','-p:DebugType=none','-p:DebugSymbols=false','-o',$publishDir
+        '-p:PublishSingleFile=false','-p:DebugType=none','-p:DebugSymbols=false','-o',$publishDir
     )
     if ($publishResult.ExitCode -ne 0) { throw "dotnet publish failed: $($publishResult.Stdout) $($publishResult.Stderr)" }
     & $assertBuildTree
-    $publishedExe = Join-Path $publishDir 'FakeGodot.exe'
-    if (-not (Test-Path -LiteralPath $publishedExe -PathType Leaf)) { throw "Published fake is missing: $publishedExe" }
-    Move-Item -LiteralPath $publishedExe -Destination $OutputPath -ErrorAction Stop
-    if (-not (Test-Path -LiteralPath $OutputPath -PathType Leaf)) { throw "Fake output is missing: $OutputPath" }
+    if (-not [IO.Path]::GetFileName($OutputPath).Equals('FakeGodot.exe',[StringComparison]::OrdinalIgnoreCase)) {
+        throw "Fake output name mismatch: $OutputPath"
+    }
+    $requiredPublishedNames = @(
+        'FakeGodot.exe',
+        'FakeGodot.dll',
+        'FakeGodot.deps.json',
+        'FakeGodot.runtimeconfig.json'
+    )
+    $allowedPublishedNames = @($requiredPublishedNames) + @('FakeGodot.pdb')
+    $publishedEntries = @(Get-ChildItem -LiteralPath $publishDir -Force -ErrorAction Stop)
+    $actualPublishedNames = @($publishedEntries | ForEach-Object { $_.Name })
+    foreach ($requiredName in $requiredPublishedNames) {
+        if ($requiredName -notin $actualPublishedNames) { throw "Missing published file: $requiredName" }
+    }
+    # Validate the complete set and every destination before moving any file.
+    foreach ($entry in $publishedEntries) {
+        if ($entry.PSIsContainer) { throw "Published directory is prohibited: $($entry.FullName)" }
+        if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Published reparse point is prohibited: $($entry.FullName)"
+        }
+        if ($entry.Name -notin $allowedPublishedNames) { throw "Unexpected published file: $($entry.Name)" }
+        $destination = Join-Path $outputParent $entry.Name
+        if (Test-Path -LiteralPath $destination) { throw "Fake output collision: $destination" }
+    }
+    foreach ($entry in $publishedEntries) {
+        $destination = Join-Path $outputParent $entry.Name
+        Move-Item -LiteralPath $entry.FullName -Destination $destination -ErrorAction Stop
+    }
+    foreach ($publishedName in $actualPublishedNames) {
+        $destination = Join-Path $outputParent $publishedName
+        $destinationItem = Get-Item -LiteralPath $destination -Force -ErrorAction Stop
+        if ($destinationItem.PSIsContainer) { throw "Fake output is not a leaf: $destination" }
+        if (($destinationItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Fake output reparse point: $destination"
+        }
+    }
+    $outputItem = Get-Item -LiteralPath $OutputPath -Force -ErrorAction Stop
+    if ($outputItem.PSIsContainer -or ($outputItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Fake output is not an ordinary leaf: $OutputPath"
+    }
     # Build intermediates intentionally remain inside the validated test-owned
     # root and are removed only by the final revalidated root cleanup.
 }
