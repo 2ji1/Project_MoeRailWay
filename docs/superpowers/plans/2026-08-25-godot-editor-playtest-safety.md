@@ -304,6 +304,7 @@ function New-TestClone {
     & git.exe clone $OriginPath $ClonePath
     & git.exe -C $ClonePath config user.name $UserName
     & git.exe -C $ClonePath config user.email $UserEmail
+    & git.exe -C $ClonePath config --local core.autocrlf true
     return $ClonePath
 }
 
@@ -1147,7 +1148,7 @@ Assert-OwnedRoot -Root $Root -ResolvedTempParent $TempParent -RequireExists $tru
 
     # Archive
     $archivePath = Join-Path $Root 'mirror.tar'
-    $archiveResult = Invoke-NativeText -Executable $GitExecutable -Arguments @('archive', '--format=tar', "--output=$archivePath", $SourceHead, '--', 'godot-project-moe-rail-way/') -WorkingDirectory $RepositoryRoot
+    $archiveResult = Invoke-NativeText -Executable $GitExecutable -Arguments @('-c', 'core.autocrlf=false', 'archive', '--format=tar', "--output=$archivePath", $SourceHead, '--', 'godot-project-moe-rail-way/') -WorkingDirectory $RepositoryRoot
     if ($archiveResult.ExitCode -ne 0) { throw "git archive failed: $($archiveResult.Stderr)" }
     Assert-ExistingOrdinaryPathChain -Path $archivePath -Boundary $Root | Out-Null
 
