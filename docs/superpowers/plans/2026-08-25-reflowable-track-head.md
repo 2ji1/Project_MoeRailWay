@@ -1029,11 +1029,14 @@ Add this narrow subprocess probe. It is not a suite and therefore does not alter
 
 ```gdscript
 # tests/unit/test_grid_track_runtime.gd: add beside run(), not inside run().
-func run_unprepared_pose_probe() -> void:
+func run_unprepared_pose_probe() -> bool:
 	var track = _reflow_runtime()
 	assert_equal(track.append_cells(_reflow_curve_cells()), 5, "Probe fixture appends provisional head")
-	track.get_pose_sample_at_distance(0.0) # Must assert "Locked geometry is required for pose sampling" before sampling.
+	var pose = track.get_pose_sample_at_distance(0.0) # Must assert "Locked geometry is required for pose sampling" before sampling.
+	if pose.is_empty():
+		return false
 	print("POSE_FALLBACK") # Reached only if production incorrectly sampled provisional geometry.
+	return true
 
 # tests/run_all.gd: add this preload beside SUITES and this dispatch before the --suite selector.
 const GridTrackRuntimeSuiteScript = preload("res://tests/unit/test_grid_track_runtime.gd")
@@ -1041,12 +1044,29 @@ const GridTrackRuntimeSuiteScript = preload("res://tests/unit/test_grid_track_ru
 for argument in OS.get_cmdline_user_args():
 	if argument == "--reflow-unprepared-pose-probe":
 		print("REFLOW_UNPREPARED_POSE_PROBE_BEGIN")
-		GridTrackRuntimeSuiteScript.new().run_unprepared_pose_probe()
+		if not GridTrackRuntimeSuiteScript.new().run_unprepared_pose_probe():
+			quit(1)
+			return
 		quit(0)
 		return
 ```
 
-The Task 2 production method must enforce its locked-owner precondition before calling `sample_nominal`: `assert(owner.locked, "Locked geometry is required for pose sampling")`. `Confirm-ReflowUnpreparedPoseProbe` requires nonzero exit, that exact diagnostic, and absence of `POSE_FALLBACK`.
+Godot 4.7.1 treats a failed `assert` as a diagnostic/precondition, not as process termination. The Task 2 production method must therefore assert and explicitly return `{}` before `sample_nominal` on every missing or unlocked owner:
+
+```gdscript
+func get_pose_sample_at_distance(route_distance: float) -> Dictionary:
+	var canonical = _canonical_distance_and_owner(route_distance)
+	var owner = canonical.piece
+	assert(owner != null, "Geometry owner is required for pose sampling")
+	if owner == null:
+		return {}
+	assert(owner.locked, "Locked geometry is required for pose sampling")
+	if not owner.locked:
+		return {}
+	return owner.sample_nominal(canonical.distance - owner.absolute_start_distance_cells)
+```
+
+The probe returns `false` only for the required rejected empty pose, so `run_all.gd` exits `1`; it prints `POSE_FALLBACK` and returns `true` only if provisional geometry was incorrectly sampled, so `run_all.gd` exits `0` and `Confirm-ReflowUnpreparedPoseProbe` fails. The wrapper requires the nonzero rejected-sample exit, the exact `Locked geometry is required for pose sampling` diagnostic, and absence of `POSE_FALLBACK`.
 
 The five expected local distances are deliberate: `boundary - epsilon`, exact `boundary`, and `boundary + epsilon` all canonicalize to the exact boundary and belong to the predecessor; only values just outside epsilon retain their original predecessor/successor side.
 
