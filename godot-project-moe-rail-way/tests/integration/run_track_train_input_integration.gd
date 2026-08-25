@@ -3,6 +3,7 @@ extends SceneTree
 const SHELL_SCENE_PATH := "res://src/presentation/session/session_shell.tscn"
 const SessionSnapshotScript = preload("res://src/domain/session/session_snapshot.gd")
 const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
+const TrackGeometryPieceScript = preload("res://src/domain/track/track_geometry_piece.gd")
 const TrackSystemScript = preload("res://src/domain/track/track_system.gd")
 const UILayoutProfileScript = preload("res://src/presentation/layout/ui_layout_profile.gd")
 
@@ -119,6 +120,27 @@ func _run() -> void:
 		"Fast corner uses dominant-axis ordering"
 	)
 	await _release(shell, corner_track, _logical_to_viewport(view, Vector2(220.0, 140.0)))
+
+	var reflow_track = TrackSystemScript.new(config)
+	await _deliver(_button(departure, MOUSE_BUTTON_LEFT, true))
+	await _deliver(_motion(_logical_to_viewport(view, Vector2(220.0, 100.0)), MOUSE_BUTTON_MASK_LEFT))
+	await _consume(shell, reflow_track)
+	await _deliver(_motion(_logical_to_viewport(view, Vector2(220.0, 180.0)), MOUSE_BUTTON_MASK_LEFT))
+	var reflow_frame = await _consume(shell, reflow_track)
+	_assert_equal(reflow_frame.crossed_cells, [Vector2i(5, 3), Vector2i(5, 4)], "Second frame emits only cells not consumed by the first frame")
+	_assert_equal(reflow_track.advance_construction(5.0), 5.0, "Head completes without geometry locking")
+	_assert_equal(reflow_track.get_geometry_pieces()[0].kind, TrackGeometryPieceScript.Kind.CURVE_3X3, "Completed head reflows as curve")
+	await _deliver(_motion(_logical_to_viewport(view, Vector2(220.0, 220.0)), MOUSE_BUTTON_MASK_LEFT))
+	var support_frame = await _consume(shell, reflow_track)
+	_assert_equal(support_frame.crossed_cells, [Vector2i(5, 5)], "Third frame appends G as exit support along F's direction")
+	var support_count := reflow_track.get_cell_records().size()
+	var g_viewport_position := _logical_to_viewport(view, Vector2(220.0, 220.0))
+	await _release(shell, reflow_track, g_viewport_position)
+	_assert_true(not reflow_track._left_capture_active, "Releasing G clears left capture before the support right-click")
+	await _deliver(_button(g_viewport_position, MOUSE_BUTTON_RIGHT, true))
+	await _consume(shell, reflow_track)
+	_assert_equal(reflow_track.get_cell_records().size(), support_count, "Right-clicking exit support is a no-op")
+	_assert_equal(reflow_track.get_endpoint_cell(), Vector2i(5, 5), "Exit support remains endpoint")
 
 	await _deliver(_button(_logical_to_viewport(view, Vector2(180.0, 100.0)), MOUSE_BUTTON_RIGHT, true))
 	var canceled = await _consume(shell, horizontal_track)

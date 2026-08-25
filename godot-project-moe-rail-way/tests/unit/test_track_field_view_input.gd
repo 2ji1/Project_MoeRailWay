@@ -6,6 +6,8 @@ const SessionStartConfigScript = preload("res://src/domain/session/session_start
 const SessionControllerScript = preload("res://src/domain/session/session_controller.gd")
 const SessionSnapshotScript = preload("res://src/domain/session/session_snapshot.gd")
 const TrackCellRecordScript = preload("res://src/domain/track/track_cell_record.gd")
+const GridTrackRuntimeScript = preload("res://src/domain/track/grid_track_runtime.gd")
+const TrackGeometryPieceScript = preload("res://src/domain/track/track_geometry_piece.gd")
 const TrackFieldViewScript = preload("res://src/presentation/track/track_field_view.gd")
 
 
@@ -16,6 +18,10 @@ func run() -> PackedStringArray:
 	_test_resize_and_nonzero_canvas_offset_preserve_cells()
 	_test_grid_render_observation_reports_inclusive_nonzero_origin_geometry()
 	_test_valid_start_render_observation_tracks_empty_route_endpoint_and_completion()
+	_test_built_reflow_interval_stays_solid_without_provisional_style()
+	_test_ordinary_provisional_ghost_keeps_cancel_hover()
+	_test_locked_non_support_ghost_has_no_cancel_hover()
+	_test_exit_support_ghost_has_no_cancel_hover()
 	return finish()
 
 
@@ -74,6 +80,121 @@ func _local_for_logical(view, logical: Vector2) -> Vector2:
 
 func _deliver(view, event: InputEvent) -> void:
 	view.call("_gui_input", event)
+
+
+func _view_b_through_f_curve_piece() -> TrackGeometryPieceScript:
+	var piece = TrackGeometryPieceScript.new()
+	piece.group_id = 0
+	piece.kind = TrackGeometryPieceScript.Kind.CURVE_3X3
+	piece.first_route_serial = 1
+	piece.last_route_serial = 5
+	piece.nominal_length_cells = 5
+	piece.absolute_start_distance_cells = 0.0
+	var footprint: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0), Vector2i(3, 1), Vector2i(3, 2)]
+	piece.footprint_cells = footprint
+	piece.centerline = PackedVector2Array([Vector2(20.0, 20.0), Vector2(60.0, 20.0), Vector2(100.0, 20.0), Vector2(140.0, 60.0), Vector2(140.0, 100.0)])
+	piece.active_local_end_cells = 5.0
+	return piece
+
+
+func _view_straight_piece(route_serial: int, cell: Vector2i) -> TrackGeometryPieceScript:
+	var piece = TrackGeometryPieceScript.new()
+	piece.group_id = route_serial
+	piece.kind = TrackGeometryPieceScript.Kind.STRAIGHT
+	piece.first_route_serial = route_serial
+	piece.last_route_serial = route_serial
+	piece.nominal_length_cells = 1
+	piece.absolute_start_distance_cells = float(route_serial - 1)
+	var footprint: Array[Vector2i] = [cell]
+	piece.footprint_cells = footprint
+	var center := Vector2((float(cell.x) + 0.5) * 40.0, (float(cell.y) + 0.5) * 40.0)
+	piece.centerline = PackedVector2Array([center - Vector2(20.0, 0.0), center])
+	piece.active_local_end_cells = 1.0
+	return piece
+
+
+func _view_snapshot(records: Array[TrackCellRecordScript], pieces: Array[TrackGeometryPieceScript]) -> SessionSnapshotScript:
+	return SessionSnapshotScript.new(
+		1, 0, 1, 60, true, SessionControllerScript.State.PREPARING_DEPARTURE,
+		records, pieces
+	)
+
+
+func _exit_support_runtime() -> GridTrackRuntimeScript:
+	var runtime = GridTrackRuntimeScript.new(Vector2i(-1, 0), 18, Vector2.ZERO, Vector2i(8, 8), 40.0)
+	assert_equal(runtime.append_cells([
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+		Vector2i(2, 1), Vector2i(2, 2),
+	]), 5, "B through F curve fixture appends")
+	assert_equal(runtime.append_cells([Vector2i(2, 3)]), 1, "Distinct G continues F direction")
+	return runtime
+
+
+func _test_built_reflow_interval_stays_solid_without_provisional_style() -> void:
+	var fixture := _fixture()
+	var built = TrackCellRecordScript.new(1, Vector2i(1, 0), 0.0)
+	built.state = TrackCellRecordScript.State.BUILT
+	var curve = _view_b_through_f_curve_piece()
+	fixture.view.present(_view_snapshot([built], [curve]))
+	var intervals: Array = fixture.view.get_render_observation().get("intervals", [])
+	var interval: Dictionary = intervals[0]
+	assert_equal(interval.state, TrackCellRecordScript.State.BUILT, "Built state remains authoritative")
+	assert_true(interval.locked == false, "Provisionality is metadata, not ghost state")
+	fixture.parent.free()
+
+
+func _test_ordinary_provisional_ghost_keeps_cancel_hover() -> void:
+	var fixture := _fixture()
+	var ghost = TrackCellRecordScript.new(6, Vector2i(3, 2), 5.0)
+	ghost.state = TrackCellRecordScript.State.RESERVED_GHOST
+	fixture.view.present(_view_snapshot([ghost], [_view_straight_piece(6, ghost.cell)]))
+	_deliver(fixture.view, _motion(_local_for_logical(fixture.view, Vector2(140.0, 100.0))))
+	assert_equal(fixture.view.get_render_observation().get("hover_cancel_cell", Vector2i(-1, -1)), Vector2i(3, 2), "Ordinary provisional ghost has cancel hover")
+	fixture.parent.free()
+
+
+func _test_locked_non_support_ghost_has_no_cancel_hover() -> void:
+	var fixture := _fixture()
+	var ghost = TrackCellRecordScript.new(6, Vector2i(3, 2), 5.0)
+	ghost.state = TrackCellRecordScript.State.RESERVED_GHOST
+	ghost.geometry_locked = true
+	var locked_piece = _view_straight_piece(6, ghost.cell)
+	locked_piece.locked = true
+	fixture.view.present(_view_snapshot([ghost], [locked_piece]))
+	_deliver(fixture.view, _motion(_local_for_logical(fixture.view, Vector2(140.0, 100.0))))
+	assert_equal(fixture.view.get_render_observation().get("hover_cancel_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Locked non-support ghost has no hover")
+	fixture.parent.free()
+
+
+func _test_exit_support_ghost_has_no_cancel_hover() -> void:
+	var fixture := _fixture()
+	var runtime = _exit_support_runtime()
+	var records: Array[TrackCellRecordScript] = runtime.get_cell_records()
+	var pieces: Array[TrackGeometryPieceScript] = runtime.get_geometry_pieces()
+	assert_equal(records.size(), 6, "Snapshot contains active B through G records")
+	var predecessor = null
+	var support_owner = null
+	for piece in pieces:
+		if piece.contains_serial(1):
+			predecessor = piece
+		if piece.contains_serial(6):
+			support_owner = piece
+	assert_not_null(predecessor, "B through F predecessor piece exists")
+	assert_not_null(support_owner, "G has its own detached active piece")
+	if predecessor != null:
+		assert_true(predecessor.locked, "Horizon locks B through F")
+		assert_equal(predecessor.exit_support_route_serial, 6, "Locked predecessor names G as support")
+	if support_owner != null:
+		assert_false(support_owner.locked, "G support piece remains provisional")
+	var support_owners := 0
+	for piece in pieces:
+		if piece.contains_serial(6):
+			support_owners += 1
+	assert_equal(support_owners, 1, "G has exactly one owning detached piece")
+	fixture.view.present(_view_snapshot(records, pieces))
+	_deliver(fixture.view, _motion(_local_for_logical(fixture.view, Vector2(100.0, 140.0))))
+	assert_equal(fixture.view.get_render_observation().get("hover_cancel_cell", Vector2i.ZERO), Vector2i(-1, -1), "Support has no hover")
+	fixture.parent.free()
 
 
 func _test_horizontal_and_l_shaped_physical_events() -> void:
