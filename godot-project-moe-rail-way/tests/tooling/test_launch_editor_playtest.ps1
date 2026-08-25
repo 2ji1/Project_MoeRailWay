@@ -326,6 +326,7 @@ public class FakeGodot {
     & $assertBuildTree
     $publishResult = & $invokeDotnet -Arguments @(
         'publish',$projectFile,'-c','Release','-r','win-x64','--self-contained','false','--no-restore',
+        '--disable-build-servers','-p:UseSharedCompilation=false',
         '-p:PublishSingleFile=false','-p:DebugType=none','-p:DebugSymbols=false','-o',$publishDir
     )
     if ($publishResult.ExitCode -ne 0) { throw "dotnet publish failed: $($publishResult.Stdout) $($publishResult.Stderr)" }
