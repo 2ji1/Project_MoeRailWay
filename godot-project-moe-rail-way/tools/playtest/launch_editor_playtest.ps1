@@ -4,15 +4,20 @@ param(
     [string]$RepositoryRoot = (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))),
     [string]$GodotExecutable = "D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64.exe",
     [string]$GitExecutable,
-    [string]$TarExecutable,
     [ValidateSet('VerifyMirror')]
     [string]$Mode = 'VerifyMirror',
-    [string]$TempParent = $null
+    [string]$TempParent = $null,
+    [Parameter(DontShow)]
+    [string]$TestReadyEventName = $null,
+    [Parameter(DontShow)]
+    [string]$TestReleaseEventName = $null
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
+$CapturedTempParentIdentity = $null
+$CapturedRootIdentity = $null
 
 function Get-CanonicalPath {
     param([string]$Path)
@@ -22,10 +27,10 @@ function Get-CanonicalPath {
     return $full.TrimEnd([IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar)
 }
 
-# Resolve GitExecutable and TarExecutable with controlled preflight
+# Resolve GitExecutable and read-only fsutil with controlled preflight
 try {
     if ($null -eq $GitExecutable) { $GitExecutable = (Get-Command git.exe -ErrorAction Stop).Source }
-    if ($null -eq $TarExecutable) { $TarExecutable = (Get-Command tar.exe -ErrorAction Stop).Source }
+    $FsutilExecutable = (Get-Command fsutil.exe -ErrorAction Stop).Source
 }
 catch {
     [Console]::Error.WriteLine("Preflight failed: required tool not found - $($_.Exception.Message)")
@@ -62,6 +67,52 @@ function Invoke-NativeText {
     }
     finally {
         $proc.Dispose()
+    }
+}
+
+function Get-DirectoryIdentity {
+    param([string]$Path)
+    $canonical = Get-CanonicalPath -Path $Path
+    $result = Invoke-NativeText -Executable $FsutilExecutable -Arguments @('file','queryfileid',$canonical) -WorkingDirectory $canonical
+    if ($result.ExitCode -ne 0) { throw "fsutil queryfileid failed for ${canonical}: $($result.Stderr)" }
+    $identityMatches = [regex]::Matches($result.Stdout,'(?i)0x[0-9a-f]{32}')
+    if ($identityMatches.Count -ne 1) { throw "Unexpected fsutil queryfileid output for ${canonical}: $($result.Stdout)" }
+    $volumeRoot = [IO.Path]::GetPathRoot($canonical).ToUpperInvariant()
+    return "$volumeRoot|$($identityMatches[0].Value.ToLowerInvariant())"
+}
+
+function Wait-TestCleanupBarrier {
+    if ([string]::IsNullOrWhiteSpace($TestReadyEventName)) { return }
+    $readyEvent = $null
+    $releaseEvent = $null
+    try {
+        $readyEvent = [Threading.EventWaitHandle]::OpenExisting($TestReadyEventName)
+        $releaseEvent = [Threading.EventWaitHandle]::OpenExisting($TestReleaseEventName)
+        $readyEvent.Set() | Out-Null
+        if (-not $releaseEvent.WaitOne([TimeSpan]::FromSeconds(30))) { throw 'Test release event timed out' }
+    }
+    finally {
+        if ($null -ne $releaseEvent) { $releaseEvent.Dispose() }
+        if ($null -ne $readyEvent) { $readyEvent.Dispose() }
+    }
+}
+
+function Test-CapturedRootReachable {
+    param([string]$Root,[string]$ResolvedTempParent)
+    if ($null -eq $script:CapturedTempParentIdentity -or $null -eq $script:CapturedRootIdentity) { return $false }
+    try {
+        $canonicalTempParent = Get-CanonicalPath -Path $ResolvedTempParent
+        Assert-ExistingOrdinaryPathChain -Path $canonicalTempParent -Boundary ([IO.Path]::GetPathRoot($canonicalTempParent)) | Out-Null
+        if ((Get-DirectoryIdentity -Path $canonicalTempParent) -cne $script:CapturedTempParentIdentity) { return $false }
+        $canonicalRoot = Get-CanonicalPath -Path $Root
+        if (-not [IO.Path]::GetDirectoryName($canonicalRoot).Equals($canonicalTempParent,[StringComparison]::OrdinalIgnoreCase)) { return $false }
+        if (-not [IO.Path]::GetFileName($canonicalRoot).StartsWith('moerail-editor-playtest-',[StringComparison]::Ordinal)) { return $false }
+        if (-not (Test-Path -LiteralPath $canonicalRoot -PathType Container)) { return $false }
+        Assert-ExistingOrdinaryPathChain -Path $canonicalRoot -Boundary $canonicalTempParent | Out-Null
+        return (Get-DirectoryIdentity -Path $canonicalRoot) -ceq $script:CapturedRootIdentity
+    }
+    catch {
+        return $false
     }
 }
 
@@ -121,33 +172,41 @@ function Get-PinnedManifest {
     $psi.RedirectStandardError = $true
     $psi.WorkingDirectory = $RepositoryRoot
     $psi.ArgumentList.Add('ls-tree')
-    $psi.ArgumentList.Add('-r')
+    $psi.ArgumentList.Add('-rz')
     $psi.ArgumentList.Add('--full-tree')
     $psi.ArgumentList.Add($SourceHead)
     $psi.ArgumentList.Add('--')
     $psi.ArgumentList.Add('godot-project-moe-rail-way/')
     $proc = [System.Diagnostics.Process]::Start($psi)
+    $stdoutBytes = [IO.MemoryStream]::new()
     try {
-        $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
         $stderrTask = $proc.StandardError.ReadToEndAsync()
+        $copyTask = $proc.StandardOutput.BaseStream.CopyToAsync($stdoutBytes)
         $proc.WaitForExit()
-        $stdoutTask.Wait()
+        $copyTask.Wait()
         $stderrTask.Wait()
         if ($proc.ExitCode -ne 0) { throw "git ls-tree failed: $($stderrTask.Result)" }
-        $treeText = $stdoutTask.Result
+        $treeBytes = $stdoutBytes.ToArray()
     }
     finally {
+        $stdoutBytes.Dispose()
         $proc.Dispose()
     }
-    $lines = $treeText -split "`r?`n" | Where-Object { $_ -ne '' }
-    if ($lines.Count -eq 0) {
+    try {
+        $treeText = [Text.UTF8Encoding]::new($false,$true).GetString($treeBytes)
+    }
+    catch {
+        throw "git ls-tree returned invalid UTF-8: $($_.Exception.Message)"
+    }
+    $records = @($treeText -split "`0" | Where-Object { $_ -ne '' })
+    if ($records.Count -eq 0) {
         throw "Pinned manifest empty: no tracked files under godot-project-moe-rail-way/"
     }
     $manifest = [ordered]@{}
     $seen = @{}
-    foreach ($line in $lines) {
-        $parts = $line -split "`t", 2
-        if ($parts.Count -ne 2) { throw "Malformed ls-tree line: $line" }
+    foreach ($record in $records) {
+        $parts = $record -split "`t", 2
+        if ($parts.Count -ne 2) { throw "Malformed ls-tree record: $record" }
         $meta = $parts[0]
         $path = $parts[1]
         $metaParts = $meta -split ' '
@@ -266,6 +325,13 @@ function Assert-OwnedRoot {
     )
     $canonicalRoot = Get-CanonicalPath -Path $Root
     $canonicalTempParent = Get-CanonicalPath -Path $ResolvedTempParent
+    Assert-ExistingOrdinaryPathChain -Path $canonicalTempParent -Boundary ([IO.Path]::GetPathRoot($canonicalTempParent)) | Out-Null
+    if ($null -ne $script:CapturedTempParentIdentity) {
+        $currentTempParentIdentity = Get-DirectoryIdentity -Path $canonicalTempParent
+        if ($currentTempParentIdentity -cne $script:CapturedTempParentIdentity) {
+            throw "TempParent identity changed: $canonicalTempParent"
+        }
+    }
     if (-not [IO.Path]::GetDirectoryName($canonicalRoot).Equals($canonicalTempParent, [StringComparison]::OrdinalIgnoreCase)) {
         throw "Root immediate parent mismatch: $canonicalRoot"
     }
@@ -276,6 +342,10 @@ function Assert-OwnedRoot {
     if ($RequireExists) {
         if (-not (Test-Path -LiteralPath $canonicalRoot -PathType Container)) { throw "Root is not a directory: $canonicalRoot" }
         Assert-ExistingOrdinaryPathChain -Path $canonicalRoot -Boundary $canonicalTempParent | Out-Null
+        if ($null -ne $script:CapturedRootIdentity) {
+            $currentRootIdentity = Get-DirectoryIdentity -Path $canonicalRoot
+            if ($currentRootIdentity -cne $script:CapturedRootIdentity) { throw "Root identity changed: $canonicalRoot" }
+        }
         $dirs = @($canonicalRoot)
         $idx = 0
         while ($idx -lt $dirs.Count) {
@@ -373,9 +443,21 @@ function Compare-MirrorToPinnedManifest {
 $Root = $null
 try {
 # 1. Resolve RepositoryRoot, tools, exact Godot version
-$RepositoryRoot = [IO.Path]::GetFullPath($RepositoryRoot)
+$RepositoryRoot = Get-CanonicalPath -Path $RepositoryRoot
 if ($null -eq $TempParent) { $TempParent = [IO.Path]::GetTempPath() }
 $TempParent = Get-CanonicalPath -Path $TempParent
+$hasTestReadyEvent = -not [string]::IsNullOrWhiteSpace($TestReadyEventName)
+$hasTestReleaseEvent = -not [string]::IsNullOrWhiteSpace($TestReleaseEventName)
+if ($hasTestReadyEvent -ne $hasTestReleaseEvent) { throw 'Test ready/release events must be supplied together' }
+$repositoryPrefix = $RepositoryRoot
+if (-not $repositoryPrefix.EndsWith([IO.Path]::DirectorySeparatorChar) -and
+    -not $repositoryPrefix.EndsWith([IO.Path]::AltDirectorySeparatorChar)) {
+    $repositoryPrefix += [IO.Path]::DirectorySeparatorChar
+}
+if ($TempParent.Equals($RepositoryRoot,[StringComparison]::OrdinalIgnoreCase) -or
+    $TempParent.StartsWith($repositoryPrefix,[StringComparison]::OrdinalIgnoreCase)) {
+    throw "TempParent must be outside RepositoryRoot: $TempParent"
+}
 
 # Validate Godot version
 if (-not (Test-Path -LiteralPath $GodotExecutable -PathType Leaf)) { throw 'Godot executable missing' }
@@ -415,6 +497,7 @@ $SnapshotBefore = Get-SourceSnapshot -RepositoryRoot $RepositoryRoot -GitExecuta
 
 # 6. Resolve TempParent and validate its entire existing path chain non-reparse; capture pre-root directory set
 Assert-ExistingOrdinaryPathChain -Path $TempParent -Boundary ([IO.Path]::GetPathRoot($TempParent)) | Out-Null
+$script:CapturedTempParentIdentity = Get-DirectoryIdentity -Path $TempParent
 $preRootDirs = @()
 if (Test-Path $TempParent) {
     $preRootDirs = Get-ChildItem -LiteralPath $TempParent -Directory -Filter 'moerail-editor-playtest-*' -ErrorAction Stop | ForEach-Object { $_.FullName }
@@ -433,6 +516,7 @@ catch {
 try {
 [IO.Directory]::CreateDirectory($Root) | Out-Null
 Assert-OwnedRoot -Root $Root -ResolvedTempParent $TempParent -RequireExists $true | Out-Null
+$script:CapturedRootIdentity = Get-DirectoryIdentity -Path $Root
 $projectMirror = Join-Path $Root 'project'
 $envAppData = Join-Path $Root 'environment\appdata'
 $envLocalAppData = Join-Path $Root 'environment\localappdata'
@@ -449,13 +533,12 @@ Assert-OwnedRoot -Root $Root -ResolvedTempParent $TempParent -RequireExists $tru
 
     # Archive
     $archivePath = Join-Path $Root 'mirror.tar'
-    $archiveResult = Invoke-NativeText -Executable $GitExecutable -Arguments @('-c', 'core.autocrlf=false', 'archive', '--format=tar', "--output=$archivePath", $SourceHead, '--', 'godot-project-moe-rail-way/') -WorkingDirectory $RepositoryRoot
+    $archiveResult = Invoke-NativeText -Executable $GitExecutable -Arguments @('-c', 'core.autocrlf=false', 'archive', '--format=tar', "--output=$archivePath", "${SourceHead}:godot-project-moe-rail-way") -WorkingDirectory $RepositoryRoot
     if ($archiveResult.ExitCode -ne 0) { throw "git archive failed: $($archiveResult.Stderr)" }
     Assert-ExistingOrdinaryPathChain -Path $archivePath -Boundary $Root | Out-Null
 
-    # Extract
-    $extractResult = Invoke-NativeText -Executable $TarExecutable -Arguments @('-xf', $archivePath, '-C', $projectMirror, '--strip-components', '1') -WorkingDirectory $Root
-    if ($extractResult.ExitCode -ne 0) { throw "tar extract failed: $($extractResult.Stderr)" }
+    # Extract with .NET TarFile because Windows tar.exe cannot extract every valid UTF-8/emoji Git path.
+    [System.Formats.Tar.TarFile]::ExtractToDirectory($archivePath,$projectMirror,$false)
 
     # Reject archive-created links before any recursive traversal.
     Assert-OwnedRoot -Root $Root -ResolvedTempParent $TempParent -RequireExists $true | Out-Null
@@ -473,6 +556,7 @@ Assert-OwnedRoot -Root $Root -ResolvedTempParent $TempParent -RequireExists $tru
     # Before success cleanup: build final SourceSnapshotAfter, compare Before, call Remove-OwnedRoot, confirm absence
     $SnapshotAfter = Get-SourceSnapshot -RepositoryRoot $RepositoryRoot -GitExecutable $GitExecutable -SourceHead $SourceHead -PinnedManifest $PinnedManifest
     Assert-SourceSnapshotUnchanged -Before $SnapshotBefore -After $SnapshotAfter
+    Wait-TestCleanupBarrier
     Remove-OwnedRoot -Root $Root -ResolvedTempParent $TempParent
     if (Test-Path -LiteralPath $Root) { throw "Root still exists after cleanup: $Root" }
 
@@ -480,11 +564,15 @@ Assert-OwnedRoot -Root $Root -ResolvedTempParent $TempParent -RequireExists $tru
     exit 0
 }
 catch {
-    if (Test-Path -LiteralPath $Root) {
+    $failureException = $_.Exception
+    $rootIdentityStillMatches = Test-CapturedRootReachable -Root $Root -ResolvedTempParent $TempParent
+    if ($rootIdentityStillMatches) {
         Write-Host "PRESERVED_MIRROR: $Root"
+    } elseif ($null -ne $script:CapturedRootIdentity) {
+        Write-Host "MIRROR_IDENTITY_LOST: last-known-path=$Root captured-identity=$($script:CapturedRootIdentity)"
     } else {
         Write-Host "MIRROR_CREATION_FAILED: $Root"
     }
-    [Console]::Error.WriteLine($_.Exception.Message)
+    [Console]::Error.WriteLine($failureException.Message)
     exit 1
 }

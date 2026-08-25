@@ -310,7 +310,6 @@ function Invoke-Launcher {
         [string]$RepositoryRoot,
         [string]$GodotExecutable,
         [string]$GitExecutable,
-        [string]$TarExecutable,
         [string]$Mode = 'VerifyMirror',
         [string]$TempParent,
         [Collections.IDictionary]$EnvOverrides = @{}
@@ -329,8 +328,6 @@ function Invoke-Launcher {
     $psi.ArgumentList.Add($GodotExecutable)
     $psi.ArgumentList.Add('-GitExecutable')
     $psi.ArgumentList.Add($GitExecutable)
-    $psi.ArgumentList.Add('-TarExecutable')
-    $psi.ArgumentList.Add($TarExecutable)
     $psi.ArgumentList.Add('-Mode')
     $psi.ArgumentList.Add($Mode)
     if ($TempParent) {
@@ -358,6 +355,43 @@ function Invoke-Launcher {
     }
 }
 
+function Wait-TestLauncherReadyOrThrow {
+    param(
+        [Threading.EventWaitHandle]$ReadyEvent,
+        [Diagnostics.Process]$Process,
+        [Threading.Tasks.Task]$StdoutTask,
+        [Threading.Tasks.Task]$StderrTask
+    )
+    $readyClock = [Diagnostics.Stopwatch]::StartNew()
+    while ($readyClock.Elapsed -lt [TimeSpan]::FromSeconds(30)) {
+        if ($ReadyEvent.WaitOne([TimeSpan]::FromMilliseconds(50))) { return }
+        if ($Process.HasExited) {
+            $exitCode = $Process.ExitCode
+            $earlyStderr = '<stdout/stderr streams did not drain within 5 seconds>'
+            try {
+                $streamsDrained = [Threading.Tasks.Task]::WaitAll(
+                    [Threading.Tasks.Task[]]@($StdoutTask,$StderrTask),
+                    [TimeSpan]::FromSeconds(5)
+                )
+                if ($streamsDrained) {
+                    try {
+                        $earlyStderr = $StderrTask.Result
+                        if ([string]::IsNullOrEmpty($earlyStderr)) { $earlyStderr = '<empty>' }
+                    }
+                    catch {
+                        $earlyStderr = "<stderr capture faulted: $($_.Exception.GetBaseException().Message)>"
+                    }
+                }
+            }
+            catch {
+                $earlyStderr = "<stdout/stderr drain faulted: $($_.Exception.GetBaseException().Message)>"
+            }
+            throw "Launcher exited before ready: exit=$exitCode stderr=$earlyStderr"
+        }
+    }
+    throw 'Identity fixture ready event timed out'
+}
+
 function Get-MoerailDirs {
     param([string]$TempParent)
     if (-not (Test-Path $TempParent)) { return @() }
@@ -376,9 +410,39 @@ function Get-FixtureSnapshot {
     $status = (& git.exe -C $RepositoryRoot status --porcelain=v1 -u) -join "`n"
     if ($LASTEXITCODE -ne 0) { throw 'Fixture status query failed' }
     $hashes = [ordered]@{}
-    $tracked = & git.exe -C $RepositoryRoot ls-tree -r --name-only HEAD -- 'godot-project-moe-rail-way/'
-    if ($LASTEXITCODE -ne 0) { throw 'Fixture tracked path query failed' }
+    $psi = [Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = (Get-Command git.exe -ErrorAction Stop).Source
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    foreach ($argument in @('-C',$RepositoryRoot,'ls-tree','-rz','--name-only','HEAD','--','godot-project-moe-rail-way/')) {
+        $psi.ArgumentList.Add($argument)
+    }
+    $process = [Diagnostics.Process]::Start($psi)
+    $stdoutBytes = [IO.MemoryStream]::new()
+    try {
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $copyTask = $process.StandardOutput.BaseStream.CopyToAsync($stdoutBytes)
+        $process.WaitForExit()
+        $copyTask.Wait()
+        $stderrTask.Wait()
+        if ($process.ExitCode -ne 0) { throw "Fixture tracked path query failed: $($stderrTask.Result)" }
+        $trackedBytes = $stdoutBytes.ToArray()
+    }
+    finally {
+        $stdoutBytes.Dispose()
+        $process.Dispose()
+    }
+    try {
+        $trackedText = [Text.UTF8Encoding]::new($false,$true).GetString($trackedBytes)
+    }
+    catch {
+        throw "Fixture tracked path output is invalid UTF-8: $($_.Exception.Message)"
+    }
+    $tracked = @($trackedText -split "`0" | Where-Object { $_ -ne '' })
+    if ($tracked.Count -eq 0) { throw 'Fixture tracked path query returned no files' }
     foreach ($relative in $tracked) {
+        if ($relative -match '[\r\n\t]') { throw "Fixture tracked path contains CR/LF/TAB: $relative" }
         $full = Join-Path $RepositoryRoot $relative
         if (-not (Test-Path -LiteralPath $full -PathType Leaf)) { throw "Fixture tracked file missing: $relative" }
         $hashes[$relative.Replace('\','/')] = (Get-FileHash -LiteralPath $full -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
@@ -429,6 +493,7 @@ $projectRoot = Join-Path $cloneRoot 'godot-project-moe-rail-way'
 [IO.Directory]::CreateDirectory($projectRoot) | Out-Null
 Write-ProjectGodot -ProjectRoot $projectRoot
 Write-BinaryFixture -ProjectRoot $projectRoot -RelativePath 'assets/test.bin' -Bytes @(0x01,0x02,0x03,0x04)
+Write-BinaryFixture -ProjectRoot $projectRoot -RelativePath 'assets/선로-🚆.bin' -Bytes @(0xF0,0x9F,0x9A,0x86)
 & git.exe -C $cloneRoot add --all
 & git.exe -C $cloneRoot commit -m 'Initial commit'
 & git.exe -C $cloneRoot push -u origin main
@@ -438,62 +503,385 @@ function CaptureMoerailDirs { return Get-MoerailDirs -TempParent $testTempParent
 
 # ---- CASE 1: Wrong version -> exit 2, no root ----
 $dirsBefore = CaptureMoerailDirs
-$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TarExecutable (Get-Command tar.exe).Source -TempParent $testTempParent -EnvOverrides @{ MOERAIL_FAKE_VERSION = '4.7.2.stable.steam.ed1daf0bf' }
+$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $testTempParent -EnvOverrides @{ MOERAIL_FAKE_VERSION = '4.7.2.stable.steam.ed1daf0bf' }
 $dirsAfter = CaptureMoerailDirs
 Assert-ExitCode -Expected 2 -Actual $result.ExitCode -Message ' (wrong version)'
 Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $dirsBefore -After $dirsAfter -Message ' (wrong version)'
 
+# ---- CASE 1B: Child exits before ready -> exact exit/stderr diagnostic ----
+$earlyFixtureBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+$earlyDirsBefore = CaptureMoerailDirs
+$earlyReadyEventName = "Local\moerail-early-ready-$(New-Guid)"
+$earlyReleaseEventName = "Local\moerail-early-release-$(New-Guid)"
+$earlyReadyEvent = $null
+$earlyReleaseEvent = $null
+$earlyProcess = $null
+$earlyStdoutTask = $null
+$earlyStderrTask = $null
+$earlyDiagnostic = $null
+$earlyCleanupErrors = [Collections.Generic.List[string]]::new()
+try {
+    $earlyReadyEvent = [Threading.EventWaitHandle]::new($false,[Threading.EventResetMode]::ManualReset,$earlyReadyEventName)
+    $earlyReleaseEvent = [Threading.EventWaitHandle]::new($false,[Threading.EventResetMode]::ManualReset,$earlyReleaseEventName)
+    $earlyPsi = [Diagnostics.ProcessStartInfo]::new()
+    $earlyPsi.FileName = 'pwsh.exe'
+    $earlyPsi.UseShellExecute = $false
+    $earlyPsi.RedirectStandardOutput = $true
+    $earlyPsi.RedirectStandardError = $true
+    foreach ($argument in @(
+        '-NoProfile','-File',$launcherPath,
+        '-RepositoryRoot',$cloneRoot,
+        '-GodotExecutable',$fakeGodotExe,
+        '-GitExecutable',(Get-Command git.exe).Source,
+        '-Mode','VerifyMirror',
+        '-TempParent',$testTempParent,
+        '-TestReadyEventName',$earlyReadyEventName,
+        '-TestReleaseEventName',$earlyReleaseEventName
+    )) { $earlyPsi.ArgumentList.Add($argument) }
+    $earlyPsi.Environment['MOERAIL_FAKE_VERSION'] = '4.7.2.stable.steam.ed1daf0bf'
+    $earlyProcess = [Diagnostics.Process]::Start($earlyPsi)
+    $earlyStdoutTask = $earlyProcess.StandardOutput.ReadToEndAsync()
+    $earlyStderrTask = $earlyProcess.StandardError.ReadToEndAsync()
+    Wait-TestLauncherReadyOrThrow -ReadyEvent $earlyReadyEvent -Process $earlyProcess -StdoutTask $earlyStdoutTask -StderrTask $earlyStderrTask
+    throw 'Early-exit fixture unexpectedly reached ready'
+}
+catch {
+    $earlyDiagnostic = $_.Exception.Message
+}
+finally {
+    if ($null -ne $earlyReleaseEvent) { $earlyReleaseEvent.Set() | Out-Null }
+    if ($null -ne $earlyProcess) {
+        if (-not $earlyProcess.HasExited -and -not $earlyProcess.WaitForExit(5000)) {
+            try { $earlyProcess.Kill($true) }
+            catch [InvalidOperationException] {
+                # Natural exit won the race.
+            }
+            catch { $earlyCleanupErrors.Add("Early-exit fixture bounded cleanup failed: $($_.Exception.Message)") }
+            if (-not $earlyProcess.HasExited -and -not $earlyProcess.WaitForExit(5000)) {
+                $earlyCleanupErrors.Add('Early-exit fixture process remained alive after bounded cleanup')
+            }
+        }
+        if ($null -ne $earlyStdoutTask -and $null -ne $earlyStderrTask) {
+            try {
+                if (-not [Threading.Tasks.Task]::WaitAll(
+                    [Threading.Tasks.Task[]]@($earlyStdoutTask,$earlyStderrTask),
+                    [TimeSpan]::FromSeconds(5)
+                )) { $earlyCleanupErrors.Add('Early-exit fixture stream drain remained incomplete') }
+            }
+            catch { $earlyCleanupErrors.Add("Early-exit fixture stream drain failed: $($_.Exception.Message)") }
+        }
+        try { $earlyProcess.Dispose() } catch { $earlyCleanupErrors.Add("Early-exit fixture process dispose failed: $($_.Exception.Message)") }
+    }
+    if ($null -ne $earlyReleaseEvent) {
+        try { $earlyReleaseEvent.Dispose() } catch { $earlyCleanupErrors.Add("Early release event dispose failed: $($_.Exception.Message)") }
+    }
+    if ($null -ne $earlyReadyEvent) {
+        try { $earlyReadyEvent.Dispose() } catch { $earlyCleanupErrors.Add("Early ready event dispose failed: $($_.Exception.Message)") }
+    }
+}
+if ($earlyCleanupErrors.Count -ne 0) {
+    throw ((@("Early-exit diagnostic: $earlyDiagnostic") + @($earlyCleanupErrors)) -join [Environment]::NewLine)
+}
+if ($null -eq $earlyDiagnostic) { throw 'Early-exit fixture produced no diagnostic' }
+Assert-OutputContains -Needle 'Launcher exited before ready: exit=2 stderr=Preflight failed: Godot version mismatch:' -Haystack $earlyDiagnostic -Message ' (early exit code/reason)'
+Assert-OutputContains -Needle '4.7.2.stable.steam.ed1daf0bf' -Haystack $earlyDiagnostic -Message ' (early exit actual version)'
+$earlyDirsAfter = CaptureMoerailDirs
+Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $earlyDirsBefore -After $earlyDirsAfter -Message ' (early exit)'
+$earlyFixtureAfter = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+Assert-FixtureSnapshotUnchanged -Before $earlyFixtureBefore -After $earlyFixtureAfter
+
 # ---- CASE 2: Feature branch -> exit 2, no root ----
 & git.exe -C $cloneRoot checkout -b feature-branch
 $dirsBefore = CaptureMoerailDirs
-$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TarExecutable (Get-Command tar.exe).Source -TempParent $testTempParent
+$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $testTempParent
 $dirsAfter = CaptureMoerailDirs
 Assert-ExitCode -Expected 2 -Actual $result.ExitCode -Message ' (feature branch)'
 Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $dirsBefore -After $dirsAfter -Message ' (feature branch)'
 & git.exe -C $cloneRoot checkout main
 & git.exe -C $cloneRoot branch -D feature-branch
 
-# ---- CASE 3: Dirty tracked + untracked -> exit 2, no root ----
-Write-BinaryFixture -ProjectRoot $projectRoot -RelativePath 'assets/test.bin' -Bytes @(0xFF)
-[IO.File]::WriteAllText((Join-Path $projectRoot 'untracked.txt'), 'untracked', [Text.Encoding]::UTF8)
-$dirsBefore = CaptureMoerailDirs
-$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TarExecutable (Get-Command tar.exe).Source -TempParent $testTempParent
-$dirsAfter = CaptureMoerailDirs
-Assert-ExitCode -Expected 2 -Actual $result.ExitCode -Message ' (dirty)'
-Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $dirsBefore -After $dirsAfter -Message ' (dirty)'
-& git.exe -C $cloneRoot checkout -- .
-if ($LASTEXITCODE -ne 0) { throw 'Fixture tracked reset failed' }
-Remove-Item -LiteralPath (Join-Path $projectRoot 'untracked.txt') -Force -ErrorAction Stop
+# ---- CASE 3: Repository-owned TempParent -> exit 2, no root, no source change ----
+foreach ($insideTempParent in @($cloneRoot,$projectRoot)) {
+    $fixtureBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+    $dirsBefore = @(Get-MoerailDirs -TempParent $insideTempParent)
+    $result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $insideTempParent
+    $dirsAfter = @(Get-MoerailDirs -TempParent $insideTempParent)
+    Assert-ExitCode -Expected 2 -Actual $result.ExitCode -Message " (repository TempParent: $insideTempParent)"
+    Assert-OutputContains -Needle 'TempParent must be outside RepositoryRoot:' -Haystack $result.Stderr -Message ' (repository TempParent reason)'
+    Assert-DirectorySetUnchanged -TempParent $insideTempParent -Before $dirsBefore -After $dirsAfter -Message ' (repository TempParent)'
+    $fixtureAfter = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+    Assert-FixtureSnapshotUnchanged -Before $fixtureBefore -After $fixtureAfter
+}
 
-# ---- CASE 4: Local-ahead divergence -> exit 2, no root ----
+# ---- CASE 3B: Synthetic Git mode 120000 -> exit 2 before root ----
+$modeOrigin = Join-Path $testTempParent 'mode-origin.git'
+$modeClone = Join-Path $testTempParent 'mode-clone'
+New-TestBareOrigin -Path $modeOrigin
+New-TestClone -OriginPath $modeOrigin -ClonePath $modeClone -UserName 'Mode Test' -UserEmail 'mode@example.com'
+& git.exe -C $modeClone config --local core.symlinks false
+if ($LASTEXITCODE -ne 0) { throw 'Mode fixture core.symlinks configuration failed' }
+$modeProjectRoot = Join-Path $modeClone 'godot-project-moe-rail-way'
+[IO.Directory]::CreateDirectory($modeProjectRoot) | Out-Null
+Write-ProjectGodot -ProjectRoot $modeProjectRoot
+& git.exe -C $modeClone add --all
+& git.exe -C $modeClone commit -m 'Initial mode fixture'
+$hashPsi = [Diagnostics.ProcessStartInfo]::new()
+$hashPsi.FileName = (Get-Command git.exe -ErrorAction Stop).Source
+$hashPsi.UseShellExecute = $false
+$hashPsi.RedirectStandardInput = $true
+$hashPsi.RedirectStandardOutput = $true
+$hashPsi.RedirectStandardError = $true
+$hashPsi.WorkingDirectory = $modeClone
+foreach ($argument in @('-C',$modeClone,'hash-object','-w','--stdin')) { $hashPsi.ArgumentList.Add($argument) }
+$hashProcess = [Diagnostics.Process]::Start($hashPsi)
+try {
+    $hashStdoutTask = $hashProcess.StandardOutput.ReadToEndAsync()
+    $hashStderrTask = $hashProcess.StandardError.ReadToEndAsync()
+    $linkTargetBytes = [Text.UTF8Encoding]::new($false).GetBytes('assets/test.bin')
+    $hashProcess.StandardInput.BaseStream.Write($linkTargetBytes,0,$linkTargetBytes.Length)
+    $hashProcess.StandardInput.Close()
+    $hashProcess.WaitForExit()
+    $hashStdoutTask.Wait()
+    $hashStderrTask.Wait()
+    $linkOid = $hashStdoutTask.Result.Trim()
+    if ($hashProcess.ExitCode -ne 0 -or $linkOid -notmatch '^[0-9a-f]{40,64}$') {
+        throw "Mode fixture blob creation failed: exit=$($hashProcess.ExitCode) oid=$linkOid stderr=$($hashStderrTask.Result)"
+    }
+}
+finally {
+    $hashProcess.Dispose()
+}
+& git.exe -C $modeClone update-index --add --cacheinfo 120000 $linkOid 'godot-project-moe-rail-way/assets/link-fixture'
+if ($LASTEXITCODE -ne 0) { throw 'Mode fixture index update failed' }
+& git.exe -C $modeClone commit -m 'Add synthetic symlink mode'
+if ($LASTEXITCODE -ne 0) { throw 'Mode fixture commit failed' }
+& git.exe -C $modeClone checkout -- 'godot-project-moe-rail-way/assets/link-fixture'
+if ($LASTEXITCODE -ne 0) { throw 'Mode fixture worktree materialization failed' }
+$linkFixturePath = Join-Path $modeClone 'godot-project-moe-rail-way\assets\link-fixture'
+$linkFixtureItem = Get-Item -LiteralPath $linkFixturePath -Force -ErrorAction Stop
+if ($linkFixtureItem.PSIsContainer -or ($linkFixtureItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+    throw "Mode fixture did not materialize as an ordinary leaf: $linkFixturePath"
+}
+& git.exe -C $modeClone push -u origin main
+if ($LASTEXITCODE -ne 0) { throw 'Mode fixture push failed' }
+$modeFixtureBefore = Get-FixtureSnapshot -RepositoryRoot $modeClone
+$modeDirsBefore = CaptureMoerailDirs
+$modeResult = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $modeClone -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $testTempParent
+$modeDirsAfter = CaptureMoerailDirs
+Assert-ExitCode -Expected 2 -Actual $modeResult.ExitCode -Message ' (synthetic mode 120000)'
+Assert-OutputContains -Needle 'Invalid mode 120000 for godot-project-moe-rail-way/assets/link-fixture' -Haystack $modeResult.Stderr -Message ' (synthetic mode reason)'
+Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $modeDirsBefore -After $modeDirsAfter -Message ' (synthetic mode)'
+$modeFixtureAfter = Get-FixtureSnapshot -RepositoryRoot $modeClone
+Assert-FixtureSnapshotUnchanged -Before $modeFixtureBefore -After $modeFixtureAfter
+
+# ---- CASE 4: Tracked unstaged -> exit 2, exact reason/path, no root ----
+$fixtureBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+Write-BinaryFixture -ProjectRoot $projectRoot -RelativePath 'assets/test.bin' -Bytes @(0xFF)
+$dirsBefore = CaptureMoerailDirs
+$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $testTempParent
+$dirsAfter = CaptureMoerailDirs
+Assert-ExitCode -Expected 2 -Actual $result.ExitCode -Message ' (tracked unstaged)'
+Assert-OutputContains -Needle 'Working tree not clean:' -Haystack $result.Stderr -Message ' (tracked unstaged reason)'
+Assert-OutputContains -Needle 'godot-project-moe-rail-way/assets/test.bin' -Haystack $result.Stderr -Message ' (tracked unstaged path)'
+Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $dirsBefore -After $dirsAfter -Message ' (tracked unstaged)'
+& git.exe -C $cloneRoot checkout -- 'godot-project-moe-rail-way/assets/test.bin'
+if ($LASTEXITCODE -ne 0) { throw 'Fixture tracked-unstaged restore failed' }
+$fixtureAfter = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+Assert-FixtureSnapshotUnchanged -Before $fixtureBefore -After $fixtureAfter
+
+# ---- CASE 5: Staged only -> exit 2, exact reason/path, no root ----
+$fixtureBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+Write-BinaryFixture -ProjectRoot $projectRoot -RelativePath 'assets/test.bin' -Bytes @(0xFE)
+& git.exe -C $cloneRoot add -- 'godot-project-moe-rail-way/assets/test.bin'
+$dirsBefore = CaptureMoerailDirs
+$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $testTempParent
+$dirsAfter = CaptureMoerailDirs
+Assert-ExitCode -Expected 2 -Actual $result.ExitCode -Message ' (staged only)'
+Assert-OutputContains -Needle 'Working tree not clean:' -Haystack $result.Stderr -Message ' (staged only reason)'
+Assert-OutputContains -Needle 'godot-project-moe-rail-way/assets/test.bin' -Haystack $result.Stderr -Message ' (staged only path)'
+Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $dirsBefore -After $dirsAfter -Message ' (staged only)'
+& git.exe -C $cloneRoot reset --quiet HEAD -- 'godot-project-moe-rail-way/assets/test.bin'
+if ($LASTEXITCODE -ne 0) { throw 'Fixture staged index restore failed' }
+& git.exe -C $cloneRoot checkout -- 'godot-project-moe-rail-way/assets/test.bin'
+if ($LASTEXITCODE -ne 0) { throw 'Fixture staged worktree restore failed' }
+$fixtureAfter = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+Assert-FixtureSnapshotUnchanged -Before $fixtureBefore -After $fixtureAfter
+
+# ---- CASE 6: Untracked only -> exit 2, exact reason/path, no root ----
+$fixtureBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+$untrackedPath = Join-Path $projectRoot 'untracked.txt'
+[IO.File]::WriteAllText($untrackedPath,'untracked',[Text.Encoding]::UTF8)
+$dirsBefore = CaptureMoerailDirs
+$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $testTempParent
+$dirsAfter = CaptureMoerailDirs
+Assert-ExitCode -Expected 2 -Actual $result.ExitCode -Message ' (untracked only)'
+Assert-OutputContains -Needle 'Working tree not clean:' -Haystack $result.Stderr -Message ' (untracked only reason)'
+Assert-OutputContains -Needle 'godot-project-moe-rail-way/untracked.txt' -Haystack $result.Stderr -Message ' (untracked only path)'
+Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $dirsBefore -After $dirsAfter -Message ' (untracked only)'
+Remove-Item -LiteralPath $untrackedPath -Force -ErrorAction Stop
+$fixtureAfter = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+Assert-FixtureSnapshotUnchanged -Before $fixtureBefore -After $fixtureAfter
+
+# ---- CASE 7: Local-ahead divergence -> exit 2, no root ----
 Write-BinaryFixture -ProjectRoot $projectRoot -RelativePath 'assets/ahead.bin' -Bytes @(0xAA)
 & git.exe -C $cloneRoot add --all
 & git.exe -C $cloneRoot commit -m 'Local ahead commit'
 $dirsBefore = CaptureMoerailDirs
-$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TarExecutable (Get-Command tar.exe).Source -TempParent $testTempParent
+$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $testTempParent
 $dirsAfter = CaptureMoerailDirs
 Assert-ExitCode -Expected 2 -Actual $result.ExitCode -Message ' (local ahead)'
 Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $dirsBefore -After $dirsAfter -Message ' (local ahead)'
 & git.exe -C $cloneRoot reset --hard HEAD~1
 if ($LASTEXITCODE -ne 0) { throw 'Fixture local-ahead reset failed' }
 
-# ---- CASE 5: TempParent junction -> exit 2, no root ----
+# ---- CASE 8: TempParent junction -> exit 2, no root ----
 $junctionParent = Join-Path $testTempParent 'junction-parent'
 $junctionTarget = Join-Path $testTempParent 'junction-target'
 [IO.Directory]::CreateDirectory($junctionTarget) | Out-Null
 New-Item -ItemType Junction -Path $junctionParent -Target $junctionTarget -ErrorAction Stop | Out-Null
 $dirsBefore = CaptureMoerailDirs
-$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TarExecutable (Get-Command tar.exe).Source -TempParent $junctionParent
+$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $junctionParent
 $dirsAfter = CaptureMoerailDirs
 Assert-ExitCode -Expected 2 -Actual $result.ExitCode -Message ' (junction temp parent)'
 Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $dirsBefore -After $dirsAfter -Message ' (junction temp parent)'
 Remove-Item -LiteralPath $junctionParent -Force -ErrorAction Stop
 Remove-Item -LiteralPath $junctionTarget -Recurse -Force -ErrorAction Stop
 
-# ---- CASE 6: Success -> exit 0, marker, source invariants, cleanup ----
+# ---- CASE 9: Ordinary ancestor replacement -> exit 1, deletion refused ----
+$fixtureBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+$identityParent = Join-Path $testTempParent 'identity-parent'
+$identityTempParent = Join-Path $identityParent 'temp'
+$identityOriginalParent = Join-Path $testTempParent 'identity-parent-original'
+[IO.Directory]::CreateDirectory($identityTempParent) | Out-Null
+$readyEventName = "Local\moerail-ready-$(New-Guid)"
+$releaseEventName = "Local\moerail-release-$(New-Guid)"
+$readyEvent = $null
+$releaseEvent = $null
+$identityProcess = $null
+$identityStdoutTask = $null
+$identityStderrTask = $null
+$releaseSent = $false
+$identityBodyError = $null
+$identityCleanupErrors = [Collections.Generic.List[string]]::new()
+try {
+    $readyEvent = [Threading.EventWaitHandle]::new($false,[Threading.EventResetMode]::ManualReset,$readyEventName)
+    $releaseEvent = [Threading.EventWaitHandle]::new($false,[Threading.EventResetMode]::ManualReset,$releaseEventName)
+    $identityPsi = [Diagnostics.ProcessStartInfo]::new()
+    $identityPsi.FileName = 'pwsh.exe'
+    $identityPsi.UseShellExecute = $false
+    $identityPsi.RedirectStandardOutput = $true
+    $identityPsi.RedirectStandardError = $true
+    foreach ($argument in @(
+        '-NoProfile','-File',$launcherPath,
+        '-RepositoryRoot',$cloneRoot,
+        '-GodotExecutable',$fakeGodotExe,
+        '-GitExecutable',(Get-Command git.exe).Source,
+        '-Mode','VerifyMirror',
+        '-TempParent',$identityTempParent,
+        '-TestReadyEventName',$readyEventName,
+        '-TestReleaseEventName',$releaseEventName
+    )) { $identityPsi.ArgumentList.Add($argument) }
+    $identityProcess = [Diagnostics.Process]::Start($identityPsi)
+    $identityStdoutTask = $identityProcess.StandardOutput.ReadToEndAsync()
+    $identityStderrTask = $identityProcess.StandardError.ReadToEndAsync()
+    Wait-TestLauncherReadyOrThrow -ReadyEvent $readyEvent -Process $identityProcess -StdoutTask $identityStdoutTask -StderrTask $identityStderrTask
+    $identityRoots = @(Get-MoerailDirs -TempParent $identityTempParent)
+    if ($identityRoots.Count -ne 1) { throw "Identity fixture expected one root, got $($identityRoots.Count)" }
+    $rootLeaf = [IO.Path]::GetFileName($identityRoots[0])
+    $rootIdBeforeText = (& fsutil.exe file queryfileid $identityRoots[0] 2>&1) -join "`n"
+    if ($LASTEXITCODE -ne 0) { throw "Identity fixture initial file ID query failed: $rootIdBeforeText" }
+    $rootIdBeforeMatches = [regex]::Matches($rootIdBeforeText,'(?i)0x[0-9a-f]{32}')
+    if ($rootIdBeforeMatches.Count -ne 1) { throw "Identity fixture initial file ID malformed: $rootIdBeforeText" }
+    $rootIdBefore = $rootIdBeforeMatches[0].Value.ToLowerInvariant()
+    $originalSentinelBeforeMove = Join-Path $identityRoots[0] 'original-sentinel.bin'
+    [IO.File]::WriteAllBytes($originalSentinelBeforeMove,[byte[]]@(0xA1))
+    Move-Item -LiteralPath $identityParent -Destination $identityOriginalParent -ErrorAction Stop
+    [IO.Directory]::CreateDirectory($identityTempParent) | Out-Null
+    $movedOriginalRoot = Join-Path (Join-Path $identityOriginalParent 'temp') $rootLeaf
+    $restoredLexicalRoot = Join-Path $identityTempParent $rootLeaf
+    Move-Item -LiteralPath $movedOriginalRoot -Destination $restoredLexicalRoot -ErrorAction Stop
+    $rootIdAfterText = (& fsutil.exe file queryfileid $restoredLexicalRoot 2>&1) -join "`n"
+    if ($LASTEXITCODE -ne 0) { throw "Identity fixture restored file ID query failed: $rootIdAfterText" }
+    $rootIdAfterMatches = [regex]::Matches($rootIdAfterText,'(?i)0x[0-9a-f]{32}')
+    if ($rootIdAfterMatches.Count -ne 1) { throw "Identity fixture restored file ID malformed: $rootIdAfterText" }
+    $rootIdAfter = $rootIdAfterMatches[0].Value.ToLowerInvariant()
+    if ($rootIdAfter -cne $rootIdBefore) { throw 'Identity fixture did not preserve the original root object' }
+    $replacementSentinel = Join-Path $restoredLexicalRoot 'replacement-parent-sentinel.bin'
+    [IO.File]::WriteAllBytes($replacementSentinel,[byte[]]@(0xD1))
+    $releaseEvent.Set() | Out-Null
+    $releaseSent = $true
+    if (-not $identityProcess.WaitForExit(35000)) { throw 'Identity fixture launcher did not exit after release' }
+    if (-not [Threading.Tasks.Task]::WaitAll(
+        [Threading.Tasks.Task[]]@($identityStdoutTask,$identityStderrTask),
+        [TimeSpan]::FromSeconds(5)
+    )) { throw 'Identity fixture stream drain timed out' }
+    $identityExitCode = $identityProcess.ExitCode
+    $identityStdout = $identityStdoutTask.Result
+    $identityStderr = $identityStderrTask.Result
+}
+catch {
+    $identityBodyError = $_.Exception
+}
+finally {
+    if (-not $releaseSent -and $null -ne $releaseEvent) { $releaseEvent.Set() | Out-Null }
+    if ($null -ne $identityProcess) {
+        if (-not $identityProcess.HasExited -and -not $identityProcess.WaitForExit(5000)) {
+            try {
+                $identityProcess.Kill($true) # test-owned pwsh/fake child only; never user Godot or Steam
+            }
+            catch [InvalidOperationException] {
+                # Natural exit won the race.
+            }
+            catch {
+                $identityCleanupErrors.Add("Identity fixture kill failed: $($_.Exception.Message)")
+            }
+            if (-not $identityProcess.HasExited -and -not $identityProcess.WaitForExit(5000)) {
+                $identityCleanupErrors.Add('Identity fixture process remained alive after bounded kill wait')
+            }
+        }
+        if ($null -ne $identityStdoutTask -and $null -ne $identityStderrTask) {
+            try {
+                if (-not [Threading.Tasks.Task]::WaitAll(
+                    [Threading.Tasks.Task[]]@($identityStdoutTask,$identityStderrTask),
+                    [TimeSpan]::FromSeconds(5)
+                )) { $identityCleanupErrors.Add('Identity fixture stream drain remained incomplete') }
+            }
+            catch {
+                $identityCleanupErrors.Add("Identity fixture stream drain failed: $($_.Exception.Message)")
+            }
+        }
+        try {
+            $identityProcess.Dispose()
+        }
+        catch {
+            $identityCleanupErrors.Add("Identity fixture process dispose failed: $($_.Exception.Message)")
+        }
+    }
+    if ($null -ne $releaseEvent) {
+        try { $releaseEvent.Dispose() } catch { $identityCleanupErrors.Add("Release event dispose failed: $($_.Exception.Message)") }
+    }
+    if ($null -ne $readyEvent) {
+        try { $readyEvent.Dispose() } catch { $identityCleanupErrors.Add("Ready event dispose failed: $($_.Exception.Message)") }
+    }
+}
+$identityErrors = [Collections.Generic.List[string]]::new()
+if ($null -ne $identityBodyError) { $identityErrors.Add("Identity fixture body failed: $($identityBodyError.Message)") }
+foreach ($cleanupError in $identityCleanupErrors) { $identityErrors.Add($cleanupError) }
+if ($identityErrors.Count -ne 0) { throw ($identityErrors -join [Environment]::NewLine) }
+Assert-ExitCode -Expected 1 -Actual $identityExitCode -Message ' (TempParent identity changed)'
+Assert-OutputContains -Needle 'TempParent identity changed:' -Haystack $identityStderr -Message ' (identity reason)'
+Assert-OutputContains -Needle "MIRROR_IDENTITY_LOST: last-known-path=$($identityRoots[0]) captured-identity=" -Haystack $identityStdout -Message ' (honest identity-loss marker)'
+if ($identityStdout.Contains('PRESERVED_MIRROR:',[StringComparison]::Ordinal)) { throw 'Identity loss mislabeled the lexical root as preserved mirror' }
+$originalSentinelAfterMove = Join-Path $restoredLexicalRoot 'original-sentinel.bin'
+if (-not (Test-Path -LiteralPath $originalSentinelAfterMove -PathType Leaf)) { throw 'Original identity sentinel was removed' }
+if (-not (Test-Path -LiteralPath $replacementSentinel -PathType Leaf)) { throw 'Replacement-parent sentinel was removed' }
+$fixtureAfter = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+Assert-FixtureSnapshotUnchanged -Before $fixtureBefore -After $fixtureAfter
+
+# ---- CASE 10: Success -> exit 0, marker, source invariants, cleanup ----
 $fixtureBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
 $dirsBefore = CaptureMoerailDirs
-$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TarExecutable (Get-Command tar.exe).Source -TempParent $testTempParent
+$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $testTempParent
 $dirsAfter = CaptureMoerailDirs
 Assert-ExitCode -Expected 0 -Actual $result.ExitCode -Message ' (success)'
 Assert-OutputContains -Needle 'PASS: editor playtest mirror verified' -Haystack $result.Stdout -Message ' (success marker)'
