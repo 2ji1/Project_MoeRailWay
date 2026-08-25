@@ -1319,19 +1319,38 @@ _test_exit_support_ghost_has_no_cancel_hover()
 # test_track_field_view_input.gd: add beside the existing preloads.
 const GridTrackRuntimeScript = preload("res://src/domain/track/grid_track_runtime.gd")
 
-# Add these helpers below the existing test helpers.
-func _view_b_through_f_curve_piece() -> TrackGeometryPieceScript:
-	var piece = TrackGeometryPieceScript.new()
-	piece.group_id = 0
-	piece.kind = TrackGeometryPieceScript.Kind.CURVE_3X3
-	piece.first_route_serial = 1
-	piece.last_route_serial = 5
-	piece.nominal_length_cells = 5
-	piece.absolute_start_distance_cells = 0.0
-	piece.footprint_cells = [Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0), Vector2i(3, 1), Vector2i(3, 2)]
-	piece.centerline = PackedVector2Array([Vector2(20.0, 20.0), Vector2(60.0, 20.0), Vector2(100.0, 20.0), Vector2(140.0, 60.0), Vector2(140.0, 100.0)])
-	piece.active_local_end_cells = 5.0
-	return piece
+# Add these helpers below the existing test helpers. Do not retain the old
+# `_view_b_through_f_curve_piece()` helper: a hand-authored already-curved
+# snapshot cannot prove a runtime reflow.
+func _runtime_piece_for_serial(
+	pieces: Array[TrackGeometryPieceScript], route_serial: int
+) -> TrackGeometryPieceScript:
+	for piece in pieces:
+		if piece.contains_serial(route_serial):
+			return piece
+	return null
+
+func _runtime_record_for_serial(
+	records: Array[TrackCellRecordScript], route_serial: int
+) -> TrackCellRecordScript:
+	for record in records:
+		if record.route_serial == route_serial:
+			return record
+	return null
+
+func _view_interval_for_serial(observation: Dictionary, route_serial: int) -> Dictionary:
+	for interval in observation.get("intervals", []):
+		if interval.get("route_serial", -1) == route_serial:
+			return interval
+	return {}
+
+func _points_materially_differ(first: PackedVector2Array, second: PackedVector2Array) -> bool:
+	if first.size() != second.size():
+		return true
+	for index in range(first.size()):
+		if first[index].distance_to(second[index]) >= 1.0:
+			return true
+	return false
 
 func _view_straight_piece(route_serial: int, cell: Vector2i) -> TrackGeometryPieceScript:
 	var piece = TrackGeometryPieceScript.new()
@@ -1353,6 +1372,14 @@ func _view_snapshot(records: Array[TrackCellRecordScript], pieces: Array[TrackGe
 		records, pieces
 	)
 
+func _built_runtime_straight_head() -> GridTrackRuntimeScript:
+	var runtime = GridTrackRuntimeScript.new(Vector2i(-1, 0), 18, Vector2.ZERO, Vector2i(8, 8), 40.0)
+	assert_equal(runtime.append_cells([
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+	]), 3, "B through D begin as actual runtime straights")
+	assert_equal(runtime.advance_construction(3.0), 3.0, "B through D are built before the turn exists")
+	return runtime
+
 func _exit_support_runtime() -> GridTrackRuntimeScript:
 	var runtime = GridTrackRuntimeScript.new(Vector2i(-1, 0), 18, Vector2.ZERO, Vector2i(8, 8), 40.0)
 	assert_equal(runtime.append_cells([
@@ -1364,14 +1391,72 @@ func _exit_support_runtime() -> GridTrackRuntimeScript:
 
 func _test_built_reflow_interval_stays_solid_without_provisional_style() -> void:
 	var fixture := _fixture()
-	var built = TrackCellRecordScript.new(1, Vector2i(1, 0), 0.0)
-	built.state = TrackCellRecordScript.State.BUILT
-	var curve = _view_b_through_f_curve_piece()
-	fixture.view.present(_view_snapshot([built], [curve]))
-	var intervals: Array = fixture.view.get_render_observation().get("intervals", [])
-	var interval: Dictionary = intervals[0]
-	assert_equal(interval.state, TrackCellRecordScript.State.BUILT, "Built state remains authoritative")
-	assert_true(interval.locked == false, "Provisionality is metadata, not ghost state")
+	var runtime := _built_runtime_straight_head()
+	var initially_built_serials := [1, 2, 3]
+	var before_records: Array[TrackCellRecordScript] = runtime.get_cell_records()
+	var before_pieces: Array[TrackGeometryPieceScript] = runtime.get_geometry_pieces()
+	fixture.view.present(_view_snapshot(before_records, before_pieces))
+	var before_observation: Dictionary = fixture.view.get_render_observation()
+	var before_points_by_serial: Dictionary = {}
+	for route_serial in initially_built_serials:
+		var before_record := _runtime_record_for_serial(before_records, route_serial)
+		var before_owner := _runtime_piece_for_serial(before_pieces, route_serial)
+		assert_not_null(before_record, "Built serial %d exists before the turn" % route_serial)
+		assert_not_null(before_owner, "Built serial %d has an actual runtime owner before the turn" % route_serial)
+		if before_record != null:
+			assert_equal(before_record.route_serial, route_serial, "Initial record serial is preserved")
+			assert_equal(before_record.state, TrackCellRecordScript.State.BUILT, "Initial serial %d is built" % route_serial)
+			assert_false(before_record.geometry_locked, "Initial serial %d remains provisional" % route_serial)
+		if before_owner != null:
+			assert_equal(before_owner.kind, TrackGeometryPieceScript.Kind.STRAIGHT, "Initial serial %d has a straight runtime owner" % route_serial)
+			assert_false(before_owner.locked, "Initial serial %d owner is provisional" % route_serial)
+		var before_interval := _view_interval_for_serial(before_observation, route_serial)
+		assert_false(before_interval.is_empty(), "The view captures actual serial %d before reflow" % route_serial)
+		if not before_interval.is_empty():
+			assert_equal(before_interval.route_serial, route_serial, "Initial rendered serial is preserved")
+			assert_equal(before_interval.state, TrackCellRecordScript.State.BUILT, "Initial built serial uses solid render state")
+			assert_false(before_interval.locked, "Initial rendered serial is provisional, not a style")
+			before_points_by_serial[route_serial] = before_interval.points
+
+	assert_equal(runtime.append_cells([
+		Vector2i(2, 1), Vector2i(2, 2),
+	]), 2, "E and F make the same B through D serials reclassify through the runtime")
+	var after_records: Array[TrackCellRecordScript] = runtime.get_cell_records()
+	var after_pieces: Array[TrackGeometryPieceScript] = runtime.get_geometry_pieces()
+	var after_owner := _runtime_piece_for_serial(after_pieces, 1)
+	assert_not_null(after_owner, "B retains one runtime owner after reflow")
+	if after_owner == null:
+		fixture.parent.free()
+		return
+	assert_equal(after_owner.kind, TrackGeometryPieceScript.Kind.CURVE_3X3, "Runtime reclassifies B through F as a 3x3 curve")
+	assert_equal(after_owner.first_route_serial, 1, "Reflow curve still owns B")
+	assert_equal(after_owner.last_route_serial, 5, "Reflow curve now owns B through F")
+	assert_false(after_owner.locked, "Reflowed owner remains provisional")
+	fixture.view.present(_view_snapshot(after_records, after_pieces))
+	var after_observation: Dictionary = fixture.view.get_render_observation()
+	var geometry_materially_reflowed := false
+	for route_serial in initially_built_serials:
+		var record := _runtime_record_for_serial(after_records, route_serial)
+		var owner := _runtime_piece_for_serial(after_pieces, route_serial)
+		assert_not_null(record, "Built serial %d survives runtime reflow" % route_serial)
+		assert_not_null(owner, "Built serial %d retains a runtime owner after reflow" % route_serial)
+		if record != null:
+			assert_equal(record.route_serial, route_serial, "Reflow preserves serial identity")
+			assert_equal(record.state, TrackCellRecordScript.State.BUILT, "Runtime reflow preserves built state for serial %d" % route_serial)
+			assert_false(record.geometry_locked, "Runtime reflow does not lock serial %d" % route_serial)
+		if owner != null:
+			assert_equal(owner.kind, TrackGeometryPieceScript.Kind.CURVE_3X3, "Reflowed serial %d belongs to the curve" % route_serial)
+			assert_false(owner.locked, "Reflowed serial %d owner remains provisional" % route_serial)
+		var after_interval := _view_interval_for_serial(after_observation, route_serial)
+		assert_false(after_interval.is_empty(), "The view captures actual serial %d after reflow" % route_serial)
+		if not after_interval.is_empty():
+			assert_equal(after_interval.route_serial, route_serial, "Reflowed rendered serial is preserved")
+			assert_equal(after_interval.state, TrackCellRecordScript.State.BUILT, "Reflowed built serial remains in the solid render state")
+			assert_false(after_interval.locked, "Reflowed built serial has no provisional render style")
+			if before_points_by_serial.has(route_serial):
+				var before_points: PackedVector2Array = before_points_by_serial[route_serial]
+				geometry_materially_reflowed = geometry_materially_reflowed or _points_materially_differ(before_points, after_interval.points)
+	assert_true(geometry_materially_reflowed, "Runtime reflow materially changes rendered centerline points while built serials stay solid")
 	fixture.parent.free()
 
 func _test_ordinary_provisional_ghost_keeps_cancel_hover() -> void:
@@ -1477,6 +1562,21 @@ Confirm-ReflowRedFocused 'test_track_field_view_input.gd' 'Support has no hover'
 ```
 
 Expected: current `_is_cancelable_cell` checks only `RESERVED_GHOST`, so both a locked ghost and an exit-support ghost receive a hover affordance. The real integration right-click remains a no-op through Task 1’s runtime eligibility transaction.
+
+When this new real-runtime reflow test is added during a review-fix flow against already-GREEN production, prove that the test is sensitive instead of calling the pre-existing GREEN result sufficient. Make the following **local, temporary presentation-only mutation** in `track_field_view.gd` inside `_build_intervals`, run the focused view suite, require the exact `Initial built serial uses solid render state` failure, then restore the exact original `"state": record.state,` line before any GREEN run, staging, or commit. Never commit the mutation.
+
+```gdscript
+# Temporary mutation-check only. Replace the existing interval dictionary entry:
+"state": (
+	TrackCellRecordScript.State.RESERVED_GHOST
+	if not owner.locked else record.state
+),
+
+# Restore before GREEN/staging/commit:
+"state": record.state,
+```
+
+This mutation changes only the view's observed presentation state for provisional owners; it does not alter runtime resolution, records, inventory, or construction. The reflow test must fail because B is actually `BUILT` while its owner remains provisional. After restoring, require `git diff -- godot-project-moe-rail-way/src/presentation/track/track_field_view.gd` to be empty before proceeding.
 
 - [ ] **Step 3: Implement the smallest GREEN behavior and keep the added integration assertions**
 
@@ -1829,7 +1929,9 @@ $Task3LauncherOutput = $Task3LauncherResult.Stdout + $Task3LauncherResult.Stderr
 Write-Host $Task3LauncherOutput
 ```
 
-Interact only with the launched editor/game window: perform the slow B–F/G route, observe solid B–E while F builds and reclassifies, verify that G has neither cancel hover nor right-click cancellation, extend from G, enter track without a jump, verify rejected input preserves the last valid route, and verify the terminal snapshot appears before the result overlay. Allow the editor to exit naturally. After it exits, type the exact confirmation only if every observation occurred.
+Interact only with the launched editor/game window. Perform the slow B–F/G route and observe solid B–E while F builds and reclassifies. Verify the synchronized G support has neither cancel hover nor right-click cancellation, and that its route-end and inventory HUD values remain unchanged; then extend from G by one ordinary `RESERVED_GHOST` suffix cell H. Hover H to show the normal cancel affordance, right-click H, and directly observe successful cancellation of H only: the endpoint returns from H to G and the integer inventory HUD increases by exactly one cell. Record the literal before/after HUD values, not an inferred count. This ordinary H success case is separate from the G support no-op.
+
+At the slowest available task-owned game playback rate, observe sequential recovery behind the moving train in at least three consecutive visible states: the first recovery removes exactly one already-passed rear cell and raises inventory by one; the next recovery removes exactly one further rear cell and raises inventory by one again. In each state, verify the red train remains ahead of the removed rear cell/prefix and record the visible route/end and inventory HUD values for all three states. Also enter track without a jump, verify rejected input preserves the last valid route, and verify the terminal snapshot appears before the result overlay. Allow the editor to exit naturally. After it exits, type the exact confirmation only if every observation occurred.
 
 ```powershell
 $Task3ObservationPassed = $false
@@ -1869,7 +1971,7 @@ On any launcher start, exit, marker, observation, or post-launch check failure, 
 
 - [ ] **Step 7: Append successful manual evidence and create the evidence-only commit**
 
-Proceed only when Step 6’s launcher, manual observation, and post-launch checks all passed. Append one dated English section to `track_train_windows.md`—without rewriting the 2026-08-24 history—recording the actual local date, `TASK3_TESTED_IMPLEMENTATION_SHA` explicitly labeled **Durable tested implementation SHA**, the exact Godot version, all seven observed route/entry/rejection/terminal-order results, launcher exit `0`, the exact `PASS: editor playtest completed` marker, and the observed `DIAGNOSTICS_SCANNED: <count>` line. Do not describe the following evidence commit SHA as tested source.
+Proceed only when Step 6’s launcher, manual observation, and post-launch checks all passed. Append one dated English section to `track_train_windows.md`—without rewriting the 2026-08-24 history—recording the actual local date, `TASK3_TESTED_IMPLEMENTATION_SHA` explicitly labeled **Durable tested implementation SHA**, the exact Godot version, launcher exit `0`, the exact `PASS: editor playtest completed` marker, and the observed `DIAGNOSTICS_SCANNED: <count>` line. The direct-observation list must separately record: B–F reclassification with solid built B–E; G's no-hover/no-op with unchanged route/end and inventory HUD values; H's ordinary provisional hover and successful one-cell cancellation with the literal one-cell inventory refund; G extension; rejected-input preservation; three consecutive visible recovery states with one rear cell and one inventory cell changing at each step behind the train; entry without jump; and terminal snapshot before overlay. Do not use automation results or inferred counts as substitutes for these observations, and do not describe the following evidence commit SHA as tested source.
 
 Stage and commit only the manual evidence path, then require a distinct direct child of the tested implementation SHA with no other changed path and a clean worktree:
 
@@ -1896,7 +1998,114 @@ Expected: `TASK3_TESTED_IMPLEMENTATION_SHA` remains the already-playtested four-
 
 - [ ] **Step 8: Obtain independent Sol reviews over the complete Task 3 range**
 
-Review the complete Task 3 range `TASK3_BASE..HEAD`, not only the later manual-evidence commit. Request a Sol specification review against spec Sections 1, 5, 10, 12, and 14, then a separate Sol quality review for detached observation use, hover correctness, event timing, multi-frame physical input, the two-commit evidence boundary, sanitized local-origin launcher safety, ordinary-path/identity preservation, manual evidence integrity, no leaked domain mutation, and absence of provisional visual styling. The normal Task 3 delivery contains the two focused commits above, while the final Task 3 allowlist remains unchanged. Assign every accepted finding to a fresh Terra output worker using that allowlist only; rerun focused tests, both integrations, the full gate, and any affected manual play, then repeat both Sol reviews.
+For the final Task 3 review, the complete immutable range is exactly `94faa243f761d19a9459328f22792fa9e4f1dc3e..HEAD`; do not replace this full review base with a later documentation bridge or a scoped correction base. Request a Sol specification review against spec Sections 1, 5, 10, 12, and 14, then a separate Sol quality review for detached observation use, hover correctness, event timing, multi-frame physical input, the two-commit evidence boundary, sanitized local-origin launcher safety, ordinary-path/identity preservation, manual evidence integrity, no leaked domain mutation, and absence of provisional visual styling. Classify each documentation bridge commit separately from the five-path Task 3 outputs (`track_field_view.gd`, the three tests/integrations, and `track_train_windows.md`) rather than silently narrowing or blending the range. The normal Task 3 delivery contains the two focused commits above, while the final Task 3 allowlist remains unchanged. If either review rejects coverage or manual-observation evidence without a production blob change, follow the focused correction flow below rather than relabeling an evidence commit as tested source. Assign every accepted finding to a fresh Terra output worker using that allowlist only; rerun focused tests, both integrations, the full gate, and any affected manual play, then repeat both Sol reviews.
+
+#### Task 3 Sol-review coverage correction after the reviewed evidence head
+
+This correction is authorized only after the current reviewed Task 3 evidence head `cf4deb70aeb0d9e58dc90bf6fb2bdbaf4adf7e4a`. Its scope is limited to the real-runtime view test and the direct Windows evidence required above; do not modify `track_field_view.gd`, the integrations, or any domain/runtime file. Before this correction starts, the controller must commit this canonical plan correction as one documentation-only child of `cf4deb70aeb0d9e58dc90bf6fb2bdbaf4adf7e4a` and record that documentation SHA as `TASK3_CORRECTION_BASE` in the ignored ledger. It is a scoped fix-packaging bridge only, never the adjusted or complete Task 3 review base; the complete review base remains `94faa243f761d19a9459328f22792fa9e4f1dc3e`. The test-only and manual-only correction commits then follow `TASK3_CORRECTION_BASE`. The final Task 3 allowlist is unchanged.
+
+- [ ] **Step 9: Prove the durable tested runtime is unchanged, replace the tautological test, and make one test-only correction commit**
+
+The durable tested implementation is exactly `f72534e7e6aa6398b7071b8489d3b779e3d6cc66`. It remains the tested runtime source only if the production `track_field_view.gd` blob at `TASK3_CORRECTION_BASE` and at the new test-only correction commit equals its blob at that SHA. The test in Step 1 must replace the committed hand-authored already-curved snapshot test: it must use the actual B–D straight then E–F turn runtime transition, capture view observations both times, and run the local mutation check in Step 2 when the unmutated suite is already GREEN.
+
+```powershell
+# Run the Task 3 Git and Wrapper Safety Helpers block first. This is the
+# correction-only bootstrap; it deliberately performs no staging or commit.
+Assert-Task3CleanGitEnvironment
+$Task3GitExecutable = (Get-Command git.exe -ErrorAction Stop).Source
+$Task3FsutilExecutable = (Get-Command fsutil.exe -ErrorAction Stop).Source
+$Task3FeatureRoot = (Resolve-Path -LiteralPath 'D:\godot\MoeRailWay-worktrees\feature-reflowable-track-head').Path
+$Task3PrimaryRoot = (Resolve-Path -LiteralPath 'D:\godot\MoeRailWay').Path
+Assert-Task3ExistingOrdinaryPathChain $Task3FeatureRoot ([IO.Path]::GetPathRoot($Task3FeatureRoot)) | Out-Null
+Assert-Task3ExistingOrdinaryPathChain $Task3PrimaryRoot ([IO.Path]::GetPathRoot($Task3PrimaryRoot)) | Out-Null
+$Task3FeatureIdentity = Get-Task3DirectoryIdentity $Task3FeatureRoot
+$Task3PrimaryIdentity = Get-Task3DirectoryIdentity $Task3PrimaryRoot
+$Task3ExpectedFeatureBranch = 'feature/reflowable-track-head'
+if ((Invoke-Task3FeatureGit @('branch','--show-current')).Stdout.Trim() -ne $Task3ExpectedFeatureBranch) { throw 'STOP: correction feature branch mismatch' }
+
+$Task3ReviewedEvidenceHead = 'cf4deb70aeb0d9e58dc90bf6fb2bdbaf4adf7e4a'
+$Task3DurableTestedImplementationSha = 'f72534e7e6aa6398b7071b8489d3b779e3d6cc66'
+$Task3ProductionPath = 'godot-project-moe-rail-way/src/presentation/track/track_field_view.gd'
+$Task3CorrectionTestPath = 'godot-project-moe-rail-way/tests/unit/test_track_field_view_input.gd'
+$Task3ManualPath = 'godot-project-moe-rail-way/tests/manual/track_train_windows.md'
+$Task3CodePaths = @(
+  'godot-project-moe-rail-way/src/presentation/track/track_field_view.gd',
+  'godot-project-moe-rail-way/tests/unit/test_track_field_view_input.gd',
+  'godot-project-moe-rail-way/tests/integration/run_track_train_input_integration.gd',
+  'godot-project-moe-rail-way/tests/integration/run_track_train_app_integration.gd'
+)
+$Task3CorrectionBase = (Invoke-Task3FeatureGit @('rev-parse','HEAD')).Stdout.Trim()
+if ((Invoke-Task3FeatureGit @('rev-parse',($Task3CorrectionBase + '^'))).Stdout.Trim() -ne $Task3ReviewedEvidenceHead) { throw 'STOP: correction must start at the doc-only TASK3_CORRECTION_BASE directly after the reviewed evidence head' }
+$Task3CorrectionBasePaths = Get-Task3Lines (Invoke-Task3FeatureGit @('diff-tree','--no-commit-id','--name-only','-r',$Task3CorrectionBase)).Stdout
+if (Compare-Object $Task3CorrectionBasePaths @('docs/superpowers/plans/2026-08-25-reflowable-track-head.md')) { throw 'STOP: TASK3_CORRECTION_BASE is not documentation-only canonical plan correction' }
+$Task3DurableProductionBlob = (Invoke-Task3FeatureGit @('rev-parse',($Task3DurableTestedImplementationSha + ':' + $Task3ProductionPath))).Stdout.Trim()
+if ((Invoke-Task3FeatureGit @('rev-parse',($Task3CorrectionBase + ':' + $Task3ProductionPath))).Stdout.Trim() -ne $Task3DurableProductionBlob) { throw 'STOP: TASK3_CORRECTION_BASE changed the durable tested production blob' }
+if ((Get-Task3Lines (Invoke-Task3FeatureGit @('status','--porcelain=v1','-uall')).Stdout).Count -ne 0) { throw 'STOP: correction starts from a dirty worktree' }
+```
+
+Replace only the old fake curve helper/test with Step 1's exact runtime transition test. If the unmutated focused suite is already GREEN, run the Step 2 temporary presentation mutation, require the named failure, restore `track_field_view.gd`, and verify it has no diff before GREEN. Then run the focused view suite and the full regression gate. Stage only the view test and commit it as `test: strengthen real-runtime reflow view evidence`.
+
+```powershell
+Invoke-ReflowFocused 'test_track_field_view_input.gd'
+Invoke-ReflowFullGate
+Invoke-Task3FeatureGit @('add','--',$Task3CorrectionTestPath) | Out-Null
+Invoke-Task3FeatureGit @('diff','--cached','--check') | Out-Null
+$Task3CorrectionStaged = Get-Task3Lines (Invoke-Task3FeatureGit @('diff','--cached','--name-only')).Stdout | Sort-Object
+if (Compare-Object $Task3CorrectionStaged @($Task3CorrectionTestPath)) { throw 'STOP: reflow correction commit is not test-only' }
+Invoke-Task3FeatureGit @('commit','-m','test: strengthen real-runtime reflow view evidence') | Out-Null
+$Task3CorrectionTestSha = (Invoke-Task3FeatureGit @('rev-parse','HEAD')).Stdout.Trim()
+if ((Invoke-Task3FeatureGit @('rev-parse',($Task3CorrectionTestSha + '^'))).Stdout.Trim() -ne $Task3CorrectionBase) { throw 'STOP: test correction is not a direct child of TASK3_CORRECTION_BASE' }
+$Task3CorrectionPaths = Get-Task3Lines (Invoke-Task3FeatureGit @('diff-tree','--no-commit-id','--name-only','-r',$Task3CorrectionTestSha)).Stdout | Sort-Object
+if (Compare-Object $Task3CorrectionPaths @($Task3CorrectionTestPath)) { throw 'STOP: test correction changed a non-test path' }
+if ((Invoke-Task3FeatureGit @('rev-parse',($Task3CorrectionTestSha + ':' + $Task3ProductionPath))).Stdout.Trim() -ne $Task3DurableProductionBlob) { throw 'STOP: test correction changed the durable tested production blob' }
+if ((Get-Task3Lines (Invoke-Task3FeatureGit @('status','--porcelain=v1','-uall')).Stdout).Count -ne 0) { throw 'STOP: test correction did not leave a clean worktree' }
+Write-Host "TASK3_CORRECTION_TEST_SHA: $Task3CorrectionTestSha"
+Write-Host "TASK3_DURABLE_TESTED_IMPLEMENTATION_SHA: $Task3DurableTestedImplementationSha"
+```
+
+- [ ] **Step 10: Re-observe the correction-only Windows cases and make one manual-only correction commit**
+
+Continue the Step 9 PowerShell session; if a new session is necessary, rerun the complete correction-only bootstrap at the start of Step 9 before using any `Task3` variable or helper. Before the launcher starts, require `HEAD == TASK3_CORRECTION_TEST_SHA`, a clean feature worktree, and the identical production blob at `HEAD` and `f72534e7e6aa6398b7071b8489d3b779e3d6cc66`. Set `TASK3_TESTED_IMPLEMENTATION_SHA` to that durable SHA and execute the complete existing Step 6 task-owned local-origin wrapper procedure against that SHA, including the sanitized child Git environment, no-reparse descendant scans, captured identities, clean local `main` clone, source tree/blob equality, and post-launch validation. Do not weaken or bypass the launcher.
+
+For this correction-only wrapper run, bind the feature head before launch and make one narrow post-launch substitution: require the feature worktree still names the bound test-correction head, rather than requiring it to equal the older durable tested source. Keep every clone/bare/source check pinned to `TASK3_TESTED_IMPLEMENTATION_SHA`.
+
+```powershell
+$Task3ManualCorrectionHead = (Invoke-Task3FeatureGit @('rev-parse','HEAD')).Stdout.Trim()
+if ($Task3ManualCorrectionHead -ne $Task3CorrectionTestSha) { throw 'STOP: manual correction must launch from the test-only correction head' }
+if ((Get-Task3Lines (Invoke-Task3FeatureGit @('status','--porcelain=v1','-uall')).Stdout).Count -ne 0) { throw 'STOP: manual correction starts from a dirty worktree' }
+if ((Invoke-Task3FeatureGit @('rev-parse',($Task3ManualCorrectionHead + ':' + $Task3ProductionPath))).Stdout.Trim() -ne $Task3DurableProductionBlob) { throw 'STOP: manual correction cannot reuse durable tested SHA after a production blob change' }
+$Task3TestedImplementationSha = $Task3DurableTestedImplementationSha
+
+# In Step 6's post-launch checks, replace only this original check:
+# if ((Invoke-Task3FeatureGit @('rev-parse','HEAD')).Stdout.Trim() -ne $Task3TestedImplementationSha) { throw 'feature HEAD changed' }
+# with this correction-head stability check:
+if ((Invoke-Task3FeatureGit @('rev-parse','HEAD')).Stdout.Trim() -ne $Task3ManualCorrectionHead) { throw 'feature correction HEAD changed' }
+```
+
+The direct observation gate is the complete Step 6 list, including the new distinct G support no-op, H ordinary-hover/successful one-cell refund, and three-frame one-cell-at-a-time recovery observations. If any launcher, identity, source, marker, or direct observation requirement fails, do not edit the manual record or create a correction commit; preserve the wrapper and report the failure.
+
+Only after success, append one dated English correction section to `track_train_windows.md` with the literal route/end and inventory values observed for G, H, and all three recovery frames. It must identify `f72534e7e6aa6398b7071b8489d3b779e3d6cc66` as **Durable tested implementation SHA**, identify the test-only correction SHA as coverage-only, and never call either correction commit tested source. Stage only the manual record and commit it as `test: expand reflowable track head Windows evidence`.
+
+```powershell
+Invoke-Task3FeatureGit @('add','--',$Task3ManualPath) | Out-Null
+Invoke-Task3FeatureGit @('diff','--cached','--check') | Out-Null
+$Task3ManualCorrectionStaged = Get-Task3Lines (Invoke-Task3FeatureGit @('diff','--cached','--name-only')).Stdout | Sort-Object
+if (Compare-Object $Task3ManualCorrectionStaged @($Task3ManualPath)) { throw 'STOP: Windows correction commit is not manual-only' }
+Invoke-Task3FeatureGit @('commit','-m','test: expand reflowable track head Windows evidence') | Out-Null
+$Task3ManualCorrectionSha = (Invoke-Task3FeatureGit @('rev-parse','HEAD')).Stdout.Trim()
+if ((Invoke-Task3FeatureGit @('rev-parse',($Task3ManualCorrectionSha + '^'))).Stdout.Trim() -ne $Task3CorrectionTestSha) { throw 'STOP: manual correction is not a direct child of test correction' }
+$Task3ManualCorrectionPaths = Get-Task3Lines (Invoke-Task3FeatureGit @('diff-tree','--no-commit-id','--name-only','-r',$Task3ManualCorrectionSha)).Stdout | Sort-Object
+if (Compare-Object $Task3ManualCorrectionPaths @($Task3ManualPath)) { throw 'STOP: manual correction changed a non-manual path' }
+if ((Invoke-Task3FeatureGit @('rev-parse',($Task3ManualCorrectionSha + ':' + $Task3ProductionPath))).Stdout.Trim() -ne $Task3DurableProductionBlob) { throw 'STOP: manual correction changed the durable tested production blob' }
+if ((Get-Task3Lines (Invoke-Task3FeatureGit @('status','--porcelain=v1','-uall')).Stdout).Count -ne 0) { throw 'STOP: manual correction did not leave a clean worktree' }
+Write-Host "TASK3_MANUAL_CORRECTION_SHA: $Task3ManualCorrectionSha"
+```
+
+Append a dated English entry to the ignored `.superpowers/sdd/2026-08-25-reflowable-track-head/task-3-report.md` before re-review. Attribute the correction to the Sol Task 3 review rejection; record the immutable complete review base `94faa243f761d19a9459328f22792fa9e4f1dc3e`, the separate `TASK3_CORRECTION_BASE` documentation bridge SHA, test-only correction SHA, manual-only correction SHA, durable tested implementation SHA, matching production blob proof, the new direct observations, and repeated gates. Amend or explicitly retract both earlier report claims that overstate input-integration coverage: it covers only physical B–F/G through the support right-click no-op; G extension and the rejected non-endpoint append are direct manual observations, not changed input-integration coverage. Do not attribute the newly strengthened test or new manual evidence to the original tested-source commit, and do not label either correction commit as the source launched by the wrapper.
+
+- [ ] **Step 11: Repeat both Sol reviews over the unchanged complete Task 3 review range**
+
+Review exactly `94faa243f761d19a9459328f22792fa9e4f1dc3e..HEAD` through the new manual-only correction commit; never substitute `TASK3_CORRECTION_BASE` or narrow the range to the latest correction commit. Classify the `TASK3_CORRECTION_BASE` documentation bridge separately from the five-path Task 3 outputs, then review every Task 3 output across the complete range. The specification review must verify the actual runtime straight-to-curve test transition and `BUILT` render state, and the quality review must verify the mutation check, distinct G/H cancellation observations, literal one-cell inventory refund, sequential one-cell recovery evidence, durable-SHA attribution, wrapper safety, unchanged production blob, and report retraction of the two overstated integration claims. If a later correction changes the production blob, stop treating `f72534e7e6aa6398b7071b8489d3b779e3d6cc66` as tested and return to the full durable implementation/launcher sequence with a new tested SHA.
 
 ## Final Feature Verification and Handoff
 
@@ -1918,7 +2127,7 @@ Review the complete Task 3 range `TASK3_BASE..HEAD`, not only the later manual-e
 | Endpoint-only multiframe input, hover/cancel behavior, manual Windows evidence | 3 |
 | Inventory, serial, nominal motion, game premises, fixed-tick priorities | 1–3 full gates and final review |
 
-The plan contains three implementation tasks, defines every interface before a later task consumes it, uses no new scripts, keeps `SessionResult` unchanged, and scopes every commit to exact paths. Tasks 1 and 2 each reach their one implementation commit after the complete 19-suite/four-integration gate is green; Task 3 first reaches its four-path durable implementation commit at that gate, then records only successful launcher/manual evidence in its second focused commit. Before execution, scan this plan with:
+The plan contains three implementation tasks, defines every interface before a later task consumes it, uses no new scripts, keeps `SessionResult` unchanged, and scopes every commit to exact paths. Tasks 1 and 2 each reach their one implementation commit after the complete 19-suite/four-integration gate is green; Task 3 first reaches its four-path durable implementation commit at that gate, then records only successful launcher/manual evidence in its second focused commit. A Sol review-rejection correction may subsequently add only the explicitly verified test-only and manual-only commits after the documentation-only `TASK3_CORRECTION_BASE`, without relabeling them as tested production source while the production blob remains unchanged or replacing the immutable complete Task 3 review base `94faa243f761d19a9459328f22792fa9e4f1dc3e`. Before execution, scan this plan with:
 
 ```powershell
 $hangul_marker = [string]([char]0xD55C) + [string]([char]0xAE00)
