@@ -96,6 +96,22 @@ foreach ($MoeRailScript in $MoeRailScripts) {
 
 The current automated baseline reports `PASS: 19 prototype test suite(s)` and passes the session-shell, logical-track-field, track-input, and track-and-train-app integrations.
 
+## Editor Playtest Safety
+
+From a clean synchronized `main`:
+
+```powershell
+pwsh -NoProfile -File .\godot-project-moe-rail-way\tools\playtest\launch_editor_playtest.ps1
+```
+
+- Uses the canonical GUI executable at `D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64.exe`.
+- Press **F6** in the editor to start the session; stop the game through the editor UI; close the editor normally.
+- On success: launcher exits 0, prints `PASS: editor playtest completed` and `DIAGNOSTICS_SCANNED: <count>`, and cleans up the temporary mirror.
+- On failure before recursive removal starts, while the captured temp-parent/root identities remain reachable at the original ordinary path: launcher exits 1, prints `PRESERVED_MIRROR: <path>`, and leaves the intact mirror for inspection.
+- If recursive removal starts and then fails while the captured identity remains reachable: launcher exits 1 and prints `CLEANUP_REMNANTS: <path>`; remaining contents may be partial.
+- If either captured identity is lost: launcher refuses deletion and prints `MIRROR_IDENTITY_LOST: last-known-path=<path> captured-identity=<identity>` without claiming that the current lexical path is the mirror.
+- Steam 4.7.2 is not used and not supported.
+
 ## Canonical Documents
 
 - [Warp Rail Endless Survival Prototype Design](docs/superpowers/specs/2026-08-15-warp-rail-prototype-design.md)
