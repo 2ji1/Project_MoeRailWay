@@ -27,6 +27,7 @@ const INTERVAL_SAMPLE_COUNT := 9
 @export_color_no_alpha var grid_line_color := Color(0.5, 0.5, 0.5, 1.0):
 	set(value):
 		grid_line_color = Color(value.r, value.g, value.b, 1.0)
+		queue_redraw()
 
 var _session_configured := false
 var _session_logical_size := Vector2.ZERO
@@ -35,6 +36,7 @@ var _grid_size := Vector2i.ZERO
 var _selected_candidate_id := StringName()
 var _selected_departure_position := Vector2.ZERO
 var _selected_departure_cell := INVALID_CELL
+var _field_draw_order := PackedStringArray(["grid_lines", "valid_start"])
 
 var _rasterizer = GridPointerRasterizerScript.new()
 var _crossed_cells: Array[Vector2i] = []
@@ -241,18 +243,24 @@ func configure_session(start_config: SessionStartConfigScript) -> void:
 	if field == null:
 		push_error("TrackFieldView requires LogicalTrackField before session configuration")
 		return
-	_session_logical_size = Vector2(start_config.logical_field_size)
-	_grid_size = Vector2i(start_config.grid_size)
-	_grid_rect = Rect2(
+	var candidate_logical_size := Vector2(start_config.logical_field_size)
+	var candidate_grid_size := Vector2i(start_config.grid_size)
+	var candidate_grid_rect := Rect2(
 		Vector2(start_config.grid_origin_units),
-		Vector2(_grid_size) * float(start_config.grid_cell_size_units)
+		Vector2(candidate_grid_size) * float(start_config.grid_cell_size_units)
 	)
-	_selected_candidate_id = StringName(start_config.departure_candidate_id)
-	_selected_departure_position = Vector2(start_config.departure_position)
-	_selected_departure_cell = Vector2i(start_config.departure_cell)
-	if not _session_logical_size.is_equal_approx(field.get_logical_size()):
+	var candidate_departure_id := StringName(start_config.departure_candidate_id)
+	var candidate_departure_position := Vector2(start_config.departure_position)
+	var candidate_departure_cell := Vector2i(start_config.departure_cell)
+	if not candidate_logical_size.is_equal_approx(field.get_logical_size()):
 		push_error("Configured logical field size must equal the authored field size")
 		return
+	_session_logical_size = candidate_logical_size
+	_grid_size = candidate_grid_size
+	_grid_rect = candidate_grid_rect
+	_selected_candidate_id = candidate_departure_id
+	_selected_departure_position = candidate_departure_position
+	_selected_departure_cell = candidate_departure_cell
 	_session_configured = true
 	if not Engine.is_editor_hint():
 		var candidate_parent = field.get_node_or_null("DepartureCandidates")
@@ -341,9 +349,16 @@ func _build_intervals(records: Array, pieces: Array) -> Array[Dictionary]:
 
 
 func get_render_observation() -> Dictionary:
+	var field_render_facts := _get_field_render_facts()
 	return {
 		"logical_size": Vector2(_get_mapping_logical_size()),
-		"grid_rect": Rect2(_grid_rect),
+		"grid_rect": field_render_facts.grid_rect,
+		"grid_size": field_render_facts.grid_size,
+		"grid_line_color": field_render_facts.grid_line_color,
+		"grid_lines": field_render_facts.grid_lines,
+		"field_draw_order": field_render_facts.field_draw_order,
+		"valid_start_cell": field_render_facts.valid_start_cell,
+		"valid_start_rect": field_render_facts.valid_start_rect,
 		"cells": _duplicate_records(_presented_cells),
 		"pieces": _duplicate_pieces(_presented_pieces),
 		"contacts": _presented_contacts.duplicate(true),
@@ -363,6 +378,42 @@ func _get_valid_start_cell() -> Vector2i:
 	if _presented_cells.is_empty():
 		return _selected_departure_cell
 	return _presented_cells[-1].cell
+
+
+func _get_field_render_facts() -> Dictionary:
+	var grid_lines: Array[Dictionary] = []
+	var valid_start_cell := _get_valid_start_cell()
+	var valid_start_rect := Rect2()
+	if _session_configured and _grid_size.x > 0 and _grid_size.y > 0:
+		var cell_size := Vector2(
+			_grid_rect.size.x / float(_grid_size.x),
+			_grid_rect.size.y / float(_grid_size.y)
+		)
+		for column in range(_grid_size.x + 1):
+			var x := _grid_rect.position.x + float(column) * cell_size.x
+			grid_lines.append({
+				"from": Vector2(x, _grid_rect.position.y),
+				"to": Vector2(x, _grid_rect.end.y),
+				"color": Color(grid_line_color),
+			})
+		for row in range(_grid_size.y + 1):
+			var y := _grid_rect.position.y + float(row) * cell_size.y
+			grid_lines.append({
+				"from": Vector2(_grid_rect.position.x, y),
+				"to": Vector2(_grid_rect.end.x, y),
+				"color": Color(grid_line_color),
+			})
+		if valid_start_cell != INVALID_CELL:
+			valid_start_rect = Rect2(_grid_rect.position + Vector2(valid_start_cell) * cell_size, cell_size)
+	return {
+		"grid_rect": Rect2(_grid_rect),
+		"grid_size": Vector2i(_grid_size),
+		"grid_line_color": Color(grid_line_color),
+		"grid_lines": grid_lines,
+		"field_draw_order": _field_draw_order.duplicate(),
+		"valid_start_cell": Vector2i(valid_start_cell),
+		"valid_start_rect": Rect2(valid_start_rect),
+	}
 
 
 func _duplicate_records(source: Array) -> Array:
@@ -404,21 +455,13 @@ func _draw() -> void:
 		return
 	var uniform_scale: float = content_rect.size.x / logical_size.x
 	draw_set_transform(content_rect.position, 0.0, Vector2.ONE * uniform_scale)
-	if _session_configured and _grid_size.x > 0 and _grid_size.y > 0:
-		var cell_size := Vector2(
-			_grid_rect.size.x / float(_grid_size.x),
-			_grid_rect.size.y / float(_grid_size.y)
-		)
-		for column in range(_grid_size.x + 1):
-			var x := _grid_rect.position.x + float(column) * cell_size.x
-			draw_line(Vector2(x, _grid_rect.position.y), Vector2(x, _grid_rect.end.y), grid_line_color)
-		for row in range(_grid_size.y + 1):
-			var y := _grid_rect.position.y + float(row) * cell_size.y
-			draw_line(Vector2(_grid_rect.position.x, y), Vector2(_grid_rect.end.x, y), grid_line_color)
-		var valid_start_cell := _get_valid_start_cell()
-		if valid_start_cell != INVALID_CELL:
-			var valid_start_rect := Rect2(_grid_rect.position + Vector2(valid_start_cell) * cell_size, cell_size)
-			draw_rect(valid_start_rect, VALID_START_COLOR, true)
+	var field_render_facts := _get_field_render_facts()
+	for layer in field_render_facts.field_draw_order:
+		if layer == "grid_lines":
+			for grid_line in field_render_facts.grid_lines:
+				draw_line(grid_line.from, grid_line.to, grid_line.color)
+		elif layer == "valid_start" and field_render_facts.valid_start_cell != INVALID_CELL:
+			draw_rect(field_render_facts.valid_start_rect, VALID_START_COLOR, true)
 	for interval in _presented_intervals:
 		var points: PackedVector2Array = interval.points
 		if points.size() < 2:

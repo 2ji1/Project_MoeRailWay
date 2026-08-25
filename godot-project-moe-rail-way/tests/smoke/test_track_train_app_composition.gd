@@ -215,7 +215,8 @@ func _test_render_observations_are_recursively_detached() -> void:
 	shell.configure(app.layout_profile, _snapshot(config, track, SessionControllerScript.State.PREPARING_DEPARTURE), config)
 	var observation = shell.get_track_field_view().get_render_observation()
 	var expected_keys := [
-		"logical_size", "grid_rect", "cells", "pieces", "contacts", "intervals",
+		"logical_size", "grid_rect", "grid_size", "grid_line_color", "grid_lines",
+		"field_draw_order", "valid_start_cell", "valid_start_rect", "cells", "pieces", "contacts", "intervals",
 		"selected_departure_id", "selected_departure_position", "train_active",
 		"train_position", "train_heading", "hover_cancel_cell",
 	]
@@ -226,10 +227,14 @@ func _test_render_observations_are_recursively_detached() -> void:
 	observation.cells[0].cell = Vector2i(9, 9)
 	observation.pieces[0].centerline[0] = Vector2(999.0, 999.0)
 	observation.intervals[0].points[0] = Vector2(999.0, 999.0)
+	observation.grid_lines[0].from = Vector2(999.0, 999.0)
+	observation.field_draw_order[0] = "changed"
 	var fresh = shell.get_track_field_view().get_render_observation()
 	assert_equal(fresh.cells[0].cell, Vector2i(1, 0), "Rendered records detach")
 	assert_false(fresh.pieces[0].centerline[0].is_equal_approx(Vector2(999.0, 999.0)), "Rendered pieces detach")
 	assert_false(fresh.intervals[0].points[0].is_equal_approx(Vector2(999.0, 999.0)), "Rendered intervals detach")
+	assert_false(fresh.grid_lines[0].from.is_equal_approx(Vector2(999.0, 999.0)), "Rendered grid lines detach")
+	assert_equal(fresh.field_draw_order[0], "grid_lines", "Rendered field draw order detaches")
 	shell.free()
 	app.free()
 
