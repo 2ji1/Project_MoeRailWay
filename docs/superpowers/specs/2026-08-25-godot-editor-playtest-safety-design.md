@@ -20,6 +20,7 @@ This specification is the binding design for the repository's editor playtest sa
 | 10 | Approved spec `2026-08-22-prototype-track-train-disposable-editor-mirror-amendment-design.md` proves a real editor plus inherited user state can rewrite source | Fact |
 | 11 | Controlled probe copied 145 tracked Godot-project files to a unique ordinary-file mirror, excluded `.git` and `.godot`, used child-only `APPDATA`, `LOCALAPPDATA`, `TEMP`, `TMP`, launched visible exact 4.7.1 editor, ran F6, saw zero editor errors/warnings and zero prohibited diagnostics, kept 145 of 145 files byte-identical, left source worktrees clean | Fact |
 | 12 | The combined exact-version, fresh-project-state, isolated-child-environment path is proven | Fact |
+| 13 | Windows 11 `tar.exe` listed but failed to extract the Git archive entry `assets/선로-🚆.bin` with `Invalid empty pathname`; `.NET System.Formats.Tar.TarFile` extracted the same archive and preserved every file | Fact |
 
 ## Root-Cause Boundary
 
@@ -31,7 +32,7 @@ One concrete repository PowerShell visible-playtest launcher with behavior tests
 
 - Invokes from clean local `main` tracking `origin/main`; dirty, staged, untracked, or divergent state fails before temp creation
 - Verifies exact canonical version (4.7.1.stable.official.a13da4feb) before temp creation
-- Mirrors only committed tracked `godot-project-moe-rail-way` ordinary files from `HEAD`; reads Git path records as strict UTF-8, NUL-delimited bytes; excludes `.git`, `.godot`, reparse points, invalid UTF-8, CR/LF/TAB path characters, and path escape; produces SHA-256 manifest before and after copy
+- Mirrors only committed tracked `godot-project-moe-rail-way` ordinary files from `HEAD`; reads Git path records as strict UTF-8, NUL-delimited bytes; excludes `.git`, `.godot`, reparse points, invalid UTF-8, CR/LF/TAB path characters, and path escape; rejects every Git entry except blob mode `100644` or `100755` before archive creation; materializes the pinned Git tar archive with `.NET System.Formats.Tar.TarFile`; rejects post-extraction reparse points before any other recursive traversal; produces SHA-256 manifest before and after copy
 - Rejects a temp parent equal to or below the source repository before creating anything; creates a unique validated temp root containing project, child `APPDATA`, `LOCALAPPDATA`, `TEMP`, `TMP`, and logs
 - Uses `ProcessStartInfo` with `UseShellExecute=false`, separate `ArgumentList`, child-only `Environment` overrides, visible GUI executable; never mutates controller or user environment and never hides the window
 - Waits for natural editor exit; never enumerates, stops, or resets any Godot or Steam process; no timeout termination
@@ -44,7 +45,7 @@ One concrete repository PowerShell visible-playtest launcher with behavior tests
 |-------------|--------------|
 | Invocation state | Clean local `main` tracking `origin/main` only; any divergence fails pre-temp |
 | Version gate | Exact canonical 4.7.1.stable.official.a13da4feb verified before temp creation |
-| Mirror scope | Committed tracked ordinary files from `HEAD` only; strict UTF-8/NUL Git path records; `.git`, `.godot`, reparse points, invalid UTF-8, CR/LF/TAB path characters, and path escape excluded |
+| Mirror scope | Committed tracked ordinary files from `HEAD` only; strict UTF-8/NUL Git path records; only blob mode `100644`/`100755` accepted before archive creation; `.NET System.Formats.Tar.TarFile` extraction; `.git`, `.godot`, reparse points, invalid UTF-8, CR/LF/TAB path characters, and path escape excluded |
 | Integrity proof | SHA-256 manifest before and after copy; byte-identical verification |
 | Temp root | Outside the source repository; unique and validated; contains project + child `APPDATA`/`LOCALAPPDATA`/`TEMP`/`TMP` + logs |
 | Process launch | `UseShellExecute=false`, `ArgumentList`, child-only `Environment`, visible GUI, no controller/user env mutation |
@@ -61,10 +62,11 @@ One concrete repository PowerShell visible-playtest launcher with behavior tests
 1. Wrong-version rejection before temp creation
 2. Separate tracked-unstaged, staged-only, untracked-only, feature-branch, and divergent-state rejection before temp creation
 3. Repository-root and repository-descendant temp-parent rejection before temp creation
-4. Unicode path mirror and child-environment contract without opening user GUI
-5. Source preservation (Git status + SHA-256 unchanged)
-6. Failure preservation (exact mirror path reported while identity remains reachable; honest identity-loss marker and last-known path/identity otherwise)
-7. Safe cleanup, including deterministic ordinary ancestor replacement with the original root object restored at the same lexical leaf, detected by captured parent identity before any recursive deletion
+4. Synthetic Git mode `120000` rejection before temp creation, proving that archive link entries cannot reach managed extraction
+5. Unicode path mirror through `.NET System.Formats.Tar`, deterministic early child-exit diagnostics, and child-environment contract without opening user GUI
+6. Source preservation (Git status + SHA-256 unchanged)
+7. Failure preservation (exact mirror path reported while identity remains reachable; honest identity-loss marker and last-known path/identity otherwise)
+8. Safe cleanup, including deterministic ordinary ancestor replacement with the original root object restored at the same lexical leaf, detected by captured parent identity before any recursive deletion
 
 Tests use test-owned temp Git fixtures or doubles. Never open or interfere with user GUI.
 

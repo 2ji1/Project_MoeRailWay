@@ -4,9 +4,9 @@
 
 **Goal:** Implement a deterministic, safe Godot editor playtest launcher that mirrors only tracked HEAD files into an isolated temporary environment, validates byte-identical mirrors, runs the canonical Godot 4.7.1 GUI editor with fully overridden child-only environment variables, scans editor and game logs for prohibited diagnostics (including the exact gutter incident), preserves the exact mirror on any failure for inspection, and cleans up only after full revalidation on success. No runtime or gameplay changes; no generalized framework; no process enumeration/termination; no copy-back; no Steam 4.7.2.
 
-**Architecture:** Two PowerShell scripts — a launcher (`launch_editor_playtest.ps1`) and its behavior test (`test_launch_editor_playtest.ps1`) — operating on the Godot project at `godot-project-moe-rail-way`. The launcher uses `git archive` + `tar` for byte-safe mirror materialization from a pinned HEAD, `System.Diagnostics.Process` with `UseShellExecute=false` and `ArgumentList` for controlled visible GUI editor execution with child-only `APPDATA`/`LOCALAPPDATA`/`TEMP`/`TMP` overrides, SHA-256 manifests for source integrity verification before and after, and anchored log scanning for `FAIL:`, `ERROR:`, `SCRIPT ERROR:`, `FATAL:`, `WARNING:`, `CRASH:`, exact gutter diagnostic, and established RID/ObjectDB leak terms from the disposable-mirror amendment.
+**Architecture:** Two PowerShell scripts — a launcher (`launch_editor_playtest.ps1`) and its behavior test (`test_launch_editor_playtest.ps1`) — operating on the Godot project at `godot-project-moe-rail-way`. The launcher uses pinned `git archive` output plus `.NET System.Formats.Tar.TarFile` for Unicode-safe mirror materialization from `HEAD`, `System.Diagnostics.Process` with `UseShellExecute=false` and `ArgumentList` for controlled visible GUI editor execution with child-only `APPDATA`/`LOCALAPPDATA`/`TEMP`/`TMP` overrides, SHA-256 manifests for source integrity verification before and after, and anchored log scanning for `FAIL:`, `ERROR:`, `SCRIPT ERROR:`, `FATAL:`, `WARNING:`, `CRASH:`, exact gutter diagnostic, and established RID/ObjectDB leak terms from the disposable-mirror amendment.
 
-**Tech Stack:** PowerShell 7.4+ (`pwsh`) on modern .NET, .NET SDK 9.0.100 with an installed compatible .NET 9 runtime (`dotnet publish` for a framework-dependent test executable plus its runtime metadata only), Git for Windows, Git Bash 5.2.37 at `C:\Program Files\Git\bin\bash.exe`, tar (bsdtar 3.8.4), read-only Windows `fsutil.exe file queryfileid` directory identity checks, Godot 4.7.1.stable.official.a13da4feb (canonical GUI executable at `D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64.exe`; console sibling at `D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe`).
+**Tech Stack:** PowerShell 7.4+ (`pwsh`) on modern .NET with `System.Formats.Tar`, .NET SDK 9.0.100 with an installed compatible .NET 9 runtime (`dotnet publish` for a framework-dependent test executable plus its runtime metadata only), Git for Windows, Git Bash 5.2.37 at `C:\Program Files\Git\bin\bash.exe`, read-only Windows `fsutil.exe file queryfileid` directory identity checks, Godot 4.7.1.stable.official.a13da4feb (canonical GUI executable at `D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64.exe`; console sibling at `D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe`).
 
 **Spec:** `docs/superpowers/specs/2026-08-25-godot-editor-playtest-safety-design.md`
 
@@ -100,7 +100,7 @@
 - Produces:
   - Commit `test: add safe editor mirror verification` on feature branch
   - Launcher supporting `VerifyMirror` mode only
-  - Tooling test covering granular clean-state rejection, repository-external temp-parent enforcement, strict UTF-8/NUL Git paths, directory identity, mirror validation, temp root validation, and success/cleanup
+  - Tooling test covering granular clean-state rejection, repository-external temp-parent enforcement, strict UTF-8/NUL Git paths, synthetic non-ordinary Git mode rejection, deterministic early child-exit diagnostics, directory identity, Unicode-safe managed extraction, mirror validation, temp root validation, and success/cleanup
 
 ### Core Function Signatures
 
@@ -499,7 +499,6 @@ function Invoke-Launcher {
         [string]$RepositoryRoot,
         [string]$GodotExecutable,
         [string]$GitExecutable,
-        [string]$TarExecutable,
         [string]$Mode = 'VerifyMirror',
         [string]$TempParent,
         [Collections.IDictionary]$EnvOverrides = @{}
@@ -518,8 +517,6 @@ function Invoke-Launcher {
     $psi.ArgumentList.Add($GodotExecutable)
     $psi.ArgumentList.Add('-GitExecutable')
     $psi.ArgumentList.Add($GitExecutable)
-    $psi.ArgumentList.Add('-TarExecutable')
-    $psi.ArgumentList.Add($TarExecutable)
     $psi.ArgumentList.Add('-Mode')
     $psi.ArgumentList.Add($Mode)
     if ($TempParent) {
@@ -545,6 +542,43 @@ function Invoke-Launcher {
     finally {
         $proc.Dispose()
     }
+}
+
+function Wait-TestLauncherReadyOrThrow {
+    param(
+        [Threading.EventWaitHandle]$ReadyEvent,
+        [Diagnostics.Process]$Process,
+        [Threading.Tasks.Task]$StdoutTask,
+        [Threading.Tasks.Task]$StderrTask
+    )
+    $readyClock = [Diagnostics.Stopwatch]::StartNew()
+    while ($readyClock.Elapsed -lt [TimeSpan]::FromSeconds(30)) {
+        if ($ReadyEvent.WaitOne([TimeSpan]::FromMilliseconds(50))) { return }
+        if ($Process.HasExited) {
+            $exitCode = $Process.ExitCode
+            $earlyStderr = '<stdout/stderr streams did not drain within 5 seconds>'
+            try {
+                $streamsDrained = [Threading.Tasks.Task]::WaitAll(
+                    [Threading.Tasks.Task[]]@($StdoutTask,$StderrTask),
+                    [TimeSpan]::FromSeconds(5)
+                )
+                if ($streamsDrained) {
+                    try {
+                        $earlyStderr = $StderrTask.Result
+                        if ([string]::IsNullOrEmpty($earlyStderr)) { $earlyStderr = '<empty>' }
+                    }
+                    catch {
+                        $earlyStderr = "<stderr capture faulted: $($_.Exception.GetBaseException().Message)>"
+                    }
+                }
+            }
+            catch {
+                $earlyStderr = "<stdout/stderr drain faulted: $($_.Exception.GetBaseException().Message)>"
+            }
+            throw "Launcher exited before ready: exit=$exitCode stderr=$earlyStderr"
+        }
+    }
+    throw 'Identity fixture ready event timed out'
 }
 
 function Get-MoerailDirs {
@@ -658,15 +692,97 @@ function CaptureMoerailDirs { return Get-MoerailDirs -TempParent $testTempParent
 
 # ---- CASE 1: Wrong version -> exit 2, no root ----
 $dirsBefore = CaptureMoerailDirs
-$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TarExecutable (Get-Command tar.exe).Source -TempParent $testTempParent -EnvOverrides @{ MOERAIL_FAKE_VERSION = '4.7.2.stable.steam.ed1daf0bf' }
+$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $testTempParent -EnvOverrides @{ MOERAIL_FAKE_VERSION = '4.7.2.stable.steam.ed1daf0bf' }
 $dirsAfter = CaptureMoerailDirs
 Assert-ExitCode -Expected 2 -Actual $result.ExitCode -Message ' (wrong version)'
 Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $dirsBefore -After $dirsAfter -Message ' (wrong version)'
 
+# ---- CASE 1B: Child exits before ready -> exact exit/stderr diagnostic ----
+$earlyFixtureBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+$earlyDirsBefore = CaptureMoerailDirs
+$earlyReadyEventName = "Local\moerail-early-ready-$(New-Guid)"
+$earlyReleaseEventName = "Local\moerail-early-release-$(New-Guid)"
+$earlyReadyEvent = $null
+$earlyReleaseEvent = $null
+$earlyProcess = $null
+$earlyStdoutTask = $null
+$earlyStderrTask = $null
+$earlyDiagnostic = $null
+$earlyCleanupErrors = [Collections.Generic.List[string]]::new()
+try {
+    $earlyReadyEvent = [Threading.EventWaitHandle]::new($false,[Threading.EventResetMode]::ManualReset,$earlyReadyEventName)
+    $earlyReleaseEvent = [Threading.EventWaitHandle]::new($false,[Threading.EventResetMode]::ManualReset,$earlyReleaseEventName)
+    $earlyPsi = [Diagnostics.ProcessStartInfo]::new()
+    $earlyPsi.FileName = 'pwsh.exe'
+    $earlyPsi.UseShellExecute = $false
+    $earlyPsi.RedirectStandardOutput = $true
+    $earlyPsi.RedirectStandardError = $true
+    foreach ($argument in @(
+        '-NoProfile','-File',$launcherPath,
+        '-RepositoryRoot',$cloneRoot,
+        '-GodotExecutable',$fakeGodotExe,
+        '-GitExecutable',(Get-Command git.exe).Source,
+        '-Mode','VerifyMirror',
+        '-TempParent',$testTempParent,
+        '-TestReadyEventName',$earlyReadyEventName,
+        '-TestReleaseEventName',$earlyReleaseEventName
+    )) { $earlyPsi.ArgumentList.Add($argument) }
+    $earlyPsi.Environment['MOERAIL_FAKE_VERSION'] = '4.7.2.stable.steam.ed1daf0bf'
+    $earlyProcess = [Diagnostics.Process]::Start($earlyPsi)
+    $earlyStdoutTask = $earlyProcess.StandardOutput.ReadToEndAsync()
+    $earlyStderrTask = $earlyProcess.StandardError.ReadToEndAsync()
+    Wait-TestLauncherReadyOrThrow -ReadyEvent $earlyReadyEvent -Process $earlyProcess -StdoutTask $earlyStdoutTask -StderrTask $earlyStderrTask
+    throw 'Early-exit fixture unexpectedly reached ready'
+}
+catch {
+    $earlyDiagnostic = $_.Exception.Message
+}
+finally {
+    if ($null -ne $earlyReleaseEvent) { $earlyReleaseEvent.Set() | Out-Null }
+    if ($null -ne $earlyProcess) {
+        if (-not $earlyProcess.HasExited -and -not $earlyProcess.WaitForExit(5000)) {
+            try { $earlyProcess.Kill($true) }
+            catch [InvalidOperationException] {
+                # Natural exit won the race.
+            }
+            catch { $earlyCleanupErrors.Add("Early-exit fixture bounded cleanup failed: $($_.Exception.Message)") }
+            if (-not $earlyProcess.HasExited -and -not $earlyProcess.WaitForExit(5000)) {
+                $earlyCleanupErrors.Add('Early-exit fixture process remained alive after bounded cleanup')
+            }
+        }
+        if ($null -ne $earlyStdoutTask -and $null -ne $earlyStderrTask) {
+            try {
+                if (-not [Threading.Tasks.Task]::WaitAll(
+                    [Threading.Tasks.Task[]]@($earlyStdoutTask,$earlyStderrTask),
+                    [TimeSpan]::FromSeconds(5)
+                )) { $earlyCleanupErrors.Add('Early-exit fixture stream drain remained incomplete') }
+            }
+            catch { $earlyCleanupErrors.Add("Early-exit fixture stream drain failed: $($_.Exception.Message)") }
+        }
+        try { $earlyProcess.Dispose() } catch { $earlyCleanupErrors.Add("Early-exit fixture process dispose failed: $($_.Exception.Message)") }
+    }
+    if ($null -ne $earlyReleaseEvent) {
+        try { $earlyReleaseEvent.Dispose() } catch { $earlyCleanupErrors.Add("Early release event dispose failed: $($_.Exception.Message)") }
+    }
+    if ($null -ne $earlyReadyEvent) {
+        try { $earlyReadyEvent.Dispose() } catch { $earlyCleanupErrors.Add("Early ready event dispose failed: $($_.Exception.Message)") }
+    }
+}
+if ($earlyCleanupErrors.Count -ne 0) {
+    throw ((@("Early-exit diagnostic: $earlyDiagnostic") + @($earlyCleanupErrors)) -join [Environment]::NewLine)
+}
+if ($null -eq $earlyDiagnostic) { throw 'Early-exit fixture produced no diagnostic' }
+Assert-OutputContains -Needle 'Launcher exited before ready: exit=2 stderr=Preflight failed: Godot version mismatch:' -Haystack $earlyDiagnostic -Message ' (early exit code/reason)'
+Assert-OutputContains -Needle '4.7.2.stable.steam.ed1daf0bf' -Haystack $earlyDiagnostic -Message ' (early exit actual version)'
+$earlyDirsAfter = CaptureMoerailDirs
+Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $earlyDirsBefore -After $earlyDirsAfter -Message ' (early exit)'
+$earlyFixtureAfter = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+Assert-FixtureSnapshotUnchanged -Before $earlyFixtureBefore -After $earlyFixtureAfter
+
 # ---- CASE 2: Feature branch -> exit 2, no root ----
 & git.exe -C $cloneRoot checkout -b feature-branch
 $dirsBefore = CaptureMoerailDirs
-$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TarExecutable (Get-Command tar.exe).Source -TempParent $testTempParent
+$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $testTempParent
 $dirsAfter = CaptureMoerailDirs
 Assert-ExitCode -Expected 2 -Actual $result.ExitCode -Message ' (feature branch)'
 Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $dirsBefore -After $dirsAfter -Message ' (feature branch)'
@@ -677,7 +793,7 @@ Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $dirsBefore -Af
 foreach ($insideTempParent in @($cloneRoot,$projectRoot)) {
     $fixtureBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
     $dirsBefore = @(Get-MoerailDirs -TempParent $insideTempParent)
-    $result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TarExecutable (Get-Command tar.exe).Source -TempParent $insideTempParent
+    $result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $insideTempParent
     $dirsAfter = @(Get-MoerailDirs -TempParent $insideTempParent)
     Assert-ExitCode -Expected 2 -Actual $result.ExitCode -Message " (repository TempParent: $insideTempParent)"
     Assert-OutputContains -Needle 'TempParent must be outside RepositoryRoot:' -Haystack $result.Stderr -Message ' (repository TempParent reason)'
@@ -686,11 +802,72 @@ foreach ($insideTempParent in @($cloneRoot,$projectRoot)) {
     Assert-FixtureSnapshotUnchanged -Before $fixtureBefore -After $fixtureAfter
 }
 
+# ---- CASE 3B: Synthetic Git mode 120000 -> exit 2 before root ----
+$modeOrigin = Join-Path $testTempParent 'mode-origin.git'
+$modeClone = Join-Path $testTempParent 'mode-clone'
+New-TestBareOrigin -Path $modeOrigin
+New-TestClone -OriginPath $modeOrigin -ClonePath $modeClone -UserName 'Mode Test' -UserEmail 'mode@example.com'
+& git.exe -C $modeClone config --local core.symlinks false
+if ($LASTEXITCODE -ne 0) { throw 'Mode fixture core.symlinks configuration failed' }
+$modeProjectRoot = Join-Path $modeClone 'godot-project-moe-rail-way'
+[IO.Directory]::CreateDirectory($modeProjectRoot) | Out-Null
+Write-ProjectGodot -ProjectRoot $modeProjectRoot
+& git.exe -C $modeClone add --all
+& git.exe -C $modeClone commit -m 'Initial mode fixture'
+$hashPsi = [Diagnostics.ProcessStartInfo]::new()
+$hashPsi.FileName = (Get-Command git.exe -ErrorAction Stop).Source
+$hashPsi.UseShellExecute = $false
+$hashPsi.RedirectStandardInput = $true
+$hashPsi.RedirectStandardOutput = $true
+$hashPsi.RedirectStandardError = $true
+$hashPsi.WorkingDirectory = $modeClone
+foreach ($argument in @('-C',$modeClone,'hash-object','-w','--stdin')) { $hashPsi.ArgumentList.Add($argument) }
+$hashProcess = [Diagnostics.Process]::Start($hashPsi)
+try {
+    $hashStdoutTask = $hashProcess.StandardOutput.ReadToEndAsync()
+    $hashStderrTask = $hashProcess.StandardError.ReadToEndAsync()
+    $linkTargetBytes = [Text.UTF8Encoding]::new($false).GetBytes('assets/test.bin')
+    $hashProcess.StandardInput.BaseStream.Write($linkTargetBytes,0,$linkTargetBytes.Length)
+    $hashProcess.StandardInput.Close()
+    $hashProcess.WaitForExit()
+    $hashStdoutTask.Wait()
+    $hashStderrTask.Wait()
+    $linkOid = $hashStdoutTask.Result.Trim()
+    if ($hashProcess.ExitCode -ne 0 -or $linkOid -notmatch '^[0-9a-f]{40,64}$') {
+        throw "Mode fixture blob creation failed: exit=$($hashProcess.ExitCode) oid=$linkOid stderr=$($hashStderrTask.Result)"
+    }
+}
+finally {
+    $hashProcess.Dispose()
+}
+& git.exe -C $modeClone update-index --add --cacheinfo 120000 $linkOid 'godot-project-moe-rail-way/assets/link-fixture'
+if ($LASTEXITCODE -ne 0) { throw 'Mode fixture index update failed' }
+& git.exe -C $modeClone commit -m 'Add synthetic symlink mode'
+if ($LASTEXITCODE -ne 0) { throw 'Mode fixture commit failed' }
+& git.exe -C $modeClone checkout -- 'godot-project-moe-rail-way/assets/link-fixture'
+if ($LASTEXITCODE -ne 0) { throw 'Mode fixture worktree materialization failed' }
+$linkFixturePath = Join-Path $modeClone 'godot-project-moe-rail-way\assets\link-fixture'
+$linkFixtureItem = Get-Item -LiteralPath $linkFixturePath -Force -ErrorAction Stop
+if ($linkFixtureItem.PSIsContainer -or ($linkFixtureItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+    throw "Mode fixture did not materialize as an ordinary leaf: $linkFixturePath"
+}
+& git.exe -C $modeClone push -u origin main
+if ($LASTEXITCODE -ne 0) { throw 'Mode fixture push failed' }
+$modeFixtureBefore = Get-FixtureSnapshot -RepositoryRoot $modeClone
+$modeDirsBefore = CaptureMoerailDirs
+$modeResult = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $modeClone -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $testTempParent
+$modeDirsAfter = CaptureMoerailDirs
+Assert-ExitCode -Expected 2 -Actual $modeResult.ExitCode -Message ' (synthetic mode 120000)'
+Assert-OutputContains -Needle 'Invalid mode 120000 for godot-project-moe-rail-way/assets/link-fixture' -Haystack $modeResult.Stderr -Message ' (synthetic mode reason)'
+Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $modeDirsBefore -After $modeDirsAfter -Message ' (synthetic mode)'
+$modeFixtureAfter = Get-FixtureSnapshot -RepositoryRoot $modeClone
+Assert-FixtureSnapshotUnchanged -Before $modeFixtureBefore -After $modeFixtureAfter
+
 # ---- CASE 4: Tracked unstaged -> exit 2, exact reason/path, no root ----
 $fixtureBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
 Write-BinaryFixture -ProjectRoot $projectRoot -RelativePath 'assets/test.bin' -Bytes @(0xFF)
 $dirsBefore = CaptureMoerailDirs
-$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TarExecutable (Get-Command tar.exe).Source -TempParent $testTempParent
+$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $testTempParent
 $dirsAfter = CaptureMoerailDirs
 Assert-ExitCode -Expected 2 -Actual $result.ExitCode -Message ' (tracked unstaged)'
 Assert-OutputContains -Needle 'Working tree not clean:' -Haystack $result.Stderr -Message ' (tracked unstaged reason)'
@@ -706,7 +883,7 @@ $fixtureBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
 Write-BinaryFixture -ProjectRoot $projectRoot -RelativePath 'assets/test.bin' -Bytes @(0xFE)
 & git.exe -C $cloneRoot add -- 'godot-project-moe-rail-way/assets/test.bin'
 $dirsBefore = CaptureMoerailDirs
-$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TarExecutable (Get-Command tar.exe).Source -TempParent $testTempParent
+$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $testTempParent
 $dirsAfter = CaptureMoerailDirs
 Assert-ExitCode -Expected 2 -Actual $result.ExitCode -Message ' (staged only)'
 Assert-OutputContains -Needle 'Working tree not clean:' -Haystack $result.Stderr -Message ' (staged only reason)'
@@ -724,7 +901,7 @@ $fixtureBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
 $untrackedPath = Join-Path $projectRoot 'untracked.txt'
 [IO.File]::WriteAllText($untrackedPath,'untracked',[Text.Encoding]::UTF8)
 $dirsBefore = CaptureMoerailDirs
-$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TarExecutable (Get-Command tar.exe).Source -TempParent $testTempParent
+$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $testTempParent
 $dirsAfter = CaptureMoerailDirs
 Assert-ExitCode -Expected 2 -Actual $result.ExitCode -Message ' (untracked only)'
 Assert-OutputContains -Needle 'Working tree not clean:' -Haystack $result.Stderr -Message ' (untracked only reason)'
@@ -739,7 +916,7 @@ Write-BinaryFixture -ProjectRoot $projectRoot -RelativePath 'assets/ahead.bin' -
 & git.exe -C $cloneRoot add --all
 & git.exe -C $cloneRoot commit -m 'Local ahead commit'
 $dirsBefore = CaptureMoerailDirs
-$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TarExecutable (Get-Command tar.exe).Source -TempParent $testTempParent
+$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $testTempParent
 $dirsAfter = CaptureMoerailDirs
 Assert-ExitCode -Expected 2 -Actual $result.ExitCode -Message ' (local ahead)'
 Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $dirsBefore -After $dirsAfter -Message ' (local ahead)'
@@ -752,7 +929,7 @@ $junctionTarget = Join-Path $testTempParent 'junction-target'
 [IO.Directory]::CreateDirectory($junctionTarget) | Out-Null
 New-Item -ItemType Junction -Path $junctionParent -Target $junctionTarget -ErrorAction Stop | Out-Null
 $dirsBefore = CaptureMoerailDirs
-$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TarExecutable (Get-Command tar.exe).Source -TempParent $junctionParent
+$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $junctionParent
 $dirsAfter = CaptureMoerailDirs
 Assert-ExitCode -Expected 2 -Actual $result.ExitCode -Message ' (junction temp parent)'
 Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $dirsBefore -After $dirsAfter -Message ' (junction temp parent)'
@@ -788,7 +965,6 @@ try {
         '-RepositoryRoot',$cloneRoot,
         '-GodotExecutable',$fakeGodotExe,
         '-GitExecutable',(Get-Command git.exe).Source,
-        '-TarExecutable',(Get-Command tar.exe).Source,
         '-Mode','VerifyMirror',
         '-TempParent',$identityTempParent,
         '-TestReadyEventName',$readyEventName,
@@ -797,7 +973,7 @@ try {
     $identityProcess = [Diagnostics.Process]::Start($identityPsi)
     $identityStdoutTask = $identityProcess.StandardOutput.ReadToEndAsync()
     $identityStderrTask = $identityProcess.StandardError.ReadToEndAsync()
-    if (-not $readyEvent.WaitOne([TimeSpan]::FromSeconds(30))) { throw 'Identity fixture ready event timed out' }
+    Wait-TestLauncherReadyOrThrow -ReadyEvent $readyEvent -Process $identityProcess -StdoutTask $identityStdoutTask -StderrTask $identityStderrTask
     $identityRoots = @(Get-MoerailDirs -TempParent $identityTempParent)
     if ($identityRoots.Count -ne 1) { throw "Identity fixture expected one root, got $($identityRoots.Count)" }
     $rootLeaf = [IO.Path]::GetFileName($identityRoots[0])
@@ -894,7 +1070,7 @@ Assert-FixtureSnapshotUnchanged -Before $fixtureBefore -After $fixtureAfter
 # ---- CASE 10: Success -> exit 0, marker, source invariants, cleanup ----
 $fixtureBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
 $dirsBefore = CaptureMoerailDirs
-$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TarExecutable (Get-Command tar.exe).Source -TempParent $testTempParent
+$result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $testTempParent
 $dirsAfter = CaptureMoerailDirs
 Assert-ExitCode -Expected 0 -Actual $result.ExitCode -Message ' (success)'
 Assert-OutputContains -Needle 'PASS: editor playtest mirror verified' -Haystack $result.Stdout -Message ' (success marker)'
@@ -919,7 +1095,6 @@ param(
     [string]$RepositoryRoot = (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))),
     [string]$GodotExecutable = "D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64.exe",
     [string]$GitExecutable,
-    [string]$TarExecutable,
     [ValidateSet('VerifyMirror')]
     [string]$Mode = 'VerifyMirror',
     [string]$TempParent = $null,
@@ -943,10 +1118,9 @@ function Get-CanonicalPath {
     return $full.TrimEnd([IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar)
 }
 
-# Resolve GitExecutable, TarExecutable, and read-only fsutil with controlled preflight
+# Resolve GitExecutable and read-only fsutil with controlled preflight
 try {
     if ($null -eq $GitExecutable) { $GitExecutable = (Get-Command git.exe -ErrorAction Stop).Source }
-    if ($null -eq $TarExecutable) { $TarExecutable = (Get-Command tar.exe -ErrorAction Stop).Source }
     $FsutilExecutable = (Get-Command fsutil.exe -ErrorAction Stop).Source
 }
 catch {
@@ -1450,13 +1624,12 @@ Assert-OwnedRoot -Root $Root -ResolvedTempParent $TempParent -RequireExists $tru
 
     # Archive
     $archivePath = Join-Path $Root 'mirror.tar'
-    $archiveResult = Invoke-NativeText -Executable $GitExecutable -Arguments @('-c', 'core.autocrlf=false', 'archive', '--format=tar', "--output=$archivePath", $SourceHead, '--', 'godot-project-moe-rail-way/') -WorkingDirectory $RepositoryRoot
+    $archiveResult = Invoke-NativeText -Executable $GitExecutable -Arguments @('-c', 'core.autocrlf=false', 'archive', '--format=tar', "--output=$archivePath", "${SourceHead}:godot-project-moe-rail-way") -WorkingDirectory $RepositoryRoot
     if ($archiveResult.ExitCode -ne 0) { throw "git archive failed: $($archiveResult.Stderr)" }
     Assert-ExistingOrdinaryPathChain -Path $archivePath -Boundary $Root | Out-Null
 
-    # Extract
-    $extractResult = Invoke-NativeText -Executable $TarExecutable -Arguments @('-xf', $archivePath, '-C', $projectMirror, '--strip-components', '1') -WorkingDirectory $Root
-    if ($extractResult.ExitCode -ne 0) { throw "tar extract failed: $($extractResult.Stderr)" }
+    # Extract with .NET TarFile because Windows tar.exe cannot extract every valid UTF-8/emoji Git path.
+    [System.Formats.Tar.TarFile]::ExtractToDirectory($archivePath,$projectMirror,$false)
 
     # Reject archive-created links before any recursive traversal.
     Assert-OwnedRoot -Root $Root -ResolvedTempParent $TempParent -RequireExists $true | Out-Null
@@ -1582,10 +1755,11 @@ if ($out -notmatch 'PASS: track train app integration') { exit 1 }
 - [ ] Review findings require this exact focused follow-up cycle:
   1. Amend and independently review the English design and plan before implementation changes.
   2. Require full porcelain to contain exactly `docs/superpowers/specs/2026-08-25-godot-editor-playtest-safety-design.md` and `docs/superpowers/plans/2026-08-25-godot-editor-playtest-safety.md`; stage only those two files, commit `docs: harden editor mirror review contract`, and require clean full porcelain.
-  3. Modify the Task 1 tooling test only with the repository-temp, granular dirty-state, Unicode/NUL, and directory-identity cases above; run it against commit `24c4b1d111c6784f275cdacc7d8409f88cb0f766` plus the reviewed documentation commits and require nonzero RED at the first new unmet contract.
+  3. Modify the Task 1 tooling test only with the repository-temp, granular dirty-state, Unicode/NUL, synthetic mode `120000`, deterministic early-exit diagnostic, and directory-identity cases above; run it against commit `24c4b1d111c6784f275cdacc7d8409f88cb0f766` plus the reviewed documentation commits and require nonzero RED at the first new unmet contract.
   4. Apply the matching minimal launcher changes; require tooling GREEN and all five exact Godot regressions.
   5. Require the full porcelain allowlist to contain only the two Task 1 implementation paths; stage only those paths and commit `fix: harden editor mirror safety gates`.
   6. Require clean full porcelain, then repeat separate Sol specification and Sol quality/code reviews. Any new finding repeats this focused cycle.
+  7. The live Unicode GREEN attempt proved that Windows `tar.exe` lists but cannot extract `assets/선로-🚆.bin`, while `.NET System.Formats.Tar.TarFile` extracts the same archive correctly; it also proved that the identity fixture masked a launcher exit before the ready event. Restore only the two uncommitted Task 1 files to `HEAD` through exact patch content, amend and independently review the two English canonical documents, commit only those documents as `docs: use Unicode-safe managed tar extraction`, and then repeat steps 3–6 with the managed extraction and early-exit diagnostic contract.
 
 ---
 
@@ -1965,7 +2139,7 @@ Add these process and ownership helpers to the test. They invoke the launcher, n
 function Start-LauncherAsync {
     param(
         [string]$LauncherPath, [string]$RepositoryRoot, [string]$GodotExecutable,
-        [string]$GitExecutable, [string]$TarExecutable, [string]$TempParent,
+        [string]$GitExecutable, [string]$TempParent,
         [Collections.IDictionary]$EnvOverrides
     )
     $psi = [Diagnostics.ProcessStartInfo]::new()
@@ -1976,7 +2150,7 @@ function Start-LauncherAsync {
     foreach ($argument in @(
         '-NoProfile','-File',$LauncherPath,
         '-RepositoryRoot',$RepositoryRoot,'-GodotExecutable',$GodotExecutable,
-        '-GitExecutable',$GitExecutable,'-TarExecutable',$TarExecutable,
+        '-GitExecutable',$GitExecutable,
         '-TempParent',$TempParent,'-Mode','Launch'
     )) { $psi.ArgumentList.Add($argument) }
     foreach ($entry in $EnvOverrides.GetEnumerator()) { $psi.Environment[$entry.Key] = [string]$entry.Value }
@@ -2048,7 +2222,6 @@ Add the following executable assertions before final test-fixture cleanup:
 
 ```powershell
 $gitExe = (Get-Command git.exe -ErrorAction Stop).Source
-$tarExe = (Get-Command tar.exe -ErrorAction Stop).Source
 
 # This is the Task 2 RED against the committed Task 1 launcher. After Launch
 # exists, the same probe is a clean success and its mirror must be removed.
@@ -2059,7 +2232,7 @@ $controllerEnvironmentBefore = [ordered]@{
 $availabilityRootsBefore = @(Get-MoerailDirs -TempParent $testTempParent)
 $availabilitySourceBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
 $availability = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot `
-    -GodotExecutable $fakeGodotExe -GitExecutable $gitExe -TarExecutable $tarExe `
+    -GodotExecutable $fakeGodotExe -GitExecutable $gitExe `
     -Mode Launch -TempParent $testTempParent -EnvOverrides @{
         MOERAIL_TEST_CAPTURE_PATH=$availabilityCapture
     }
@@ -2104,7 +2277,7 @@ foreach ($target in @('stdout','stderr','editor','game')) {
     $beforeSource = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
     $capture = Join-Path $testTempParent "capture-$target.txt"
     $result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot `
-        -GodotExecutable $fakeGodotExe -GitExecutable $gitExe -TarExecutable $tarExe `
+        -GodotExecutable $fakeGodotExe -GitExecutable $gitExe `
         -Mode Launch -TempParent $testTempParent -EnvOverrides @{
             MOERAIL_TEST_CAPTURE_PATH=$capture
             MOERAIL_TEST_DIAGNOSTIC=$target
@@ -2151,7 +2324,7 @@ foreach ($case in $diagnosticCases) {
     $beforeSource = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
     $capture = Join-Path $testTempParent "capture-$($case.Name).txt"
     $result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot `
-        -GodotExecutable $fakeGodotExe -GitExecutable $gitExe -TarExecutable $tarExe `
+        -GodotExecutable $fakeGodotExe -GitExecutable $gitExe `
         -Mode Launch -TempParent $testTempParent -EnvOverrides @{
             MOERAIL_TEST_CAPTURE_PATH=$capture
             MOERAIL_TEST_DIAGNOSTIC='editor'
@@ -2176,7 +2349,7 @@ $ready = Join-Path $testTempParent 'junction-ready'
 $release = Join-Path $testTempParent 'junction-release'
 $capture = Join-Path $testTempParent 'junction-capture.txt'
 $running = Start-LauncherAsync -LauncherPath $launcherPath -RepositoryRoot $cloneRoot `
-    -GodotExecutable $fakeGodotExe -GitExecutable $gitExe -TarExecutable $tarExe `
+    -GodotExecutable $fakeGodotExe -GitExecutable $gitExe `
     -TempParent $testTempParent -EnvOverrides @{
         MOERAIL_TEST_CAPTURE_PATH=$capture; MOERAIL_TEST_READY_PATH=$ready; MOERAIL_TEST_RELEASE_PATH=$release
     }
@@ -2202,7 +2375,7 @@ $ready = Join-Path $testTempParent 'held-ready'
 $release = Join-Path $testTempParent 'held-release'
 $capture = Join-Path $testTempParent 'held-capture.txt'
 $running = Start-LauncherAsync -LauncherPath $launcherPath -RepositoryRoot $cloneRoot `
-    -GodotExecutable $fakeGodotExe -GitExecutable $gitExe -TarExecutable $tarExe `
+    -GodotExecutable $fakeGodotExe -GitExecutable $gitExe `
     -TempParent $testTempParent -EnvOverrides @{
         MOERAIL_TEST_CAPTURE_PATH=$capture; MOERAIL_TEST_READY_PATH=$ready; MOERAIL_TEST_RELEASE_PATH=$release
     }
