@@ -82,19 +82,38 @@ func _deliver(view, event: InputEvent) -> void:
 	view.call("_gui_input", event)
 
 
-func _view_b_through_f_curve_piece() -> TrackGeometryPieceScript:
-	var piece = TrackGeometryPieceScript.new()
-	piece.group_id = 0
-	piece.kind = TrackGeometryPieceScript.Kind.CURVE_3X3
-	piece.first_route_serial = 1
-	piece.last_route_serial = 5
-	piece.nominal_length_cells = 5
-	piece.absolute_start_distance_cells = 0.0
-	var footprint: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0), Vector2i(3, 1), Vector2i(3, 2)]
-	piece.footprint_cells = footprint
-	piece.centerline = PackedVector2Array([Vector2(20.0, 20.0), Vector2(60.0, 20.0), Vector2(100.0, 20.0), Vector2(140.0, 60.0), Vector2(140.0, 100.0)])
-	piece.active_local_end_cells = 5.0
-	return piece
+func _runtime_piece_for_serial(
+	pieces: Array[TrackGeometryPieceScript], route_serial: int
+) -> TrackGeometryPieceScript:
+	for piece in pieces:
+		if piece.contains_serial(route_serial):
+			return piece
+	return null
+
+
+func _runtime_record_for_serial(
+	records: Array[TrackCellRecordScript], route_serial: int
+) -> TrackCellRecordScript:
+	for record in records:
+		if record.route_serial == route_serial:
+			return record
+	return null
+
+
+func _view_interval_for_serial(observation: Dictionary, route_serial: int) -> Dictionary:
+	for interval in observation.get("intervals", []):
+		if interval.get("route_serial", -1) == route_serial:
+			return interval
+	return {}
+
+
+func _points_materially_differ(first: PackedVector2Array, second: PackedVector2Array) -> bool:
+	if first.size() != second.size():
+		return true
+	for index in range(first.size()):
+		if first[index].distance_to(second[index]) >= 1.0:
+			return true
+	return false
 
 
 func _view_straight_piece(route_serial: int, cell: Vector2i) -> TrackGeometryPieceScript:
@@ -120,6 +139,15 @@ func _view_snapshot(records: Array[TrackCellRecordScript], pieces: Array[TrackGe
 	)
 
 
+func _built_runtime_straight_head() -> GridTrackRuntimeScript:
+	var runtime = GridTrackRuntimeScript.new(Vector2i(-1, 0), 18, Vector2.ZERO, Vector2i(8, 8), 40.0)
+	assert_equal(runtime.append_cells([
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+	]), 3, "B through D begin as actual runtime straights")
+	assert_equal(runtime.advance_construction(3.0), 3.0, "B through D are built before the turn exists")
+	return runtime
+
+
 func _exit_support_runtime() -> GridTrackRuntimeScript:
 	var runtime = GridTrackRuntimeScript.new(Vector2i(-1, 0), 18, Vector2.ZERO, Vector2i(8, 8), 40.0)
 	assert_equal(runtime.append_cells([
@@ -132,14 +160,72 @@ func _exit_support_runtime() -> GridTrackRuntimeScript:
 
 func _test_built_reflow_interval_stays_solid_without_provisional_style() -> void:
 	var fixture := _fixture()
-	var built = TrackCellRecordScript.new(1, Vector2i(1, 0), 0.0)
-	built.state = TrackCellRecordScript.State.BUILT
-	var curve = _view_b_through_f_curve_piece()
-	fixture.view.present(_view_snapshot([built], [curve]))
-	var intervals: Array = fixture.view.get_render_observation().get("intervals", [])
-	var interval: Dictionary = intervals[0]
-	assert_equal(interval.state, TrackCellRecordScript.State.BUILT, "Built state remains authoritative")
-	assert_true(interval.locked == false, "Provisionality is metadata, not ghost state")
+	var runtime := _built_runtime_straight_head()
+	var initially_built_serials := [1, 2, 3]
+	var before_records: Array[TrackCellRecordScript] = runtime.get_cell_records()
+	var before_pieces: Array[TrackGeometryPieceScript] = runtime.get_geometry_pieces()
+	fixture.view.present(_view_snapshot(before_records, before_pieces))
+	var before_observation: Dictionary = fixture.view.get_render_observation()
+	var before_points_by_serial: Dictionary = {}
+	for route_serial in initially_built_serials:
+		var before_record := _runtime_record_for_serial(before_records, route_serial)
+		var before_owner := _runtime_piece_for_serial(before_pieces, route_serial)
+		assert_not_null(before_record, "Built serial %d exists before the turn" % route_serial)
+		assert_not_null(before_owner, "Built serial %d has an actual runtime owner before the turn" % route_serial)
+		if before_record != null:
+			assert_equal(before_record.route_serial, route_serial, "Initial record serial is preserved")
+			assert_equal(before_record.state, TrackCellRecordScript.State.BUILT, "Initial serial %d is built" % route_serial)
+			assert_false(before_record.geometry_locked, "Initial serial %d remains provisional" % route_serial)
+		if before_owner != null:
+			assert_equal(before_owner.kind, TrackGeometryPieceScript.Kind.STRAIGHT, "Initial serial %d has a straight runtime owner" % route_serial)
+			assert_false(before_owner.locked, "Initial serial %d owner is provisional" % route_serial)
+		var before_interval := _view_interval_for_serial(before_observation, route_serial)
+		assert_false(before_interval.is_empty(), "The view captures actual serial %d before reflow" % route_serial)
+		if not before_interval.is_empty():
+			assert_equal(before_interval.route_serial, route_serial, "Initial rendered serial is preserved")
+			assert_equal(before_interval.state, TrackCellRecordScript.State.BUILT, "Initial built serial uses solid render state")
+			assert_false(before_interval.locked, "Initial rendered serial is provisional, not a style")
+			before_points_by_serial[route_serial] = before_interval.points
+
+	assert_equal(runtime.append_cells([
+		Vector2i(2, 1), Vector2i(2, 2),
+	]), 2, "E and F make the same B through D serials reclassify through the runtime")
+	var after_records: Array[TrackCellRecordScript] = runtime.get_cell_records()
+	var after_pieces: Array[TrackGeometryPieceScript] = runtime.get_geometry_pieces()
+	var after_owner := _runtime_piece_for_serial(after_pieces, 1)
+	assert_not_null(after_owner, "B retains one runtime owner after reflow")
+	if after_owner == null:
+		fixture.parent.free()
+		return
+	assert_equal(after_owner.kind, TrackGeometryPieceScript.Kind.CURVE_3X3, "Runtime reclassifies B through F as a 3x3 curve")
+	assert_equal(after_owner.first_route_serial, 1, "Reflow curve still owns B")
+	assert_equal(after_owner.last_route_serial, 5, "Reflow curve now owns B through F")
+	assert_false(after_owner.locked, "Reflowed owner remains provisional")
+	fixture.view.present(_view_snapshot(after_records, after_pieces))
+	var after_observation: Dictionary = fixture.view.get_render_observation()
+	var geometry_materially_reflowed := false
+	for route_serial in initially_built_serials:
+		var record := _runtime_record_for_serial(after_records, route_serial)
+		var owner := _runtime_piece_for_serial(after_pieces, route_serial)
+		assert_not_null(record, "Built serial %d survives runtime reflow" % route_serial)
+		assert_not_null(owner, "Built serial %d retains a runtime owner after reflow" % route_serial)
+		if record != null:
+			assert_equal(record.route_serial, route_serial, "Reflow preserves serial identity")
+			assert_equal(record.state, TrackCellRecordScript.State.BUILT, "Runtime reflow preserves built state for serial %d" % route_serial)
+			assert_false(record.geometry_locked, "Runtime reflow does not lock serial %d" % route_serial)
+		if owner != null:
+			assert_equal(owner.kind, TrackGeometryPieceScript.Kind.CURVE_3X3, "Reflowed serial %d belongs to the curve" % route_serial)
+			assert_false(owner.locked, "Reflowed serial %d owner remains provisional" % route_serial)
+		var after_interval := _view_interval_for_serial(after_observation, route_serial)
+		assert_false(after_interval.is_empty(), "The view captures actual serial %d after reflow" % route_serial)
+		if not after_interval.is_empty():
+			assert_equal(after_interval.route_serial, route_serial, "Reflowed rendered serial is preserved")
+			assert_equal(after_interval.state, TrackCellRecordScript.State.BUILT, "Reflowed built serial remains in the solid render state")
+			assert_false(after_interval.locked, "Reflowed built serial has no provisional render style")
+			if before_points_by_serial.has(route_serial):
+				var before_points: PackedVector2Array = before_points_by_serial[route_serial]
+				geometry_materially_reflowed = geometry_materially_reflowed or _points_materially_differ(before_points, after_interval.points)
+	assert_true(geometry_materially_reflowed, "Runtime reflow materially changes rendered centerline points while built serials stay solid")
 	fixture.parent.free()
 
 
