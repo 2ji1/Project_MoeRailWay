@@ -1081,7 +1081,9 @@ $versionResult = Invoke-NativeText -Executable $GodotExecutable -Arguments @('--
 if ($versionResult.ExitCode -ne 0) {
     throw "Godot version check failed: $($versionResult.Stderr)"
 }
-$firstLine = ($versionResult.Stdout -split "`r?`n" | Where-Object { $_ -ne '' })[0].Trim()
+$versionLines = @($versionResult.Stdout -split "`r?`n" | Where-Object { $_ -ne '' })
+if ($versionLines.Count -eq 0) { throw 'Godot version output is empty' }
+$firstLine = ([string]$versionLines[0]).Trim()
 if ($firstLine -ne '4.7.1.stable.official.a13da4feb') {
     throw "Godot version mismatch: expected '4.7.1.stable.official.a13da4feb' got '$firstLine'"
 }
