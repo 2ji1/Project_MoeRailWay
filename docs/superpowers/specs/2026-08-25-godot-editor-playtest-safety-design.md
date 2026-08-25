@@ -30,10 +30,10 @@ The gutter diagnostic originates from Godot's editor internals (`TextEdit::set_l
 
 One concrete repository PowerShell visible-playtest launcher with behavior tests and README usage. The launcher:
 
-- Invokes from clean local `main` tracking `origin/main`; dirty, staged, untracked, or divergent state fails before temp creation
+- Rejects ambient Git repository-routing and command-config injection variables before any Git command; then invokes from clean local `main` tracking `origin/main`, where dirty, staged, untracked, or divergent state fails before temp creation
 - Verifies exact canonical version (4.7.1.stable.official.a13da4feb) before temp creation
 - Mirrors only committed tracked `godot-project-moe-rail-way` ordinary files from `HEAD`; reads Git path records as strict UTF-8, NUL-delimited bytes; excludes `.git`, `.godot`, reparse points, invalid UTF-8, CR/LF/TAB path characters, and path escape; rejects every Git entry except blob mode `100644` or `100755` before archive creation; materializes the pinned Git tar archive with `.NET System.Formats.Tar.TarFile`; rejects post-extraction reparse points before any other recursive traversal; produces SHA-256 manifest before and after copy
-- Rejects a temp parent equal to or below the source repository before creating anything; creates a unique validated temp root containing project, child `APPDATA`, `LOCALAPPDATA`, `TEMP`, `TMP`, and logs
+- Requires the complete `RepositoryRoot` and temp-parent chains to be ordinary/non-reparse before any Git command; captures the repository directory identity; rejects a temp parent equal to/below the lexical repository or whose ancestor identities include the repository identity; creates a unique validated temp root containing project, child `APPDATA`, `LOCALAPPDATA`, `TEMP`, `TMP`, and logs
 - Uses `ProcessStartInfo` with `UseShellExecute=false`, separate `ArgumentList`, child-only `Environment` overrides, visible GUI executable; never mutates controller or user environment and never hides the window
 - Waits for natural editor exit; never enumerates, stops, or resets any Godot or Steam process; no timeout termination
 - Scans captured editor and game logs for anchored `FAIL:`, `ERROR:`, `SCRIPT ERROR:`, `FATAL:`, `WARNING:`, `CRASH:`, exact gutter diagnostic (`Index p_gutter = -1 is out of bounds`), and established crash or leak terms; confirms source Git status and tracked SHA-256 snapshot unchanged; never copies back
@@ -43,11 +43,11 @@ One concrete repository PowerShell visible-playtest launcher with behavior tests
 
 | Requirement | Binding Rule |
 |-------------|--------------|
-| Invocation state | Clean local `main` tracking `origin/main` only; any divergence fails pre-temp |
+| Invocation state | Ambient Git routing/config-injection variables rejected before any Git command; clean local `main` tracking `origin/main` only; any divergence fails pre-temp |
 | Version gate | Exact canonical 4.7.1.stable.official.a13da4feb verified before temp creation |
 | Mirror scope | Committed tracked ordinary files from `HEAD` only; strict UTF-8/NUL Git path records; only blob mode `100644`/`100755` accepted before archive creation; `.NET System.Formats.Tar.TarFile` extraction; `.git`, `.godot`, reparse points, invalid UTF-8, CR/LF/TAB path characters, and path escape excluded |
 | Integrity proof | SHA-256 manifest before and after copy; byte-identical verification |
-| Temp root | Outside the source repository; unique and validated; contains project + child `APPDATA`/`LOCALAPPDATA`/`TEMP`/`TMP` + logs |
+| Temp root | Complete repository/temp-parent chains are ordinary; repository identity is absent from every temp-parent ancestor identity; outside the source repository; unique and validated; contains project + child `APPDATA`/`LOCALAPPDATA`/`TEMP`/`TMP` + logs |
 | Process launch | `UseShellExecute=false`, `ArgumentList`, child-only `Environment`, visible GUI, no controller/user env mutation |
 | Exit handling | Natural editor exit only; no process enumeration, stop, reset, or timeout kill |
 | Log scanning | Anchored `FAIL:`, `ERROR:`, `SCRIPT ERROR:`, `FATAL:`, `WARNING:`, `CRASH:`, exact gutter diagnostic, established crash/leak terms |
@@ -61,12 +61,13 @@ One concrete repository PowerShell visible-playtest launcher with behavior tests
 
 1. Wrong-version rejection before temp creation
 2. Separate tracked-unstaged, staged-only, untracked-only, feature-branch, and divergent-state rejection before temp creation
-3. Repository-root and repository-descendant temp-parent rejection before temp creation
-4. Synthetic Git mode `120000` rejection before temp creation, proving that archive link entries cannot reach managed extraction
-5. Unicode path mirror through `.NET System.Formats.Tar`, deterministic early child-exit diagnostics, and child-environment contract without opening user GUI
-6. Source preservation (Git status + SHA-256 unchanged)
-7. Failure preservation (exact mirror path reported while identity remains reachable; honest identity-loss marker and last-known path/identity otherwise)
-8. Safe cleanup, including deterministic ordinary ancestor replacement with the original root object restored at the same lexical leaf, detected by captured parent identity before any recursive deletion
+3. Repository-root and repository-descendant temp-parent rejection plus repository-junction alias rejection before temp creation
+4. Ambient Git routing/config-injection rejection with test-owned source and decoy repositories both unchanged
+5. Synthetic Git mode `120000` rejection before temp creation, proving that archive link entries cannot reach managed extraction
+6. Unicode path mirror through `.NET System.Formats.Tar`, deterministic early child-exit diagnostics, ambient fake-version sanitization, and child-environment contract without opening user GUI
+7. Source preservation (Git status + SHA-256 unchanged)
+8. Failure preservation (exact mirror path reported while identity remains reachable; honest identity-loss marker and last-known path/identity otherwise)
+9. Safe cleanup, including deterministic ordinary ancestor replacement with the original root object restored at the same lexical leaf, detected by captured parent identity before any recursive deletion
 
 Tests use test-owned temp Git fixtures or doubles. Never open or interfere with user GUI.
 
