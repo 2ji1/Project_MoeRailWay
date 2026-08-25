@@ -2780,6 +2780,12 @@ Before retrying manual verification:
 
 ---
 
+### Task 2 Windows CRLF Manual Marker Amendment
+
+The successful retry naturally exited 0 and emitted both required marker lines, but the original multiline regexes falsely rejected redirected Windows CRLF because `\r` remained before each `$` anchor. Keep the marker text and line anchoring strict while permitting only the optional carriage return that precedes `\n`: use `(?m)^PASS: editor playtest completed\r?$` and `(?m)^DIAGNOSTICS_SCANNED: \d+\r?$`. Reapply these corrected checks to the already captured stdout before accepting the manual evidence.
+
+---
+
 ### Task 2 Manual Verification (after Task 2 commit, before reviews)
 
 - [ ] In one persistent PowerShell PTY, validate the existing system temp chain before creating either manual root. Then create a local bare `main` and clone only after the exact absent-target checks:
@@ -2929,8 +2935,8 @@ Before retrying manual verification:
   $manualExitCode = $launcherProcess.ExitCode
   $launcherProcess.Dispose()
   if ($manualExitCode -ne 0) { exit 1 }
-  if ($manualStdout -notmatch '(?m)^PASS: editor playtest completed$') { exit 1 }
-  if ($manualStdout -notmatch '(?m)^DIAGNOSTICS_SCANNED: \d+$') { exit 1 }
+  if ($manualStdout -notmatch '(?m)^PASS: editor playtest completed\r?$') { exit 1 }
+  if ($manualStdout -notmatch '(?m)^DIAGNOSTICS_SCANNED: \d+\r?$') { exit 1 }
   ```
 - [ ] Capture and compare exact post-launch snapshots. Expected result is no output and no exception; record the three before/after branch, upstream, HEAD, status, tracked path count, and hashes plus UI observations and launcher markers in English under ignored `.superpowers/sdd/2026-08-25-godot-editor-playtest-safety/task-2-report.md`:
   ```powershell
