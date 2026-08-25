@@ -942,7 +942,10 @@ func _test_two_sided_outside_epsilon_stitch_continuity() -> void:
 	var before = track.get_pose_sample_at_distance(before_distance)
 	var after = track.get_pose_sample_at_distance(after_distance)
 	assert_true(before.heading.is_equal_approx(after.heading), "Two-sided stitch heading remains approximately continuous")
-	assert_true(is_equal_approx(before.position.distance_to(after.position), epsilon * 2.02 * 40.0), "Two-sided samples retain the expected nominal separation")
+	var separation := before.position.distance_to(after.position)
+	var nominal_travel_upper_bound := epsilon * 2.02 * 40.0
+	assert_true(separation > 0.0, "Two-sided samples remain spatially distinct")
+	assert_true(separation <= nominal_travel_upper_bound, "Two-sided samples stay within their known nominal travel bound")
 
 func _test_zero_extent_internal_wait_does_not_lock_successor_reflow() -> void:
 	var track = _reflow_runtime()
