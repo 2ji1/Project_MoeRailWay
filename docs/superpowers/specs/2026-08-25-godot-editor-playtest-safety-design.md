@@ -31,12 +31,12 @@ One concrete repository PowerShell visible-playtest launcher with behavior tests
 
 - Invokes from clean local `main` tracking `origin/main`; dirty, staged, untracked, or divergent state fails before temp creation
 - Verifies exact canonical version (4.7.1.stable.official.a13da4feb) before temp creation
-- Mirrors only committed tracked `godot-project-moe-rail-way` ordinary files from `HEAD`; excludes `.git`, `.godot`, reparse points, and path escape; produces SHA-256 manifest before and after copy
-- Creates a unique validated temp root containing project, child `APPDATA`, `LOCALAPPDATA`, `TEMP`, `TMP`, and logs
+- Mirrors only committed tracked `godot-project-moe-rail-way` ordinary files from `HEAD`; reads Git path records as strict UTF-8, NUL-delimited bytes; excludes `.git`, `.godot`, reparse points, invalid UTF-8, CR/LF/TAB path characters, and path escape; produces SHA-256 manifest before and after copy
+- Rejects a temp parent equal to or below the source repository before creating anything; creates a unique validated temp root containing project, child `APPDATA`, `LOCALAPPDATA`, `TEMP`, `TMP`, and logs
 - Uses `ProcessStartInfo` with `UseShellExecute=false`, separate `ArgumentList`, child-only `Environment` overrides, visible GUI executable; never mutates controller or user environment and never hides the window
 - Waits for natural editor exit; never enumerates, stops, or resets any Godot or Steam process; no timeout termination
 - Scans captured editor and game logs for anchored `FAIL:`, `ERROR:`, `SCRIPT ERROR:`, `FATAL:`, `WARNING:`, `CRASH:`, exact gutter diagnostic (`Index p_gutter = -1 is out of bounds`), and established crash or leak terms; confirms source Git status and tracked SHA-256 snapshot unchanged; never copies back
-- On failure: preserves exact mirror and reports path; on success: revalidates exact owned temp root and descendants before cleanup; cleanup failure is a gate failure reporting remnants
+- On ordinary failure with the captured root identity still reachable at its original path: preserves the exact mirror and reports that path. If an ancestor/root identity is lost, it refuses deletion and reports `MIRROR_IDENTITY_LOST` with the last-known path and captured identity without claiming the current lexical path is the mirror. On success: revalidates the temp parent's complete ordinary path chain plus captured temp-parent/root directory identities and every owned descendant before cleanup; cleanup failure is a gate failure reporting remnants
 
 ## Exact Safety Contract
 
@@ -44,26 +44,27 @@ One concrete repository PowerShell visible-playtest launcher with behavior tests
 |-------------|--------------|
 | Invocation state | Clean local `main` tracking `origin/main` only; any divergence fails pre-temp |
 | Version gate | Exact canonical 4.7.1.stable.official.a13da4feb verified before temp creation |
-| Mirror scope | Committed tracked ordinary files from `HEAD` only; `.git`, `.godot`, reparse points, path escape excluded |
+| Mirror scope | Committed tracked ordinary files from `HEAD` only; strict UTF-8/NUL Git path records; `.git`, `.godot`, reparse points, invalid UTF-8, CR/LF/TAB path characters, and path escape excluded |
 | Integrity proof | SHA-256 manifest before and after copy; byte-identical verification |
-| Temp root | Unique, validated, contains project + child `APPDATA`/`LOCALAPPDATA`/`TEMP`/`TMP` + logs |
+| Temp root | Outside the source repository; unique and validated; contains project + child `APPDATA`/`LOCALAPPDATA`/`TEMP`/`TMP` + logs |
 | Process launch | `UseShellExecute=false`, `ArgumentList`, child-only `Environment`, visible GUI, no controller/user env mutation |
 | Exit handling | Natural editor exit only; no process enumeration, stop, reset, or timeout kill |
 | Log scanning | Anchored `FAIL:`, `ERROR:`, `SCRIPT ERROR:`, `FATAL:`, `WARNING:`, `CRASH:`, exact gutter diagnostic, established crash/leak terms |
 | Source preservation | Git status clean + tracked SHA-256 snapshot unchanged; never copy back |
-| Failure mode | Preserve exact mirror, report path |
-| Success cleanup | Revalidate exact owned temp root and descendants before cleanup; cleanup failure = gate failure reporting remnants |
+| Failure mode | Preserve and report the exact path only while captured identity remains reachable there; otherwise report `MIRROR_IDENTITY_LOST` with last-known path/identity and never label a decoy path as preserved |
+| Success cleanup | Revalidate the temp-parent chain to its volume root, captured temp-parent/root directory identities, and exact owned descendants before cleanup; cleanup failure = gate failure reporting remnants |
 
 ## TDD and Review Gates
 
 **RED before launcher exists.** Behavior tests (PowerShell/Pester or equivalent) must cover:
 
 1. Wrong-version rejection before temp creation
-2. Dirty, feature-branch, and divergent-state rejection before temp creation
-3. Mirror and child-environment contract without opening user GUI
-4. Source preservation (Git status + SHA-256 unchanged)
-5. Failure preservation (exact mirror retained, path reported)
-6. Safe cleanup (revalidation before cleanup; cleanup failure gates)
+2. Separate tracked-unstaged, staged-only, untracked-only, feature-branch, and divergent-state rejection before temp creation
+3. Repository-root and repository-descendant temp-parent rejection before temp creation
+4. Unicode path mirror and child-environment contract without opening user GUI
+5. Source preservation (Git status + SHA-256 unchanged)
+6. Failure preservation (exact mirror path reported while identity remains reachable; honest identity-loss marker and last-known path/identity otherwise)
+7. Safe cleanup, including deterministic ordinary ancestor replacement with the original root object restored at the same lexical leaf, detected by captured parent identity before any recursive deletion
 
 Tests use test-owned temp Git fixtures or doubles. Never open or interfere with user GUI.
 
