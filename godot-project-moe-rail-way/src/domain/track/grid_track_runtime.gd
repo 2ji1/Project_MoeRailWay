@@ -9,7 +9,6 @@ const TrackGeometryResolverScript = preload("res://src/domain/track/track_geomet
 const TrackGeometryResolutionScript = preload("res://src/domain/track/track_geometry_resolution.gd")
 
 const NOMINAL_BOUNDARY_EPSILON := 0.0001
-const NOMINAL_BOUNDARY_FLOAT_TOLERANCE := 0.0000002
 
 var _departure_cell: Vector2i
 var _grid_origin_units: Vector2
@@ -582,7 +581,10 @@ func _pieces_are_continuous(pieces: Array) -> bool:
 func _canonical_distance_and_owner(route_distance: float) -> Dictionary:
     for piece in _pieces:
         var boundary := piece.absolute_start_distance_cells + float(piece.nominal_length_cells)
-        if absf(route_distance - boundary) <= NOMINAL_BOUNDARY_EPSILON + NOMINAL_BOUNDARY_FLOAT_TOLERANCE:
+        if (
+            route_distance >= boundary - NOMINAL_BOUNDARY_EPSILON
+            and route_distance <= boundary + NOMINAL_BOUNDARY_EPSILON
+        ):
             return {"distance": boundary, "piece": piece}
     for piece in _pieces:
         var local_distance: float = route_distance - piece.absolute_start_distance_cells

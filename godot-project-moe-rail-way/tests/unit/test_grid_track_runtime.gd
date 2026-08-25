@@ -39,6 +39,7 @@ func run() -> PackedStringArray:
 	_test_authoritative_anchor_failure_preserves_mixed_derived_contacts()
 	_test_contact_observations_follow_active_slice_not_ledger_history()
 	_test_prepare_and_pose_share_inclusive_boundary_owner()
+	_test_epsilon_sliver_preserves_raw_owner_for_prepare_and_pose()
 	_test_prepare_transaction_rejects_after_staging_without_mutation()
 	_test_zero_extent_internal_wait_does_not_lock_successor_reflow()
 	_test_departure_forward_boundary_and_route_end_ownership()
@@ -363,6 +364,34 @@ func _test_prepare_and_pose_share_inclusive_boundary_owner() -> void:
 		var pose = track.get_pose_sample_at_distance(distance)
 		assert_true(pose.position.is_equal_approx(expected.position), "Pose uses canonical prepared owner")
 		assert_true(pose.heading.is_equal_approx(expected.heading), "Heading uses canonical prepared owner")
+
+
+func _test_epsilon_sliver_preserves_raw_owner_for_prepare_and_pose() -> void:
+	var probe = _boundary_runtime()
+	var boundary: float = probe.get_geometry_pieces()[0].absolute_start_distance_cells + float(probe.get_geometry_pieces()[0].nominal_length_cells)
+	var epsilon := GridTrackRuntimeScript.NOMINAL_BOUNDARY_EPSILON
+	var sliver := epsilon * 1.001
+	var distances := [boundary - sliver, boundary + sliver]
+	var owner_indexes := [0, 1]
+	for index in range(distances.size()):
+		var distance: float = distances[index]
+		assert_true(
+			distance < boundary - epsilon or distance > boundary + epsilon,
+			"Epsilon sliver is outside the inclusive canonical bound"
+		)
+		var track = _boundary_runtime()
+		assert_true(track.prepare_for_train_sampling(distance, distance), "Epsilon sliver prepares its raw-side owner")
+		var pieces = track.get_geometry_pieces()
+		var owner = pieces[owner_indexes[index]]
+		assert_true(owner.locked, "Epsilon sliver raw owner is locked")
+		_assert_locked_prefix_through(pieces, owner.last_route_serial)
+		if owner_indexes[index] == 0:
+			assert_false(pieces[1].locked, "Lower epsilon sliver leaves the successor provisional")
+		var raw_local_distance: float = distance - owner.absolute_start_distance_cells
+		var expected = owner.sample_nominal(raw_local_distance)
+		var pose = track.get_pose_sample_at_distance(distance)
+		assert_true(pose.position.is_equal_approx(expected.position), "Epsilon sliver pose position keeps the raw owner")
+		assert_true(pose.heading.is_equal_approx(expected.heading), "Epsilon sliver pose heading keeps the raw owner")
 
 
 func _test_prepare_transaction_rejects_after_staging_without_mutation() -> void:
