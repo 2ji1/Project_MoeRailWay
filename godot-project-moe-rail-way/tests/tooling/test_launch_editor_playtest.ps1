@@ -218,6 +218,12 @@ public class FakeGodot {
                 Thread.Sleep(25);
             }
         }
+        string requestedExitCode = Environment.GetEnvironmentVariable("MOERAIL_TEST_EXIT_CODE");
+        if (!String.IsNullOrEmpty(requestedExitCode)) {
+            int exitCode;
+            if (!Int32.TryParse(requestedExitCode, out exitCode)) return 7;
+            return exitCode;
+        }
         return 0;
     }
 }
@@ -404,6 +410,7 @@ function Invoke-Launcher {
         $psi.Environment[$kv.Key] = $kv.Value
     }
     $null = $psi.Environment.Remove('MOERAIL_FAKE_VERSION')
+    $null = $psi.Environment.Remove('MOERAIL_TEST_EXIT_CODE')
     foreach ($kv in $EnvOverrides.GetEnumerator()) {
         $psi.Environment[$kv.Key] = $kv.Value
     }
@@ -450,6 +457,7 @@ function Invoke-LauncherWithDefaultGitAndTemp {
         }
     }
     $null = $psi.Environment.Remove('MOERAIL_FAKE_VERSION')
+    $null = $psi.Environment.Remove('MOERAIL_TEST_EXIT_CODE')
     $process = [Diagnostics.Process]::Start($psi)
     try {
         $stdoutTask = $process.StandardOutput.ReadToEndAsync()
@@ -525,6 +533,7 @@ function Start-LauncherAsync {
         '-TempParent',$TempParent,'-Mode','Launch'
     )) { $psi.ArgumentList.Add($argument) }
     $null = $psi.Environment.Remove('MOERAIL_FAKE_VERSION')
+    $null = $psi.Environment.Remove('MOERAIL_TEST_EXIT_CODE')
     foreach ($entry in $EnvOverrides.GetEnumerator()) { $psi.Environment[$entry.Key] = [string]$entry.Value }
     $process = [Diagnostics.Process]::Start($psi)
     $stdoutTask = $process.StandardOutput.ReadToEndAsync()
@@ -780,6 +789,7 @@ try {
         '-TestReleaseEventName',$earlyReleaseEventName
     )) { $earlyPsi.ArgumentList.Add($argument) }
     $null = $earlyPsi.Environment.Remove('MOERAIL_FAKE_VERSION')
+    $null = $earlyPsi.Environment.Remove('MOERAIL_TEST_EXIT_CODE')
     $earlyPsi.Environment['MOERAIL_FAKE_VERSION'] = '4.7.2.stable.steam.ed1daf0bf'
     $earlyProcess = [Diagnostics.Process]::Start($earlyPsi)
     $earlyStdoutTask = $earlyProcess.StandardOutput.ReadToEndAsync()
@@ -1064,6 +1074,7 @@ try {
         '-TestReleaseEventName',$releaseEventName
     )) { $identityPsi.ArgumentList.Add($argument) }
     $null = $identityPsi.Environment.Remove('MOERAIL_FAKE_VERSION')
+    $null = $identityPsi.Environment.Remove('MOERAIL_TEST_EXIT_CODE')
     $identityProcess = [Diagnostics.Process]::Start($identityPsi)
     $identityStdoutTask = $identityProcess.StandardOutput.ReadToEndAsync()
     $identityStderrTask = $identityProcess.StandardError.ReadToEndAsync()
@@ -1294,8 +1305,49 @@ foreach ($case in $diagnosticCases) {
     Remove-Item -LiteralPath $capture -Force -ErrorAction Stop
 }
 
+# Ambient test-only exit code is scrubbed before intentional overrides.
+$ambientExitRootsBefore = @(Get-MoerailDirs -TempParent $testTempParent)
+$ambientExitSourceBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+$ambientExitCapture = Join-Path $testTempParent 'ambient-exit-capture.txt'
+$ambientExitResult = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot `
+    -GodotExecutable $fakeGodotExe -GitExecutable $gitExe `
+    -Mode Launch -TempParent $testTempParent `
+    -InheritedEnvSeed @{ MOERAIL_TEST_EXIT_CODE='23' } `
+    -EnvOverrides @{ MOERAIL_TEST_CAPTURE_PATH=$ambientExitCapture }
+Assert-ExitCode -Expected 0 -Actual $ambientExitResult.ExitCode -Message ' (ambient exit-code sanitization)'
+Assert-OutputContains -Needle 'PASS: editor playtest completed' -Haystack $ambientExitResult.Stdout -Message ' (ambient exit-code sanitization marker)'
+if (-not (Test-Path -LiteralPath $ambientExitCapture -PathType Leaf)) { throw 'Ambient exit-code capture missing' }
+$ambientExitRootsAfter = @(Get-MoerailDirs -TempParent $testTempParent)
+Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $ambientExitRootsBefore -After $ambientExitRootsAfter -Message ' (ambient exit-code sanitization)'
+$ambientExitSourceAfter = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+Assert-FixtureSnapshotUnchanged -Before $ambientExitSourceBefore -After $ambientExitSourceAfter
+Remove-Item -LiteralPath $ambientExitCapture -Force -ErrorAction Stop
+
+# An intentional child exit after valid logs is a launcher failure.
+$intentionalExitRootsBefore = @(Get-MoerailDirs -TempParent $testTempParent)
+$intentionalExitSourceBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+$intentionalExitCapture = Join-Path $testTempParent 'intentional-exit-capture.txt'
+$intentionalExitResult = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot `
+    -GodotExecutable $fakeGodotExe -GitExecutable $gitExe `
+    -Mode Launch -TempParent $testTempParent -EnvOverrides @{
+        MOERAIL_TEST_CAPTURE_PATH=$intentionalExitCapture
+        MOERAIL_TEST_EXIT_CODE='23'
+    }
+Assert-ExitCode -Expected 1 -Actual $intentionalExitResult.ExitCode -Message ' (intentional child exit)'
+$intentionalExitCombined = $intentionalExitResult.Stdout + $intentionalExitResult.Stderr
+Assert-OutputContains -Needle 'Godot editor exited 23' -Haystack $intentionalExitCombined -Message ' (intentional child exit diagnostic)'
+Assert-OutputContains -Needle 'PRESERVED_MIRROR:' -Haystack $intentionalExitCombined -Message ' (intentional child exit preservation)'
+if (-not (Test-Path -LiteralPath $intentionalExitCapture -PathType Leaf)) { throw 'Intentional child-exit capture missing' }
+$intentionalExitPreserved = Get-OnlyNewMirrorRoot -Before $intentionalExitRootsBefore -TempParent $testTempParent
+Assert-TestMirrorRoot -Root $intentionalExitPreserved -ResolvedTempParent $testTempParent | Out-Null
+$intentionalExitSourceAfter = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+Assert-FixtureSnapshotUnchanged -Before $intentionalExitSourceBefore -After $intentionalExitSourceAfter
+Remove-TestMirrorRoot -Root $intentionalExitPreserved -ResolvedTempParent $testTempParent
+Remove-Item -LiteralPath $intentionalExitCapture -Force -ErrorAction Stop
+
 # Cleanup pre-removal revalidation: a junction descendant must preserve the mirror.
 $beforeRoots = @(Get-MoerailDirs -TempParent $testTempParent)
+$junctionSourceBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
 $ready = Join-Path $testTempParent 'junction-ready'
 $release = Join-Path $testTempParent 'junction-release'
 $capture = Join-Path $testTempParent 'junction-capture.txt'
@@ -1309,12 +1361,38 @@ $preserved = Get-OnlyNewMirrorRoot -Before $beforeRoots -TempParent $testTempPar
 Assert-TestMirrorRoot -Root $preserved -ResolvedTempParent $testTempParent | Out-Null
 $junctionTarget = Join-Path $testTempParent 'junction-cleanup-target'
 [IO.Directory]::CreateDirectory($junctionTarget) | Out-Null
+$junctionTargetItem = Get-Item -LiteralPath $junctionTarget -Force -ErrorAction Stop
+if (-not $junctionTargetItem.PSIsContainer -or ($junctionTargetItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+    throw 'Cleanup junction target is not an ordinary directory'
+}
+$sentinel = Join-Path $junctionTarget 'sentinel.bin'
+$expectedSentinelBytes = [byte[]](0x4d,0x52,0x57,0x01)
+[IO.File]::WriteAllBytes($sentinel,$expectedSentinelBytes)
 $junction = Join-Path $preserved 'cleanup-junction'
 New-Item -ItemType Junction -Path $junction -Target $junctionTarget -ErrorAction Stop | Out-Null
 [IO.File]::WriteAllText($release,'release',[Text.Encoding]::UTF8)
 $result = Complete-LauncherAsync -Running $running
 Assert-ExitCode -Expected 1 -Actual $result.ExitCode -Message ' (cleanup revalidation)'
 Assert-OutputContains -Needle 'PRESERVED_MIRROR:' -Haystack ($result.Stdout+$result.Stderr)
+$junctionItem = Get-Item -LiteralPath $junction -Force -ErrorAction Stop
+if (($junctionItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) {
+    throw 'Cleanup junction no longer has ReparsePoint'
+}
+$junctionTargetItem = Get-Item -LiteralPath $junctionTarget -Force -ErrorAction Stop
+if (-not $junctionTargetItem.PSIsContainer -or ($junctionTargetItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+    throw 'Cleanup junction target changed from an ordinary directory'
+}
+$actualSentinelBytes = [IO.File]::ReadAllBytes($sentinel)
+if ($actualSentinelBytes.Length -ne $expectedSentinelBytes.Length) {
+    throw 'Cleanup junction sentinel length changed'
+}
+for ($index = 0; $index -lt $expectedSentinelBytes.Length; $index++) {
+    if ($actualSentinelBytes[$index] -ne $expectedSentinelBytes[$index]) {
+        throw "Cleanup junction sentinel byte changed at index $index"
+    }
+}
+$junctionSourceAfter = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+Assert-FixtureSnapshotUnchanged -Before $junctionSourceBefore -After $junctionSourceAfter
 Remove-Item -LiteralPath $junction -Force -ErrorAction Stop
 Remove-Item -LiteralPath $junctionTarget -Recurse -Force -ErrorAction Stop
 Remove-TestMirrorRoot -Root $preserved -ResolvedTempParent $testTempParent
@@ -1322,6 +1400,7 @@ foreach ($path in @($ready,$release,$capture)) { Remove-Item -LiteralPath $path 
 
 # Cleanup removal failure: an ordinary non-log file denies delete sharing.
 $beforeRoots = @(Get-MoerailDirs -TempParent $testTempParent)
+$heldSourceBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
 $ready = Join-Path $testTempParent 'held-ready'
 $release = Join-Path $testTempParent 'held-release'
 $capture = Join-Path $testTempParent 'held-capture.txt'
@@ -1339,10 +1418,12 @@ try {
     [IO.File]::WriteAllText($release,'release',[Text.Encoding]::UTF8)
     $result = Complete-LauncherAsync -Running $running
     Assert-ExitCode -Expected 1 -Actual $result.ExitCode -Message ' (cleanup removal)'
-    Assert-OutputContains -Needle 'PRESERVED_MIRROR:' -Haystack ($result.Stdout+$result.Stderr)
+    Assert-OutputContains -Needle 'CLEANUP_REMNANTS:' -Haystack ($result.Stdout+$result.Stderr)
 } finally {
     $held.Dispose()
 }
+$heldSourceAfter = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+Assert-FixtureSnapshotUnchanged -Before $heldSourceBefore -After $heldSourceAfter
 Remove-TestMirrorRoot -Root $preserved -ResolvedTempParent $testTempParent
 foreach ($path in @($ready,$release,$capture)) { Remove-Item -LiteralPath $path -Force -ErrorAction Stop }
 

@@ -19,6 +19,7 @@ $PSNativeCommandUseErrorActionPreference = $true
 $CapturedRepositoryIdentity = $null
 $CapturedTempParentIdentity = $null
 $CapturedRootIdentity = $null
+$CleanupRemovalStarted = $false
 
 function Get-CanonicalPath {
     param([string]$Path)
@@ -420,6 +421,7 @@ function Remove-OwnedRoot {
         [string]$ResolvedTempParent
     )
     $canonicalRoot = Assert-OwnedRoot -Root $Root -ResolvedTempParent $ResolvedTempParent -RequireExists $true
+    $script:CleanupRemovalStarted = $true
     Remove-Item -LiteralPath $canonicalRoot -Recurse -Force -ErrorAction Stop
     if (Test-Path -LiteralPath $canonicalRoot) {
         throw "Root still exists after removal: $canonicalRoot"
@@ -784,7 +786,11 @@ catch {
     $failureException = $_.Exception
     $rootIdentityStillMatches = Test-CapturedRootReachable -Root $Root -ResolvedTempParent $TempParent
     if ($rootIdentityStillMatches) {
-        Write-Host "PRESERVED_MIRROR: $Root"
+        if ($script:CleanupRemovalStarted) {
+            Write-Host "CLEANUP_REMNANTS: $Root"
+        } else {
+            Write-Host "PRESERVED_MIRROR: $Root"
+        }
     } elseif ($null -ne $script:CapturedRootIdentity) {
         Write-Host "MIRROR_IDENTITY_LOST: last-known-path=$Root captured-identity=$($script:CapturedRootIdentity)"
     } else {
