@@ -65,7 +65,14 @@ Registered suites and observation APIs cover the following items. These are auto
 - The synchronized G support cell showed no cancel-hover indication. A right click on G left the route and `TRACK END 6/9` unchanged.
 - Dragging from G to the following cell succeeded, proving that the synchronized support remained a valid endpoint for extension (`TRACK END 7/9`).
 - A deliberately rejected drag starting from a non-endpoint left the preceding seven-cell route and its `TRACK END 7/9` state unchanged.
-- At the exact `9/9` departure threshold, the red train entered from the departure along the rendered track without a placement jump; its terminal snapshot was observed at the final head before the `SESSION COMPLETE` / `TRACK END REACHED` result overlay.
+- The direct controlled replay below confirms the `9/9` train-entry and terminal-order observation with consecutive visible states.
+
+### Observation integrity correction — controlled 1/16x replay
+
+- I used only the task-owned Godot game's built-in playback-rate menu to set `1/16x`; this was a runtime observation control and did not change the source, wrapper, or launcher.
+- At `9/9`, the red train was visible at departure. In the following visible state it had advanced into the first locked horizontal segment with the same right-facing heading, rather than appearing at a discontinuous position.
+- Successive visible states showed the same red train moving through the middle and approaching the final head. The overlay-free `TRACK END 0.6s` state showed the red train at the terminal head.
+- The next visible state displayed `SESSION COMPLETE` / `TRACK END REACHED`, establishing that the terminal snapshot was present before the result overlay.
 
 ### Launcher result
 
