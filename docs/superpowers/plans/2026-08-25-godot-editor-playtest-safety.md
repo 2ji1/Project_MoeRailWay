@@ -220,9 +220,18 @@ function Assert-OutputContains {
 
 function Assert-DirectorySetUnchanged {
     param([string]$TempParent, [string[]]$Before, [string[]]$After, [string]$Message = '')
-    $beforeSet = $Before | Sort-Object | ForEach-Object { [IO.Path]::GetFullPath($_) }
-    $afterSet = $After | Sort-Object | ForEach-Object { [IO.Path]::GetFullPath($_) }
-    if (-not [Linq.Enumerable]::SequenceEqual([string[]]$beforeSet, [string[]]$afterSet)) {
+    $beforeSet = @($Before | Sort-Object | ForEach-Object { [IO.Path]::GetFullPath($_) })
+    $afterSet = @($After | Sort-Object | ForEach-Object { [IO.Path]::GetFullPath($_) })
+    $setsDiffer = $beforeSet.Count -ne $afterSet.Count
+    if (-not $setsDiffer) {
+        for ($index = 0; $index -lt $beforeSet.Count; $index++) {
+            if (-not [string]::Equals($beforeSet[$index],$afterSet[$index],[StringComparison]::OrdinalIgnoreCase)) {
+                $setsDiffer = $true
+                break
+            }
+        }
+    }
+    if ($setsDiffer) {
         throw "Directory set changed${Message}: before=$($beforeSet -join ';') after=$($afterSet -join ';')"
     }
 }
