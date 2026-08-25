@@ -91,8 +91,12 @@ func _snapshot(config, track, state: int, train_active: bool = false):
 	var train_position: Vector2 = config.departure_position
 	var train_heading := Vector2.RIGHT
 	if train_active:
-		train_position = track.get_position_at_distance_cells(train_distance)
-		train_heading = track.get_heading_at_distance_cells(train_distance)
+		assert_true(track.prepare_for_train_sampling(train_distance, train_distance), "Snapshot pose owner prepares")
+		var snapshot_train = TrainSystemScript.new(1.0)
+		snapshot_train.depart(train_distance)
+		var pose = snapshot_train.capture_pose(track)
+		train_position = pose.position
+		train_heading = pose.heading
 	return SessionSnapshotScript.new(
 		40, 0, 40, 10, true, state,
 		track.get_cell_records(), track.get_geometry_pieces(), track.get_contact_observations(),

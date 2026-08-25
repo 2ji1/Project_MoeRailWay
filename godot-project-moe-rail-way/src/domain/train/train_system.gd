@@ -28,11 +28,14 @@ func get_route_distance_cells() -> float:
 	return _motion.get_route_distance_cells()
 
 
-func get_position(track_system: TrackSystemScript) -> Vector2:
+func capture_pose(track_system: TrackSystemScript) -> Dictionary:
 	assert(track_system != null, "Track system is required")
-	return track_system.get_position_at_distance_cells(_motion.get_route_distance_cells())
+	return track_system.get_pose_sample_at_distance(_motion.get_route_distance_cells())
+
+
+func get_position(track_system: TrackSystemScript) -> Vector2:
+	return capture_pose(track_system).position
 
 
 func get_heading(track_system: TrackSystemScript) -> Vector2:
-	assert(track_system != null, "Track system is required")
-	return track_system.get_heading_at_distance_cells(_motion.get_route_distance_cells())
+	return capture_pose(track_system).heading

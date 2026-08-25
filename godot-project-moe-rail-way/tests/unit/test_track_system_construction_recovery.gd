@@ -13,6 +13,7 @@ func run() -> PackedStringArray:
 	_test_locked_piece_rejects_reflow_and_cancellation()
 	_test_recovery_refunds_one_cell_without_renormalizing_geometry()
 	_test_refunded_cell_stitches_to_immutable_locked_predecessor()
+	_test_facade_forwards_prepare_before_pose_capture()
 	return finish()
 
 
@@ -100,6 +101,7 @@ func _test_recovery_refunds_one_cell_without_renormalizing_geometry() -> void:
 	var track = _curve_track()
 	_append_curve_support(track)
 	assert_equal(track.advance_construction(6.0), 6.0, "All six intervals build")
+	assert_true(track.prepare_for_train_sampling(0.5, 4.5), "Initial samples prepare the locked curve")
 	var recovered_position := track.get_position_at_distance_cells(0.5)
 	var surviving_position := track.get_position_at_distance_cells(4.5)
 	assert_equal(track.recover_behind(1.0), 1, "First cutoff recovers one cell")
@@ -107,11 +109,13 @@ func _test_recovery_refunds_one_cell_without_renormalizing_geometry() -> void:
 	assert_equal(track.recover_behind(2.0), 1, "Second cutoff recovers one cell")
 	assert_equal(track.get_available_track_cells(), 14, "Second cell refunds exactly once")
 	assert_equal(track.get_built_end_distance_cells(), 6.0, "Built distance remains absolute")
+	assert_true(track.prepare_for_train_sampling(0.5, 0.5), "Recovered prefix sample remains prepared")
 	assert_equal(
 		track.get_position_at_distance_cells(0.5),
 		recovered_position,
 		"Full locked ledger remains sampleable"
 	)
+	assert_true(track.prepare_for_train_sampling(4.5, 4.5), "Surviving sample remains prepared")
 	assert_equal(
 		track.get_position_at_distance_cells(4.5),
 		surviving_position,
@@ -160,3 +164,11 @@ func _test_refunded_cell_stitches_to_immutable_locked_predecessor() -> void:
 		successor_start.heading.is_equal_approx(predecessor_end.heading),
 		"Heading is continuous at stitch"
 	)
+
+
+func _test_facade_forwards_prepare_before_pose_capture() -> void:
+	var track_system = _curve_track()
+	track_system.advance_construction(5.0)
+	assert_true(track_system.prepare_for_train_sampling(1.0, 1.0), "Facade prepares predecessor at boundary")
+	var pose = track_system.get_pose_sample_at_distance(1.0)
+	assert_true(pose.has("position") and pose.has("heading"), "Facade returns pose pair")

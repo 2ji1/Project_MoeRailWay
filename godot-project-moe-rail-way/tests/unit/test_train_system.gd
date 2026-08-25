@@ -1,6 +1,7 @@
 extends "res://tests/support/prototype_test.gd"
 
 const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
+const GridTrackRuntimeScript = preload("res://src/domain/track/grid_track_runtime.gd")
 const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
 const TrackSystemScript = preload("res://src/domain/track/track_system.gd")
 const TrainSystemScript = preload("res://src/domain/train/train_system.gd")
@@ -11,6 +12,7 @@ func run() -> PackedStringArray:
 	_test_nominal_progress_and_sampling_delegate_to_track()
 	_test_building_interval_blocks_and_endpoint_requests_completion()
 	_test_recovery_preserves_absolute_train_distance()
+	_test_capture_pose_is_the_only_pair_sampler()
 	return finish()
 
 
@@ -51,17 +53,19 @@ func _test_nominal_progress_and_sampling_delegate_to_track() -> void:
 	train.depart()
 	assert_false(train.advance_tick(track, 0.5), "Half a nominal cell remains before the end")
 	assert_equal(train.get_route_distance_cells(), 0.5, "Nominal progress is measured in cells")
+	assert_true(track.prepare_for_train_sampling(0.5, 0.5), "Current train owner is prepared")
+	var pose = train.capture_pose(track)
 	assert_equal(
 		train.get_position(track),
-		track.get_position_at_distance_cells(0.5),
-		"Position delegates to resolved geometry"
+		pose.position,
+		"Position convenience accessor uses captured pair"
 	)
 	assert_equal(
 		train.get_heading(track),
-		track.get_heading_at_distance_cells(0.5),
-		"Heading delegates to resolved geometry"
+		pose.heading,
+		"Heading convenience accessor uses captured pair"
 	)
-	assert_true(is_equal_approx(train.get_heading(track).length(), 1.0), "Heading is normalized")
+	assert_true(is_equal_approx(pose.heading.length(), 1.0), "Heading is normalized")
 
 
 func _test_building_interval_blocks_and_endpoint_requests_completion() -> void:
@@ -85,4 +89,25 @@ func _test_recovery_preserves_absolute_train_distance() -> void:
 	var before := train.get_route_distance_cells()
 	assert_equal(track.recover_behind(1.0), 1, "Rear cell recovers")
 	assert_equal(train.get_route_distance_cells(), before, "Recovery does not renormalize train distance")
+	assert_true(track.prepare_for_train_sampling(before, before), "Recovery leaves the current owner prepared")
 	assert_equal(train.get_position(track), track.get_position_at_distance_cells(before), "Sampling remains absolute")
+
+
+func _test_capture_pose_is_the_only_pair_sampler() -> void:
+	var train = TrainSystemScript.new(1.0)
+	var config = _config()
+	var track = TrackSystemScript.new(config)
+	track.apply_left_input(TrackInputFrameScript.new([
+		Vector2i(1, 0), Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2)
+	], Vector2i(0, 0), true, Vector2i(-1, -1), false, true, true, false, false))
+	track.advance_construction(4.0)
+	var pieces = track.get_geometry_pieces()
+	var boundary: float = pieces[0].absolute_start_distance_cells + float(pieces[0].nominal_length_cells)
+	var epsilon := GridTrackRuntimeScript.NOMINAL_BOUNDARY_EPSILON
+	assert_true(track.prepare_for_train_sampling(boundary + epsilon, boundary + epsilon), "Prepared at inclusive boundary")
+	train.depart(boundary + epsilon)
+	var pose = train.capture_pose(track)
+	assert_true(pose.has("position") and pose.has("heading"), "Typed pose pair keys")
+	var expected = pieces[0].sample_nominal(float(pieces[0].nominal_length_cells))
+	assert_true(pose.position.is_equal_approx(expected.position), "Pair uses canonical facade sample")
+	assert_true(pose.heading.is_equal_approx(expected.heading), "Pair heading uses canonical facade sample")

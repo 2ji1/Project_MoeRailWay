@@ -8,6 +8,9 @@ const TrackGeometryPieceScript = preload("res://src/domain/track/track_geometry_
 const TrackGeometryResolverScript = preload("res://src/domain/track/track_geometry_resolver.gd")
 const TrackGeometryResolutionScript = preload("res://src/domain/track/track_geometry_resolution.gd")
 
+const NOMINAL_BOUNDARY_EPSILON := 0.0001
+const NOMINAL_BOUNDARY_FLOAT_TOLERANCE := 0.0000002
+
 var _departure_cell: Vector2i
 var _grid_origin_units: Vector2
 var _grid_size: Vector2i
@@ -215,13 +218,88 @@ func get_grid_origin_units() -> Vector2:
     return _grid_origin_units
 
 
+func prepare_for_train_sampling(current_distance: float, through_distance: float) -> bool:
+    if _pieces.is_empty():
+        return false
+    var current = _canonical_distance_and_owner(current_distance)
+    var through = _canonical_distance_and_owner(through_distance)
+    var current_owner = current.piece
+    var through_owner = through.piece
+    if current_owner == null or through_owner == null or through.distance < current.distance:
+        return false
+    var farthest_owner = current_owner
+    if through.distance > current.distance:
+        farthest_owner = null
+        for piece in _pieces:
+            var interval_start := maxf(current.distance, piece.absolute_start_distance_cells)
+            var interval_end := minf(
+                through.distance,
+                piece.absolute_start_distance_cells + float(piece.nominal_length_cells)
+            )
+            if interval_end > interval_start:
+                farthest_owner = piece
+        if farthest_owner == null:
+            return false
+    var farthest_index := -1
+    var first_provisional_index := -1
+    for index in range(_pieces.size()):
+        var piece = _pieces[index]
+        if not piece.locked and first_provisional_index < 0:
+            first_provisional_index = index
+        if piece == farthest_owner:
+            farthest_index = index
+    if farthest_index < 0:
+        return false
+    if first_provisional_index < 0 or farthest_index < first_provisional_index:
+        return true
+    var candidate_sequence = _sequence.duplicate_sequence()
+    var candidate_ledger = _duplicate_pieces(_locked_ledger)
+    var candidate_anchors = _duplicate_anchors(_anchors)
+    var records: Array[TrackCellRecordScript] = candidate_sequence.get_records()
+    for index in range(first_provisional_index, farthest_index + 1):
+        var ledger_piece = _pieces[index].duplicate_piece()
+        if ledger_piece.locked:
+            return false
+        ledger_piece.group_id = _next_ledger_group_id(candidate_ledger)
+        ledger_piece.locked = true
+        ledger_piece.exit_support_route_serial = _exit_support_serial(ledger_piece, records)
+        if (
+            ledger_piece.exit_support_route_serial >= 0
+            and ledger_piece.exit_support_route_serial <= ledger_piece.last_route_serial
+        ):
+            return false
+        candidate_ledger.append(ledger_piece)
+    var resolution = _resolve_candidate(candidate_sequence, candidate_ledger, candidate_anchors)
+    if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
+        return false
+    _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
+    candidate_sequence.apply_resolved_geometry(resolution.pieces)
+    if not _validate_candidate(candidate_sequence, candidate_ledger, resolution):
+        return false
+    _commit_candidate(candidate_sequence, candidate_ledger, resolution)
+    _refresh_contact_observations()
+    return true
+
+
+func get_pose_sample_at_distance(route_distance: float) -> Dictionary:
+    var canonical = _canonical_distance_and_owner(route_distance)
+    var owner = canonical.piece
+    assert(owner != null, "Geometry owner is required for pose sampling")
+    if owner == null:
+        return {}
+    assert(owner.locked, "Locked geometry is required for pose sampling")
+    if not owner.locked:
+        return {}
+    return owner.sample_nominal(canonical.distance - owner.absolute_start_distance_cells)
+
+
 func get_position_at_distance_cells(route_distance_cells: float) -> Vector2:
-    var sample := _sample_at_distance(route_distance_cells)
+    var sample := get_pose_sample_at_distance(route_distance_cells)
     return sample.position
 
 
 func get_heading_at_distance_cells(route_distance_cells: float) -> Vector2:
-    var sample := _sample_at_distance(route_distance_cells)
+    var sample := get_pose_sample_at_distance(route_distance_cells)
     return sample.heading
 
 
@@ -501,25 +579,19 @@ func _pieces_are_continuous(pieces: Array) -> bool:
     return true
 
 
-func _sample_at_distance(route_distance_cells: float) -> Dictionary:
-    for piece in _locked_ledger:
-        var locked_local_distance: float = route_distance_cells - piece.absolute_start_distance_cells
-        if (
-            locked_local_distance >= -0.0001
-            and locked_local_distance <= float(piece.nominal_length_cells) + 0.0001
-        ):
-            return piece.sample_nominal(locked_local_distance)
+func _canonical_distance_and_owner(route_distance: float) -> Dictionary:
     for piece in _pieces:
-        var local_distance: float = route_distance_cells - piece.absolute_start_distance_cells
+        var boundary := piece.absolute_start_distance_cells + float(piece.nominal_length_cells)
+        if absf(route_distance - boundary) <= NOMINAL_BOUNDARY_EPSILON + NOMINAL_BOUNDARY_FLOAT_TOLERANCE:
+            return {"distance": boundary, "piece": piece}
+    for piece in _pieces:
+        var local_distance: float = route_distance - piece.absolute_start_distance_cells
         if (
-            local_distance >= piece.active_local_start_cells - 0.0001
-            and local_distance <= piece.active_local_end_cells + 0.0001
+            local_distance >= 0.0
+            and local_distance <= float(piece.nominal_length_cells)
         ):
-            return piece.sample_nominal(local_distance)
-    return {
-        "position": _grid_origin_units + (Vector2(_departure_cell) + Vector2(0.5, 0.5)) * _cell_size_units,
-        "heading": Vector2.RIGHT,
-    }
+            return {"distance": route_distance, "piece": piece}
+    return {"distance": route_distance, "piece": null}
 
 
 func _refresh_contact_observations() -> void:

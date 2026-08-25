@@ -38,6 +38,11 @@ func run() -> PackedStringArray:
 	_test_successful_recovery_clears_active_anchor_observation()
 	_test_authoritative_anchor_failure_preserves_mixed_derived_contacts()
 	_test_contact_observations_follow_active_slice_not_ledger_history()
+	_test_prepare_and_pose_share_inclusive_boundary_owner()
+	_test_prepare_transaction_rejects_after_staging_without_mutation()
+	_test_zero_extent_internal_wait_does_not_lock_successor_reflow()
+	_test_departure_forward_boundary_and_route_end_ownership()
+	_test_two_sided_outside_epsilon_stitch_continuity()
 	return finish()
 
 
@@ -109,6 +114,7 @@ func _test_recovery_refunds_composite_curve_one_cell_at_a_time() -> void:
 
 func _test_partial_recovery_preserves_locked_curve_sampling() -> void:
 	var track = _make_fully_built_three_by_three_curve_runtime()
+	assert_true(track.prepare_for_train_sampling(0.5, 4.5), "Curve samples prepare before recovery")
 	var recovered_prefix_position: Vector2 = track.get_position_at_distance_cells(0.5)
 	var survivor_position: Vector2 = track.get_position_at_distance_cells(4.5)
 	track.recover_behind(2.0)
@@ -127,9 +133,11 @@ func _test_recovery_preserves_surviving_predecessor_geometry() -> void:
 	assert_equal(track.append_cells([
 		Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0),
 	]), 3, "Predecessor fixture accepts three cells")
+	assert_true(track.prepare_for_train_sampling(1.5, 1.5), "Initial surviving predecessor sample prepares")
 	var surviving_position: Vector2 = track.get_position_at_distance_cells(1.5)
 	assert_equal(track.advance_construction(1.0), 1.0, "Leading piece builds")
 	assert_equal(track.recover_behind(1.0), 1, "Leading piece fully recovers")
+	assert_true(track.prepare_for_train_sampling(1.5, 1.5), "Post-recovery surviving predecessor sample prepares")
 	assert_equal(
 		track.get_position_at_distance_cells(1.5),
 		surviving_position,
@@ -215,6 +223,8 @@ func _test_runtime_applies_nonzero_grid_origin_to_sampling() -> void:
 	assert_equal(zero.append_cells(cells), 2, "Zero-origin fixture")
 	assert_equal(shifted.append_cells(cells), 2, "Shifted fixture")
 	assert_equal(shifted.get_grid_origin_units(), Vector2(10.0, 10.0), "Origin retained")
+	assert_true(zero.prepare_for_train_sampling(1.5, 1.5), "Zero-origin sample prepares")
+	assert_true(shifted.prepare_for_train_sampling(1.5, 1.5), "Shifted-origin sample prepares")
 	assert_equal(
 		shifted.get_position_at_distance_cells(1.5),
 		zero.get_position_at_distance_cells(1.5) + Vector2(10.0, 10.0),
@@ -307,6 +317,136 @@ func _test_twenty_construction_steps_keep_completed_head_reflowable() -> void:
 	assert_equal(track.get_cell_records()[4].build_progress, 1.0 / 20.0, "F first step is one twentieth")
 	assert_equal(track.get_geometry_pieces()[0].kind, TrackGeometryPieceScript.Kind.CURVE_3X3, "B through F resolves as 3x3")
 	assert_false(track.get_geometry_pieces()[0].locked, "Completed B through E remains reflowable")
+
+
+func run_unprepared_pose_probe() -> bool:
+	var track = _reflow_runtime()
+	assert_equal(track.append_cells(_reflow_curve_cells()), 5, "Probe fixture appends provisional head")
+	var pose = track.get_pose_sample_at_distance(0.0)
+	if pose.is_empty():
+		return false
+	print("POSE_FALLBACK")
+	return true
+
+
+func _boundary_runtime() -> GridTrackRuntimeScript:
+	var track = _reflow_runtime()
+	assert_equal(track.append_cells([
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(2, 1),
+	]), 4, "Boundary fixture appends")
+	assert_equal(track.advance_construction(4.0), 4.0, "Boundary fixture builds")
+	assert_equal(track.get_geometry_pieces().size(), 2, "Boundary fixture has predecessor and successor")
+	return track
+
+
+func _canonical_test_distance(distance: float, boundary: float, epsilon: float) -> float:
+	return boundary if absf(distance - boundary) <= epsilon else distance
+
+
+func _test_prepare_and_pose_share_inclusive_boundary_owner() -> void:
+	var probe = _boundary_runtime()
+	var boundary: float = probe.get_geometry_pieces()[0].absolute_start_distance_cells + float(probe.get_geometry_pieces()[0].nominal_length_cells)
+	var epsilon := GridTrackRuntimeScript.NOMINAL_BOUNDARY_EPSILON
+	var distances := [boundary - epsilon, boundary, boundary + epsilon, boundary - epsilon * 1.01, boundary + epsilon * 1.01]
+	var owner_indexes := [0, 0, 0, 0, 1]
+	var local_distances := [boundary, boundary, boundary, boundary - epsilon * 1.01, epsilon * 1.01]
+	for index in range(distances.size()):
+		var track = _boundary_runtime()
+		var distance: float = distances[index]
+		var canonical := _canonical_test_distance(distance, boundary, epsilon)
+		assert_true(track.prepare_for_train_sampling(distance, distance), "Preparation succeeds at %s" % distance)
+		var expected_owner = track.get_geometry_pieces()[owner_indexes[index]]
+		assert_true(expected_owner.locked, "Prepared owner is locked")
+		_assert_locked_prefix_through(track.get_geometry_pieces(), expected_owner.last_route_serial)
+		assert_true(is_equal_approx(canonical - expected_owner.absolute_start_distance_cells, local_distances[index]), "Canonical local distance has the expected owner-relative value")
+		var expected = expected_owner.sample_nominal(canonical - expected_owner.absolute_start_distance_cells)
+		var pose = track.get_pose_sample_at_distance(distance)
+		assert_true(pose.position.is_equal_approx(expected.position), "Pose uses canonical prepared owner")
+		assert_true(pose.heading.is_equal_approx(expected.heading), "Heading uses canonical prepared owner")
+
+
+func _test_prepare_transaction_rejects_after_staging_without_mutation() -> void:
+	var track = _reflow_runtime()
+	assert_equal(track.append_cells(_reflow_curve_cells()), 5, "Prepare fixture appends")
+	var records_before = _record_values(track.get_cell_records())
+	var inventory_before = track.get_available_track_cells()
+	var pieces_before = _piece_values(track.get_geometry_pieces())
+	var resolver = _RejectAfterFirstLedgerCandidateResolver.new()
+	track._resolver = resolver
+	assert_false(track.prepare_for_train_sampling(0.0, 1.0), "Preparation rejects only after ledger staging")
+	assert_equal(resolver.resolve_calls_with_ledger, 1, "Prepare reached its staged-ledger re-resolution")
+	assert_equal(_record_values(track.get_cell_records()), records_before, "Prepare failure restores records")
+	assert_equal(track.get_available_track_cells(), inventory_before, "Prepare failure restores inventory")
+	assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before, "Prepare failure restores ledger-visible pieces")
+
+
+func _test_two_sided_outside_epsilon_stitch_continuity() -> void:
+	var track = _boundary_runtime()
+	var predecessor = track.get_geometry_pieces()[0]
+	var boundary: float = predecessor.absolute_start_distance_cells + float(predecessor.nominal_length_cells)
+	var epsilon := GridTrackRuntimeScript.NOMINAL_BOUNDARY_EPSILON
+	var before_distance := boundary - epsilon * 1.01
+	var after_distance := boundary + epsilon * 1.01
+	assert_true(track.prepare_for_train_sampling(before_distance, after_distance), "Forward interval prepares both outside-epsilon owners")
+	_assert_locked_prefix_through(track.get_geometry_pieces(), track.get_geometry_pieces()[1].last_route_serial)
+	var before = track.get_pose_sample_at_distance(before_distance)
+	var after = track.get_pose_sample_at_distance(after_distance)
+	assert_true(before.heading.is_equal_approx(after.heading), "Two-sided stitch heading remains approximately continuous")
+	var separation: float = before.position.distance_to(after.position)
+	var nominal_travel_upper_bound := epsilon * 2.02 * 40.0
+	assert_true(separation > 0.0, "Two-sided samples remain spatially distinct")
+	assert_true(separation <= nominal_travel_upper_bound, "Two-sided samples stay within their known nominal travel bound")
+
+
+func _test_zero_extent_internal_wait_does_not_lock_successor_reflow() -> void:
+	var track = _reflow_runtime()
+	assert_equal(track.append_cells([Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0)]), 3, "Three-straight boundary fixture appends")
+	assert_equal(track.advance_construction(1.0), 1.0, "Only B builds to the internal boundary")
+	assert_equal(track.get_built_end_distance_cells(), 1.0, "Built endpoint is exactly the zero-forward boundary")
+	var before_prepare_successor = _piece_containing(track.get_geometry_pieces(), 2)
+	assert_not_null(before_prepare_successor, "Successor owning C and D exists before prepare")
+	assert_equal(track.get_cell_records()[1].state, TrackCellRecordScript.State.RESERVED_GHOST, "C remains a ghost before zero-extent prepare")
+	assert_equal(track.get_cell_records()[2].state, TrackCellRecordScript.State.RESERVED_GHOST, "D remains a ghost before zero-extent prepare")
+	if before_prepare_successor != null:
+		assert_false(before_prepare_successor.locked, "Successor owning C and D is provisional before prepare")
+	assert_true(track.prepare_for_train_sampling(1.0, 1.0), "Wait preparation succeeds")
+	assert_equal(track.get_built_end_distance_cells(), 1.0, "Zero-forward prepare does not advance built endpoint")
+	var predecessor = _piece_containing(track.get_geometry_pieces(), 1)
+	var second_straight = _piece_containing(track.get_geometry_pieces(), 2)
+	assert_not_null(predecessor, "Boundary predecessor exists")
+	assert_not_null(second_straight, "Second straight exists")
+	if predecessor != null:
+		assert_true(predecessor.locked, "Zero-extent wait locks only the predecessor")
+		_assert_locked_prefix_through(track.get_geometry_pieces(), predecessor.last_route_serial)
+	if second_straight != null:
+		assert_false(second_straight.locked, "Zero-extent wait leaves later records provisional")
+	assert_equal(track.get_cell_records()[1].state, TrackCellRecordScript.State.RESERVED_GHOST, "Zero-extent wait leaves C ghost")
+	assert_equal(track.get_cell_records()[2].state, TrackCellRecordScript.State.RESERVED_GHOST, "Zero-extent wait leaves D ghost")
+	assert_equal(track.append_cells([Vector2i(3, 0), Vector2i(3, 1)]), 2, "Turn records after the locked boundary append")
+	var reflowed = _piece_containing(track.get_geometry_pieces(), 3)
+	assert_not_null(reflowed, "Provisional D through F span exists")
+	if reflowed != null:
+		assert_equal(reflowed.kind, TrackGeometryPieceScript.Kind.CURVE_2X2, "D through F reflows as 2x2 without crossing locked B")
+		assert_false(reflowed.locked, "Reflowed future curve remains provisional before entry")
+
+
+func _test_departure_forward_boundary_and_route_end_ownership() -> void:
+	var departure_track = _reflow_runtime()
+	departure_track.append_cells([Vector2i(0, 0)])
+	departure_track.advance_construction(1.0)
+	assert_true(departure_track.prepare_for_train_sampling(0.0, 0.0), "Departure prepares existing entry piece")
+	assert_true(_piece_containing(departure_track.get_geometry_pieces(), 1).locked, "Departure entry locks")
+	var boundary_track = _reflow_runtime()
+	boundary_track.append_cells([Vector2i(0, 0), Vector2i(1, 0)])
+	boundary_track.advance_construction(2.0)
+	assert_true(boundary_track.prepare_for_train_sampling(1.0, 1.1), "Forward interval enters successor")
+	assert_true(_piece_containing(boundary_track.get_geometry_pieces(), 2).locked, "Forward boundary locks successor")
+	_assert_locked_prefix_through(boundary_track.get_geometry_pieces(), 2)
+	var route_end_track = _reflow_runtime()
+	route_end_track.append_cells([Vector2i(0, 0)])
+	route_end_track.advance_construction(1.0)
+	assert_true(route_end_track.prepare_for_train_sampling(1.0, 1.0), "Route end prepares predecessor")
+	assert_equal(route_end_track.get_geometry_pieces().size(), 1, "Route end never invents successor")
 
 
 class _RejectingResolver extends TrackGeometryResolverScript:

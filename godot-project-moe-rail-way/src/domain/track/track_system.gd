@@ -111,12 +111,20 @@ func get_grid_origin_units() -> Vector2:
 	return _runtime.get_grid_origin_units()
 
 
+func prepare_for_train_sampling(current_distance: float, through_distance: float) -> bool:
+	return _runtime.prepare_for_train_sampling(current_distance, through_distance)
+
+
+func get_pose_sample_at_distance(route_distance: float) -> Dictionary:
+	return _runtime.get_pose_sample_at_distance(route_distance)
+
+
 func get_position_at_distance_cells(route_distance_cells: float) -> Vector2:
-	return _runtime.get_position_at_distance_cells(route_distance_cells)
+	return get_pose_sample_at_distance(route_distance_cells).position
 
 
 func get_heading_at_distance_cells(route_distance_cells: float) -> Vector2:
-	return _runtime.get_heading_at_distance_cells(route_distance_cells)
+	return get_pose_sample_at_distance(route_distance_cells).heading
 
 
 func get_contact_observations() -> Array[Dictionary]:

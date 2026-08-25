@@ -22,6 +22,8 @@ const SUITES = [
     preload("res://tests/unit/test_grid_pointer_rasterizer.gd"),
 ]
 
+const GridTrackRuntimeSuiteScript = preload("res://tests/unit/test_grid_track_runtime.gd")
+
 
 func _initialize() -> void:
     call_deferred("_run_suites")
@@ -34,6 +36,15 @@ func _run_suites() -> void:
             var probe_case := argument.trim_prefix(probe_prefix)
             print("TRACK_INVALID_PROBE_BEGIN:" + probe_case)
             SUITES[8].new().run_invalid_probe(probe_case)
+            quit(0)
+            return
+
+    for argument in OS.get_cmdline_user_args():
+        if argument == "--reflow-unprepared-pose-probe":
+            print("REFLOW_UNPREPARED_POSE_PROBE_BEGIN")
+            if not GridTrackRuntimeSuiteScript.new().run_unprepared_pose_probe():
+                quit(1)
+                return
             quit(0)
             return
 

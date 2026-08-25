@@ -18,6 +18,8 @@ func _test_five_cell_curve_matches_five_straight_cell_time() -> void:
 	var straight_track = _make_built_straight_track(5)
 	var curve_train = NominalTrainMotionScript.new(1.0)
 	var straight_train = NominalTrainMotionScript.new(1.0)
+	assert_true(curve_track.prepare_for_train_sampling(2.5, 2.5), "Curve midpoint owner prepares")
+	assert_true(straight_track.prepare_for_train_sampling(2.5, 2.5), "Straight midpoint owner prepares")
 	curve_train.depart(0.0)
 	straight_train.depart(0.0)
 	for tick in range(299):
@@ -55,11 +57,15 @@ func _test_position_and_heading_are_continuous_across_piece_boundaries() -> void
 	assert_equal(pieces.size(), 2, "Boundary fixture has two pieces")
 	for index in range(pieces.size() - 1):
 		var boundary: float = pieces[index].absolute_start_distance_cells + pieces[index].nominal_length_cells
-		var before_position: Vector2 = track.get_position_at_distance_cells(boundary - 0.0001)
-		var after_position: Vector2 = track.get_position_at_distance_cells(boundary + 0.0001)
-		var before_heading: Vector2 = track.get_heading_at_distance_cells(boundary - 0.0001)
-		var after_heading: Vector2 = track.get_heading_at_distance_cells(boundary + 0.0001)
-		assert_true(before_position.distance_to(after_position) < 0.1, "Position is continuous across piece boundary")
+		var edge := GridTrackRuntimeScript.NOMINAL_BOUNDARY_EPSILON * 1.01
+		assert_true(track.prepare_for_train_sampling(boundary - edge, boundary + edge), "Boundary interval prepares both owners")
+		var before_position: Vector2 = track.get_position_at_distance_cells(boundary - edge)
+		var after_position: Vector2 = track.get_position_at_distance_cells(boundary + edge)
+		var before_heading: Vector2 = track.get_heading_at_distance_cells(boundary - edge)
+		var after_heading: Vector2 = track.get_heading_at_distance_cells(boundary + edge)
+		var separation: float = before_position.distance_to(after_position)
+		assert_true(separation > 0.0, "True-side samples stay spatially distinct")
+		assert_true(separation <= edge * 2.0 * 40.0, "True-side samples stay within nominal travel bound")
 		assert_true(before_heading.dot(after_heading) > 0.999, "Heading is continuous across piece boundary")
 
 
@@ -79,8 +85,10 @@ func _test_recovery_preserves_absolute_train_distance() -> void:
 	var track = _make_built_straight_track(5)
 	var train = NominalTrainMotionScript.new(1.0)
 	train.depart(3.0)
+	assert_true(track.prepare_for_train_sampling(3.0, 3.0), "Initial absolute sample prepares")
 	var before_position: Vector2 = track.get_position_at_distance_cells(3.0)
 	assert_equal(track.recover_behind(2.0), 2, "Two cells recover behind train")
+	assert_true(track.prepare_for_train_sampling(3.0, 3.0), "Post-recovery absolute sample prepares")
 	assert_equal(track.get_position_at_distance_cells(3.0), before_position, "Track sampling stays absolute")
 	assert_false(train.advance(track.get_built_end_distance_cells(), 0.5), "Train remains before built end")
 	assert_equal(train.get_route_distance_cells(), 3.5, "Recovery does not renormalize train distance")
