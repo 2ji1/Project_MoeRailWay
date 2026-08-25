@@ -12,6 +12,27 @@ function Get-CanonicalPath {
     return $full.TrimEnd([IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar)
 }
 
+function Assert-CleanGitEnvironment {
+    param([Collections.IDictionary]$Environment)
+    $exactNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($name in @(
+        'GIT_DIR','GIT_WORK_TREE','GIT_COMMON_DIR','GIT_INDEX_FILE',
+        'GIT_OBJECT_DIRECTORY','GIT_ALTERNATE_OBJECT_DIRECTORIES','GIT_NAMESPACE',
+        'GIT_CEILING_DIRECTORIES','GIT_DISCOVERY_ACROSS_FILESYSTEM',
+        'GIT_CONFIG','GIT_CONFIG_PARAMETERS','GIT_CONFIG_COUNT','GIT_CONFIG_SYSTEM',
+        'GIT_CONFIG_GLOBAL','GIT_CONFIG_NOSYSTEM','GIT_EXEC_PATH','GIT_PREFIX',
+        'GIT_INTERNAL_SUPER_PREFIX'
+    )) { $exactNames.Add($name) | Out-Null }
+    foreach ($keyObject in @($Environment.Keys | Sort-Object)) {
+        $key = [string]$keyObject
+        if ($exactNames.Contains($key) -or
+            $key.StartsWith('GIT_CONFIG_KEY_',[StringComparison]::OrdinalIgnoreCase) -or
+            $key.StartsWith('GIT_CONFIG_VALUE_',[StringComparison]::OrdinalIgnoreCase)) {
+            throw "Prohibited Git environment variable: $key"
+        }
+    }
+}
+
 function Assert-Equal {
     param([string]$Expected, [string]$Actual, [string]$Message = '')
     if ($Expected -ne $Actual) {
@@ -312,6 +333,7 @@ function Invoke-Launcher {
         [string]$GitExecutable,
         [string]$Mode = 'VerifyMirror',
         [string]$TempParent,
+        [Collections.IDictionary]$InheritedEnvSeed = @{},
         [Collections.IDictionary]$EnvOverrides = @{}
     )
     $psi = New-Object System.Diagnostics.ProcessStartInfo
@@ -334,6 +356,10 @@ function Invoke-Launcher {
         $psi.ArgumentList.Add('-TempParent')
         $psi.ArgumentList.Add($TempParent)
     }
+    foreach ($kv in $InheritedEnvSeed.GetEnumerator()) {
+        $psi.Environment[$kv.Key] = $kv.Value
+    }
+    $null = $psi.Environment.Remove('MOERAIL_FAKE_VERSION')
     foreach ($kv in $EnvOverrides.GetEnumerator()) {
         $psi.Environment[$kv.Key] = $kv.Value
     }
@@ -470,6 +496,16 @@ if (-not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) {
     Write-Host 'FAIL: launcher is missing'
     exit 1
 }
+Assert-CleanGitEnvironment -Environment ([Environment]::GetEnvironmentVariables([EnvironmentVariableTarget]::Process))
+$gitConfigProbeError = $null
+try {
+    Assert-CleanGitEnvironment -Environment ([ordered]@{ GIT_CONFIG_KEY_0 = 'core.worktree' })
+    throw 'Synthetic Git config environment was accepted'
+}
+catch {
+    $gitConfigProbeError = $_.Exception.Message
+}
+Assert-OutputContains -Needle 'Prohibited Git environment variable: GIT_CONFIG_KEY_0' -Haystack $gitConfigProbeError -Message ' (Git config injection guard)'
 
 $systemTempParent = Get-CanonicalPath -Path ([IO.Path]::GetTempPath())
 Assert-ExistingOrdinaryPathChain -Path $systemTempParent -Boundary ([IO.Path]::GetPathRoot($systemTempParent)) | Out-Null
@@ -508,6 +544,19 @@ $dirsAfter = CaptureMoerailDirs
 Assert-ExitCode -Expected 2 -Actual $result.ExitCode -Message ' (wrong version)'
 Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $dirsBefore -After $dirsAfter -Message ' (wrong version)'
 
+# ---- CASE 1A: Ambient fake version is removed unless intentionally overridden ----
+$ambientFakeFixtureBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+$ambientFakeDirsBefore = CaptureMoerailDirs
+$ambientFakeResult = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $testTempParent -InheritedEnvSeed @{
+    MOERAIL_FAKE_VERSION = '4.7.2.stable.steam.ed1daf0bf'
+}
+$ambientFakeDirsAfter = CaptureMoerailDirs
+Assert-ExitCode -Expected 0 -Actual $ambientFakeResult.ExitCode -Message ' (ambient fake version sanitization)'
+Assert-OutputContains -Needle 'PASS: editor playtest mirror verified' -Haystack $ambientFakeResult.Stdout -Message ' (ambient fake version sanitization marker)'
+Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $ambientFakeDirsBefore -After $ambientFakeDirsAfter -Message ' (ambient fake version sanitization)'
+$ambientFakeFixtureAfter = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+Assert-FixtureSnapshotUnchanged -Before $ambientFakeFixtureBefore -After $ambientFakeFixtureAfter
+
 # ---- CASE 1B: Child exits before ready -> exact exit/stderr diagnostic ----
 $earlyFixtureBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
 $earlyDirsBefore = CaptureMoerailDirs
@@ -538,6 +587,7 @@ try {
         '-TestReadyEventName',$earlyReadyEventName,
         '-TestReleaseEventName',$earlyReleaseEventName
     )) { $earlyPsi.ArgumentList.Add($argument) }
+    $null = $earlyPsi.Environment.Remove('MOERAIL_FAKE_VERSION')
     $earlyPsi.Environment['MOERAIL_FAKE_VERSION'] = '4.7.2.stable.steam.ed1daf0bf'
     $earlyProcess = [Diagnostics.Process]::Start($earlyPsi)
     $earlyStdoutTask = $earlyProcess.StandardOutput.ReadToEndAsync()
@@ -613,6 +663,25 @@ foreach ($insideTempParent in @($cloneRoot,$projectRoot)) {
     Assert-FixtureSnapshotUnchanged -Before $fixtureBefore -After $fixtureAfter
 }
 
+# ---- CASE 3A: RepositoryRoot junction alias -> exit 2 before root ----
+$repositoryAlias = Join-Path $testTempParent 'repository-alias'
+$aliasFixtureBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+$aliasDirsBefore = @(Get-MoerailDirs -TempParent $projectRoot)
+$aliasResult = $null
+New-Item -ItemType Junction -Path $repositoryAlias -Target $cloneRoot -ErrorAction Stop | Out-Null
+try {
+    $aliasResult = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $repositoryAlias -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $projectRoot
+}
+finally {
+    if (Test-Path -LiteralPath $repositoryAlias) { Remove-Item -LiteralPath $repositoryAlias -Force -ErrorAction Stop }
+}
+Assert-ExitCode -Expected 2 -Actual $aliasResult.ExitCode -Message ' (repository junction alias)'
+Assert-OutputContains -Needle "ReparsePoint in path chain: $repositoryAlias" -Haystack $aliasResult.Stderr -Message ' (repository junction reason)'
+$aliasDirsAfter = @(Get-MoerailDirs -TempParent $projectRoot)
+Assert-DirectorySetUnchanged -TempParent $projectRoot -Before $aliasDirsBefore -After $aliasDirsAfter -Message ' (repository junction alias)'
+$aliasFixtureAfter = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+Assert-FixtureSnapshotUnchanged -Before $aliasFixtureBefore -After $aliasFixtureAfter
+
 # ---- CASE 3B: Synthetic Git mode 120000 -> exit 2 before root ----
 $modeOrigin = Join-Path $testTempParent 'mode-origin.git'
 $modeClone = Join-Path $testTempParent 'mode-clone'
@@ -673,6 +742,27 @@ Assert-OutputContains -Needle 'Invalid mode 120000 for godot-project-moe-rail-wa
 Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $modeDirsBefore -After $modeDirsAfter -Message ' (synthetic mode)'
 $modeFixtureAfter = Get-FixtureSnapshot -RepositoryRoot $modeClone
 Assert-FixtureSnapshotUnchanged -Before $modeFixtureBefore -After $modeFixtureAfter
+
+# ---- CASE 3C: Ambient Git routing/config injection -> exit 2, source and decoy unchanged ----
+foreach ($gitEnvCase in @(
+    @{ Name='GIT_DIR'; Value=(Join-Path $modeClone '.git') },
+    @{ Name='GIT_CONFIG_KEY_0'; Value='core.worktree' }
+)) {
+    $gitEnvSourceBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+    $gitEnvDecoyBefore = Get-FixtureSnapshot -RepositoryRoot $modeClone
+    $gitEnvDirsBefore = CaptureMoerailDirs
+    $gitEnvOverrides = @{}
+    $gitEnvOverrides[$gitEnvCase.Name] = $gitEnvCase.Value
+    $gitEnvResult = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot -GodotExecutable $fakeGodotExe -GitExecutable (Get-Command git.exe).Source -TempParent $testTempParent -EnvOverrides $gitEnvOverrides
+    $gitEnvDirsAfter = CaptureMoerailDirs
+    Assert-ExitCode -Expected 2 -Actual $gitEnvResult.ExitCode -Message " (ambient Git variable $($gitEnvCase.Name))"
+    Assert-OutputContains -Needle "Prohibited Git environment variable: $($gitEnvCase.Name)" -Haystack $gitEnvResult.Stderr -Message " (ambient Git variable reason $($gitEnvCase.Name))"
+    Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $gitEnvDirsBefore -After $gitEnvDirsAfter -Message " (ambient Git variable $($gitEnvCase.Name))"
+    $gitEnvSourceAfter = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+    $gitEnvDecoyAfter = Get-FixtureSnapshot -RepositoryRoot $modeClone
+    Assert-FixtureSnapshotUnchanged -Before $gitEnvSourceBefore -After $gitEnvSourceAfter
+    Assert-FixtureSnapshotUnchanged -Before $gitEnvDecoyBefore -After $gitEnvDecoyAfter
+}
 
 # ---- CASE 4: Tracked unstaged -> exit 2, exact reason/path, no root ----
 $fixtureBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
@@ -781,6 +871,7 @@ try {
         '-TestReadyEventName',$readyEventName,
         '-TestReleaseEventName',$releaseEventName
     )) { $identityPsi.ArgumentList.Add($argument) }
+    $null = $identityPsi.Environment.Remove('MOERAIL_FAKE_VERSION')
     $identityProcess = [Diagnostics.Process]::Start($identityPsi)
     $identityStdoutTask = $identityProcess.StandardOutput.ReadToEndAsync()
     $identityStderrTask = $identityProcess.StandardError.ReadToEndAsync()

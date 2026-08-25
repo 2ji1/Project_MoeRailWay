@@ -16,6 +16,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
+$CapturedRepositoryIdentity = $null
 $CapturedTempParentIdentity = $null
 $CapturedRootIdentity = $null
 
@@ -25,6 +26,27 @@ function Get-CanonicalPath {
     $volumeRoot = [IO.Path]::GetPathRoot($full)
     if ($full.Equals($volumeRoot,[StringComparison]::OrdinalIgnoreCase)) { return $volumeRoot }
     return $full.TrimEnd([IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar)
+}
+
+function Assert-CleanGitEnvironment {
+    param([Collections.IDictionary]$Environment)
+    $exactNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($name in @(
+        'GIT_DIR','GIT_WORK_TREE','GIT_COMMON_DIR','GIT_INDEX_FILE',
+        'GIT_OBJECT_DIRECTORY','GIT_ALTERNATE_OBJECT_DIRECTORIES','GIT_NAMESPACE',
+        'GIT_CEILING_DIRECTORIES','GIT_DISCOVERY_ACROSS_FILESYSTEM',
+        'GIT_CONFIG','GIT_CONFIG_PARAMETERS','GIT_CONFIG_COUNT','GIT_CONFIG_SYSTEM',
+        'GIT_CONFIG_GLOBAL','GIT_CONFIG_NOSYSTEM','GIT_EXEC_PATH','GIT_PREFIX',
+        'GIT_INTERNAL_SUPER_PREFIX'
+    )) { $exactNames.Add($name) | Out-Null }
+    foreach ($keyObject in @($Environment.Keys | Sort-Object)) {
+        $key = [string]$keyObject
+        if ($exactNames.Contains($key) -or
+            $key.StartsWith('GIT_CONFIG_KEY_',[StringComparison]::OrdinalIgnoreCase) -or
+            $key.StartsWith('GIT_CONFIG_VALUE_',[StringComparison]::OrdinalIgnoreCase)) {
+            throw "Prohibited Git environment variable: $key"
+        }
+    }
 }
 
 # Resolve GitExecutable and read-only fsutil with controlled preflight
@@ -79,6 +101,23 @@ function Get-DirectoryIdentity {
     if ($identityMatches.Count -ne 1) { throw "Unexpected fsutil queryfileid output for ${canonical}: $($result.Stdout)" }
     $volumeRoot = [IO.Path]::GetPathRoot($canonical).ToUpperInvariant()
     return "$volumeRoot|$($identityMatches[0].Value.ToLowerInvariant())"
+}
+
+function Assert-TempParentOutsideRepositoryIdentity {
+    param(
+        [string]$TempParent,
+        [string]$RepositoryIdentity
+    )
+    $cursor = Get-CanonicalPath -Path $TempParent
+    while ($true) {
+        $identity = Get-DirectoryIdentity -Path $cursor
+        if ($identity -ceq $RepositoryIdentity) {
+            throw "TempParent ancestor resolves to RepositoryRoot identity: $cursor"
+        }
+        $parent = [IO.Path]::GetDirectoryName($cursor)
+        if ([string]::IsNullOrEmpty($parent) -or $parent.Equals($cursor,[StringComparison]::OrdinalIgnoreCase)) { break }
+        $cursor = Get-CanonicalPath -Path $parent
+    }
 }
 
 function Wait-TestCleanupBarrier {
@@ -443,6 +482,7 @@ function Compare-MirrorToPinnedManifest {
 $Root = $null
 try {
 # 1. Resolve RepositoryRoot, tools, exact Godot version
+Assert-CleanGitEnvironment -Environment ([Environment]::GetEnvironmentVariables([EnvironmentVariableTarget]::Process))
 $RepositoryRoot = Get-CanonicalPath -Path $RepositoryRoot
 if ($null -eq $TempParent) { $TempParent = [IO.Path]::GetTempPath() }
 $TempParent = Get-CanonicalPath -Path $TempParent
@@ -458,6 +498,11 @@ if ($TempParent.Equals($RepositoryRoot,[StringComparison]::OrdinalIgnoreCase) -o
     $TempParent.StartsWith($repositoryPrefix,[StringComparison]::OrdinalIgnoreCase)) {
     throw "TempParent must be outside RepositoryRoot: $TempParent"
 }
+Assert-ExistingOrdinaryPathChain -Path $RepositoryRoot -Boundary ([IO.Path]::GetPathRoot($RepositoryRoot)) | Out-Null
+$script:CapturedRepositoryIdentity = Get-DirectoryIdentity -Path $RepositoryRoot
+Assert-ExistingOrdinaryPathChain -Path $TempParent -Boundary ([IO.Path]::GetPathRoot($TempParent)) | Out-Null
+Assert-TempParentOutsideRepositoryIdentity -TempParent $TempParent -RepositoryIdentity $script:CapturedRepositoryIdentity
+$script:CapturedTempParentIdentity = Get-DirectoryIdentity -Path $TempParent
 
 # Validate Godot version
 if (-not (Test-Path -LiteralPath $GodotExecutable -PathType Leaf)) { throw 'Godot executable missing' }
@@ -495,9 +540,7 @@ $PinnedManifest = Get-PinnedManifest -GitExecutable $GitExecutable -RepositoryRo
 # 5. Build SourceSnapshotBefore from actual working-tree bytes
 $SnapshotBefore = Get-SourceSnapshot -RepositoryRoot $RepositoryRoot -GitExecutable $GitExecutable -SourceHead $SourceHead -PinnedManifest $PinnedManifest
 
-# 6. Resolve TempParent and validate its entire existing path chain non-reparse; capture pre-root directory set
-Assert-ExistingOrdinaryPathChain -Path $TempParent -Boundary ([IO.Path]::GetPathRoot($TempParent)) | Out-Null
-$script:CapturedTempParentIdentity = Get-DirectoryIdentity -Path $TempParent
+# 6. Capture the pre-root directory set after all ordinary-chain and identity gates
 $preRootDirs = @()
 if (Test-Path $TempParent) {
     $preRootDirs = Get-ChildItem -LiteralPath $TempParent -Directory -Filter 'moerail-editor-playtest-*' -ErrorAction Stop | ForEach-Object { $_.FullName }
