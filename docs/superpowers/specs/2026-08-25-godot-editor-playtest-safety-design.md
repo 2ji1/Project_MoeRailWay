@@ -22,6 +22,7 @@ This specification is the binding design for the repository's editor playtest sa
 | 12 | The combined exact-version, fresh-project-state, isolated-child-environment path is proven | Fact |
 | 13 | Windows 11 `tar.exe` listed but failed to extract the Git archive entry `assets/선로-🚆.bin` with `Invalid empty pathname`; `.NET System.Formats.Tar.TarFile` extracted the same archive and preserved every file | Fact |
 | 14 | The first committed Task 2 manual attempt exited 2 before opening Godot because omitted typed string parameters bind as empty strings; null-only default guards left both `GitExecutable` and `TempParent` unresolved | Fact |
+| 15 | Independent Task 2 quality review found that a failed recursive removal could already have deleted part of the mirror while the outer handler still printed `PRESERVED_MIRROR`; the same review found no external sentinel/source-integrity assertions in the cleanup-junction test and no regression for a nonzero child exit after otherwise valid logs | Fact |
 
 ## Root-Cause Boundary
 
@@ -39,7 +40,8 @@ One concrete repository PowerShell visible-playtest launcher with behavior tests
 - Uses `ProcessStartInfo` with `UseShellExecute=false`, separate `ArgumentList`, child-only `Environment` overrides, visible GUI executable; never mutates controller or user environment and never hides the window
 - Waits for natural editor exit; never enumerates, stops, or resets any Godot or Steam process; no timeout termination
 - Scans captured editor and game logs for anchored `FAIL:`, `ERROR:`, `SCRIPT ERROR:`, `FATAL:`, `WARNING:`, `CRASH:`, exact gutter diagnostic (`Index p_gutter = -1 is out of bounds`), and established crash or leak terms; confirms source Git status and tracked SHA-256 snapshot unchanged; never copies back
-- On ordinary failure with the captured root identity still reachable at its original path: preserves the exact mirror and reports that path. If an ancestor/root identity is lost, it refuses deletion and reports `MIRROR_IDENTITY_LOST` with the last-known path and captured identity without claiming the current lexical path is the mirror. On success: revalidates the temp parent's complete ordinary path chain plus captured temp-parent/root directory identities and every owned descendant before cleanup; cleanup failure is a gate failure reporting remnants
+- Tracks whether recursive cleanup removal has started. Before removal starts, an ordinary failure with the captured root identity still reachable at its original path preserves the intact mirror and reports `PRESERVED_MIRROR`. After removal starts, a removal failure with that identity still reachable reports `CLEANUP_REMNANTS` because contents may be partial and must never be described as intact. If an ancestor/root identity is lost, it refuses further deletion and reports `MIRROR_IDENTITY_LOST` with the last-known path and captured identity without claiming the current lexical path is the mirror
+- Treats a nonzero editor child exit as a gate failure even when all captured logs are syntactically valid and contain no prohibited diagnostic; behavior-test launcher helpers scrub the test-only exit-code variable from inherited environments before applying an intentional case override
 
 ## Exact Safety Contract
 
@@ -52,11 +54,11 @@ One concrete repository PowerShell visible-playtest launcher with behavior tests
 | Integrity proof | SHA-256 manifest before and after copy; byte-identical verification |
 | Temp root | Complete repository/temp-parent chains are ordinary; repository identity is absent from every temp-parent ancestor identity; outside the source repository; unique and validated; contains project + child `APPDATA`/`LOCALAPPDATA`/`TEMP`/`TMP` + logs |
 | Process launch | `UseShellExecute=false`, `ArgumentList`, child-only `Environment`, visible GUI, no controller/user env mutation |
-| Exit handling | Natural editor exit only; no process enumeration, stop, reset, or timeout kill |
+| Exit handling | Natural editor exit only; any nonzero editor exit is a gate failure even after valid logs; no process enumeration, stop, reset, or timeout kill |
 | Log scanning | Anchored `FAIL:`, `ERROR:`, `SCRIPT ERROR:`, `FATAL:`, `WARNING:`, `CRASH:`, exact gutter diagnostic, established crash/leak terms |
 | Source preservation | Git status clean + tracked SHA-256 snapshot unchanged; never copy back |
-| Failure mode | Preserve and report the exact path only while captured identity remains reachable there; otherwise report `MIRROR_IDENTITY_LOST` with last-known path/identity and never label a decoy path as preserved |
-| Success cleanup | Revalidate the temp-parent chain to its volume root, captured temp-parent/root directory identities, and exact owned descendants before cleanup; cleanup failure = gate failure reporting remnants |
+| Failure mode | Before recursive removal starts, report `PRESERVED_MIRROR` only while the captured root identity remains reachable at its original path; after removal starts, report `CLEANUP_REMNANTS` while that identity remains reachable because contents may be partial; otherwise report `MIRROR_IDENTITY_LOST` with last-known path/identity and never label a decoy path as preserved |
+| Success cleanup | Revalidate the temp-parent chain to its volume root, captured temp-parent/root directory identities, and exact owned descendants before cleanup; set the cleanup-started flag only after final revalidation and immediately before recursive removal; any removal failure is a gate failure reporting `CLEANUP_REMNANTS` when identity remains reachable |
 
 ## TDD and Review Gates
 
@@ -67,10 +69,10 @@ One concrete repository PowerShell visible-playtest launcher with behavior tests
 3. Repository-root and repository-descendant temp-parent rejection plus repository-junction alias rejection before temp creation
 4. Ambient Git routing/config-injection rejection with test-owned source and decoy repositories both unchanged
 5. Synthetic Git mode `120000` rejection before temp creation, proving that archive link entries cannot reach managed extraction
-6. Unicode path mirror through `.NET System.Formats.Tar`, deterministic early child-exit diagnostics, ambient fake-version sanitization, and child-environment contract without opening user GUI
-7. Source preservation (Git status + SHA-256 unchanged)
-8. Failure preservation (exact mirror path reported while identity remains reachable; honest identity-loss marker and last-known path/identity otherwise)
-9. Safe cleanup, including deterministic ordinary ancestor replacement with the original root object restored at the same lexical leaf, detected by captured parent identity before any recursive deletion
+6. Unicode path mirror through `.NET System.Formats.Tar`, deterministic early child-exit diagnostics, a nonzero child exit after otherwise valid logs, ambient fake-version and test-exit-code sanitization, and child-environment contract without opening user GUI
+7. Source preservation (Git status + SHA-256 unchanged), including around the nonzero-exit, cleanup-junction, and cleanup-removal cases
+8. Failure preservation (`PRESERVED_MIRROR` only before removal begins; `CLEANUP_REMNANTS` after removal begins and may have partially succeeded; honest identity-loss marker and last-known path/identity otherwise)
+9. Safe cleanup, including an external junction target containing a sentinel whose bytes remain unchanged, and deterministic ordinary ancestor replacement with the original root object restored at the same lexical leaf, detected by captured parent identity before any recursive deletion
 10. Parameterized default-resolution probes that supply only `RepositoryRoot`, `GodotExecutable`, and `Mode=VerifyMirror` in the omitted case and explicitly whitespace-only `GitExecutable` and `TempParent` in the second case; both prove success, source preservation, and no leaked system-temp mirror roots
 
 Tests use test-owned temp Git fixtures or doubles. Never open or interfere with user GUI.

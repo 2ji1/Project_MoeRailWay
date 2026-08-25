@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement a deterministic, safe Godot editor playtest launcher that mirrors only tracked HEAD files into an isolated temporary environment, validates byte-identical mirrors, runs the canonical Godot 4.7.1 GUI editor with fully overridden child-only environment variables, scans editor and game logs for prohibited diagnostics (including the exact gutter incident), preserves the exact mirror on any failure for inspection, and cleans up only after full revalidation on success. No runtime or gameplay changes; no generalized framework; no process enumeration/termination; no copy-back; no Steam 4.7.2.
+**Goal:** Implement a deterministic, safe Godot editor playtest launcher that mirrors only tracked HEAD files into an isolated temporary environment, validates byte-identical mirrors, runs the canonical Godot 4.7.1 GUI editor with fully overridden child-only environment variables, scans editor and game logs for prohibited diagnostics (including the exact gutter incident), preserves an intact mirror when failure occurs before removal, reports possibly partial remnants when removal itself fails, and cleans up only after full revalidation on success. No runtime or gameplay changes; no generalized framework; no process enumeration/termination; no copy-back; no Steam 4.7.2.
 
 **Architecture:** Two PowerShell scripts — a launcher (`launch_editor_playtest.ps1`) and its behavior test (`test_launch_editor_playtest.ps1`) — operating on the Godot project at `godot-project-moe-rail-way`. The launcher uses pinned `git archive` output plus `.NET System.Formats.Tar.TarFile` for Unicode-safe mirror materialization from `HEAD`, `System.Diagnostics.Process` with `UseShellExecute=false` and `ArgumentList` for controlled visible GUI editor execution with child-only `APPDATA`/`LOCALAPPDATA`/`TEMP`/`TMP` overrides, SHA-256 manifests for source integrity verification before and after, and anchored log scanning for `FAIL:`, `ERROR:`, `SCRIPT ERROR:`, `FATAL:`, `WARNING:`, `CRASH:`, exact gutter diagnostic, and established RID/ObjectDB leak terms from the disposable-mirror amendment.
 
@@ -2783,6 +2783,169 @@ Before retrying manual verification:
 ### Task 2 Windows CRLF Manual Marker Amendment
 
 The successful retry naturally exited 0 and emitted both required marker lines, but the original multiline regexes falsely rejected redirected Windows CRLF because `\r` remained before each `$` anchor. Keep the marker text and line anchoring strict while permitting only the optional carriage return that precedes `\n`: use `(?m)^PASS: editor playtest completed\r?$` and `(?m)^DIAGNOSTICS_SCANNED: \d+\r?$`. Reapply these corrected checks to the already captured stdout before accepting the manual evidence.
+
+---
+
+### Task 2 Cleanup-State and Child-Exit Quality Amendment
+
+Independent Sol quality review of `a00b2c038db614358bd6331d86103fa63c74dbc5..dea9892eff27066f14f062c1b42556748c00d918` identified three binding gaps. A recursive removal can partially succeed before throwing, so its remaining path is not necessarily an intact preserved mirror. The cleanup-junction test must prove the external target and source fixture are unchanged. The fake child must also exercise a nonzero natural exit after producing otherwise valid logs. This amendment supersedes the earlier Task 2 wording wherever the two conflict.
+
+#### Exact output-state contract
+
+The launcher has three mutually exclusive post-creation failure states:
+
+1. `PRESERVED_MIRROR: <path>` — recursive removal has not started, the captured root identity is still reachable at the original ordinary path, and the mirror remains intact for inspection.
+2. `CLEANUP_REMNANTS: <path>` — recursive removal started and then failed, the captured root identity is still reachable, and remaining contents may be partial.
+3. `MIRROR_IDENTITY_LOST: last-known-path=<path> captured-identity=<identity>` — the captured root identity is no longer reachable at the original path; do not claim that the lexical path is preserved or delete through it.
+
+`MIRROR_CREATION_FAILED` remains the pre-identity state when no captured root identity exists.
+
+Add one script-scoped flag beside the captured identities and set it only after final cleanup revalidation, immediately before `Remove-Item`:
+
+```powershell
+$CapturedRepositoryIdentity = $null
+$CapturedTempParentIdentity = $null
+$CapturedRootIdentity = $null
+$CleanupRemovalStarted = $false
+```
+
+```powershell
+function Remove-OwnedRoot {
+    param(
+        [string]$Root,
+        [string]$ResolvedTempParent
+    )
+
+    $canonicalRoot = Assert-OwnedRoot -Root $Root -ResolvedTempParent $ResolvedTempParent -RequireExists $true
+    $script:CleanupRemovalStarted = $true
+    Remove-Item -LiteralPath $canonicalRoot -Recurse -Force -ErrorAction Stop
+    if (Test-Path -LiteralPath $canonicalRoot) {
+        throw "Root still exists after removal: $canonicalRoot"
+    }
+}
+```
+
+In the outer catch, retain the existing identity-lost and creation-failed branches, but replace the reachable-root branch with:
+
+```powershell
+if ($rootIdentityStillMatches) {
+    if ($script:CleanupRemovalStarted) {
+        Write-Host "CLEANUP_REMNANTS: $Root"
+    } else {
+        Write-Host "PRESERVED_MIRROR: $Root"
+    }
+}
+```
+
+The test-owned fake child gains a deterministic, child-only nonzero-exit seam after writing valid capture/log files and completing any ready/release handshake:
+
+```csharp
+string requestedExitCode = Environment.GetEnvironmentVariable("MOERAIL_TEST_EXIT_CODE");
+if (!String.IsNullOrEmpty(requestedExitCode)) {
+    int exitCode;
+    if (!Int32.TryParse(requestedExitCode, out exitCode)) {
+        return 7;
+    }
+    return exitCode;
+}
+return 0;
+```
+
+Every behavior-test `ProcessStartInfo` that starts the launcher must scrub this seam before intentional overrides, exactly as it already scrubs `MOERAIL_FAKE_VERSION`. Add the following line in `Invoke-Launcher`, `Invoke-LauncherWithDefaultGitAndTemp`, `Start-LauncherAsync`, the early-exit launcher block, and the identity-replacement launcher block. In `Invoke-Launcher`, it must appear after `InheritedEnvSeed` is applied and immediately before `EnvOverrides`; in each other location, it must appear after process setup and before any intentional environment override is applied:
+
+```powershell
+$null = $psi.Environment.Remove('MOERAIL_TEST_EXIT_CODE')
+```
+
+Use the corresponding local variable (`$earlyPsi` or `$identityPsi`) in the two custom blocks.
+
+#### Required RED and GREEN sequence
+
+1. Begin at a clean, independently reviewed documentation commit whose parent is exactly `dea9892eff27066f14f062c1b42556748c00d918`.
+2. **Cleanup-marker RED:** edit only `godot-project-moe-rail-way/tests/tooling/test_launch_editor_playtest.ps1`. Change the locked cleanup-removal case to expect `CLEANUP_REMNANTS`, capture the source fixture before launch, and prove it is unchanged after the held file is released. Strengthen the cleanup-junction case at the same time: create an ordinary external target, write a fixed-byte sentinel into it, snapshot the source fixture, and after launcher failure prove the mirror-side path remains a junction, the external target remains an ordinary directory, the sentinel bytes are exact, and the source fixture snapshot is unchanged. Remove the junction before removing the external target. Run the tooling test and record its nonzero exit plus the old `PRESERVED_MIRROR`/missing `CLEANUP_REMNANTS` assertion as the first independent RED.
+3. **Cleanup-marker minimal GREEN:** edit only the launcher in addition to the already changed test. Add the cleanup-started flag, set it at the exact point shown above, and split the reachable-root output marker. Run the complete tooling test and require GREEN before continuing.
+4. **Child-exit RED:** edit only the tooling test in addition to the two already changed files. Add the ambient `MOERAIL_TEST_EXIT_CODE` removals to all five launcher-starting `ProcessStartInfo` paths. First add a normal Launch case with a unique capture file, using `InheritedEnvSeed = @{ MOERAIL_TEST_EXIT_CODE = '23' }` and `EnvOverrides = @{ MOERAIL_TEST_CAPTURE_PATH = $ambientExitCapture }`; this has no intentional exit-code override and must require launcher exit 0, the normal PASS marker, no leaked mirror root, a created capture file, and an unchanged source fixture snapshot. Then add a separate launch case with another unique capture file and `EnvOverrides = @{ MOERAIL_TEST_CAPTURE_PATH = $intentionalExitCapture; MOERAIL_TEST_EXIT_CODE = '23' }`; it expects launcher exit 1, `Godot editor exited 23`, `PRESERVED_MIRROR`, one validated new mirror root, a created capture file, and an unchanged source fixture snapshot. Do not add the fake-child exit seam yet. Run the tooling test again; the existing fake child returns 0, so the ambient regression passes but the intentional case records the second independent RED as expected-1/actual-0. Remove each capture file only after its assertions and any validated mirror cleanup complete.
+5. **Child-exit minimal GREEN:** add only the fake-child seam shown above, then update README with the three-state wording. Run the complete tooling test and require GREEN. Validate and remove only test-owned RED roots after file handles release naturally; never terminate a process to unlock them.
+6. README must say that `PRESERVED_MIRROR` is intact because removal has not started, `CLEANUP_REMNANTS` may be partial because removal started, and `MIRROR_IDENTITY_LOST` is only a last-known path/identity report.
+7. Run the five exact Godot regression scripts separately, then execute the exact implementation commit gate below.
+8. Rerun the tooling test and all five regressions against the commit. Restart the complete manual verification from its first step because launcher behavior changed. Update the ignored English Task 2 report, then obtain independent Sol specification and quality/code reviews over the full Task 2 range and current evidence.
+
+#### Documentation review and commit gate
+
+Require separate independent Sol specification and quality reviews of this amendment before staging it. Both must return `APPROVED`. Then run exactly:
+
+```powershell
+$documentationBase = (git rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or $documentationBase -cne 'dea9892eff27066f14f062c1b42556748c00d918') { exit 1 }
+
+$expectedDocumentationPorcelain = @(
+    ' M docs/superpowers/plans/2026-08-25-godot-editor-playtest-safety.md',
+    ' M docs/superpowers/specs/2026-08-25-godot-editor-playtest-safety-design.md'
+) | Sort-Object
+$actualDocumentationPorcelain = @(git status --porcelain=v1 -u) | Sort-Object
+if ($LASTEXITCODE -ne 0 -or ($actualDocumentationPorcelain -join "`n") -ne ($expectedDocumentationPorcelain -join "`n")) { exit 1 }
+
+$documentationPaths = @(
+    'docs/superpowers/plans/2026-08-25-godot-editor-playtest-safety.md',
+    'docs/superpowers/specs/2026-08-25-godot-editor-playtest-safety-design.md'
+) | Sort-Object
+git add -- docs/superpowers/plans/2026-08-25-godot-editor-playtest-safety.md docs/superpowers/specs/2026-08-25-godot-editor-playtest-safety-design.md
+if ($LASTEXITCODE -ne 0) { exit 1 }
+$stagedDocumentationPaths = @(git diff --cached --name-only | ForEach-Object { $_.Replace('\','/') } | Sort-Object)
+if ($LASTEXITCODE -ne 0 -or ($stagedDocumentationPaths -join "`n") -ne ($documentationPaths -join "`n")) { exit 1 }
+git diff --cached --check
+if ($LASTEXITCODE -ne 0) { exit 1 }
+git commit -m "docs: distinguish cleanup remnants"
+if ($LASTEXITCODE -ne 0) { exit 1 }
+$documentationParent = (git rev-parse 'HEAD^').Trim()
+if ($LASTEXITCODE -ne 0 -or $documentationParent -cne 'dea9892eff27066f14f062c1b42556748c00d918') { exit 1 }
+$documentationSubject = (git log -1 --format=%s).Trim()
+if ($LASTEXITCODE -ne 0 -or $documentationSubject -cne 'docs: distinguish cleanup remnants') { exit 1 }
+$porcelain = @(git status --porcelain=v1 -u)
+if ($LASTEXITCODE -ne 0 -or $porcelain.Count -ne 0) { exit 1 }
+```
+
+#### Implementation commit gate
+
+After both RED/GREEN cycles, tooling GREEN, and the five exact regressions, run exactly:
+
+```powershell
+$implementationBaseParent = (git rev-parse 'HEAD^').Trim()
+$implementationBaseSubject = (git log -1 --format=%s).Trim()
+$implementationBasePaths = @(git diff-tree --no-commit-id --name-only -r HEAD | ForEach-Object { $_.Replace('\','/') } | Sort-Object)
+$expectedDocumentationPaths = @(
+    'docs/superpowers/plans/2026-08-25-godot-editor-playtest-safety.md',
+    'docs/superpowers/specs/2026-08-25-godot-editor-playtest-safety-design.md'
+) | Sort-Object
+if ($LASTEXITCODE -ne 0 `
+    -or $implementationBaseParent -cne 'dea9892eff27066f14f062c1b42556748c00d918' `
+    -or $implementationBaseSubject -cne 'docs: distinguish cleanup remnants' `
+    -or ($implementationBasePaths -join "`n") -ne ($expectedDocumentationPaths -join "`n")) { exit 1 }
+
+$expectedImplementationPorcelain = @(
+    ' M README.md',
+    ' M godot-project-moe-rail-way/tests/tooling/test_launch_editor_playtest.ps1',
+    ' M godot-project-moe-rail-way/tools/playtest/launch_editor_playtest.ps1'
+) | Sort-Object
+$actualImplementationPorcelain = @(git status --porcelain=v1 -u) | Sort-Object
+if ($LASTEXITCODE -ne 0 -or ($actualImplementationPorcelain -join "`n") -ne ($expectedImplementationPorcelain -join "`n")) { exit 1 }
+
+$implementationPaths = @(
+    'README.md',
+    'godot-project-moe-rail-way/tests/tooling/test_launch_editor_playtest.ps1',
+    'godot-project-moe-rail-way/tools/playtest/launch_editor_playtest.ps1'
+) | Sort-Object
+git add -- README.md godot-project-moe-rail-way/tests/tooling/test_launch_editor_playtest.ps1 godot-project-moe-rail-way/tools/playtest/launch_editor_playtest.ps1
+if ($LASTEXITCODE -ne 0) { exit 1 }
+$stagedImplementationPaths = @(git diff --cached --name-only | ForEach-Object { $_.Replace('\','/') } | Sort-Object)
+if ($LASTEXITCODE -ne 0 -or ($stagedImplementationPaths -join "`n") -ne ($implementationPaths -join "`n")) { exit 1 }
+git diff --cached --check
+if ($LASTEXITCODE -ne 0) { exit 1 }
+git commit -m "fix: distinguish cleanup remnants"
+if ($LASTEXITCODE -ne 0) { exit 1 }
+$porcelain = @(git status --porcelain=v1 -u)
+if ($LASTEXITCODE -ne 0 -or $porcelain.Count -ne 0) { exit 1 }
+```
 
 ---
 
