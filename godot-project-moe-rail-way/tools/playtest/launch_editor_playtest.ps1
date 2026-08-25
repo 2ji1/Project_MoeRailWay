@@ -4,8 +4,8 @@ param(
     [string]$RepositoryRoot = (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))),
     [string]$GodotExecutable = "D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64.exe",
     [string]$GitExecutable,
-    [ValidateSet('VerifyMirror')]
-    [string]$Mode = 'VerifyMirror',
+    [ValidateSet('Launch','VerifyMirror')]
+    [string]$Mode = 'Launch',
     [string]$TempParent = $null,
     [Parameter(DontShow)]
     [string]$TestReadyEventName = $null,
@@ -476,6 +476,128 @@ function Compare-MirrorToPinnedManifest {
     }
 }
 
+function Invoke-VisibleEditor {
+    param(
+        [string]$GodotExecutable,
+        [string]$ProjectMirror,
+        [string]$EditorLog,
+        [string]$EnvAppData,
+        [string]$EnvLocalAppData,
+        [string]$EnvTemp
+    )
+    $psi = [Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = $GodotExecutable
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    foreach ($argument in @('--editor','--path',$ProjectMirror,'--log-file',$EditorLog)) {
+        $psi.ArgumentList.Add($argument)
+    }
+    $psi.Environment['APPDATA'] = $EnvAppData
+    $psi.Environment['LOCALAPPDATA'] = $EnvLocalAppData
+    $psi.Environment['TEMP'] = $EnvTemp
+    $psi.Environment['TMP'] = $EnvTemp
+
+    $process = [Diagnostics.Process]::Start($psi)
+    if ($null -eq $process) { throw 'Godot editor process did not start' }
+    try {
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $process.WaitForExit() # natural exit only; no timeout and no termination
+        if (-not [Threading.Tasks.Task]::WaitAll(
+            [Threading.Tasks.Task[]]@($stdoutTask, $stderrTask),
+            [TimeSpan]::FromSeconds(5)
+        )) { throw 'Redirected stream drain exceeded five seconds after child exit' }
+        return [pscustomobject]@{
+            ExitCode = $process.ExitCode
+            Stdout = $stdoutTask.Result
+            Stderr = $stderrTask.Result
+        }
+    }
+    finally {
+        $process.Dispose()
+    }
+}
+
+function Assert-CanonicalPathWithin {
+    param([string]$Path, [string]$Boundary)
+    $canonical = Get-CanonicalPath -Path $Path
+    $canonicalBoundary = Get-CanonicalPath -Path $Boundary
+    $comparison = [StringComparison]::OrdinalIgnoreCase
+    $boundaryPrefix = $canonicalBoundary
+    if (-not $boundaryPrefix.EndsWith([IO.Path]::DirectorySeparatorChar) -and
+        -not $boundaryPrefix.EndsWith([IO.Path]::AltDirectorySeparatorChar)) {
+        $boundaryPrefix += [IO.Path]::DirectorySeparatorChar
+    }
+    if ($canonical -ne $canonicalBoundary -and
+        -not $canonical.StartsWith($boundaryPrefix, $comparison)) {
+        throw "Path escapes boundary: $canonical"
+    }
+    return $canonical
+}
+
+function Get-DiagnosticFiles {
+    param(
+        [string]$Root,
+        [string]$ResolvedTempParent,
+        [string]$LogsDir,
+        [string]$EnvAppData,
+        [string]$StdoutLog,
+        [string]$StderrLog,
+        [string]$EditorLog
+    )
+    Assert-OwnedRoot -Root $Root -ResolvedTempParent $ResolvedTempParent -RequireExists $true | Out-Null
+    foreach ($directory in @($LogsDir, $EnvAppData)) {
+        $canonicalDirectory = Assert-CanonicalPathWithin -Path $directory -Boundary $Root
+        Assert-ExistingOrdinaryPathChain -Path $canonicalDirectory -Boundary $Root | Out-Null
+        if (-not (Test-Path -LiteralPath $canonicalDirectory -PathType Container)) {
+            throw "Required diagnostic directory is not ordinary: $canonicalDirectory"
+        }
+    }
+
+    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $files = [Collections.Generic.List[string]]::new()
+    foreach ($candidate in @($StdoutLog, $StderrLog, $EditorLog)) {
+        $canonical = Assert-CanonicalPathWithin -Path $candidate -Boundary $Root
+        Assert-ExistingOrdinaryPathChain -Path $canonical -Boundary $Root | Out-Null
+        if (-not (Test-Path -LiteralPath $canonical -PathType Leaf)) { throw "Required log is not an ordinary file: $canonical" }
+        $probe = [IO.File]::Open($canonical, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+        $probe.Dispose()
+        if (-not $seen.Add($canonical)) { throw "Duplicate canonical diagnostic path: $canonical" }
+        $files.Add($canonical)
+    }
+
+    Assert-OwnedRoot -Root $Root -ResolvedTempParent $ResolvedTempParent -RequireExists $true | Out-Null
+    foreach ($entry in Get-ChildItem -LiteralPath $EnvAppData -Filter '*.log' -File -Recurse -Force -ErrorAction Stop) {
+        $canonical = Assert-CanonicalPathWithin -Path $entry.FullName -Boundary $Root
+        Assert-ExistingOrdinaryPathChain -Path $canonical -Boundary $Root | Out-Null
+        if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Log reparse point rejected: $canonical" }
+        $probe = [IO.File]::Open($canonical, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+        $probe.Dispose()
+        if (-not $seen.Add($canonical)) { throw "Duplicate canonical diagnostic path: $canonical" }
+        $files.Add($canonical)
+    }
+    return @($files | Sort-Object)
+}
+
+function Scan-Diagnostics {
+    param([string[]]$Files)
+    $StrictDiagnosticPattern = '(?m)^(FAIL:|SCRIPT ERROR:|ERROR:|FATAL:|WARNING:|CRASH:)'
+    $CrashLeakPattern = '(?i)(CrashHandlerException|Program crashed|signal\s+\d+|Scan thread aborted|RID[^\r\n]*(?:leak|allocation)|ObjectDB[^\r\n]*(?:leaked at exit|still alive)|Resources?[^\r\n]*still in use)'
+    foreach ($file in $Files) {
+        $lineNumber = 0
+        foreach ($line in [IO.File]::ReadLines($file)) {
+            $lineNumber++
+            if ($line.Contains('Index p_gutter = -1 is out of bounds', [StringComparison]::Ordinal) -or
+                $line -match $StrictDiagnosticPattern -or $line -match $CrashLeakPattern) {
+                throw "Rejected diagnostic at ${file}:${lineNumber}: $line"
+            }
+        }
+    }
+    return $Files.Count
+}
+
 # ===== MAIN EXECUTION =====
 
 # PRE-ROOT PHASE: every failure is controlled exit 2 and no temp root exists.
@@ -596,15 +718,67 @@ Assert-OwnedRoot -Root $Root -ResolvedTempParent $TempParent -RequireExists $tru
     $SnapshotAfterCopy = Get-SourceSnapshot -RepositoryRoot $RepositoryRoot -GitExecutable $GitExecutable -SourceHead $SourceHead -PinnedManifest $PinnedManifest
     Assert-SourceSnapshotUnchanged -Before $SnapshotBefore -After $SnapshotAfterCopy
 
-    # Before success cleanup: build final SourceSnapshotAfter, compare Before, call Remove-OwnedRoot, confirm absence
+# Preserve Task 1 behavior as an explicit branch after mirror verification.
+if ($Mode -eq 'VerifyMirror') {
     $SnapshotAfter = Get-SourceSnapshot -RepositoryRoot $RepositoryRoot -GitExecutable $GitExecutable -SourceHead $SourceHead -PinnedManifest $PinnedManifest
     Assert-SourceSnapshotUnchanged -Before $SnapshotBefore -After $SnapshotAfter
     Wait-TestCleanupBarrier
     Remove-OwnedRoot -Root $Root -ResolvedTempParent $TempParent
     if (Test-Path -LiteralPath $Root) { throw "Root still exists after cleanup: $Root" }
-
-    Write-Host "PASS: editor playtest mirror verified"
+    Write-Host 'PASS: editor playtest mirror verified'
     exit 0
+}
+
+# Launch-mode main flow after mirror creation and validation.
+$launchFailures = [Collections.Generic.List[string]]::new()
+$diagnosticsScanned = 0
+try {
+    $EditorLog = Join-Path $logsDir 'editor.log'
+    $editorResult = Invoke-VisibleEditor `
+        -GodotExecutable $GodotExecutable `
+        -ProjectMirror $projectMirror `
+        -EditorLog $EditorLog `
+        -EnvAppData $envAppData `
+        -EnvLocalAppData $envLocalAppData `
+        -EnvTemp $envTemp
+
+    # The child has exited naturally. Revalidate before writing either capture.
+    Assert-OwnedRoot -Root $Root -ResolvedTempParent $TempParent -RequireExists $true | Out-Null
+    Assert-ExistingOrdinaryPathChain -Path $logsDir -Boundary $Root | Out-Null
+    if (-not (Test-Path -LiteralPath $logsDir -PathType Container)) { throw 'Logs directory is not ordinary' }
+    $stdoutLog = Join-Path $logsDir 'stdout.log'
+    $stderrLog = Join-Path $logsDir 'stderr.log'
+    [IO.File]::WriteAllText($stdoutLog, $editorResult.Stdout, [Text.Encoding]::UTF8)
+    [IO.File]::WriteAllText($stderrLog, $editorResult.Stderr, [Text.Encoding]::UTF8)
+
+    Assert-OwnedRoot -Root $Root -ResolvedTempParent $TempParent -RequireExists $true | Out-Null
+    Assert-ExistingOrdinaryPathChain -Path $logsDir -Boundary $Root | Out-Null
+    $diagnosticFiles = Get-DiagnosticFiles `
+        -Root $Root -ResolvedTempParent $TempParent -LogsDir $logsDir -EnvAppData $envAppData `
+        -StdoutLog $stdoutLog -StderrLog $stderrLog -EditorLog $EditorLog
+    $diagnosticsScanned = Scan-Diagnostics -Files $diagnosticFiles
+    if ($editorResult.ExitCode -ne 0) { $launchFailures.Add("Godot editor exited $($editorResult.ExitCode)") }
+}
+catch {
+    $launchFailures.Add($_.Exception.Message)
+}
+
+# Source preservation is checked even when launch, drain, write, scan, or child exit failed.
+try {
+    $SnapshotAfter = Get-SourceSnapshot -RepositoryRoot $RepositoryRoot -GitExecutable $GitExecutable -SourceHead $SourceHead -PinnedManifest $PinnedManifest
+    Assert-SourceSnapshotUnchanged -Before $SnapshotBefore -After $SnapshotAfter
+}
+catch {
+    $launchFailures.Add("Source preservation failed: $($_.Exception.Message)")
+}
+if ($launchFailures.Count -ne 0) { throw ($launchFailures -join [Environment]::NewLine) }
+
+Wait-TestCleanupBarrier
+Remove-OwnedRoot -Root $Root -ResolvedTempParent $TempParent
+if (Test-Path -LiteralPath $Root) { throw "Root still exists after cleanup: $Root" }
+Write-Host 'PASS: editor playtest completed'
+Write-Host "DIAGNOSTICS_SCANNED: $diagnosticsScanned"
+exit 0
 }
 catch {
     $failureException = $_.Exception

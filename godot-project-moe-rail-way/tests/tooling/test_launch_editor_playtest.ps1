@@ -166,15 +166,59 @@ function Compile-FakeGodotConsole {
     param([string]$OutputPath)
     $source = @'
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Threading;
+
 public class FakeGodot {
     public static int Main(string[] args) {
+        string version = Environment.GetEnvironmentVariable("MOERAIL_FAKE_VERSION");
         if (args.Length == 1 && args[0] == "--version") {
-            string version = Environment.GetEnvironmentVariable("MOERAIL_FAKE_VERSION");
             Console.WriteLine(String.IsNullOrEmpty(version) ? "4.7.1.stable.official.a13da4feb" : version);
             return 0;
         }
-        Console.Error.WriteLine("Usage: FakeGodot --version");
-        return 1;
+
+        string capture = Environment.GetEnvironmentVariable("MOERAIL_TEST_CAPTURE_PATH");
+        if (String.IsNullOrEmpty(capture)) return 4;
+        var lines = new List<string>();
+        foreach (string argument in args) lines.Add("ARG=" + argument);
+        foreach (string name in new [] { "APPDATA", "LOCALAPPDATA", "TEMP", "TMP" }) {
+            lines.Add(name + "=" + Environment.GetEnvironmentVariable(name));
+        }
+        Directory.CreateDirectory(Path.GetDirectoryName(capture));
+        File.WriteAllLines(capture, lines.ToArray());
+
+        int logIndex = Array.IndexOf(args, "--log-file");
+        if (logIndex < 0 || logIndex + 1 >= args.Length) return 5;
+        string editorLog = args[logIndex + 1];
+        Directory.CreateDirectory(Path.GetDirectoryName(editorLog));
+        File.WriteAllText(editorLog, String.Empty);
+        string gutter = "scene/gui/text_edit.cpp:6981 - Index p_gutter = -1 is out of bounds (gutters.size() = 4)";
+        string diagnostic = Environment.GetEnvironmentVariable("MOERAIL_TEST_DIAGNOSTIC_LINE");
+        if (String.IsNullOrEmpty(diagnostic)) diagnostic = gutter;
+        string target = Environment.GetEnvironmentVariable("MOERAIL_TEST_DIAGNOSTIC");
+        if (target == "stdout") Console.WriteLine(diagnostic);
+        if (target == "stderr") Console.Error.WriteLine(diagnostic);
+        if (target == "editor") File.AppendAllText(editorLog, diagnostic + Environment.NewLine);
+        if (target == "game") {
+            string gameLog = Path.Combine(
+                Environment.GetEnvironmentVariable("APPDATA"),
+                "Godot", "app_userdata", "Moe Rail Way", "logs", "godot.log");
+            Directory.CreateDirectory(Path.GetDirectoryName(gameLog));
+            File.WriteAllText(gameLog, diagnostic + Environment.NewLine);
+        }
+
+        string ready = Environment.GetEnvironmentVariable("MOERAIL_TEST_READY_PATH");
+        string release = Environment.GetEnvironmentVariable("MOERAIL_TEST_RELEASE_PATH");
+        if (!String.IsNullOrEmpty(ready)) {
+            File.WriteAllText(ready, "ready");
+            DateTime deadline = DateTime.UtcNow.AddSeconds(30);
+            while (!File.Exists(release)) {
+                if (DateTime.UtcNow >= deadline) return 6;
+                Thread.Sleep(25);
+            }
+        }
+        return 0;
     }
 }
 '@
@@ -418,6 +462,88 @@ function Wait-TestLauncherReadyOrThrow {
     throw 'Identity fixture ready event timed out'
 }
 
+function Start-LauncherAsync {
+    param(
+        [string]$LauncherPath, [string]$RepositoryRoot, [string]$GodotExecutable,
+        [string]$GitExecutable, [string]$TempParent,
+        [Collections.IDictionary]$EnvOverrides
+    )
+    $psi = [Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = (Get-Command pwsh.exe -ErrorAction Stop).Source
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    foreach ($argument in @(
+        '-NoProfile','-File',$LauncherPath,
+        '-RepositoryRoot',$RepositoryRoot,'-GodotExecutable',$GodotExecutable,
+        '-GitExecutable',$GitExecutable,
+        '-TempParent',$TempParent,'-Mode','Launch'
+    )) { $psi.ArgumentList.Add($argument) }
+    $null = $psi.Environment.Remove('MOERAIL_FAKE_VERSION')
+    foreach ($entry in $EnvOverrides.GetEnumerator()) { $psi.Environment[$entry.Key] = [string]$entry.Value }
+    $process = [Diagnostics.Process]::Start($psi)
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    return [pscustomobject]@{ Process=$process; StdoutTask=$stdoutTask; StderrTask=$stderrTask }
+}
+
+function Complete-LauncherAsync {
+    param([pscustomobject]$Running)
+    try {
+        $Running.Process.WaitForExit()
+        if (-not [Threading.Tasks.Task]::WaitAll(
+            [Threading.Tasks.Task[]]@($Running.StdoutTask,$Running.StderrTask),
+            [TimeSpan]::FromSeconds(5)
+        )) { throw 'Launcher capture drain timed out' }
+        return [pscustomobject]@{
+            ExitCode=$Running.Process.ExitCode
+            Stdout=$Running.StdoutTask.Result
+            Stderr=$Running.StderrTask.Result
+        }
+    }
+    finally {
+        $Running.Process.Dispose()
+    }
+}
+
+function Wait-TestSignal {
+    param([string]$Path)
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    while (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        if ([DateTime]::UtcNow -ge $deadline) { throw "Timed out waiting for test signal: $Path" }
+        Start-Sleep -Milliseconds 25
+    }
+}
+
+function Get-OnlyNewMirrorRoot {
+    param([string[]]$Before, [string]$TempParent)
+    $after = @(Get-MoerailDirs -TempParent $TempParent)
+    $newRoots = @($after | Where-Object { $_ -notin $Before })
+    if ($newRoots.Count -ne 1) { throw "Expected one new mirror, found $($newRoots.Count)" }
+    return $newRoots[0]
+}
+
+function Assert-TestMirrorRoot {
+    param([string]$Root, [string]$ResolvedTempParent)
+    $canonical = Get-CanonicalPath -Path $Root
+    $parent = Get-CanonicalPath -Path $ResolvedTempParent
+    if (-not [IO.Path]::GetDirectoryName($canonical).Equals($parent,[StringComparison]::OrdinalIgnoreCase)) { throw 'Mirror parent mismatch' }
+    if (-not [IO.Path]::GetFileName($canonical).StartsWith('moerail-editor-playtest-',[StringComparison]::Ordinal)) { throw 'Mirror prefix mismatch' }
+    if (-not (Test-Path -LiteralPath $canonical -PathType Container)) { throw 'Mirror root is not a directory' }
+    Assert-ExistingOrdinaryPathChain -Path $canonical -Boundary $parent | Out-Null
+    foreach ($entry in Get-ChildItem -LiteralPath $canonical -Recurse -Force -ErrorAction Stop) {
+        if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Mirror reparse point: $($entry.FullName)" }
+    }
+    return $canonical
+}
+
+function Remove-TestMirrorRoot {
+    param([string]$Root, [string]$ResolvedTempParent)
+    $canonical = Assert-TestMirrorRoot -Root $Root -ResolvedTempParent $ResolvedTempParent
+    Remove-Item -LiteralPath $canonical -Recurse -Force -ErrorAction Stop
+    if (Test-Path -LiteralPath $canonical) { throw "Preserved mirror cleanup failed: $canonical" }
+}
+
 function Get-MoerailDirs {
     param([string]$TempParent)
     if (-not (Test-Path $TempParent)) { return @() }
@@ -512,6 +638,7 @@ Assert-ExistingOrdinaryPathChain -Path $systemTempParent -Boundary ([IO.Path]::G
 $testTempParent = Join-Path $systemTempParent "moerail-playtest-test-$(New-Guid)"
 Assert-TestOwnedRoot -Root $testTempParent -ResolvedTempParent $systemTempParent -RequireExists $false | Out-Null
 [IO.Directory]::CreateDirectory($testTempParent) | Out-Null
+
 Assert-TestOwnedRoot -Root $testTempParent -ResolvedTempParent $systemTempParent -RequireExists $true | Out-Null
 $bareOrigin = Join-Path $testTempParent 'origin.git'
 $cloneRoot = Join-Path $testTempParent 'clone'
@@ -979,6 +1106,180 @@ Assert-OutputContains -Needle 'PASS: editor playtest mirror verified' -Haystack 
 Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $dirsBefore -After $dirsAfter -Message ' (success cleanup)'
 $fixtureAfter = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
 Assert-FixtureSnapshotUnchanged -Before $fixtureBefore -After $fixtureAfter
+
+$gitExe = (Get-Command git.exe -ErrorAction Stop).Source
+
+# This is the Task 2 RED against the committed Task 1 launcher. After Launch
+# exists, the same probe is a clean success and its mirror must be removed.
+$availabilityCapture = Join-Path $testTempParent 'launch-availability-capture.txt'
+$controllerEnvironmentBefore = [ordered]@{
+    APPDATA=$env:APPDATA; LOCALAPPDATA=$env:LOCALAPPDATA; TEMP=$env:TEMP; TMP=$env:TMP
+}
+$availabilityRootsBefore = @(Get-MoerailDirs -TempParent $testTempParent)
+$availabilitySourceBefore = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+$availability = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot `
+    -GodotExecutable $fakeGodotExe -GitExecutable $gitExe `
+    -Mode Launch -TempParent $testTempParent -EnvOverrides @{
+        MOERAIL_TEST_CAPTURE_PATH=$availabilityCapture
+    }
+if ($availability.ExitCode -ne 0 -and
+    ($availability.Stdout+$availability.Stderr).Contains("Cannot validate argument on parameter 'Mode'",[StringComparison]::Ordinal)) {
+    Write-Host 'FAIL: Launch mode is unavailable'
+    exit 1
+}
+Assert-ExitCode -Expected 0 -Actual $availability.ExitCode -Message ' (Launch availability GREEN)'
+Assert-OutputContains -Needle 'PASS: editor playtest completed' -Haystack $availability.Stdout
+Assert-OutputContains -Needle 'DIAGNOSTICS_SCANNED: 3' -Haystack $availability.Stdout
+$availabilityRootsAfter = @(Get-MoerailDirs -TempParent $testTempParent)
+Assert-DirectorySetUnchanged -TempParent $testTempParent -Before $availabilityRootsBefore -After $availabilityRootsAfter -Message ' (clean Launch cleanup)'
+$availabilitySourceAfter = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+Assert-FixtureSnapshotUnchanged -Before $availabilitySourceBefore -After $availabilitySourceAfter
+$captureLines = @(Get-Content -LiteralPath $availabilityCapture -ErrorAction Stop)
+if ($captureLines.Count -ne 9) { throw "Unexpected capture line count: $($captureLines.Count)" }
+Assert-Equal -Expected 'ARG=--editor' -Actual $captureLines[0]
+Assert-Equal -Expected 'ARG=--path' -Actual $captureLines[1]
+$capturedProject = $captureLines[2].Substring(4)
+Assert-Equal -Expected 'ARG=--log-file' -Actual $captureLines[3]
+$capturedEditorLog = $captureLines[4].Substring(4)
+$capturedRoot = Get-CanonicalPath -Path ([IO.Path]::GetDirectoryName($capturedProject))
+if (-not [IO.Path]::GetDirectoryName($capturedRoot).Equals($testTempParent,[StringComparison]::OrdinalIgnoreCase)) { throw 'Captured mirror parent mismatch' }
+if (-not [IO.Path]::GetFileName($capturedRoot).StartsWith('moerail-editor-playtest-',[StringComparison]::Ordinal)) { throw 'Captured mirror prefix mismatch' }
+Assert-Equal -Expected (Join-Path $capturedRoot 'project') -Actual $capturedProject
+Assert-Equal -Expected (Join-Path $capturedRoot 'logs\editor.log') -Actual $capturedEditorLog
+Assert-Equal -Expected "APPDATA=$(Join-Path $capturedRoot 'environment\appdata')" -Actual $captureLines[5]
+Assert-Equal -Expected "LOCALAPPDATA=$(Join-Path $capturedRoot 'environment\localappdata')" -Actual $captureLines[6]
+Assert-Equal -Expected "TEMP=$(Join-Path $capturedRoot 'environment\temp')" -Actual $captureLines[7]
+Assert-Equal -Expected "TMP=$(Join-Path $capturedRoot 'environment\temp')" -Actual $captureLines[8]
+$controllerEnvironmentAfter = [ordered]@{
+    APPDATA=$env:APPDATA; LOCALAPPDATA=$env:LOCALAPPDATA; TEMP=$env:TEMP; TMP=$env:TMP
+}
+foreach ($name in $controllerEnvironmentBefore.Keys) {
+    Assert-Equal -Expected $controllerEnvironmentBefore[$name] -Actual $controllerEnvironmentAfter[$name] -Message " (controller $name)"
+}
+Remove-Item -LiteralPath $availabilityCapture -Force -ErrorAction Stop
+
+foreach ($target in @('stdout','stderr','editor','game')) {
+    $beforeRoots = @(Get-MoerailDirs -TempParent $testTempParent)
+    $beforeSource = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+    $capture = Join-Path $testTempParent "capture-$target.txt"
+    $result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot `
+        -GodotExecutable $fakeGodotExe -GitExecutable $gitExe `
+        -Mode Launch -TempParent $testTempParent -EnvOverrides @{
+            MOERAIL_TEST_CAPTURE_PATH=$capture
+            MOERAIL_TEST_DIAGNOSTIC=$target
+        }
+    Assert-ExitCode -Expected 1 -Actual $result.ExitCode -Message " ($target gutter)"
+    $combined = $result.Stdout + $result.Stderr
+    Assert-OutputContains -Needle 'Index p_gutter = -1 is out of bounds' -Haystack $combined -Message " ($target gutter)"
+    Assert-OutputContains -Needle 'PRESERVED_MIRROR:' -Haystack $combined -Message " ($target preservation)"
+    $preserved = Get-OnlyNewMirrorRoot -Before $beforeRoots -TempParent $testTempParent
+    Assert-TestMirrorRoot -Root $preserved -ResolvedTempParent $testTempParent | Out-Null
+    $expectedLog = switch ($target) {
+        'stdout' { Join-Path $preserved 'logs\stdout.log' }
+        'stderr' { Join-Path $preserved 'logs\stderr.log' }
+        'editor' { Join-Path $preserved 'logs\editor.log' }
+        'game' { Join-Path $preserved 'environment\appdata\Godot\app_userdata\Moe Rail Way\logs\godot.log' }
+    }
+    Assert-OutputContains -Needle "Rejected diagnostic at ${expectedLog}:1:" -Haystack $combined -Message " ($target file/line)"
+    $afterSource = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+    Assert-FixtureSnapshotUnchanged -Before $beforeSource -After $afterSource
+    Remove-TestMirrorRoot -Root $preserved -ResolvedTempParent $testTempParent
+    Remove-Item -LiteralPath $capture -Force -ErrorAction Stop
+}
+
+# Every strict marker and every established crash/leak alternative is executable.
+$diagnosticCases = @(
+    @{ Name='fail'; Line='FAIL: fixture failure' },
+    @{ Name='script-error'; Line='SCRIPT ERROR: fixture failure' },
+    @{ Name='error'; Line='ERROR: fixture failure' },
+    @{ Name='fatal'; Line='FATAL: fixture failure' },
+    @{ Name='warning'; Line='WARNING: fixture failure' },
+    @{ Name='crash'; Line='CRASH: fixture failure' },
+    @{ Name='crash-handler'; Line='CrashHandlerException raised' },
+    @{ Name='program-crashed'; Line='Program crashed unexpectedly' },
+    @{ Name='signal'; Line='signal 11' },
+    @{ Name='scan-aborted'; Line='Scan thread aborted' },
+    @{ Name='rid-allocation'; Line='RID allocations still active' },
+    @{ Name='rid-leak'; Line='RID leaked at exit' },
+    @{ Name='objectdb-leak'; Line='ObjectDB instances leaked at exit' },
+    @{ Name='objectdb-alive'; Line='ObjectDB instances still alive' },
+    @{ Name='resource-use'; Line='Resources still in use' }
+)
+foreach ($case in $diagnosticCases) {
+    $beforeRoots = @(Get-MoerailDirs -TempParent $testTempParent)
+    $beforeSource = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+    $capture = Join-Path $testTempParent "capture-$($case.Name).txt"
+    $result = Invoke-Launcher -LauncherPath $launcherPath -RepositoryRoot $cloneRoot `
+        -GodotExecutable $fakeGodotExe -GitExecutable $gitExe `
+        -Mode Launch -TempParent $testTempParent -EnvOverrides @{
+            MOERAIL_TEST_CAPTURE_PATH=$capture
+            MOERAIL_TEST_DIAGNOSTIC='editor'
+            MOERAIL_TEST_DIAGNOSTIC_LINE=$case.Line
+        }
+    Assert-ExitCode -Expected 1 -Actual $result.ExitCode -Message " ($($case.Name))"
+    $combined = $result.Stdout + $result.Stderr
+    Assert-OutputContains -Needle 'PRESERVED_MIRROR:' -Haystack $combined -Message " ($($case.Name) preservation)"
+    $preserved = Get-OnlyNewMirrorRoot -Before $beforeRoots -TempParent $testTempParent
+    Assert-TestMirrorRoot -Root $preserved -ResolvedTempParent $testTempParent | Out-Null
+    $expectedLog = Join-Path $preserved 'logs\editor.log'
+    Assert-OutputContains -Needle "Rejected diagnostic at ${expectedLog}:1: $($case.Line)" -Haystack $combined -Message " ($($case.Name) file/line)"
+    $afterSource = Get-FixtureSnapshot -RepositoryRoot $cloneRoot
+    Assert-FixtureSnapshotUnchanged -Before $beforeSource -After $afterSource
+    Remove-TestMirrorRoot -Root $preserved -ResolvedTempParent $testTempParent
+    Remove-Item -LiteralPath $capture -Force -ErrorAction Stop
+}
+
+# Cleanup pre-removal revalidation: a junction descendant must preserve the mirror.
+$beforeRoots = @(Get-MoerailDirs -TempParent $testTempParent)
+$ready = Join-Path $testTempParent 'junction-ready'
+$release = Join-Path $testTempParent 'junction-release'
+$capture = Join-Path $testTempParent 'junction-capture.txt'
+$running = Start-LauncherAsync -LauncherPath $launcherPath -RepositoryRoot $cloneRoot `
+    -GodotExecutable $fakeGodotExe -GitExecutable $gitExe `
+    -TempParent $testTempParent -EnvOverrides @{
+        MOERAIL_TEST_CAPTURE_PATH=$capture; MOERAIL_TEST_READY_PATH=$ready; MOERAIL_TEST_RELEASE_PATH=$release
+    }
+Wait-TestSignal -Path $ready
+$preserved = Get-OnlyNewMirrorRoot -Before $beforeRoots -TempParent $testTempParent
+Assert-TestMirrorRoot -Root $preserved -ResolvedTempParent $testTempParent | Out-Null
+$junctionTarget = Join-Path $testTempParent 'junction-cleanup-target'
+[IO.Directory]::CreateDirectory($junctionTarget) | Out-Null
+$junction = Join-Path $preserved 'cleanup-junction'
+New-Item -ItemType Junction -Path $junction -Target $junctionTarget -ErrorAction Stop | Out-Null
+[IO.File]::WriteAllText($release,'release',[Text.Encoding]::UTF8)
+$result = Complete-LauncherAsync -Running $running
+Assert-ExitCode -Expected 1 -Actual $result.ExitCode -Message ' (cleanup revalidation)'
+Assert-OutputContains -Needle 'PRESERVED_MIRROR:' -Haystack ($result.Stdout+$result.Stderr)
+Remove-Item -LiteralPath $junction -Force -ErrorAction Stop
+Remove-Item -LiteralPath $junctionTarget -Recurse -Force -ErrorAction Stop
+Remove-TestMirrorRoot -Root $preserved -ResolvedTempParent $testTempParent
+foreach ($path in @($ready,$release,$capture)) { Remove-Item -LiteralPath $path -Force -ErrorAction Stop }
+
+# Cleanup removal failure: an ordinary non-log file denies delete sharing.
+$beforeRoots = @(Get-MoerailDirs -TempParent $testTempParent)
+$ready = Join-Path $testTempParent 'held-ready'
+$release = Join-Path $testTempParent 'held-release'
+$capture = Join-Path $testTempParent 'held-capture.txt'
+$running = Start-LauncherAsync -LauncherPath $launcherPath -RepositoryRoot $cloneRoot `
+    -GodotExecutable $fakeGodotExe -GitExecutable $gitExe `
+    -TempParent $testTempParent -EnvOverrides @{
+        MOERAIL_TEST_CAPTURE_PATH=$capture; MOERAIL_TEST_READY_PATH=$ready; MOERAIL_TEST_RELEASE_PATH=$release
+    }
+Wait-TestSignal -Path $ready
+$preserved = Get-OnlyNewMirrorRoot -Before $beforeRoots -TempParent $testTempParent
+Assert-TestMirrorRoot -Root $preserved -ResolvedTempParent $testTempParent | Out-Null
+$heldPath = Join-Path $preserved 'project\project.godot'
+$held = [IO.File]::Open($heldPath,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::Read)
+try {
+    [IO.File]::WriteAllText($release,'release',[Text.Encoding]::UTF8)
+    $result = Complete-LauncherAsync -Running $running
+    Assert-ExitCode -Expected 1 -Actual $result.ExitCode -Message ' (cleanup removal)'
+    Assert-OutputContains -Needle 'PRESERVED_MIRROR:' -Haystack ($result.Stdout+$result.Stderr)
+} finally {
+    $held.Dispose()
+}
+Remove-TestMirrorRoot -Root $preserved -ResolvedTempParent $testTempParent
+foreach ($path in @($ready,$release,$capture)) { Remove-Item -LiteralPath $path -Force -ErrorAction Stop }
 
 Assert-TestOwnedRoot -Root $testTempParent -ResolvedTempParent $systemTempParent -RequireExists $true | Out-Null
 Remove-Item -LiteralPath $testTempParent -Recurse -Force -ErrorAction Stop
