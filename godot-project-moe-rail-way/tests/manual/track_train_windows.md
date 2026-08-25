@@ -50,3 +50,27 @@ Registered suites and observation APIs cover the following items. These are auto
 ## Result
 
 **PASS.** No skip markers or unsupported production abstractions were observed. The cleanup scan was pending only this record rewrite.
+
+## Task 3 reflowable track-head evidence — 2026-08-26
+
+**Durable tested implementation SHA:** `f72534e7e6aa6398b7071b8489d3b779e3d6cc66`
+**Godot:** `4.7.1.stable.official.a13da4feb`
+**Launcher source:** preserved task-owned local-`main` wrapper, with a sanitized local bare origin and a clean `main` clone at the durable tested implementation SHA.
+**Window closed:** the task-owned debug game and then the task-owned editor were closed normally; no user-owned Godot or Steam process was targeted.
+
+### Direct Task 3 observations
+
+- I slowly built B through F/G: the route started horizontally, then reflowed into a downward turn.
+- While F was being built and reclassified, the B–E interval remained one solid dark fitted piece; no provisional ghost styling appeared on that built interval.
+- The synchronized G support cell showed no cancel-hover indication. A right click on G left the route and `TRACK END 6/9` unchanged.
+- Dragging from G to the following cell succeeded, proving that the synchronized support remained a valid endpoint for extension (`TRACK END 7/9`).
+- A deliberately rejected drag starting from a non-endpoint left the preceding seven-cell route and its `TRACK END 7/9` state unchanged.
+- At the exact `9/9` departure threshold, the red train entered from the departure along the rendered track without a placement jump; its terminal snapshot was observed at the final head before the `SESSION COMPLETE` / `TRACK END REACHED` result overlay.
+
+### Launcher result
+
+- Exit: `0`
+- `PASS: editor playtest completed`
+- `DIAGNOSTICS_SCANNED: 6`
+
+**PASS.** All required Task 3 route, reflow, hover/cancel, extension, rejected-input, train-entry, and terminal-order observations were completed against the durable tested implementation SHA.
