@@ -71,7 +71,7 @@ function Confirm-ReflowRedFocused([string]$Suite, [string]$ExpectedFailure) {
 function Invoke-ReflowFullGate {
     $gates = @(
         @{ Script = 'res://tests/run_all.gd'; Pass = 'PASS: 19 prototype test suite(s)' },
-        @{ Script = 'res://tests/integration/run_session_shell_integration.gd'; Pass = 'PASS: session shell integration' },
+        @{ Script = 'res://tests/integration/run_session_shell_integration.gd'; Pass = 'PASS: session shell lifecycle integration' },
         @{ Script = 'res://tests/integration/run_logical_track_field_integration.gd'; Pass = 'PASS: logical track field integration' },
         @{ Script = 'res://tests/integration/run_track_train_input_integration.gd'; Pass = 'PASS: track train input integration' },
         @{ Script = 'res://tests/integration/run_track_train_app_integration.gd'; Pass = 'PASS: track train app integration' }
@@ -104,7 +104,7 @@ The expected full-gate anchors are exactly:
 
 ```text
 PASS: 19 prototype test suite(s)
-PASS: session shell integration
+PASS: session shell lifecycle integration
 PASS: logical track field integration
 PASS: track train input integration
 PASS: track train app integration
