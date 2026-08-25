@@ -6,6 +6,7 @@ const INVALID_SCENE_PATH := "res://tests/integration/invalid_track_train_app.tsc
 const SessionControllerScript = preload("res://src/domain/session/session_controller.gd")
 const SessionRngScript = preload("res://src/domain/random/session_rng.gd")
 const SessionResultScript = preload("res://src/domain/session/session_result.gd")
+const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
 const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
 const LogicalTrackFieldScript = preload("res://src/presentation/track/logical_track_field.gd")
 
@@ -51,6 +52,9 @@ class PresetFixture extends RefCounted:
 
 
 func _initialize() -> void:
+	if OS.get_cmdline_user_args().has("--track-field-reconfiguration-probe"):
+		call_deferred("_run_reconfiguration_probe")
+		return
 	call_deferred("_run")
 
 
@@ -181,6 +185,35 @@ func _verify_deterministic_composition() -> void:
 	_assert_equal(first.session_start_config.departure_cell, second.session_start_config.departure_cell, "Seeded departure cell deterministic")
 	first.free()
 	second.free()
+
+
+func _run_reconfiguration_probe() -> void:
+	var fixture = await compose_preset_fixture(LogicalTrackFieldScript.SizePreset.COMPACT, Vector2i(0, 0))
+	if fixture != null:
+		var before: Dictionary = fixture.view.get_render_observation()
+		var rejected_config := SessionStartConfigScript.new(
+			1, 20.0, 60,
+			1.0, 10, 2, 2.0, 1.0, 1,
+			Vector2(901.0, 420.0), Vector2i(2, 2), 40.0, Vector2(100.0, 80.0),
+			&"rejected_departure", Vector2(120.0, 100.0), Vector2i(1, 1)
+		)
+		fixture.view.configure_session(rejected_config)
+		var after: Dictionary = fixture.view.get_render_observation()
+		_assert_equal(after.grid_rect, before.grid_rect, "Rejected reconfiguration preserves the active grid rectangle")
+		_assert_equal(after.selected_departure_id, before.selected_departure_id, "Rejected reconfiguration preserves the active departure identity")
+		_assert_equal(after.selected_departure_position, before.selected_departure_position, "Rejected reconfiguration preserves the active departure position")
+		_assert_equal(after.valid_start_cell, before.valid_start_cell, "Rejected reconfiguration preserves the active valid-start cell")
+		_assert_equal(after.valid_start_rect, before.valid_start_rect, "Rejected reconfiguration preserves the active valid-start rectangle")
+		fixture.app.queue_free()
+		await process_frame
+	if _failures.is_empty():
+		print("PASS: track field reconfiguration probe")
+		quit(0)
+		return
+	for failure in _failures:
+		push_error(failure)
+	print("FAIL: %d track field reconfiguration probe assertion(s)" % _failures.size())
+	quit(1)
 
 
 func _run() -> void:
