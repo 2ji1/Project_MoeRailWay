@@ -2949,6 +2949,84 @@ if ($LASTEXITCODE -ne 0 -or $porcelain.Count -ne 0) { exit 1 }
 
 ---
 
+### Task 2 Fake-Compiler Build-Server Isolation Amendment
+
+At clean `040c6bc0da38fc5078f77d7032a7757bdb82f2a8`, the final fresh tooling run reached its final test-root cleanup and exited 1. `Remove-Item` was denied at `temp\VBCSCompiler\AnalyzerAssemblyLoader\...\Microsoft.Interop.JavaScript.JSImportGenerator.dll`. No process was enumerated or terminated. This observed exit-1 cleanup failure is the RED evidence for this focused follow-up.
+
+The Microsoft [`dotnet publish` contract](https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-publish) defines `--disable-build-servers` as ignoring persistent build servers. Roslyn's [`ManagedCompiler` source](https://github.com/dotnet/roslyn/blob/main/src/Compilers/Core/MSBuildTask/ManagedCompiler.cs) routes compilation through the compiler server only when shared compilation is enabled. Therefore the exact minimal implementation change is limited to `godot-project-moe-rail-way/tests/tooling/test_launch_editor_playtest.ps1`: add both `'--disable-build-servers'` and `'-p:UseSharedCompilation=false'` to the existing `dotnet publish` argument array. Retain the unique child-only `DOTNET_CLI_HOME`, `TEMP`, `TMP`, and NuGet roots. Do not call `dotnet build-server shutdown`, enumerate build-server processes, or terminate any process.
+
+#### Required sequence
+
+1. Obtain separate independent Sol specification and quality reviews of this amendment. Both must return `APPROVED` before staging the documents.
+2. Execute the documentation gate below and record its clean commit SHA.
+3. Retain the observed fresh-tooling exit 1 above as RED. Make only the exact two-argument addition to the tooling test.
+4. Run the complete tooling test and require `PASS: editor playtest tooling tests` plus exit 0 and no leaked root from that run. Run the five exact Godot regressions separately and require exit 0 plus zero line-anchored prohibited diagnostics for each.
+5. Execute the implementation gate below. Rerun tooling and all five regressions against the commit.
+6. Restart the complete manual verification from its first step, update the ignored English Task 2 report, and obtain final independent Sol specification and quality/code reviews over the complete Task 2 range and evidence.
+7. Rerun the fresh feature completion gate. Any test-root cleanup failure remains a gate failure; wait for natural handle release, revalidate the exact test-owned root, and remove it without process interference.
+
+#### Documentation review and commit gate
+
+```powershell
+$documentationBase = (git rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or $documentationBase -cne '040c6bc0da38fc5078f77d7032a7757bdb82f2a8') { exit 1 }
+$expectedDocumentationPorcelain = @(
+    ' M docs/superpowers/plans/2026-08-25-godot-editor-playtest-safety.md',
+    ' M docs/superpowers/specs/2026-08-25-godot-editor-playtest-safety-design.md'
+) | Sort-Object
+$actualDocumentationPorcelain = @(git status --porcelain=v1 -u) | Sort-Object
+if ($LASTEXITCODE -ne 0 -or ($actualDocumentationPorcelain -join "`n") -ne ($expectedDocumentationPorcelain -join "`n")) { exit 1 }
+$documentationPaths = @(
+    'docs/superpowers/plans/2026-08-25-godot-editor-playtest-safety.md',
+    'docs/superpowers/specs/2026-08-25-godot-editor-playtest-safety-design.md'
+) | Sort-Object
+git add -- docs/superpowers/plans/2026-08-25-godot-editor-playtest-safety.md docs/superpowers/specs/2026-08-25-godot-editor-playtest-safety-design.md
+if ($LASTEXITCODE -ne 0) { exit 1 }
+$stagedDocumentationPaths = @(git diff --cached --name-only | ForEach-Object { $_.Replace('\','/') } | Sort-Object)
+if ($LASTEXITCODE -ne 0 -or ($stagedDocumentationPaths -join "`n") -ne ($documentationPaths -join "`n")) { exit 1 }
+git diff --cached --check
+if ($LASTEXITCODE -ne 0) { exit 1 }
+git commit -m "docs: isolate fake compiler build"
+if ($LASTEXITCODE -ne 0) { exit 1 }
+$documentationParent = (git rev-parse 'HEAD^').Trim()
+$documentationSubject = (git log -1 --format=%s).Trim()
+if ($LASTEXITCODE -ne 0 -or $documentationParent -cne '040c6bc0da38fc5078f77d7032a7757bdb82f2a8' -or $documentationSubject -cne 'docs: isolate fake compiler build') { exit 1 }
+$porcelain = @(git status --porcelain=v1 -u)
+if ($LASTEXITCODE -ne 0 -or $porcelain.Count -ne 0) { exit 1 }
+```
+
+#### Tooling-test commit gate
+
+```powershell
+$implementationBaseParent = (git rev-parse 'HEAD^').Trim()
+$implementationBaseSubject = (git log -1 --format=%s).Trim()
+$implementationBasePaths = @(git diff-tree --no-commit-id --name-only -r HEAD | ForEach-Object { $_.Replace('\','/') } | Sort-Object)
+$expectedDocumentationPaths = @(
+    'docs/superpowers/plans/2026-08-25-godot-editor-playtest-safety.md',
+    'docs/superpowers/specs/2026-08-25-godot-editor-playtest-safety-design.md'
+) | Sort-Object
+if ($LASTEXITCODE -ne 0 `
+    -or $implementationBaseParent -cne '040c6bc0da38fc5078f77d7032a7757bdb82f2a8' `
+    -or $implementationBaseSubject -cne 'docs: isolate fake compiler build' `
+    -or ($implementationBasePaths -join "`n") -ne ($expectedDocumentationPaths -join "`n")) { exit 1 }
+$expectedImplementationPorcelain = @(' M godot-project-moe-rail-way/tests/tooling/test_launch_editor_playtest.ps1')
+$actualImplementationPorcelain = @(git status --porcelain=v1 -u)
+if ($LASTEXITCODE -ne 0 -or ($actualImplementationPorcelain -join "`n") -ne ($expectedImplementationPorcelain -join "`n")) { exit 1 }
+$implementationPath = 'godot-project-moe-rail-way/tests/tooling/test_launch_editor_playtest.ps1'
+git add -- $implementationPath
+if ($LASTEXITCODE -ne 0) { exit 1 }
+$stagedImplementationPaths = @(git diff --cached --name-only | ForEach-Object { $_.Replace('\','/') } | Sort-Object)
+if ($LASTEXITCODE -ne 0 -or ($stagedImplementationPaths -join "`n") -ne $implementationPath) { exit 1 }
+git diff --cached --check
+if ($LASTEXITCODE -ne 0) { exit 1 }
+git commit -m "test: isolate fake compiler build"
+if ($LASTEXITCODE -ne 0) { exit 1 }
+$porcelain = @(git status --porcelain=v1 -u)
+if ($LASTEXITCODE -ne 0 -or $porcelain.Count -ne 0) { exit 1 }
+```
+
+---
+
 ### Task 2 Manual Verification (after Task 2 commit, before reviews)
 
 - [ ] In one persistent PowerShell PTY, validate the existing system temp chain before creating either manual root. Then create a local bare `main` and clone only after the exact absent-target checks:

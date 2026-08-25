@@ -23,6 +23,7 @@ This specification is the binding design for the repository's editor playtest sa
 | 13 | Windows 11 `tar.exe` listed but failed to extract the Git archive entry `assets/선로-🚆.bin` with `Invalid empty pathname`; `.NET System.Formats.Tar.TarFile` extracted the same archive and preserved every file | Fact |
 | 14 | The first committed Task 2 manual attempt exited 2 before opening Godot because omitted typed string parameters bind as empty strings; null-only default guards left both `GitExecutable` and `TempParent` unresolved | Fact |
 | 15 | Independent Task 2 quality review found that a failed recursive removal could already have deleted part of the mirror while the outer handler still printed `PRESERVED_MIRROR`; the same review found no external sentinel/source-integrity assertions in the cleanup-junction test and no regression for a nonzero child exit after otherwise valid logs | Fact |
+| 16 | At clean commit `040c6bc0da38fc5078f77d7032a7757bdb82f2a8`, the final fresh tooling run reached final test-root cleanup but exited 1 because a `temp\VBCSCompiler\AnalyzerAssemblyLoader\...\Microsoft.Interop.JavaScript.JSImportGenerator.dll` path remained locked | Fact |
 
 ## Root-Cause Boundary
 
@@ -42,6 +43,7 @@ One concrete repository PowerShell visible-playtest launcher with behavior tests
 - Scans captured editor and game logs for anchored `FAIL:`, `ERROR:`, `SCRIPT ERROR:`, `FATAL:`, `WARNING:`, `CRASH:`, exact gutter diagnostic (`Index p_gutter = -1 is out of bounds`), and established crash or leak terms; confirms source Git status and tracked SHA-256 snapshot unchanged; never copies back
 - Tracks whether recursive cleanup removal has started. Before removal starts, an ordinary failure with the captured root identity still reachable at its original path preserves the intact mirror and reports `PRESERVED_MIRROR`. After removal starts, a removal failure with that identity still reachable reports `CLEANUP_REMNANTS` because contents may be partial and must never be described as intact. If an ancestor/root identity is lost, it refuses further deletion and reports `MIRROR_IDENTITY_LOST` with the last-known path and captured identity without claiming the current lexical path is the mirror
 - Treats a nonzero editor child exit as a gate failure even when all captured logs are syntactically valid and contain no prohibited diagnostic; behavior-test launcher helpers scrub the test-only exit-code variable from inherited environments before applying an intentional case override
+- Runs the test-owned fake-child `dotnet publish` with `--disable-build-servers` and `-p:UseSharedCompilation=false` while retaining unique child-only `DOTNET_CLI_HOME`, `TEMP`, `TMP`, and NuGet roots. It never calls `dotnet build-server shutdown`, enumerates build-server processes, or terminates a process to release a test artifact
 
 ## Exact Safety Contract
 
@@ -74,6 +76,7 @@ One concrete repository PowerShell visible-playtest launcher with behavior tests
 8. Failure preservation (`PRESERVED_MIRROR` only before removal begins; `CLEANUP_REMNANTS` after removal begins and may have partially succeeded; honest identity-loss marker and last-known path/identity otherwise)
 9. Safe cleanup, including an external junction target containing a sentinel whose bytes remain unchanged, and deterministic ordinary ancestor replacement with the original root object restored at the same lexical leaf, detected by captured parent identity before any recursive deletion
 10. Parameterized default-resolution probes that supply only `RepositoryRoot`, `GodotExecutable`, and `Mode=VerifyMirror` in the omitted case and explicitly whitespace-only `GitExecutable` and `TempParent` in the second case; both prove success, source preservation, and no leaked system-temp mirror roots
+11. Fake-child compilation with persistent build servers and shared compilation disabled, followed by successful removal of the complete test-owned root without process enumeration or termination
 
 Tests use test-owned temp Git fixtures or doubles. Never open or interfere with user GUI.
 
