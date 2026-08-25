@@ -17,6 +17,7 @@ func run() -> PackedStringArray:
 	_test_partial_recovery_preserves_locked_curve_sampling()
 	_test_recovery_preserves_surviving_predecessor_geometry()
 	_test_recovery_keeps_group_ids_unique()
+	_test_full_prune_then_relock_uses_fresh_owner_group_ids()
 	_test_locked_endpoint_rejects_disconnected_rebranch()
 	_test_runtime_applies_nonzero_grid_origin_to_sampling()
 	_test_recovered_interval_is_not_reported_as_contacted()
@@ -145,6 +146,44 @@ func _test_recovery_keeps_group_ids_unique() -> void:
 	assert_true(records[0].geometry_group_id != records[-1].geometry_group_id, "Ledger and successor groups stay distinct")
 	assert_equal(track.advance_construction(1.0), 0.0, "Completed construction cannot assign a new lock")
 	assert_false(track.get_cell_records()[-1].geometry_locked, "Construction alone leaves the successor provisional")
+
+
+func _test_full_prune_then_relock_uses_fresh_owner_group_ids() -> void:
+	var track = _reflow_runtime()
+	assert_equal(track.append_cells(_reflow_curve_cells()), 5, "B through F curve appends")
+	assert_equal(track.append_cells([Vector2i(2, 3)]), 1, "G locks B through F")
+	assert_equal(track.append_cells([
+		Vector2i(2, 4), Vector2i(2, 5), Vector2i(2, 6),
+		Vector2i(3, 6), Vector2i(4, 6),
+	]), 5, "H through L independently lock G")
+	assert_equal(track.advance_construction(11.0), 11.0, "B through L build before recovery")
+	assert_equal(track.recover_behind(5.0), 5, "B through F fully recover and prune")
+	var surviving_g = _piece_containing(track.get_geometry_pieces(), 6)
+	assert_not_null(surviving_g, "G survives the leading ledger prune")
+	if surviving_g == null:
+		return
+	assert_true(surviving_g.locked, "G remains independently locked")
+	var surviving_group_id: int = surviving_g.group_id
+	assert_equal(track.append_cells([Vector2i(5, 6)]), 1, "M triggers the next horizon lock")
+	var pieces = track.get_geometry_pieces()
+	var new_locked_owner = _piece_containing(pieces, 7)
+	assert_not_null(new_locked_owner, "H has an active owner after relocking")
+	if new_locked_owner == null:
+		return
+	assert_true(new_locked_owner.locked, "Horizon independently locks the new owner")
+	assert_equal(surviving_g.group_id, surviving_group_id, "Surviving locked owner keeps its group ID")
+	assert_equal(
+		new_locked_owner.group_id,
+		surviving_group_id + 1,
+		"New ledger lock uses the group ID after the surviving ledger maximum"
+	)
+	var active_owner_group_ids: Dictionary = {}
+	for piece in pieces:
+		assert_false(
+			active_owner_group_ids.has(piece.group_id),
+			"Every active owner group ID is distinct"
+		)
+		active_owner_group_ids[piece.group_id] = true
 
 
 func _test_locked_endpoint_rejects_disconnected_rebranch() -> void:

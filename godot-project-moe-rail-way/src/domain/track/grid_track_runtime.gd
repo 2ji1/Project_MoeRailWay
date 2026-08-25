@@ -284,14 +284,19 @@ func _assign_unique_unlocked_group_ids(
     pieces: Array[TrackGeometryPieceScript],
     ledger: Array[TrackGeometryPieceScript]
 ) -> void:
-    var next_group_id := 0
-    for locked in ledger:
-        next_group_id = maxi(next_group_id, locked.group_id + 1)
+    var next_group_id := _next_ledger_group_id(ledger)
     for piece in pieces:
         if piece.locked:
             continue
         piece.group_id = next_group_id
         next_group_id += 1
+
+
+func _next_ledger_group_id(ledger: Array[TrackGeometryPieceScript]) -> int:
+    var next_group_id := 0
+    for locked in ledger:
+        next_group_id = maxi(next_group_id, locked.group_id + 1)
+    return next_group_id
 
 
 func _count_provisional_records(
@@ -345,6 +350,7 @@ func _stage_horizon(
         if earliest == null:
             return TrackGeometryResolutionScript.rejected(-1, &"missing_provisional_piece")
         var ledger_piece = earliest.duplicate_piece()
+        ledger_piece.group_id = _next_ledger_group_id(ledger)
         ledger_piece.locked = true
         ledger_piece.exit_support_route_serial = _exit_support_serial(ledger_piece, records)
         if (
@@ -373,7 +379,11 @@ func _validate_candidate(
     if _count_provisional_records(resolution.pieces, records) > 5:
         return false
     var saw_provisional := false
+    var active_group_ids: Dictionary = {}
     for piece in resolution.pieces:
+        if active_group_ids.has(piece.group_id):
+            return false
+        active_group_ids[piece.group_id] = true
         if piece.locked:
             if saw_provisional:
                 return false
