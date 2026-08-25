@@ -6,7 +6,7 @@
 
 **Architecture:** Two PowerShell scripts — a launcher (`launch_editor_playtest.ps1`) and its behavior test (`test_launch_editor_playtest.ps1`) — operating on the Godot project at `godot-project-moe-rail-way`. The launcher uses `git archive` + `tar` for byte-safe mirror materialization from a pinned HEAD, `System.Diagnostics.Process` with `UseShellExecute=false` and `ArgumentList` for controlled visible GUI editor execution with child-only `APPDATA`/`LOCALAPPDATA`/`TEMP`/`TMP` overrides, SHA-256 manifests for source integrity verification before and after, and anchored log scanning for `FAIL:`, `ERROR:`, `SCRIPT ERROR:`, `FATAL:`, `WARNING:`, `CRASH:`, exact gutter diagnostic, and established RID/ObjectDB leak terms from the disposable-mirror amendment.
 
-**Tech Stack:** PowerShell 7.4+ (`pwsh`) on modern .NET, Git for Windows, Git Bash 5.2.37 at `C:\Program Files\Git\bin\bash.exe`, tar (bsdtar 3.8.4), Godot 4.7.1.stable.official.a13da4feb (canonical GUI executable at `D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64.exe`; console sibling at `D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe`).
+**Tech Stack:** PowerShell 7.4+ (`pwsh`) on modern .NET, .NET SDK 9.0.100 with an installed compatible .NET 9 runtime (`dotnet publish` for a framework-dependent single-file test executable only), Git for Windows, Git Bash 5.2.37 at `C:\Program Files\Git\bin\bash.exe`, tar (bsdtar 3.8.4), Godot 4.7.1.stable.official.a13da4feb (canonical GUI executable at `D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64.exe`; console sibling at `D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe`).
 
 **Spec:** `docs/superpowers/specs/2026-08-25-godot-editor-playtest-safety-design.md`
 
@@ -332,7 +332,114 @@ public class FakeGodot {
     }
 }
 '@
-    Add-Type -TypeDefinition $source -OutputAssembly $OutputPath -OutputType ConsoleApplication -Language CSharp
+    $outputParent = Get-CanonicalPath -Path ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($OutputPath)))
+    Assert-ExistingOrdinaryPathChain -Path $outputParent -Boundary ([IO.Path]::GetPathRoot($outputParent)) | Out-Null
+    $buildRoot = Join-Path $outputParent "fake-build-$(New-Guid)"
+    if (Test-Path -LiteralPath $buildRoot) { throw "Fake build root already exists: $buildRoot" }
+    [IO.Directory]::CreateDirectory($buildRoot) | Out-Null
+    $buildItem = Get-Item -LiteralPath $buildRoot -Force -ErrorAction Stop
+    if (($buildItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Fake build root is a reparse point: $buildRoot" }
+    if (-not [IO.Path]::GetDirectoryName((Get-CanonicalPath -Path $buildRoot)).Equals($outputParent,[StringComparison]::OrdinalIgnoreCase)) { throw 'Fake build parent mismatch' }
+    if (-not [IO.Path]::GetFileName($buildRoot).StartsWith('fake-build-',[StringComparison]::Ordinal)) { throw 'Fake build prefix mismatch' }
+    $projectFile = Join-Path $buildRoot 'FakeGodot.csproj'
+    $sourceFile = Join-Path $buildRoot 'Program.cs'
+    $publishDir = Join-Path $buildRoot 'publish'
+    $dotnetHome = Join-Path $buildRoot 'dotnet-home'
+    $nugetPackages = Join-Path $buildRoot 'nuget-packages'
+    $dotnetTemp = Join-Path $buildRoot 'temp'
+    $nugetHttpCache = Join-Path $buildRoot 'nuget-http-cache'
+    $nugetPluginsCache = Join-Path $buildRoot 'nuget-plugins-cache'
+    $nugetScratch = Join-Path $buildRoot 'nuget-scratch'
+    foreach ($directory in @($dotnetHome,$nugetPackages,$dotnetTemp,$nugetHttpCache,$nugetPluginsCache,$nugetScratch)) {
+        [IO.Directory]::CreateDirectory($directory) | Out-Null
+    }
+    $nugetConfig = Join-Path $buildRoot 'NuGet.Config'
+    $project = @'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <AssemblyName>FakeGodot</AssemblyName>
+  </PropertyGroup>
+</Project>
+'@
+    [IO.File]::WriteAllText($projectFile,$project,[Text.Encoding]::UTF8)
+    [IO.File]::WriteAllText($sourceFile,$source,[Text.Encoding]::UTF8)
+    $nugetConfiguration = @'
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <clear />
+  </packageSources>
+</configuration>
+'@
+    [IO.File]::WriteAllText($nugetConfig,$nugetConfiguration,[Text.Encoding]::UTF8)
+
+    $assertBuildTree = {
+        Assert-ExistingOrdinaryPathChain -Path $buildRoot -Boundary $outputParent | Out-Null
+        foreach ($entry in Get-ChildItem -LiteralPath $buildRoot -Recurse -Force -ErrorAction Stop) {
+            if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "Fake build reparse point: $($entry.FullName)"
+            }
+        }
+    }
+
+    $dotnetExe = (Get-Command dotnet.exe -ErrorAction Stop).Source
+    $invokeDotnet = {
+        param([string[]]$Arguments)
+        $psi = [Diagnostics.ProcessStartInfo]::new()
+        $psi.FileName = $dotnetExe
+        $psi.UseShellExecute = $false
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.WorkingDirectory = $buildRoot
+        foreach ($entry in @{
+            DOTNET_CLI_HOME=$dotnetHome; NUGET_PACKAGES=$nugetPackages; TEMP=$dotnetTemp; TMP=$dotnetTemp;
+            NUGET_HTTP_CACHE_PATH=$nugetHttpCache; NUGET_PLUGINS_CACHE_PATH=$nugetPluginsCache; NUGET_SCRATCH=$nugetScratch;
+            DOTNET_SKIP_FIRST_TIME_EXPERIENCE='1'; DOTNET_CLI_TELEMETRY_OPTOUT='1'; DOTNET_NOLOGO='1'
+        }.GetEnumerator()) { $psi.Environment[$entry.Key] = [string]$entry.Value }
+        foreach ($argument in $Arguments) { $psi.ArgumentList.Add($argument) }
+        $process = [Diagnostics.Process]::Start($psi)
+        try {
+            $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+            $stderrTask = $process.StandardError.ReadToEndAsync()
+            $process.WaitForExit()
+            $stdoutTask.Wait()
+            $stderrTask.Wait()
+            return [pscustomobject]@{ ExitCode=$process.ExitCode; Stdout=$stdoutTask.Result; Stderr=$stderrTask.Result }
+        }
+        finally {
+            $process.Dispose()
+        }
+    }
+
+    & $assertBuildTree
+    $versionResult = & $invokeDotnet -Arguments @('--version')
+    if ($versionResult.ExitCode -ne 0 -or $versionResult.Stdout.Trim() -ne '9.0.100') {
+        throw "dotnet SDK mismatch: $($versionResult.Stdout) $($versionResult.Stderr)"
+    }
+    $restoreResult = & $invokeDotnet -Arguments @(
+        'restore',$projectFile,'--configfile',$nugetConfig,'--no-http-cache'
+    )
+    if ($restoreResult.ExitCode -ne 0) { throw "dotnet restore failed: $($restoreResult.Stdout) $($restoreResult.Stderr)" }
+    & $assertBuildTree
+    $publishResult = & $invokeDotnet -Arguments @(
+        'publish',$projectFile,'-c','Release','-r','win-x64','--self-contained','false','--no-restore',
+        '-p:PublishSingleFile=true','-p:DebugType=none','-p:DebugSymbols=false','-o',$publishDir
+    )
+    if ($publishResult.ExitCode -ne 0) { throw "dotnet publish failed: $($publishResult.Stdout) $($publishResult.Stderr)" }
+    & $assertBuildTree
+    $publishedExe = Join-Path $publishDir 'FakeGodot.exe'
+    if (-not (Test-Path -LiteralPath $publishedExe -PathType Leaf)) { throw "Published fake is missing: $publishedExe" }
+    Move-Item -LiteralPath $publishedExe -Destination $OutputPath -ErrorAction Stop
+    if (-not (Test-Path -LiteralPath $OutputPath -PathType Leaf)) { throw "Fake output is missing: $OutputPath" }
+    # Build intermediates intentionally remain inside the validated test-owned
+    # root and are removed only by the final revalidated root cleanup.
 }
 
 function Invoke-Launcher {
