@@ -58,7 +58,8 @@ func gesture_has_legal_operation(endpoint: Vector2i = Vector2i(-1, -1)) -> bool:
         return false
     if _gesture_active:
         return true
-    if _editable_endpoint_piece() != null:
+    var editable_span := _discover_editable_span()
+    if _has_legal_template_alternative(editable_span):
         return true
     if _sequence.get_available_track_cells() <= 0:
         return false
@@ -448,6 +449,14 @@ func _discover_editable_span() -> Dictionary:
             last_index = index
     if first_index < 0 or last_index < first_index:
         return {}
+    if endpoint_piece.kind == TrackGeometryPieceScript.Kind.STRAIGHT:
+        var support_count := 2
+        while first_index > 0 and support_count > 0:
+            var support = _piece_containing_serial(records[first_index - 1].route_serial)
+            if support == null or support.locked or support.kind != TrackGeometryPieceScript.Kind.STRAIGHT:
+                break
+            first_index -= 1
+            support_count -= 1
     var entry_cell: Vector2i = _departure_cell
     if first_index > 0:
         entry_cell = records[first_index - 1].cell
@@ -478,6 +487,105 @@ func _calculate_target_endpoints(span: Dictionary) -> Dictionary:
         "left": turn_cell + left_heading * (radius - 1),
         "right": turn_cell + right_heading * (radius - 1),
     }
+
+
+func _template_cells(span: Dictionary) -> Array[Array]:
+    var templates: Array[Array] = []
+    if span.is_empty():
+        return templates
+    var count: int = span["record_count"]
+    if count != 3 and count != 5:
+        return templates
+    var entry: Vector2i = span["entry_predecessor_cell"]
+    var heading: Vector2i = span["incoming_heading"]
+    var radius: int = maxi(1, int(ceil(float(count) / 2.0)))
+    var left_heading := Vector2i(-heading.y, heading.x)
+    var right_heading := Vector2i(heading.y, -heading.x)
+    var straight_cells: Array[Vector2i] = []
+    for index in range(1, count + 1):
+        straight_cells.append(entry + heading * index)
+    var left_cells: Array[Vector2i] = []
+    var right_cells: Array[Vector2i] = []
+    for index in range(1, radius + 1):
+        left_cells.append(entry + heading * index)
+        right_cells.append(entry + heading * index)
+    var turn_cell := entry + heading * radius
+    for index in range(1, radius):
+        left_cells.append(turn_cell + left_heading * index)
+        right_cells.append(turn_cell + right_heading * index)
+    templates.append(straight_cells)
+    templates.append(left_cells)
+    templates.append(right_cells)
+    return templates
+
+
+func _has_legal_template_alternative(span: Dictionary) -> bool:
+    for template_cells in _template_cells(span):
+        if _template_candidate_is_legal(span, template_cells):
+            return true
+    return false
+
+
+func _template_candidate_is_legal(span: Dictionary, template_cells: Array[Vector2i]) -> bool:
+    if span.is_empty() or template_cells.size() != span["record_count"]:
+        return false
+    var records: Array[TrackCellRecordScript] = _sequence.get_records()
+    var first_index: int = span["first_index"]
+    var last_index: int = span["last_index"]
+    if first_index < 0 or last_index >= records.size() or last_index - first_index + 1 != template_cells.size():
+        return false
+    for index in range(template_cells.size()):
+        records[first_index + index].cell = template_cells[index]
+    var occupied: Dictionary = {}
+    for index in range(records.size()):
+        var record = records[index]
+        if not _cell_in_grid(record.cell) or occupied.has(record.cell):
+            return false
+        occupied[record.cell] = true
+        var predecessor: Vector2i = _departure_cell if index == 0 else records[index - 1].cell
+        if absi(record.cell.x - predecessor.x) + absi(record.cell.y - predecessor.y) != 1:
+            return false
+    var resolution = _resolver.resolve(
+        _departure_cell,
+        records,
+        _locked_ledger,
+        _anchors,
+        _grid_origin_units,
+        _grid_size,
+        _cell_size_units
+    )
+    if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
+        return false
+    for record in records:
+        var owner_count := 0
+        var owner = null
+        for piece in resolution.pieces:
+            if piece.contains_serial(record.route_serial):
+                owner_count += 1
+                owner = piece
+        if owner_count != 1 or owner == null:
+            return false
+    for locked in _locked_ledger:
+        var matched := false
+        for piece in resolution.pieces:
+            if (
+                piece.locked
+                and piece.first_route_serial == locked.first_route_serial
+                and piece.last_route_serial == locked.last_route_serial
+                and piece.exit_support_route_serial == locked.exit_support_route_serial
+            ):
+                matched = true
+                break
+        if not matched:
+            return false
+    return _sequence.get_available_track_cells() >= 0
+
+
+func _piece_containing_serial(route_serial: int):
+    for piece in _pieces:
+        if piece.contains_serial(route_serial):
+            return piece
+    return null
 
 
 func _gesture_origin_observation() -> Dictionary:

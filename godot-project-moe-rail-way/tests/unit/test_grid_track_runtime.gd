@@ -9,6 +9,9 @@ const TrackGeometryResolutionScript = preload("res://src/domain/track/track_geom
 
 
 func run() -> PackedStringArray:
+	_test_endpoint_reshape_legal_operation_requires_concrete_candidate()
+	_test_endpoint_reshape_supported_straight_head_has_non_degenerate_targets()
+	_test_endpoint_reshape_populated_origin_observations_are_detached()
 	_test_endpoint_reshape_gesture_begin_captures_detached_origin()
 	_test_endpoint_reshape_editable_span_has_deterministic_targets()
 	_test_endpoint_reshape_active_gesture_defers_construction_and_recovery()
@@ -56,6 +59,105 @@ func run() -> PackedStringArray:
 	_test_two_sided_outside_epsilon_stitch_continuity()
 	_test_prepared_built_curve_recovers_same_serials_without_ledger_mutation()
 	return finish()
+
+
+func _test_endpoint_reshape_legal_operation_requires_concrete_candidate() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 1), 1, Vector2.ZERO, Vector2i(4, 4), 40.0
+	)
+	assert_equal(track.append_cells([Vector2i(0, 1)]), 1, "Zero-inventory straight endpoint appends")
+	print("Endpoint reshape fix: legal operation validates concrete alternatives")
+	assert_false(
+		track.gesture_has_legal_operation(Vector2i(0, 1)),
+		"Zero-inventory one-cell straight endpoint has no replacement or extension"
+	)
+	assert_equal(
+		track.gesture_begin(Vector2i(0, 1)),
+		{},
+		"Gesture begin rejects an endpoint without a concrete operation"
+	)
+	var invalid_alternative = GridTrackRuntimeScript.new(
+		Vector2i(-1, 1), 3, Vector2.ZERO, Vector2i(4, 4), 40.0
+	)
+	var invalid_cells: Array[Vector2i] = [Vector2i(0, 1), Vector2i(1, 1), Vector2i(2, 1)]
+	assert_equal(invalid_alternative.append_cells(invalid_cells), 3, "Invalid alternative fixture appends")
+	invalid_alternative._resolver = _RejectingResolver.new()
+	assert_false(
+		invalid_alternative.gesture_has_legal_operation(Vector2i(2, 1)),
+		"Resolver-rejected alternatives do not create legal operation"
+	)
+
+
+func _test_endpoint_reshape_supported_straight_head_has_non_degenerate_targets() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 3), 5, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	var cells: Array[Vector2i] = [
+		Vector2i(0, 3), Vector2i(1, 3), Vector2i(2, 3),
+		Vector2i(3, 3), Vector2i(4, 3),
+	]
+	assert_equal(track.append_cells(cells), 5, "Supported straight endpoint appends")
+	print("Endpoint reshape fix: supported straight span preserves targets")
+	var result = track.gesture_begin(Vector2i(4, 3))
+	assert_true(result is Dictionary, "Supported straight endpoint starts a gesture")
+	if not result is Dictionary:
+		return
+	var span: Dictionary = result["editable_span"]
+	var targets: Dictionary = result["targets"]
+	assert_equal(span["first_route_serial"], 3, "Span starts at first retained support")
+	assert_equal(span["last_route_serial"], 5, "Span ends at concrete endpoint owner")
+	assert_equal(span["entry_predecessor_cell"], Vector2i(1, 3), "Span keeps fixed entry predecessor")
+	assert_equal(targets["straight"], Vector2i(4, 3), "Supported straight target remains distinct")
+	assert_equal(targets["left"], Vector2i(3, 4), "Supported left target uses full span")
+	assert_equal(targets["right"], Vector2i(3, 2), "Supported right target uses full span")
+	if track.gesture_is_active():
+		track.gesture_finalize()
+
+
+func _test_endpoint_reshape_populated_origin_observations_are_detached() -> void:
+	var track = _reflow_runtime()
+	var cells: Array[Vector2i] = _reflow_curve_cells()
+	cells.append(Vector2i(2, 3))
+	assert_equal(track.append_cells(cells), 6, "Populated origin fixture appends")
+	track.set_contact_anchors([
+		RouteContactAnchorScript.new(&"origin_anchor", Vector2i(0, 0)),
+	])
+	assert_equal(track.advance_construction(2.5), 2.5, "Populated origin fixture leaves construction state")
+	assert_equal(track.recover_behind(1.0), 1, "Populated origin fixture leaves recovery map")
+	var authoritative_records := _record_values(track.get_cell_records())
+	var authoritative_pieces := _piece_values(track.get_geometry_pieces())
+	var authoritative_ledger := _piece_values(track._locked_ledger)
+	var authoritative_recovery := _recovery_observation_values(track)
+	print("Endpoint reshape fix: populated origin observations stay detached")
+	var result = track.gesture_begin(track.get_endpoint_cell())
+	assert_true(result is Dictionary, "Populated origin begins")
+	if not result is Dictionary:
+		return
+	assert_true(result["locked_ledger"].size() > 0, "Origin includes populated ledger")
+	assert_true(result["anchors"].size() > 0, "Origin includes populated anchors")
+	assert_true(result["recovery"]["recovered_cells_by_piece"].size() > 0, "Origin includes populated recovery map")
+	assert_true(result["construction"].size() > 0, "Origin includes construction records")
+	assert_true(result["contact_observations"].size() > 0, "Origin includes contact observations")
+	result["route_records"][0].cell = Vector2i(99, 99)
+	result["pieces"][0].centerline[0] = Vector2(999.0, 999.0)
+	result["locked_ledger"][0].centerline[0] = Vector2(998.0, 998.0)
+	result["anchors"][0].cell = Vector2i(98, 98)
+	result["recovery"]["recovered_cells_by_piece"]["mutated"] = true
+	result["construction"][0].build_progress = 99.0
+	result["contact_observations"][0].contacted = true
+	var stored = track.call("get_gesture_origin_observation")
+	assert_equal(_record_values(stored["route_records"]), authoritative_records, "Stored origin records are detached")
+	assert_equal(_piece_values(stored["pieces"]), authoritative_pieces, "Stored origin pieces are detached")
+	assert_equal(_piece_values(stored["locked_ledger"]), authoritative_ledger, "Stored origin ledger is detached")
+	assert_equal(stored["anchors"][0].cell, Vector2i(0, 0), "Stored origin anchors are detached")
+	assert_equal(stored["recovery"]["recovered_cells_by_piece"], authoritative_recovery["recovered_cells_by_piece"], "Stored origin recovery is detached")
+	assert_equal(_record_values(stored["construction"]), authoritative_records, "Stored origin construction is detached")
+	assert_equal(stored["contact_observations"], authoritative_recovery["contact_observations"], "Stored origin contacts are detached")
+	assert_equal(_record_values(track.get_cell_records()), authoritative_records, "Authoritative records remain unchanged")
+	assert_equal(_piece_values(track.get_geometry_pieces()), authoritative_pieces, "Authoritative pieces remain unchanged")
+	assert_equal(_piece_values(track._locked_ledger), authoritative_ledger, "Authoritative ledger remains unchanged")
+	assert_equal(_recovery_observation_values(track), authoritative_recovery, "Authoritative recovery remains unchanged")
+	track.gesture_finalize()
 
 
 func _test_endpoint_reshape_gesture_begin_captures_detached_origin() -> void:
@@ -136,7 +238,15 @@ func _test_endpoint_reshape_editable_span_has_deterministic_targets() -> void:
 
 
 func _test_endpoint_reshape_active_gesture_defers_construction_and_recovery() -> void:
-	var track = _make_fully_built_three_by_three_curve_runtime()
+	var track = _reflow_runtime()
+	var deferral_cells: Array[Vector2i] = _reflow_curve_cells()
+	deferral_cells.append(Vector2i(2, 3))
+	assert_equal(track.append_cells(deferral_cells), 6, "Deferral fixture appends")
+	track.set_contact_anchors([
+		RouteContactAnchorScript.new(&"gesture_origin", Vector2i(0, 0)),
+	])
+	assert_equal(track.advance_construction(2.5), 2.5, "Deferral fixture leaves unfinished construction")
+	assert_equal(track.recover_behind(1.0), 1, "Deferral fixture records a recovered prefix")
 	var endpoint: Vector2i = track.get_endpoint_cell()
 	var records_before := _record_values(track.get_cell_records())
 	var pieces_before := _piece_values(track.get_geometry_pieces())
@@ -150,12 +260,13 @@ func _test_endpoint_reshape_active_gesture_defers_construction_and_recovery() ->
 	assert_true(began is Dictionary, "Deferral fixture starts a gesture")
 	if not began is Dictionary:
 		return
-	assert_equal(track.advance_construction(2.0), 0.0, "Construction is deferred while active")
-	assert_equal(track.recover_behind(5.0), 0, "Recovery is deferred while active")
-	assert_equal(_record_values(track.get_cell_records()), records_before, "Active gesture preserves route and build state")
-	assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before, "Active gesture preserves geometry")
-	assert_equal(track.get_available_track_cells(), inventory_before, "Active gesture preserves inventory")
-	assert_equal(_recovery_observation_values(track), recovery_before, "Active gesture preserves recovery")
+	for tick in range(3):
+		assert_equal(track.advance_construction(0.75), 0.0, "Construction is deferred on tick %d" % tick)
+		assert_equal(track.recover_behind(5.0), 0, "Recovery is deferred on tick %d" % tick)
+		assert_equal(_record_values(track.get_cell_records()), records_before, "Active gesture preserves route and build state on tick %d" % tick)
+		assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before, "Active gesture preserves geometry on tick %d" % tick)
+		assert_equal(track.get_available_track_cells(), inventory_before, "Active gesture preserves inventory on tick %d" % tick)
+		assert_equal(_recovery_observation_values(track), recovery_before, "Active gesture preserves recovery on tick %d" % tick)
 	assert_true(track.has_method("gesture_finalize"), "Gesture finalize deferral contract exists")
 	if track.has_method("gesture_finalize"):
 		track.call("gesture_finalize")
