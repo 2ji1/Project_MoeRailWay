@@ -234,6 +234,51 @@ No production file outside the original Task 5 two-path allowlist may change. Do
 - [ ] **Fix Step 5: Commit the separate fixture remediation.** Invoke `Complete-TaskCommit -TaskNumber 'T5-R2' -RequiredPaths @('godot-project-moe-rail-way/tests/unit/test_track_system_construction_recovery.gd','godot-project-moe-rail-way/tests/unit/test_track_train_session_controller.gd','godot-project-moe-rail-way/tests/smoke/test_track_train_app_composition.gd') -Message 'test: align legacy fixtures with endpoint gestures'` and record both emitted SHAs. This is a separate test commit; the prior Task 5 two-file commits remain immutable and valid.
 - [ ] **Fix Step 6: Obtain fresh reviews.** Fresh Sol specification review checks that complete facade transactions, target-then-suffix choreography, and preserved legacy assertions conform to §§4.1, 4.3, 7, 9, and 11 items 9–10. Fresh Sol quality review checks same-frame transaction routing, right-abort/finalize behavior, release completeness, strict diagnostics, exact three-file scope, and absence of production, Task 6, or Task 7 changes. Luna alone performs this test-only remediation and Markdown bookkeeping; Sol reviews only; the implementer uses no subagents.
 
+#### Task 5 Fix Round 3: Input-Lifetime Regression Bridge for Legacy Session and Train Fixtures
+
+The original Task 5 two-file implementation and the approved three-test Fix Round 2 bridge remain valid. This amendment expands the already-open Task 5 Fix Round 3 remediation commit; it is not a separate production feature. At `0baa7125607944e5d6959f2757b7db5a1ce01b0e`, the controller reproduced a full-gate failure with exactly 28 legacy assertions in older session and train fixtures. Those fixtures still press and move without a left release or current pointer facts, then expect construction, departure, timing, preparation, snapshot, train, and recovery behavior to proceed. Removing construction-triggered finalization is canonical: `advance_construction` must not own input lifetime. The failure is fixture-contract drift, not a `SessionController` or `TrainSystem` production defect.
+
+**Exact Fix Round 3 final remediation allowlist:**
+
+- Modify the existing dirty `godot-project-moe-rail-way/src/domain/track/track_system.gd` only for the already-open Task 5 capture/latch fixes.
+- Modify the existing dirty `godot-project-moe-rail-way/tests/unit/test_track_system_reservation.gd` only for the already-open Task 5 public-routing/lifetime tests.
+- Modify only `godot-project-moe-rail-way/tests/unit/test_session_controller.gd`.
+- Modify only `godot-project-moe-rail-way/tests/unit/test_train_system.gd`.
+
+The pre-existing dirty paths are agent-owned Round 3 work and must be preserved byte-for-byte outside their approved changes; do not reset, format, copy, stage, or alter them merely to create this bridge. The earlier Fix Round 2 bridge tests (`test_track_system_construction_recovery.gd`, `test_track_train_session_controller.gd`, and `test_track_train_app_composition.gd`) are closed preservation guards and are not in this final remediation allowlist. Do not change `SessionController` or `TrainSystem` production code, the earlier bridge tests, any Task 6 train-preparation behavior, or any Task 7 view behavior.
+
+- [ ] **Fix Step 1: Reproduce the fixture-lifetime regression.** At the current dirty Round 3 state, run each exact focused command below and retain the controller's full output showing exactly 28 legacy assertion failures. The session and train suites must expose their stale press/update-without-release assumptions; the reservation suite and the three earlier bridge suites are preservation guards and may already be GREEN. A missing failure, suppressed diagnostic, or altered legacy assertion is invalid evidence.
+
+```powershell
+& 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe' --headless --path 'D:\godot\MoeRailWay-worktrees\feature-endpoint-track-reshaping\godot-project-moe-rail-way' --script res://tests/run_all.gd -- --suite=test_track_system_reservation.gd
+```
+
+```powershell
+& 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe' --headless --path 'D:\godot\MoeRailWay-worktrees\feature-endpoint-track-reshaping\godot-project-moe-rail-way' --script res://tests/run_all.gd -- --suite=test_session_controller.gd
+```
+
+```powershell
+& 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe' --headless --path 'D:\godot\MoeRailWay-worktrees\feature-endpoint-track-reshaping\godot-project-moe-rail-way' --script res://tests/run_all.gd -- --suite=test_train_system.gd
+```
+
+```powershell
+& 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe' --headless --path 'D:\godot\MoeRailWay-worktrees\feature-endpoint-track-reshaping\godot-project-moe-rail-way' --script res://tests/run_all.gd -- --suite=test_track_system_construction_recovery.gd
+```
+
+```powershell
+& 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe' --headless --path 'D:\godot\MoeRailWay-worktrees\feature-endpoint-track-reshaping\godot-project-moe-rail-way' --script res://tests/run_all.gd -- --suite=test_track_train_session_controller.gd
+```
+
+```powershell
+& 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe' --headless --path 'D:\godot\MoeRailWay-worktrees\feature-endpoint-track-reshaping\godot-project-moe-rail-way' --script res://tests/run_all.gd -- --suite=test_track_train_app_composition.gd
+```
+
+- [ ] **Fix Step 2: Align only legacy session/train input choreography.** Update `test_session_controller.gd`'s `_draw_frame` helper and every direct frame in `test_train_system.gd` so each existing fixture represents a complete endpoint transaction: current pointer cell and inside-grid facts are supplied, the endpoint press and crossed-cell update are routed through the facade, and an explicit left release finalizes before the existing construction, departure, timing, preparation, snapshot, train, or recovery assertion. Use same-frame release where needed to preserve the existing tick boundary; otherwise release before the next assertion tick. Preserve all 28 existing assertions and their meanings exactly. Keep the existing dirty Task 5 routing/latch fixes in the two original paths; no construction-triggered finalize, private runtime hook, SessionController/TrainSystem production change, Task 6 preparation logic, or Task 7 view behavior may be introduced.
+- [ ] **Fix Step 3: Run focused GREEN and the Bridge 1 guards.** Repeat the reservation, session-controller, and train-system commands independently. Then rerun the three earlier bridge guard commands for construction/recovery, train/session-controller, and smoke app composition without changing those files. Require exit code `0`, every existing Task 5 marker and legacy assertion green, no anchored `ERROR:`, and no changed path outside the exact four-path allowlist. The three guard suites are mandatory even though they are excluded from the remediation commit.
+- [ ] **Fix Step 4: Run the full exact regression.** Run the exact shared full command from Preflight. Require exit code `0`, exactly `PASS: 19 prototype test suite(s)`, and no anchored `ERROR:`. A PASS followed by any anchored diagnostic remains failure; the smoke guard may not be skipped.
+- [ ] **Fix Step 5: Commit the expanded Round 3 remediation.** Invoke `Complete-TaskCommit -TaskNumber 'T5-R3' -RequiredPaths @('godot-project-moe-rail-way/src/domain/track/track_system.gd','godot-project-moe-rail-way/tests/unit/test_track_system_reservation.gd','godot-project-moe-rail-way/tests/unit/test_session_controller.gd','godot-project-moe-rail-way/tests/unit/test_train_system.gd') -Message 'fix: close task 5 input lifetime'` and record both emitted SHAs. This closes the already-open Round 3 commit with a four-path fixture bridge; it is not a second production feature and it does not reopen the earlier three-test bridge.
+- [ ] **Fix Step 6: Obtain fresh reviews.** Give the immutable four-path SHA to a fresh `gpt-5.6-sol` specification reviewer for §§4.1, 4.3, 7, 9, 10 `TrackSystem` routing, 11 items 9–10, and preservation of construction/session/train fixture contracts. Give the same SHA to a fresh `gpt-5.6-sol` quality reviewer for input lifetime, explicit release/current-pointer facts, no construction-owned finalization, public routing/latch behavior, unchanged 28 legacy assertions, exact four-path scope, strict diagnostics, and Bridge 1 guard results. Luna alone performs this fixture remediation and Markdown bookkeeping; Sol reviews only; the implementer uses no subagents. External train-preparation termination remains Task 6.
+
 ### Task 6: Train-Safety Termination, Session Ordering, and Detached Snapshot Facts
 
 **Files:**
