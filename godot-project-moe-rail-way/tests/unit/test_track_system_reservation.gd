@@ -19,6 +19,9 @@ func run() -> PackedStringArray:
 	_test_facade_clears_capture_after_runtime_abort()
 	_test_held_input_waits_for_release_and_fresh_press()
 	_test_left_release_finalizes_once()
+	_test_same_frame_press_routes_through_gesture_transaction()
+	_test_left_press_latch_requires_release_after_rejection_and_external_abort()
+	_test_legacy_frame_outcomes_use_gesture_transaction()
 	_test_observation_getters_are_detached()
 	return finish()
 
@@ -95,11 +98,14 @@ func _left_frame(
 	held: bool = true,
 	released: bool = false,
 	press_cell: Vector2i = Vector2i(0, 0),
-	inside: bool = true
+	inside: bool = true,
+	current_pointer_cell: Vector2i = Vector2i(-1, -1),
+	current_pointer_inside_grid: bool = false
 ) -> TrackInputFrameScript:
 	return TrackInputFrameScript.new(
 		cells, press_cell, inside, Vector2i(-1, -1), false,
-		pressed, held, released, false
+		pressed, held, released, false,
+		current_pointer_cell, current_pointer_inside_grid
 	)
 
 
@@ -153,10 +159,12 @@ func _test_invalid_candidates_stop_without_corrupting_ownership() -> void:
 	var wrong_start: Array[Vector2i] = [Vector2i(1, 0)]
 	track.apply_left_input(_left_frame(wrong_start, true, true, false, Vector2i(4, 4)))
 	assert_equal(track.get_cell_records(), [], "A press away from the endpoint discards its buffer")
+	track.apply_left_input(_left_frame([], false, false, true, Vector2i(4, 4)))
 	var invalid_buffer: Array[Vector2i] = [
 		Vector2i(1, 0), Vector2i(2, 0), Vector2i(1, 0), Vector2i(2, 1),
 	]
-	track.apply_left_input(_left_frame(invalid_buffer, true))
+	track.apply_left_input(_left_frame(invalid_buffer.slice(0, 2), true))
+	track.apply_left_input(_left_frame(invalid_buffer.slice(2), false, true, false, Vector2i(2, 0)))
 	assert_equal(track.get_cell_records().size(), 2, "Candidates after the first invalid cell are ignored")
 	assert_equal(track.get_endpoint_cell(), Vector2i(2, 0), "Invalid suffix cannot move the endpoint")
 	assert_equal(track.get_available_track_cells(), 6, "Rejected cells never charge inventory")
@@ -201,6 +209,7 @@ func _test_fresh_capture_is_endpoint_only_and_legal() -> void:
 	track.apply_left_input(_left_frame([Vector2i(1, 0)], true, true, false, Vector2i(4, 4)))
 	assert_equal(track.get_cell_records(), [], "Nonendpoint press discards crossed cells")
 	assert_false(track._left_capture_active, "Nonendpoint press does not capture")
+	track.apply_left_input(_left_frame([], false, false, true, Vector2i(4, 4)))
 	assert_true(track.has_method("is_left_capture_active"), "Facade exposes capture state")
 	assert_true(track.has_method("is_runtime_gesture_active"), "Facade exposes runtime active state")
 	if track.has_method("is_left_capture_active"):
@@ -277,6 +286,127 @@ func _test_left_release_finalizes_once() -> void:
 	var endpoint_after_release := track.get_endpoint_cell()
 	track.apply_left_input(_left_frame([Vector2i(2, 0)], false, false, true, Vector2i(1, 0)))
 	assert_equal(track.get_endpoint_cell(), endpoint_after_release, "Second release does not finalize twice")
+
+
+func _test_same_frame_press_routes_through_gesture_transaction() -> void:
+	print("Endpoint reshape: same-frame press routes through gesture transaction")
+	var track = TrackSystemScript.new(_config())
+	var origin_cells: Array[Vector2i] = [
+		Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0),
+		Vector2i(3, 1), Vector2i(3, 2),
+	]
+	track.apply_left_input(_left_frame(origin_cells, true, true, false, Vector2i(0, 0)))
+	track.apply_left_input(_left_frame([], false, false, true, Vector2i(3, 2)))
+	var origin_records = _record_values(track.get_cell_records())
+	var origin_pieces = _piece_values(track.get_geometry_pieces())
+	var endpoint := track.get_endpoint_cell()
+	var selected_target := Vector2i(5, 0)
+	var control_cell := Vector2i(4, 1)
+	track.apply_left_input(
+		_left_frame(
+			[control_cell, selected_target], true, true, false, endpoint, true,
+			selected_target, true
+		)
+	)
+	assert_true(track.is_left_capture_active(), "Fresh endpoint press captures before same-frame motion")
+	assert_true(track.is_runtime_gesture_active(), "Fresh endpoint press activates runtime before same-frame motion")
+	assert_true(track.is_left_capture_active(), "Same-frame motion keeps facade capture active")
+	assert_true(track.is_runtime_gesture_active(), "Same-frame motion keeps runtime gesture active")
+	assert_equal(track.get_endpoint_cell(), selected_target, "Same-frame motion publishes the candidate")
+	assert_false(
+		track.get_cell_records().any(func(record): return record.cell == control_cell),
+		"Cells before the template target remain control input"
+	)
+	assert_true(track.apply_right_input(_right_frame(origin_cells[0])), "Right edge aborts same-frame gesture")
+	assert_equal(_record_values(track.get_cell_records()), origin_records, "Abort restores the exact same-frame gesture origin records")
+	assert_equal(_piece_values(track.get_geometry_pieces()), origin_pieces, "Abort restores the exact same-frame gesture origin pieces")
+	assert_equal(track.get_endpoint_cell(), endpoint, "Abort restores the exact same-frame gesture origin endpoint")
+	assert_false(track.is_left_capture_active(), "Abort clears facade capture after same-frame motion")
+	assert_false(track.is_runtime_gesture_active(), "Abort clears runtime gesture after same-frame motion")
+	track.apply_left_input(_left_frame([], true, true, false, endpoint))
+	assert_false(track.is_left_capture_active(), "Held repeated press cannot restart before release")
+	track.apply_left_input(_left_frame([], false, false, true, endpoint))
+	track.apply_left_input(_left_frame([], true, true, false, endpoint))
+	assert_true(track.is_left_capture_active(), "Fresh press after release starts a new gesture")
+
+
+func _test_left_press_latch_requires_release_after_rejection_and_external_abort() -> void:
+	print("Endpoint reshape: left press latch requires release")
+	var rejected = TrackSystemScript.new(_config())
+	rejected.apply_left_input(_left_frame([Vector2i(1, 0)], true, true, false, Vector2i(4, 4)))
+	rejected.apply_left_input(_left_frame([], true, true, false, Vector2i(0, 0)))
+	assert_false(rejected.is_left_capture_active(), "Rejected press latches until release")
+	rejected.apply_left_input(_left_frame([], false, false, true, Vector2i(0, 0)))
+	rejected.apply_left_input(_left_frame([], true, true, false, Vector2i(0, 0)))
+	assert_true(rejected.is_left_capture_active(), "Release clears a rejected press latch")
+
+	var externally_aborted = TrackSystemScript.new(_config())
+	externally_aborted.apply_left_input(_left_frame([], true, true, false, Vector2i(0, 0)))
+	assert_true(externally_aborted.is_runtime_gesture_active(), "External-abort fixture starts active")
+	assert_true(externally_aborted._runtime.gesture_abort(), "External runtime abort succeeds")
+	externally_aborted.apply_left_input(_left_frame([], true, true, false, Vector2i(0, 0)))
+	assert_false(externally_aborted.is_left_capture_active(), "External runtime inactivity cannot restart before release")
+	externally_aborted.apply_left_input(_left_frame([], false, false, true, Vector2i(0, 0)))
+	externally_aborted.apply_left_input(_left_frame([], true, true, false, Vector2i(0, 0)))
+	assert_true(externally_aborted.is_left_capture_active(), "External runtime inactivity recovers after release")
+
+	var ordinary_end = TrackSystemScript.new(_config())
+	ordinary_end.apply_left_input(_left_frame([], true, true, false, Vector2i(0, 0)))
+	assert_true(ordinary_end._runtime.gesture_abort(), "Ordinary-end fixture clears runtime gesture")
+	assert_true(ordinary_end.apply_right_input(_right_frame(Vector2i(9, 5))), "Ordinary right edge is consumed")
+	ordinary_end.apply_left_input(_left_frame([], true, true, false, Vector2i(0, 0)))
+	assert_false(ordinary_end.is_left_capture_active(), "Ordinary capture end latches repeated press")
+	ordinary_end.apply_left_input(_left_frame([], false, false, true, Vector2i(0, 0)))
+	ordinary_end.apply_left_input(_left_frame([], true, true, false, Vector2i(0, 0)))
+	assert_true(ordinary_end.is_left_capture_active(), "Ordinary capture end recovers after release")
+
+
+func _test_legacy_frame_outcomes_use_gesture_transaction() -> void:
+	print("Endpoint reshape: legacy frame outcomes use gesture transaction")
+	var track = TrackSystemScript.new(_config())
+	track.apply_left_input(_left_frame([Vector2i(1, 0)], true, true, false, Vector2i(0, 0)))
+	assert_true(track.is_left_capture_active(), "Legacy frame candidate retains facade capture")
+	assert_true(track.is_runtime_gesture_active(), "Legacy frame candidate retains runtime gesture")
+	assert_equal(track.get_endpoint_cell(), Vector2i(1, 0), "Legacy frame candidate publishes through gesture update")
+	track.advance_construction(1.0)
+	assert_false(track.is_left_capture_active(), "Legacy handoff finalizes facade transaction")
+	assert_false(track.is_runtime_gesture_active(), "Legacy handoff finalizes runtime transaction")
+	assert_equal(track.get_built_end_distance_cells(), 1.0, "Legacy frame construction outcome is preserved")
+
+
+func _record_values(records: Array) -> Array:
+	var values: Array = []
+	for record in records:
+		values.append({
+			"route_serial": record.route_serial,
+			"cell": record.cell,
+			"route_distance_start_cells": record.route_distance_start_cells,
+			"state": record.state,
+			"build_progress": record.build_progress,
+			"geometry_group_id": record.geometry_group_id,
+			"geometry_locked": record.geometry_locked,
+		})
+	return values
+
+
+func _piece_values(pieces: Array) -> Array:
+	var values: Array = []
+	for piece in pieces:
+		values.append({
+			"group_id": piece.group_id,
+			"kind": piece.kind,
+			"first_route_serial": piece.first_route_serial,
+			"last_route_serial": piece.last_route_serial,
+			"nominal_length_cells": piece.nominal_length_cells,
+			"absolute_start_distance_cells": piece.absolute_start_distance_cells,
+			"footprint_cells": piece.footprint_cells,
+			"centerline": piece.centerline,
+			"locked": piece.locked,
+			"exit_support_route_serial": piece.exit_support_route_serial,
+			"active_local_start_cells": piece.active_local_start_cells,
+			"active_local_end_cells": piece.active_local_end_cells,
+		})
+	return values
 
 
 func _test_observation_getters_are_detached() -> void:
