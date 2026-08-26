@@ -3,21 +3,7 @@ extends "res://tests/support/prototype_test.gd"
 const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
 const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
 const TrackSystemScript = preload("res://src/domain/track/track_system.gd")
-const TrackGeometryResolverScript = preload("res://src/domain/track/track_geometry_resolver.gd")
-const TrackGeometryResolutionScript = preload("res://src/domain/track/track_geometry_resolution.gd")
-
-
-class _RejectingPrepareResolver extends TrackGeometryResolverScript:
-	func resolve(
-		_departure_cell: Vector2i,
-		records: Array,
-		_locked_pieces: Array,
-		_anchors: Array,
-		_grid_origin_units: Vector2,
-		_grid_size: Vector2i,
-		_cell_size_units: float
-	) -> RefCounted:
-		return TrackGeometryResolutionScript.rejected(records[-1].route_serial, &"prepare_rejected")
+const GridTrackRuntimeScript = preload("res://src/domain/track/grid_track_runtime.gd")
 
 
 func run() -> PackedStringArray:
@@ -384,30 +370,56 @@ func _test_left_press_latch_requires_release_after_rejection() -> void:
 
 func _test_prepare_preserves_original_result_and_clears_capture() -> void:
 	print("Endpoint reshape: prepare true returns true and clears capture")
-	var successful = TrackSystemScript.new(_config())
+	var config := _config()
+	var successful = TrackSystemScript.new(config)
 	successful.apply_left_input(_left_frame([Vector2i(1, 0)], true, true))
 	assert_true(successful.has_method("prepare_for_train_sampling"), "Facade exposes train preparation")
 	if not successful.has_method("prepare_for_train_sampling"):
 		return
+	var reference = GridTrackRuntimeScript.new(
+		config.departure_cell,
+		config.total_track_cells,
+		config.grid_origin_units,
+		config.grid_size,
+		config.grid_cell_size_units
+	)
+	reference.append_cells([Vector2i(1, 0)])
+	reference.gesture_begin(Vector2i(1, 0))
+	var expected_result := bool(reference.call("prepare_for_train_sampling", 0.0, 1.0))
+	var expected_active_after := bool(reference.call("gesture_is_active"))
 	var was_active := successful.is_left_capture_active()
 	var original_result := bool(successful.call("prepare_for_train_sampling", 0.0, 1.0))
 	var active_after := successful.is_runtime_gesture_active()
-	assert_true(original_result, "Successful preparation returns the runtime result unchanged")
+	assert_equal(original_result, expected_result, "Facade returns the public runtime result unchanged")
+	assert_equal(active_after, expected_active_after, "Facade observes the public runtime active state")
 	assert_false(active_after, "Successful overlapping preparation ends runtime capture")
 	assert_false(successful.is_left_capture_active(), "Successful overlapping preparation clears facade capture")
 	assert_equal(successful.is_left_capture_active(), false if was_active and not active_after else was_active, "Successful capture clearing follows was_active and active_after")
 
 	print("Endpoint reshape: prepare false returns false and clears capture")
-	var failed = TrackSystemScript.new(_config())
-	failed.apply_left_input(_left_frame([Vector2i(1, 0)], true, true))
-	failed._runtime._resolver = _RejectingPrepareResolver.new()
-	was_active = failed.is_left_capture_active()
-	original_result = bool(failed.call("prepare_for_train_sampling", 0.0, 1.0))
-	active_after = failed.is_runtime_gesture_active()
-	assert_false(original_result, "Failed preparation returns the runtime result unchanged")
-	assert_false(active_after, "Failed overlapping preparation still ends runtime capture")
-	assert_false(failed.is_left_capture_active(), "Failed overlapping preparation clears facade capture")
-	assert_equal(failed.is_left_capture_active(), false if was_active and not active_after else was_active, "Failed capture clearing follows was_active and active_after")
+	var nonoverlap_config := _config()
+	var nonoverlap = TrackSystemScript.new(nonoverlap_config)
+	nonoverlap.apply_left_input(_left_frame([Vector2i(1, 0)], true, true))
+	var nonoverlap_reference = GridTrackRuntimeScript.new(
+		nonoverlap_config.departure_cell,
+		nonoverlap_config.total_track_cells,
+		nonoverlap_config.grid_origin_units,
+		nonoverlap_config.grid_size,
+		nonoverlap_config.grid_cell_size_units
+	)
+	nonoverlap_reference.append_cells([Vector2i(1, 0)])
+	nonoverlap_reference.gesture_begin(Vector2i(1, 0))
+	var expected_nonoverlap_result := bool(nonoverlap_reference.call("prepare_for_train_sampling", 1.0, 0.0))
+	var expected_nonoverlap_active := bool(nonoverlap_reference.call("gesture_is_active"))
+	var nonoverlap_was_active := nonoverlap.is_left_capture_active()
+	var nonoverlap_result := bool(nonoverlap.call("prepare_for_train_sampling", 1.0, 0.0))
+	var nonoverlap_active_after := nonoverlap.is_runtime_gesture_active()
+	assert_false(nonoverlap_result, "Natural nonoverlap preparation returns false")
+	assert_equal(nonoverlap_result, expected_nonoverlap_result, "Facade preserves the natural false runtime result")
+	assert_equal(nonoverlap_active_after, expected_nonoverlap_active, "Natural false path preserves runtime active state")
+	assert_true(nonoverlap_active_after, "Natural false path remains active")
+	assert_true(nonoverlap.is_left_capture_active(), "Natural false path preserves facade capture")
+	assert_equal(nonoverlap.is_left_capture_active(), false if nonoverlap_was_active and not nonoverlap_active_after else nonoverlap_was_active, "False capture clearing follows was_active and active_after")
 
 
 func _test_prepare_termination_waits_for_release() -> void:

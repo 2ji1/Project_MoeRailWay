@@ -138,6 +138,7 @@ func _prepare_or_abort(current_distance: float, through_distance: float) -> bool
 func _complete(reason: SessionResultScript.Reason) -> void:
 	if _state == State.COMPLETED:
 		return
+	_track_system.terminate_for_session_completion()
 	_state = State.COMPLETED
 	_publish_snapshot()
 	session_completed.emit(SessionResultScript.new(

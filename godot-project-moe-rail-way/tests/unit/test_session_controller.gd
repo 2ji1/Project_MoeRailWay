@@ -28,6 +28,38 @@ class TogglePrepareTrackSystem extends TrackSystemScript:
 		return super.recover_behind(route_distance_cells)
 
 
+class OrderingTrackSystem extends TrackSystemScript:
+	var events: Array[String] = []
+	func apply_right_input(input_frame: TrackInputFrameScript) -> bool:
+		events.append("right")
+		return super.apply_right_input(input_frame)
+	func apply_left_input(input_frame: TrackInputFrameScript) -> void:
+		events.append("left")
+		super.apply_left_input(input_frame)
+	func advance_construction(progress_cells: float) -> float:
+		events.append("construction")
+		return super.advance_construction(progress_cells)
+	func prepare_for_train_sampling(current_distance: float, through_distance: float) -> bool:
+		events.append("prepare")
+		return super.prepare_for_train_sampling(current_distance, through_distance)
+	func recover_behind(route_distance_cells: float) -> int:
+		events.append("recovery")
+		return super.recover_behind(route_distance_cells)
+
+
+class OrderingTrainSystem extends TrainSystemScript:
+	var events: Array[String] = []
+	func depart(route_distance_cells: float = 0.0) -> void:
+		events.append("depart")
+		super.depart(route_distance_cells)
+	func advance_tick(track_system: TrackSystemScript, seconds_per_tick: float) -> bool:
+		events.append("train")
+		return super.advance_tick(track_system, seconds_per_tick)
+	func capture_pose(track_system: TrackSystemScript) -> Dictionary:
+		events.append("capture")
+		return super.capture_pose(track_system)
+
+
 func run() -> PackedStringArray:
 	_test_preparation_freezes_timer_and_departure_moves_same_tick()
 	_test_fractional_duration_rounds_up()
@@ -37,6 +69,9 @@ func run() -> PackedStringArray:
 	_test_prepare_failure_keeps_running_without_recovery_or_events()
 	_test_terminal_snapshot_pose_precedes_reason_only_result_after_full_recovery()
 	_test_snapshot_detaches_endpoint_gesture_facts()
+	_test_completion_terminates_active_gesture_before_terminal_snapshot()
+	_test_held_gesture_defers_work_until_train_termination()
+	_test_session_tick_order_is_causal_across_controlled_ticks()
 	return finish()
 
 
@@ -70,6 +105,44 @@ func _draw_frame(cells: Array[Vector2i]) -> TrackInputFrameScript:
 	)
 
 
+func _held_endpoint_frame(endpoint: Vector2i) -> TrackInputFrameScript:
+	var empty: Array[Vector2i] = []
+	return TrackInputFrameScript.new(
+		empty, endpoint, true, Vector2i(-1, -1), false,
+		true, true, false, false, endpoint, true
+	)
+
+
+func _release_endpoint(endpoint: Vector2i) -> TrackInputFrameScript:
+	var empty: Array[Vector2i] = []
+	return TrackInputFrameScript.new(
+		empty, endpoint, true, Vector2i(-1, -1), false,
+		false, false, true, false, endpoint, true
+	)
+
+
+func _right_frame(cell: Vector2i) -> TrackInputFrameScript:
+	var empty: Array[Vector2i] = []
+	return TrackInputFrameScript.new(
+		empty, Vector2i(-1, -1), false, cell, true,
+		false, false, false, true, cell, true
+	)
+
+
+func _fresh_left_frame(endpoint: Vector2i, cells: Array[Vector2i]) -> TrackInputFrameScript:
+	return TrackInputFrameScript.new(
+		cells, endpoint, true, Vector2i(-1, -1), false,
+		true, false, true, false, cells[-1], true
+	)
+
+
+func _held_draw_frame(cells: Array[Vector2i]) -> TrackInputFrameScript:
+	return TrackInputFrameScript.new(
+		cells, Vector2i(0, 0), true, Vector2i(-1, -1), false,
+		true, true, false, false, cells[-1], true
+	)
+
+
 func _snapshot_values(snapshot) -> Dictionary:
 	var records: Array[Dictionary] = []
 	for record in snapshot.get_cell_records():
@@ -82,7 +155,6 @@ func _snapshot_values(snapshot) -> Dictionary:
 
 
 func _test_preparation_freezes_timer_and_departure_moves_same_tick() -> void:
-	print("Endpoint reshape: deferred construction and recovery resume")
 	var config = _config()
 	var fixture := _fixture(config)
 	var controller = fixture.controller
@@ -254,3 +326,112 @@ func _test_snapshot_detaches_endpoint_gesture_facts() -> void:
 		assert_true(snapshot.call("is_endpoint_gesture_eligible"), "Snapshot detaches endpoint eligibility")
 	if snapshot.has_method("is_endpoint_gesture_active"):
 		assert_true(snapshot.call("is_endpoint_gesture_active"), "Snapshot detaches endpoint active state")
+
+
+func _test_completion_terminates_active_gesture_before_terminal_snapshot() -> void:
+	var config := _config(10.0, 4, 1, 0.25)
+	var track = TrackSystemScript.new(config)
+	var train = TrainSystemScript.new(config.train_speed_cells_per_second)
+	var controller = SessionControllerScript.new(config, track, train)
+	controller.start()
+	var frame := _held_draw_frame([Vector2i(1, 0), Vector2i(2, 0)])
+	track.apply_left_input(frame)
+	var candidate_route := track.get_cell_records()
+	assert_true(track.is_left_capture_active(), "Completion fixture starts with an active facade gesture")
+	var events: Array[String] = []
+	var terminal_snapshot = null
+	controller.snapshot_published.connect(func(snapshot):
+		if snapshot.get_state() == SessionControllerScript.State.COMPLETED:
+			events.append("snapshot")
+			terminal_snapshot = snapshot
+	)
+	controller.session_completed.connect(func(_result): events.append("result"))
+	assert_true(controller.has_method("_complete"), "Completion fixture exposes terminal transition")
+	if not controller.has_method("_complete"):
+		return
+	controller.call("_complete", SessionResultScript.Reason.REGULAR_TIME_EXPIRED)
+	assert_equal(events, ["snapshot", "result"], "Completion publishes snapshot before result")
+	assert_false(track.is_left_capture_active(), "Completion clears facade capture before snapshot")
+	assert_false(track.is_runtime_gesture_active(), "Completion clears runtime gesture before snapshot")
+	assert_equal(_record_values(track.get_cell_records()), _record_values(candidate_route), "Completion keeps last-valid route candidate")
+	assert_true(track.has_method("terminate_for_session_completion"), "Track exposes idempotent completion termination")
+	if track.has_method("terminate_for_session_completion"):
+		assert_false(track.call("terminate_for_session_completion"), "Repeated completion termination is inert")
+	var terminal_reference = controller.get_snapshot()
+	if terminal_snapshot != null:
+		assert_false(terminal_snapshot.call("is_endpoint_gesture_active"), "Terminal snapshot reports inactive gesture")
+		assert_equal(_record_values(terminal_snapshot.get_cell_records()), _record_values(candidate_route), "Terminal snapshot retains route candidate")
+	controller.advance_tick(_draw_frame([Vector2i(3, 0)]))
+	assert_true(controller.get_snapshot() == terminal_reference, "Post-completion input remains inert")
+
+
+func _test_held_gesture_defers_work_until_train_termination() -> void:
+	print("Endpoint reshape: deferred construction and recovery resume")
+	var config := _config(5.0, 2, 1, 0.25, 4, 1)
+	var track = TrackSystemScript.new(config)
+	track.apply_left_input(_draw_frame([Vector2i(1, 0), Vector2i(2, 0)]))
+	assert_equal(track.advance_construction(1.5), 1.5, "Held-gesture fixture leaves a recoverable unfinished route")
+	var endpoint := track.get_endpoint_cell()
+	track.apply_left_input(_held_endpoint_frame(endpoint))
+	assert_true(track.is_runtime_gesture_active(), "Held-gesture fixture remains active without release")
+	var progress_before: float = track.get_cell_records()[-1].build_progress
+	assert_equal(track.advance_construction(0.5), 0.0, "Construction defers while the gesture is held")
+	assert_equal(track.get_cell_records()[-1].build_progress, progress_before, "Held gesture preserves build progress")
+	assert_equal(track.recover_behind(1.0), 0, "Recovery defers while the gesture is held")
+	var controller = SessionControllerScript.new(config, track, TrainSystemScript.new(config.train_speed_cells_per_second))
+	controller.start()
+	controller.advance_tick()
+	assert_false(track.is_runtime_gesture_active(), "Overlapping train preparation terminates the held gesture")
+	assert_equal(track.advance_construction(0.5), 0.5, "Construction resumes after train termination")
+	assert_equal(track.recover_behind(1.0), 1, "Recovery resumes after train termination")
+
+
+func _test_session_tick_order_is_causal_across_controlled_ticks() -> void:
+	var config := _config(3.0, 1, 0.25, 10.0, 8, 1)
+	var track = OrderingTrackSystem.new(config)
+	var train = OrderingTrainSystem.new(config.train_speed_cells_per_second)
+	track.apply_left_input(_held_draw_frame([Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)]))
+	track.apply_left_input(_release_endpoint(track.get_endpoint_cell()))
+	track.advance_construction(3.0)
+	track.apply_left_input(_held_endpoint_frame(track.get_endpoint_cell()))
+	var controller = SessionControllerScript.new(config, track, train)
+	var events: Array[String] = []
+	controller.snapshot_published.connect(func(_snapshot): events.append("snapshot"))
+	controller.session_completed.connect(func(_result): events.append("result"))
+	controller.start()
+	events.clear()
+	track.events.clear()
+	train.events.clear()
+	controller.advance_tick(_right_frame(track.get_endpoint_cell()))
+	assert_equal(track.events, ["right", "construction", "prepare", "recovery"], "Active right abort tick orders domain phases")
+	assert_equal(train.events, ["depart", "capture", "train", "capture"], "Departure tick orders train phases")
+	assert_equal(events, ["snapshot"], "Active right abort tick publishes one snapshot")
+	track.events.clear()
+	train.events.clear()
+	events.clear()
+	controller.advance_tick(_right_frame(track.get_endpoint_cell()))
+	assert_equal(track.events, ["right", "construction", "prepare", "recovery"], "Ordinary right fallback tick orders domain phases")
+	assert_equal(train.events, ["train", "capture"], "Running fallback tick advances train once")
+	assert_equal(events, ["snapshot"], "Ordinary right fallback tick publishes one snapshot")
+	track.events.clear()
+	train.events.clear()
+	events.clear()
+	controller.advance_tick(_fresh_left_frame(track.get_endpoint_cell(), [Vector2i(4, 0)]))
+	assert_equal(track.events, ["right", "left", "construction", "prepare", "recovery"], "Fresh left update and release precede domain phases")
+	assert_equal(train.events, ["train", "capture"], "Completion tie tick advances train once")
+	assert_equal(events, ["snapshot", "result"], "Terminal snapshot precedes completion result")
+
+
+func _record_values(records: Array) -> Array[Dictionary]:
+	var values: Array[Dictionary] = []
+	for record in records:
+		values.append({
+			"serial": record.route_serial,
+			"cell": record.cell,
+			"distance": record.route_distance_start_cells,
+			"state": record.state,
+			"progress": record.build_progress,
+			"group": record.geometry_group_id,
+			"locked": record.geometry_locked,
+		})
+	return values

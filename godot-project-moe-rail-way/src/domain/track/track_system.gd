@@ -99,6 +99,15 @@ func is_endpoint_gesture_eligible() -> bool:
 	return _runtime.gesture_has_legal_operation(_runtime.get_endpoint_cell())
 
 
+func terminate_for_session_completion() -> bool:
+	var was_active := _left_capture_active or _runtime.gesture_is_active()
+	if _runtime.gesture_is_active():
+		_runtime.gesture_finalize()
+	_left_capture_active = false
+	_left_press_latched = false
+	return was_active
+
+
 func set_contact_anchors(anchors: Array[RouteContactAnchorScript]) -> void:
 	_runtime.set_contact_anchors(anchors)
 

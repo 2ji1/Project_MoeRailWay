@@ -1550,11 +1550,25 @@ func _test_endpoint_reshape_replacement_overlap_terminates_last_valid() -> void:
 	var target_cells: Array[Vector2i] = [target]
 	assert_true(track.call("gesture_update", target_cells), "Replacement overlap publishes a candidate")
 	var candidate_records := _record_values(track.get_cell_records())
+	var candidate_route_shape := _route_sampling_values(track.get_cell_records())
+	var candidate_geometry_shape := _piece_sampling_values(track.get_geometry_pieces())
+	var candidate_inventory: int = track.get_available_track_cells()
+	var candidate_recovery := _recovery_sampling_values(track)
+	var candidate_contacts: Array = track.get_contact_observations().duplicate(true)
+	var candidate_ledger_shape := _piece_sampling_values(track._locked_ledger)
+	var expected_new_ledger_shape: Array[Dictionary] = []
+	expected_new_ledger_shape.append(candidate_geometry_shape[0])
 	assert_true(track.has_method("prepare_for_train_sampling"), "Replacement overlap exposes preparation")
 	if not track.has_method("prepare_for_train_sampling"):
 		return
 	assert_true(track.call("prepare_for_train_sampling", 0.0, 1.0), "Replacement overlap preparation succeeds")
 	assert_false(track.call("gesture_is_active"), "Replacement overlap terminates before locking")
+	assert_equal(_route_sampling_values(track.get_cell_records()), candidate_route_shape, "Replacement overlap preserves every candidate route fact")
+	assert_equal(_piece_sampling_values(track.get_geometry_pieces()), candidate_geometry_shape, "Replacement overlap preserves every candidate geometry shape")
+	assert_equal(track.get_available_track_cells(), candidate_inventory, "Replacement overlap preserves candidate inventory")
+	assert_equal(_recovery_sampling_values(track), candidate_recovery, "Replacement overlap preserves candidate recovery state")
+	assert_equal(track.get_contact_observations(), candidate_contacts, "Replacement overlap preserves candidate contact observations")
+	assert_equal(_piece_sampling_values(track._locked_ledger), candidate_ledger_shape + expected_new_ledger_shape, "Replacement overlap adds only sampled candidate pieces to the lock ledger")
 	assert_equal(_record_values(track.get_cell_records())[0].cell, candidate_records[0].cell, "Replacement overlap keeps the last valid candidate")
 	assert_true(track.get_geometry_pieces()[0].locked, "Replacement overlap locks only after preserving the candidate")
 
@@ -1571,8 +1585,20 @@ func _test_endpoint_reshape_extension_overlap_terminates_last_valid() -> void:
 	var extension_cells: Array[Vector2i] = [target, extension]
 	assert_true(track.call("gesture_update", extension_cells), "Extension overlap publishes a suffix candidate")
 	var candidate_records := _record_values(track.get_cell_records())
+	var candidate_route_shape := _route_sampling_values(track.get_cell_records())
+	var candidate_geometry_shape := _piece_sampling_values(track.get_geometry_pieces())
+	var candidate_inventory: int = track.get_available_track_cells()
+	var candidate_recovery := _recovery_sampling_values(track)
+	var candidate_contacts: Array = track.get_contact_observations().duplicate(true)
+	var candidate_ledger_shape := _piece_sampling_values(track._locked_ledger)
 	assert_true(track.call("prepare_for_train_sampling", 5.0, 5.5), "Extension overlap preparation succeeds")
 	assert_false(track.call("gesture_is_active"), "Extension overlap terminates before locking")
+	assert_equal(_route_sampling_values(track.get_cell_records()), candidate_route_shape, "Extension overlap preserves every candidate route fact")
+	assert_equal(_piece_sampling_values(track.get_geometry_pieces()), candidate_geometry_shape, "Extension overlap preserves every candidate geometry shape")
+	assert_equal(track.get_available_track_cells(), candidate_inventory, "Extension overlap preserves candidate inventory")
+	assert_equal(_recovery_sampling_values(track), candidate_recovery, "Extension overlap preserves candidate recovery state")
+	assert_equal(track.get_contact_observations(), candidate_contacts, "Extension overlap preserves candidate contact observations")
+	assert_equal(_piece_sampling_values(track._locked_ledger), candidate_ledger_shape + candidate_geometry_shape, "Extension overlap adds only candidate pieces to the lock ledger")
 	assert_equal(_record_values(track.get_cell_records())[-1].cell, candidate_records[-1].cell, "Extension overlap keeps the last valid candidate")
 
 
@@ -2185,10 +2211,49 @@ func _piece_values(pieces: Array) -> Array[Dictionary]:
 			"centerline": piece.centerline,
 			"active_start": piece.active_local_start_cells,
 			"active_end": piece.active_local_end_cells,
-			"locked": piece.locked,
 			"support": piece.exit_support_route_serial,
+			"locked": piece.locked,
 		})
 	return values
+
+
+func _route_sampling_values(records: Array) -> Array[Dictionary]:
+	var values: Array[Dictionary] = []
+	for record in records:
+		values.append({
+			"serial": record.route_serial,
+			"cell": record.cell,
+			"distance": record.route_distance_start_cells,
+			"state": record.state,
+			"progress": record.build_progress,
+		})
+	return values
+
+
+func _piece_sampling_values(pieces: Array) -> Array[Dictionary]:
+	var values: Array[Dictionary] = []
+	for piece in pieces:
+		values.append({
+			"serials": Vector2i(piece.first_route_serial, piece.last_route_serial),
+			"kind": piece.kind,
+			"distance": piece.absolute_start_distance_cells,
+			"length": piece.nominal_length_cells,
+			"footprint": piece.footprint_cells,
+			"centerline": piece.centerline,
+			"active_start": piece.active_local_start_cells,
+			"active_end": piece.active_local_end_cells,
+		})
+	return values
+
+
+func _recovery_sampling_values(track: GridTrackRuntimeScript) -> Dictionary:
+	return {
+		"records": _route_sampling_values(track.get_cell_records()),
+		"pieces": _piece_sampling_values(track.get_geometry_pieces()),
+		"built_end": track.get_built_end_distance_cells(),
+		"recovered_cells_by_piece": track._recovered_cells_by_piece.duplicate(true),
+		"recovered_end_distance_cells": track._recovered_end_distance_cells,
+	}
 
 
 func _anchor_values(anchors: Array) -> Array[Dictionary]:
