@@ -211,6 +211,8 @@ func _notification(what: int) -> void:
 		queue_redraw()
 	elif what == NOTIFICATION_MOUSE_EXIT:
 		_cursor_observed = false
+		_current_pointer_cell = INVALID_CELL
+		_current_pointer_inside_grid = false
 		_clear_hover_cell()
 
 
@@ -577,6 +579,8 @@ func _is_extendable_endpoint(cell: Vector2i) -> bool:
 	):
 		return false
 	var endpoint := _get_valid_start_cell()
+	if _train_occupies_cell(endpoint):
+		return false
 	return endpoint != INVALID_CELL and cell == endpoint
 
 
@@ -585,17 +589,34 @@ func _presented_gesture_eligible() -> bool:
 
 
 func _is_cancelable_cell(cell: Vector2i) -> bool:
-	for record in _presented_cells:
-		if record.cell == cell:
-			if record.state != TrackCellRecordScript.State.RESERVED_GHOST:
+	var clicked_index := -1
+	for index in range(_presented_cells.size()):
+		if _presented_cells[index].cell == cell:
+			clicked_index = index
+			break
+	if clicked_index < 0:
+		return false
+	for index in range(clicked_index, _presented_cells.size()):
+		var record = _presented_cells[index]
+		if record.state != TrackCellRecordScript.State.RESERVED_GHOST or record.geometry_locked:
+			return false
+		for piece in _presented_pieces:
+			if piece.contains_serial(record.route_serial) and piece.locked:
 				return false
-			for piece in _presented_pieces:
-				if piece.contains_serial(record.route_serial) and (piece.locked or record.geometry_locked):
-					return false
-				if piece.exit_support_route_serial == record.route_serial:
-					return false
-			return true
-	return false
+			if piece.exit_support_route_serial == record.route_serial:
+				return false
+	return true
+
+
+func _train_occupies_cell(cell: Vector2i) -> bool:
+	if not _train_active or cell == INVALID_CELL or _grid_size.x <= 0 or _grid_size.y <= 0:
+		return false
+	var cell_size := Vector2(
+		_grid_rect.size.x / float(_grid_size.x),
+		_grid_rect.size.y / float(_grid_size.y)
+	)
+	var train_cell := Vector2i(floor((_train_position - _grid_rect.position) / cell_size))
+	return train_cell == cell
 
 
 func _clear_hover_cell() -> void:
