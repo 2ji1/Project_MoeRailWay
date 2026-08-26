@@ -166,7 +166,14 @@ func _track_geometry_facts(track) -> Array:
 	return facts
 
 
-func _assert_view_termination_clean(view, prefix: String, require_previous_pointer_clear := true) -> void:
+func _piece_fact_for_serial(pieces: Array, route_serial: int) -> Dictionary:
+	for piece in pieces:
+		if route_serial >= piece["first_serial"] and route_serial <= piece["last_serial"]:
+			return piece
+	return {}
+
+
+func _assert_view_termination_clean(view, prefix: String) -> void:
 	_assert_true(not view._left_capture_active, "%s clears view capture" % prefix)
 	_assert_equal(view._crossed_cells, [], "%s clears crossed cells" % prefix)
 	_assert_true(not view._left_pressed_pending, "%s clears pending left press" % prefix)
@@ -176,8 +183,7 @@ func _assert_view_termination_clean(view, prefix: String, require_previous_point
 	_assert_equal(view._right_press_cell, Vector2i(-1, -1), "%s clears right press cell" % prefix)
 	_assert_true(not view._left_press_inside_grid, "%s clears left press inside fact" % prefix)
 	_assert_true(not view._right_press_inside_grid, "%s clears right press inside fact" % prefix)
-	if require_previous_pointer_clear:
-		_assert_equal(view._previous_pointer_cell, Vector2i(-1, -1), "%s clears previous pointer" % prefix)
+	_assert_equal(view._previous_pointer_cell, Vector2i(-1, -1), "%s clears previous pointer" % prefix)
 	_assert_true(not view._release_clears_capture, "%s clears release capture state" % prefix)
 
 
@@ -205,6 +211,7 @@ func _preparation_metadata_transition_is_expected(before: Dictionary, after: Dic
 		return false
 	var expected_newly_locked := 0
 	var actual_newly_locked := 0
+	var locked_groups: Dictionary = {}
 	for index in range(before_pieces.size()):
 		var before_piece: Dictionary = before_pieces[index]
 		var after_piece: Dictionary = after_pieces[index]
@@ -218,10 +225,40 @@ func _preparation_metadata_transition_is_expected(before: Dictionary, after: Dic
 			expected_newly_locked += 1
 			if not after_piece["locked"]:
 				return false
+			if int(after_piece["group"]) < 0:
+				return false
+			var expected_exit_support := -1
+			if int(after_piece["exit_support"]) >= 0:
+				expected_exit_support = int(after_piece["last_serial"]) + 1
+			if int(after_piece["exit_support"]) != expected_exit_support:
+				return false
+		else:
+			if before_piece["group"] != after_piece["group"] \
+				or before_piece["locked"] != after_piece["locked"] \
+				or before_piece["exit_support"] != after_piece["exit_support"]:
+				return false
+		if after_piece["locked"]:
+			if locked_groups.has(after_piece["group"]):
+				return false
+			locked_groups[after_piece["group"]] = true
 		if before_piece["locked"] != after_piece["locked"]:
 			actual_newly_locked += 1
 	if actual_newly_locked != expected_newly_locked:
 		return false
+	for index in range(after_records.size()):
+		var before_record: Dictionary = before_records[index]
+		var after_record: Dictionary = after_records[index]
+		var owner := _piece_fact_for_serial(after_pieces, int(after_record["serial"]))
+		if owner.is_empty():
+			return false
+		if owner["locked"]:
+			if not after_record["locked"] or after_record["group"] != owner["group"]:
+				return false
+			var before_owner := _piece_fact_for_serial(before_pieces, int(before_record["serial"]))
+			if not before_owner.is_empty() and before_owner["locked"]:
+				if before_record["group"] != after_record["group"] \
+					or before_record["locked"] != after_record["locked"]:
+					return false
 	return true
 
 
@@ -385,10 +422,13 @@ func _run() -> void:
 		and prep_candidate["available"] == prep_origin["available"] - 1
 	var prep_candidate_records := _record_content_facts(prep_track.get_cell_records())
 	var prep_candidate_geometry := _track_geometry_facts(prep_track)
+	_assert_true(view._left_capture_active, "Preparation candidate has view capture before train preparation")
+	_assert_true(prep_track.is_left_capture_active(), "Preparation candidate has facade capture before train preparation")
 	var prep_result: bool = prep_track.prepare_for_train_sampling(0.0, 1.0)
 	var prep_inactive: bool = prep_active_before and prep_result and not prep_track.is_runtime_gesture_active()
 	view.present(_track_snapshot(prep_track))
-	_assert_view_termination_clean(view, "Train preparation", false)
+	_assert_view_termination_clean(view, "Train preparation")
+	_assert_true(not prep_track.is_left_capture_active(), "Train preparation clears facade capture")
 	var prep_frozen_state := _track_facts(prep_track)
 	var prep_metadata_stable := _preparation_metadata_transition_is_expected(prep_candidate, prep_frozen_state)
 	var prep_frozen_records := _record_content_facts(prep_track.get_cell_records())

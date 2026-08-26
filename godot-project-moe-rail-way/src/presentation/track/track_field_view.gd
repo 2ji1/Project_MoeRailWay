@@ -93,6 +93,7 @@ func _gui_input(event: InputEvent) -> void:
 			_begin_left_press(event.position)
 		else:
 			_end_left_press(event.position)
+		_update_hover_cell(event.position)
 		accept_event()
 		return
 	if event.button_index == MOUSE_BUTTON_RIGHT:
@@ -101,6 +102,8 @@ func _gui_input(event: InputEvent) -> void:
 			_right_pressed_pending = true
 			_right_press_inside_grid = mapping.inside_grid
 			_right_press_cell = mapping.cell
+		_update_hover_cell(event.position)
+		if event.pressed:
 			_clear_hover_cell()
 		accept_event()
 
@@ -544,6 +547,9 @@ func _polyline_prefix(points: PackedVector2Array, progress: float) -> PackedVect
 
 func _update_hover_cell(local_position: Vector2) -> void:
 	if _presented_state == SessionControllerScript.State.COMPLETED:
+		_clear_hover_observations()
+		return
+	if _presented_gesture_active:
 		_clear_hover_observations()
 		return
 	var mapping := _map_local_to_grid(local_position)
