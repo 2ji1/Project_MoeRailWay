@@ -9,6 +9,9 @@ const TrackGeometryResolutionScript = preload("res://src/domain/track/track_geom
 
 
 func run() -> PackedStringArray:
+	_test_endpoint_reshape_gesture_begin_captures_detached_origin()
+	_test_endpoint_reshape_editable_span_has_deterministic_targets()
+	_test_endpoint_reshape_active_gesture_defers_construction_and_recovery()
 	_test_endpoint_reshape_full_curve_does_not_retain_unrelated_predecessor()
 	_test_endpoint_reshape_anchor_path_retires_stable_pieces_atomically()
 	_test_endpoint_reshape_five_straight_records_are_not_a_generic_horizon()
@@ -53,6 +56,109 @@ func run() -> PackedStringArray:
 	_test_two_sided_outside_epsilon_stitch_continuity()
 	_test_prepared_built_curve_recovers_same_serials_without_ledger_mutation()
 	return finish()
+
+
+func _test_endpoint_reshape_gesture_begin_captures_detached_origin() -> void:
+	var track = _make_fully_built_three_by_three_curve_runtime()
+	var endpoint: Vector2i = track.get_endpoint_cell()
+	print("Endpoint reshape: gesture begin captures detached origin")
+	assert_true(track.has_method("gesture_begin"), "Gesture begin contract exists")
+	if not track.has_method("gesture_begin"):
+		return
+	var result = track.call("gesture_begin", endpoint)
+	assert_true(result is Dictionary, "Gesture begin returns an origin observation")
+	if not result is Dictionary:
+		return
+	assert_true(result.has("route_records"), "Origin captures route records")
+	assert_true(result.has("pieces"), "Origin captures geometry pieces")
+	assert_true(result.has("locked_ledger"), "Origin captures immutable ledger")
+	assert_true(result.has("recovery"), "Origin captures recovery state")
+	assert_true(result.has("construction"), "Origin captures construction state")
+	assert_equal(result["route_records"].size(), track.get_cell_records().size(), "Origin route count matches")
+	var detached_records = result["route_records"]
+	if detached_records.size() > 0:
+		detached_records[0].cell = Vector2i(99, 99)
+	assert_equal(track.get_cell_records()[0].cell, Vector2i(0, 0), "Origin records are detached")
+	var detached_pieces = result["pieces"]
+	if detached_pieces.size() > 0:
+		detached_pieces[0].centerline[0] = Vector2(999.0, 999.0)
+	assert_false(
+		track.get_geometry_pieces()[0].centerline[0].is_equal_approx(Vector2(999.0, 999.0)),
+		"Origin pieces are detached"
+	)
+	assert_true(track.has_method("gesture_is_active"), "Gesture active contract exists")
+	if track.has_method("gesture_is_active"):
+		assert_true(track.call("gesture_is_active"), "Gesture begin marks runtime active")
+	assert_true(track.has_method("gesture_finalize"), "Gesture finalize contract exists")
+	if track.has_method("gesture_finalize"):
+		track.call("gesture_finalize")
+	if track.has_method("gesture_is_active"):
+		assert_false(track.call("gesture_is_active"), "Finalize clears active state")
+	assert_equal(track.call("get_gesture_origin_observation"), {}, "Finalize discards transient origin")
+
+
+func _test_endpoint_reshape_editable_span_has_deterministic_targets() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 3), 18, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	var curve_cells: Array[Vector2i] = [
+		Vector2i(0, 3), Vector2i(1, 3), Vector2i(2, 3),
+		Vector2i(2, 2), Vector2i(2, 1),
+	]
+	assert_equal(track.append_cells(curve_cells), 5, "Target fixture appends")
+	var endpoint: Vector2i = track.get_endpoint_cell()
+	print("Endpoint reshape: editable span has deterministic targets")
+	assert_true(track.has_method("gesture_begin"), "Gesture begin target contract exists")
+	if not track.has_method("gesture_begin"):
+		return
+	var result = track.call("gesture_begin", endpoint)
+	assert_true(result is Dictionary, "Target begin returns an observation")
+	if not result is Dictionary:
+		return
+	assert_true(result.has("editable_span"), "Begin exposes editable span")
+	assert_true(result.has("targets"), "Begin exposes template targets")
+	if not result.has("editable_span") or not result.has("targets"):
+		return
+	var span: Dictionary = result["editable_span"]
+	var targets: Dictionary = result["targets"]
+	assert_equal(span["entry_predecessor_cell"], Vector2i(-1, 3), "Entry predecessor is fixed")
+	assert_equal(span["first_route_serial"], 1, "Editable span starts at curve serial")
+	assert_equal(span["last_route_serial"], 5, "Editable span ends at curve serial")
+	assert_equal(targets["straight"], Vector2i(4, 3), "Straight target is deterministic")
+	assert_equal(targets["left"], Vector2i(2, 5), "Left target is deterministic")
+	assert_equal(targets["right"], Vector2i(2, 1), "Right target is deterministic")
+	var detached_targets: Dictionary = result["targets"]
+	detached_targets["straight"] = Vector2i(99, 99)
+	var second = track.call("get_gesture_target_endpoints")
+	assert_equal(second["straight"], Vector2i(4, 3), "Target observations are detached")
+	if track.has_method("gesture_finalize"):
+		track.call("gesture_finalize")
+
+
+func _test_endpoint_reshape_active_gesture_defers_construction_and_recovery() -> void:
+	var track = _make_fully_built_three_by_three_curve_runtime()
+	var endpoint: Vector2i = track.get_endpoint_cell()
+	var records_before := _record_values(track.get_cell_records())
+	var pieces_before := _piece_values(track.get_geometry_pieces())
+	var inventory_before: int = track.get_available_track_cells()
+	var recovery_before := _recovery_observation_values(track)
+	print("Endpoint reshape: active gesture defers construction and recovery")
+	assert_true(track.has_method("gesture_begin"), "Gesture begin deferral contract exists")
+	if not track.has_method("gesture_begin"):
+		return
+	var began = track.call("gesture_begin", endpoint)
+	assert_true(began is Dictionary, "Deferral fixture starts a gesture")
+	if not began is Dictionary:
+		return
+	assert_equal(track.advance_construction(2.0), 0.0, "Construction is deferred while active")
+	assert_equal(track.recover_behind(5.0), 0, "Recovery is deferred while active")
+	assert_equal(_record_values(track.get_cell_records()), records_before, "Active gesture preserves route and build state")
+	assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before, "Active gesture preserves geometry")
+	assert_equal(track.get_available_track_cells(), inventory_before, "Active gesture preserves inventory")
+	assert_equal(_recovery_observation_values(track), recovery_before, "Active gesture preserves recovery")
+	assert_true(track.has_method("gesture_finalize"), "Gesture finalize deferral contract exists")
+	if track.has_method("gesture_finalize"):
+		track.call("gesture_finalize")
 
 
 func _test_endpoint_reshape_five_straight_records_are_not_a_generic_horizon() -> void:

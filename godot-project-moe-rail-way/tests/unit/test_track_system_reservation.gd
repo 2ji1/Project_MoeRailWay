@@ -6,6 +6,7 @@ const TrackSystemScript = preload("res://src/domain/track/track_system.gd")
 
 
 func run() -> PackedStringArray:
+	_test_endpoint_reshape_track_input_frame_carries_final_pointer_facts()
 	_verify_invalid_configuration_probes()
 	_test_input_frame_owns_an_independent_cell_buffer()
 	_test_facade_preserves_origin_and_exact_inventory()
@@ -15,6 +16,22 @@ func run() -> PackedStringArray:
 	_test_right_edge_ends_left_capture_until_a_fresh_press()
 	_test_observation_getters_are_detached()
 	return finish()
+
+
+func _test_endpoint_reshape_track_input_frame_carries_final_pointer_facts() -> void:
+	print("Endpoint reshape: TrackInputFrame carries final pointer facts")
+	var frame_script = load("res://src/domain/track/track_input_frame.gd")
+	var empty_cells: Array[Vector2i] = []
+	var frame = frame_script.call(
+		"new",
+		empty_cells, Vector2i(-1, -1), false, Vector2i(-1, -1), false,
+		false, false, false, false, Vector2i(4, 5), true
+	)
+	assert_not_null(frame, "Pointer frame constructor accepts final facts")
+	if frame == null:
+		return
+	assert_equal(frame.get("current_pointer_cell"), Vector2i(4, 5), "Frame stores current pointer cell")
+	assert_true(frame.get("current_pointer_inside_grid"), "Frame stores current pointer grid fact")
 
 
 func _verify_invalid_configuration_probes() -> void:

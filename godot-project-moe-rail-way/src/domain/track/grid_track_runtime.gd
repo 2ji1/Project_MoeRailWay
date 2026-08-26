@@ -22,6 +22,16 @@ var _anchors: Array[RouteContactAnchorScript] = []
 var _contact_observations: Array[Dictionary] = []
 var _recovered_cells_by_piece: Dictionary = {}
 var _recovered_end_distance_cells := 0.0
+var _gesture_active := false
+var _gesture_origin_sequence: TrackCellSequenceScript
+var _gesture_origin_pieces: Array[TrackGeometryPieceScript] = []
+var _gesture_origin_locked_ledger: Array[TrackGeometryPieceScript] = []
+var _gesture_origin_anchors: Array[RouteContactAnchorScript] = []
+var _gesture_origin_recovered_cells_by_piece: Dictionary = {}
+var _gesture_origin_recovered_end_distance_cells := 0.0
+var _gesture_origin_contacts: Array[Dictionary] = []
+var _gesture_editable_span: Dictionary = {}
+var _gesture_target_endpoints: Dictionary = {}
 
 
 func _init(
@@ -36,6 +46,81 @@ func _init(
     _grid_size = grid_size
     _cell_size_units = cell_size_units
     _sequence = TrackCellSequenceScript.new(departure_cell, total_track_cells)
+
+
+func gesture_is_active() -> bool:
+    return _gesture_active
+
+
+func gesture_has_legal_operation(endpoint: Vector2i = Vector2i(-1, -1)) -> bool:
+    var requested_endpoint := get_endpoint_cell() if endpoint == Vector2i(-1, -1) else endpoint
+    if requested_endpoint != get_endpoint_cell():
+        return false
+    if _gesture_active:
+        return true
+    if _editable_endpoint_piece() != null:
+        return true
+    if _sequence.get_available_track_cells() <= 0:
+        return false
+    for offset in [Vector2i.RIGHT, Vector2i.LEFT, Vector2i.DOWN, Vector2i.UP]:
+        var cell: Vector2i = requested_endpoint + offset
+        if not _cell_in_grid(cell) or cell == _departure_cell:
+            continue
+        var candidate_sequence = _sequence.duplicate_sequence()
+        if candidate_sequence.try_append_candidate(cell) == null:
+            continue
+        var candidate_ledger = _duplicate_pieces(_locked_ledger)
+        var resolution = _resolve_candidate(candidate_sequence, candidate_ledger, _anchors)
+        if not resolution.is_valid:
+            continue
+        _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
+        candidate_sequence.apply_resolved_geometry(resolution.pieces)
+        if _validate_candidate(candidate_sequence, candidate_ledger, resolution):
+            return true
+    return false
+
+
+func gesture_begin(endpoint: Vector2i) -> Dictionary:
+    if _gesture_active or endpoint != get_endpoint_cell() or not gesture_has_legal_operation(endpoint):
+        return {}
+    _gesture_origin_sequence = _sequence.duplicate_sequence()
+    _gesture_origin_pieces = _duplicate_pieces(_pieces)
+    _gesture_origin_locked_ledger = _duplicate_pieces(_locked_ledger)
+    _gesture_origin_anchors = _duplicate_anchors(_anchors)
+    _gesture_origin_recovered_cells_by_piece = _recovered_cells_by_piece.duplicate(true)
+    _gesture_origin_recovered_end_distance_cells = _recovered_end_distance_cells
+    _gesture_origin_contacts = _contact_observations.duplicate(true)
+    _gesture_editable_span = _discover_editable_span()
+    _gesture_target_endpoints = _calculate_target_endpoints(_gesture_editable_span)
+    _gesture_active = true
+    return _gesture_origin_observation()
+
+
+func gesture_finalize() -> bool:
+    if not _gesture_active:
+        return false
+    _clear_gesture_state()
+    return true
+
+
+func get_gesture_origin_observation() -> Dictionary:
+    return _gesture_origin_observation()
+
+
+func get_gesture_origin() -> Dictionary:
+    return _gesture_origin_observation()
+
+
+func get_gesture_editable_span() -> Dictionary:
+    return _gesture_editable_span.duplicate(true)
+
+
+func get_editable_span() -> Dictionary:
+    return get_gesture_editable_span()
+
+
+func get_gesture_target_endpoints() -> Dictionary:
+    return _gesture_target_endpoints.duplicate(true)
 
 
 func append_cells(cells: Array[Vector2i]) -> int:
@@ -124,6 +209,8 @@ func set_contact_anchors(anchors: Array[RouteContactAnchorScript]) -> void:
 
 
 func advance_construction(progress_cells: float) -> float:
+    if _gesture_active:
+        return 0.0
     var remaining := maxf(progress_cells, 0.0)
     var consumed_total := 0.0
     while remaining > 0.0:
@@ -142,6 +229,8 @@ func advance_construction(progress_cells: float) -> float:
 
 
 func recover_behind(cutoff_distance_cells: float) -> int:
+    if _gesture_active:
+        return 0
     var candidate_sequence = _sequence.duplicate_sequence()
     var recovered: Array = candidate_sequence.recover_eligible_cells(cutoff_distance_cells)
     if recovered.is_empty():
@@ -329,6 +418,99 @@ func is_exit_support_route_serial(route_serial: int) -> bool:
         if piece.exit_support_route_serial == route_serial:
             return true
     return false
+
+
+func _cell_in_grid(cell: Vector2i) -> bool:
+    return cell.x >= 0 and cell.y >= 0 and cell.x < _grid_size.x and cell.y < _grid_size.y
+
+
+func _editable_endpoint_piece():
+    if _sequence.get_records().is_empty():
+        return null
+    var endpoint_serial: int = _sequence.get_records()[-1].route_serial
+    for piece in _pieces:
+        if piece.contains_serial(endpoint_serial) and not piece.locked:
+            return piece
+    return null
+
+
+func _discover_editable_span() -> Dictionary:
+    var endpoint_piece = _editable_endpoint_piece()
+    if endpoint_piece == null:
+        return {}
+    var records: Array[TrackCellRecordScript] = _sequence.get_records()
+    var first_index := -1
+    var last_index := -1
+    for index in range(records.size()):
+        if endpoint_piece.contains_serial(records[index].route_serial):
+            if first_index < 0:
+                first_index = index
+            last_index = index
+    if first_index < 0 or last_index < first_index:
+        return {}
+    var entry_cell: Vector2i = _departure_cell
+    if first_index > 0:
+        entry_cell = records[first_index - 1].cell
+    var incoming_heading: Vector2i = records[first_index].cell - entry_cell
+    return {
+        "first_route_serial": records[first_index].route_serial,
+        "last_route_serial": records[last_index].route_serial,
+        "first_index": first_index,
+        "last_index": last_index,
+        "entry_predecessor_cell": entry_cell,
+        "incoming_heading": incoming_heading,
+        "record_count": last_index - first_index + 1,
+    }
+
+
+func _calculate_target_endpoints(span: Dictionary) -> Dictionary:
+    if span.is_empty():
+        return {}
+    var count: int = span["record_count"]
+    var entry: Vector2i = span["entry_predecessor_cell"]
+    var heading: Vector2i = span["incoming_heading"]
+    var radius: int = maxi(1, int(ceil(float(count) / 2.0)))
+    var turn_cell := entry + heading * radius
+    var left_heading := Vector2i(-heading.y, heading.x)
+    var right_heading := Vector2i(heading.y, -heading.x)
+    return {
+        "straight": entry + heading * count,
+        "left": turn_cell + left_heading * (radius - 1),
+        "right": turn_cell + right_heading * (radius - 1),
+    }
+
+
+func _gesture_origin_observation() -> Dictionary:
+    if not _gesture_active or _gesture_origin_sequence == null:
+        return {}
+    return {
+        "route_records": _gesture_origin_sequence.get_records(),
+        "pieces": _duplicate_pieces(_gesture_origin_pieces),
+        "locked_ledger": _duplicate_pieces(_gesture_origin_locked_ledger),
+        "anchors": _duplicate_anchors(_gesture_origin_anchors),
+        "recovery": {
+            "recovered_cells_by_piece": _gesture_origin_recovered_cells_by_piece.duplicate(true),
+            "recovered_end_distance_cells": _gesture_origin_recovered_end_distance_cells,
+        },
+        "construction": _gesture_origin_sequence.get_records(),
+        "inventory": _gesture_origin_sequence.get_available_track_cells(),
+        "contact_observations": _gesture_origin_contacts.duplicate(true),
+        "editable_span": _gesture_editable_span.duplicate(true),
+        "targets": _gesture_target_endpoints.duplicate(true),
+    }
+
+
+func _clear_gesture_state() -> void:
+    _gesture_active = false
+    _gesture_origin_sequence = null
+    _gesture_origin_pieces.clear()
+    _gesture_origin_locked_ledger.clear()
+    _gesture_origin_anchors.clear()
+    _gesture_origin_recovered_cells_by_piece.clear()
+    _gesture_origin_recovered_end_distance_cells = 0.0
+    _gesture_origin_contacts.clear()
+    _gesture_editable_span.clear()
+    _gesture_target_endpoints.clear()
 
 
 func _resolve_records():
