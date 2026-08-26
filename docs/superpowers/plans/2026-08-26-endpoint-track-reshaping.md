@@ -200,6 +200,40 @@ For every task, place the review package outside the worktree. It contains the i
 - [ ] **Step 6: Commit with exact paths.** Invoke `Complete-TaskCommit -TaskNumber 'T5' -RequiredPaths @('godot-project-moe-rail-way/tests/unit/test_track_system_reservation.gd','godot-project-moe-rail-way/src/domain/track/track_system.gd') -Message 'feat: route endpoint capture and gesture abort precedence'` and record both emitted SHAs.
 - [ ] **Step 7: Obtain fresh reviews.** Fresh Sol specification review checks §§4.1, 7, 9 steps 1–5, and 11 items 9–10. Fresh Sol quality review checks edge consumption, right-abort precedence, held-button state, and facade/runtime separation. Luna remediates only the allowlist, reruns focused/full tests, and obtains both fresh reviews against the new SHA.
 
+#### Task 5 Fix Round 2: Legacy Gesture Regression Bridge
+
+The first Task 5 two-file implementation and review commits remain valid. This is an explicit test-only remediation expansion after the controller reproduced the full regression gate; it does not rewrite the original Task 5 commit contract or roll back production behavior.
+
+**Controller-reproduced root cause:** Three pre-T5 fixtures synthesize `left_pressed` plus motion in one frame without `left_released` or the current pointer facts. Under the canonical Task 5 facade contract, that input leaves the new gesture active; a later right input correctly aborts the gesture origin rather than performing ordinary suffix cancellation. The curve-support fixtures send only suffix `G` while a curve gesture is still in its replacement phase, so they must first cross the current template target endpoint, then send `G`, and finalize/release. This is fixture-contract drift, not a production rollback.
+
+**Exact Fix Round 2 allowlist:**
+
+- Modify only `godot-project-moe-rail-way/tests/unit/test_track_system_construction_recovery.gd`.
+- Modify only `godot-project-moe-rail-way/tests/unit/test_track_train_session_controller.gd`.
+- Modify only `godot-project-moe-rail-way/tests/smoke/test_track_train_app_composition.gd`.
+
+No production file outside the original Task 5 two-path allowlist may change. Do not edit `SessionController` or add Task 6 train/session behavior. Do not edit any view or add Task 7 presentation behavior. Do not weaken the strict anchored `ERROR:` filter or skip the smoke suite. Preserve every existing construction, ledger, recovery, session, and smoke gameplay assertion exactly; only update the input choreography needed to represent the canonical transaction.
+
+- [ ] **Fix Step 1: Reproduce each affected focused failure.** Before changing fixtures, run each exact command below from the feature worktree. Require a nonzero exit with the controller-reproduced legacy assertion failures and strict anchored diagnostics filtering; missing or suppressed failure diagnostics are invalid RED evidence.
+
+```powershell
+& 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe' --headless --path 'D:\godot\MoeRailWay-worktrees\feature-endpoint-track-reshaping\godot-project-moe-rail-way' --script res://tests/run_all.gd -- --suite=test_track_system_construction_recovery.gd
+```
+
+```powershell
+& 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe' --headless --path 'D:\godot\MoeRailWay-worktrees\feature-endpoint-track-reshaping\godot-project-moe-rail-way' --script res://tests/run_all.gd -- --suite=test_track_train_session_controller.gd
+```
+
+```powershell
+& 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe' --headless --path 'D:\godot\MoeRailWay-worktrees\feature-endpoint-track-reshaping\godot-project-moe-rail-way' --script res://tests/run_all.gd -- --suite=test_track_train_app_composition.gd
+```
+
+- [ ] **Fix Step 2: Align only legacy fixture choreography.** Update the affected legacy helpers so every legal fresh press/motion is a complete facade transaction with current pointer facts and an explicit left release. For each curve-support fixture, cross the current template target endpoint before sending suffix `G`, then finalize/release the gesture. Keep all old construction, ledger, recovery, session, and smoke assertions byte-for-byte in meaning; do not add alternate capture, bypass the transaction, or change production behavior.
+- [ ] **Fix Step 3: Run focused GREEN for each affected suite.** Repeat all three exact commands above independently. Require exit code `0`, the pre-existing suite assertions unchanged and green, no anchored `ERROR:`, and no modifications outside the three-file Fix Round 2 allowlist. The smoke command is mandatory and may not be skipped.
+- [ ] **Fix Step 4: Run the full exact regression.** Run the exact shared full command from Preflight. Require exit code `0`, exactly `PASS: 19 prototype test suite(s)`, and no anchored `ERROR:`. Keep the strict filter; a PASS followed by any anchored diagnostic is failure.
+- [ ] **Fix Step 5: Commit the separate fixture remediation.** Invoke `Complete-TaskCommit -TaskNumber 'T5-R2' -RequiredPaths @('godot-project-moe-rail-way/tests/unit/test_track_system_construction_recovery.gd','godot-project-moe-rail-way/tests/unit/test_track_train_session_controller.gd','godot-project-moe-rail-way/tests/smoke/test_track_train_app_composition.gd') -Message 'test: align legacy fixtures with endpoint gestures'` and record both emitted SHAs. This is a separate test commit; the prior Task 5 two-file commits remain immutable and valid.
+- [ ] **Fix Step 6: Obtain fresh reviews.** Fresh Sol specification review checks that complete facade transactions, target-then-suffix choreography, and preserved legacy assertions conform to §§4.1, 4.3, 7, 9, and 11 items 9–10. Fresh Sol quality review checks same-frame transaction routing, right-abort/finalize behavior, release completeness, strict diagnostics, exact three-file scope, and absence of production, Task 6, or Task 7 changes. Luna alone performs this test-only remediation and Markdown bookkeeping; Sol reviews only; the implementer uses no subagents.
+
 ### Task 6: Train-Safety Termination, Session Ordering, and Detached Snapshot Facts
 
 **Files:**
