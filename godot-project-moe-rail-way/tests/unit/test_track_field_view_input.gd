@@ -118,6 +118,13 @@ func _runtime_record_for_serial(
 	return null
 
 
+func _record_cells(records: Array) -> Array:
+	var cells: Array = []
+	for record in records:
+		cells.append(record.cell)
+	return cells
+
+
 func _view_interval_for_serial(observation: Dictionary, route_serial: int) -> Dictionary:
 	for interval in observation.get("intervals", []):
 		if interval.get("route_serial", -1) == route_serial:
@@ -134,14 +141,16 @@ func _points_materially_differ(first: PackedVector2Array, second: PackedVector2A
 	return false
 
 
-func _view_straight_piece(route_serial: int, cell: Vector2i) -> TrackGeometryPieceScript:
+func _view_straight_piece(
+	route_serial: int, cell: Vector2i, distance_cells: float = -1.0
+) -> TrackGeometryPieceScript:
 	var piece = TrackGeometryPieceScript.new()
 	piece.group_id = route_serial
 	piece.kind = TrackGeometryPieceScript.Kind.STRAIGHT
 	piece.first_route_serial = route_serial
 	piece.last_route_serial = route_serial
 	piece.nominal_length_cells = 1
-	piece.absolute_start_distance_cells = float(route_serial - 1)
+	piece.absolute_start_distance_cells = distance_cells if distance_cells >= 0.0 else float(route_serial - 1)
 	var footprint: Array[Vector2i] = [cell]
 	piece.footprint_cells = footprint
 	var center := Vector2((float(cell.x) + 0.5) * 40.0, (float(cell.y) + 0.5) * 40.0)
@@ -347,21 +356,21 @@ func _test_endpoint_reshape_whole_suffix_dependency_is_negative() -> void:
 	print("Endpoint reshape: whole suffix dependency is negative")
 	var fixture := _fixture()
 	var clicked := _endpoint_record(Vector2i(2, 2), TrackCellRecordScript.State.RESERVED_GHOST, 10, 0.0)
-	var clicked_piece := _view_straight_piece(10, clicked.cell)
+	var clicked_piece := _view_straight_piece(10, clicked.cell, clicked.route_distance_start_cells)
 	var built_suffix := _endpoint_record(Vector2i(3, 2), TrackCellRecordScript.State.BUILT, 11, 1.0)
 	_assert_suffix_cancel_blocked(
 		fixture.view, clicked, built_suffix, clicked_piece,
-		_view_straight_piece(11, built_suffix.cell),
+		_view_straight_piece(11, built_suffix.cell, built_suffix.route_distance_start_cells),
 		"Built suffix blocks clicked-to-end gold cancellation"
 	)
 	var locked_record := _endpoint_record(Vector2i(3, 2), TrackCellRecordScript.State.RESERVED_GHOST, 21, 1.0)
 	locked_record.geometry_locked = true
 	_assert_suffix_cancel_blocked(
 		fixture.view, clicked, locked_record, clicked_piece,
-		_view_straight_piece(21, locked_record.cell),
+		_view_straight_piece(21, locked_record.cell, locked_record.route_distance_start_cells),
 		"Geometry-locked suffix blocks clicked-to-end gold cancellation"
 	)
-	var locked_owner := _view_straight_piece(31, Vector2i(3, 2))
+	var locked_owner := _view_straight_piece(31, Vector2i(3, 2), 1.0)
 	locked_owner.locked = true
 	var locked_owner_record := _endpoint_record(Vector2i(3, 2), TrackCellRecordScript.State.RESERVED_GHOST, 31, 1.0)
 	_assert_suffix_cancel_blocked(
@@ -369,7 +378,7 @@ func _test_endpoint_reshape_whole_suffix_dependency_is_negative() -> void:
 		"Locked owner suffix blocks clicked-to-end gold cancellation"
 	)
 	var exit_support_record := _endpoint_record(Vector2i(3, 2), TrackCellRecordScript.State.RESERVED_GHOST, 41, 1.0)
-	var exit_support_piece := _view_straight_piece(41, exit_support_record.cell)
+	var exit_support_piece := _view_straight_piece(41, exit_support_record.cell, exit_support_record.route_distance_start_cells)
 	exit_support_piece.exit_support_route_serial = exit_support_record.route_serial
 	_assert_suffix_cancel_blocked(
 		fixture.view, clicked, exit_support_record, clicked_piece, exit_support_piece,
@@ -447,6 +456,8 @@ func _test_endpoint_reshape_actual_abort_clears_and_allows_fresh_press() -> void
 	assert_false(view._left_held, "Physical release clears the view held latch after abort")
 	assert_false(system.is_runtime_gesture_active(), "Physical release clears the domain gesture latch after abort")
 	var fresh_endpoint := system.get_endpoint_cell()
+	var fresh_baseline_records := system.get_cell_records()
+	var fresh_baseline_cells := _record_cells(fresh_baseline_records)
 	var fresh_position := _local_for_cell(view, fresh_endpoint)
 	var fresh_next_position := _local_for_cell(view, fresh_endpoint + Vector2i(1, 0))
 	_deliver(view, _button(fresh_position, MOUSE_BUTTON_LEFT, true))
@@ -455,6 +466,10 @@ func _test_endpoint_reshape_actual_abort_clears_and_allows_fresh_press() -> void
 	system.apply_left_input(fresh_frame)
 	assert_true(fresh_frame.left_pressed, "Fresh press after actual abort is observable")
 	assert_true(system.is_runtime_gesture_active(), "Fresh legal motion starts a new domain gesture after abort")
+	var fresh_candidate_records := system.get_cell_records()
+	assert_equal(fresh_candidate_records.size(), fresh_baseline_records.size() + 1, "Fresh abort gesture publishes one new record")
+	assert_equal(_record_cells(fresh_candidate_records), fresh_baseline_cells + [fresh_endpoint + Vector2i(1, 0)], "Fresh abort gesture publishes the legal adjacent cell")
+	assert_equal(system.get_endpoint_cell(), fresh_endpoint + Vector2i(1, 0), "Fresh abort gesture changes the endpoint")
 	fixture.parent.free()
 
 
@@ -490,6 +505,8 @@ func _test_endpoint_reshape_actual_train_preparation_clears_and_allows_fresh_pre
 	assert_false(view._left_held, "Physical release clears the view held latch after preparation")
 	assert_false(system.is_runtime_gesture_active(), "Physical release leaves the domain gesture inactive after preparation")
 	var fresh_endpoint := system.get_endpoint_cell()
+	var fresh_baseline_records := system.get_cell_records()
+	var fresh_baseline_cells := _record_cells(fresh_baseline_records)
 	var fresh_position := _local_for_cell(view, fresh_endpoint)
 	var fresh_next_position := _local_for_cell(view, fresh_endpoint + Vector2i(1, 0))
 	_deliver(view, _button(fresh_position, MOUSE_BUTTON_LEFT, true))
@@ -498,6 +515,10 @@ func _test_endpoint_reshape_actual_train_preparation_clears_and_allows_fresh_pre
 	system.apply_left_input(fresh_frame)
 	assert_true(fresh_frame.left_pressed, "Fresh press after preparation is observable")
 	assert_true(system.is_runtime_gesture_active(), "Fresh legal motion starts a new domain gesture after preparation")
+	var fresh_candidate_records := system.get_cell_records()
+	assert_equal(fresh_candidate_records.size(), fresh_baseline_records.size() + 1, "Fresh preparation gesture publishes one new record")
+	assert_equal(_record_cells(fresh_candidate_records), fresh_baseline_cells + [fresh_endpoint + Vector2i(1, 0)], "Fresh preparation gesture publishes the legal adjacent cell")
+	assert_equal(system.get_endpoint_cell(), fresh_endpoint + Vector2i(1, 0), "Fresh preparation gesture changes the endpoint")
 	fixture.parent.free()
 
 

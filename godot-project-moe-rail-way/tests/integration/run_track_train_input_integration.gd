@@ -120,6 +120,13 @@ func _record_content_facts(records: Array) -> Array:
 	return facts
 
 
+func _record_cells(facts: Array) -> Array:
+	var cells: Array = []
+	for fact in facts:
+		cells.append(fact["cell"])
+	return cells
+
+
 func _piece_facts(pieces: Array, include_lock_metadata := true) -> Array:
 	var facts: Array = []
 	for piece in pieces:
@@ -146,6 +153,7 @@ func _track_facts(track) -> Dictionary:
 	return {
 		"records": _record_facts(track.get_cell_records()),
 		"pieces": _piece_facts(track.get_geometry_pieces()),
+		"contacts": track.get_contact_observations(),
 		"available": track.get_available_track_cells(),
 		"endpoint": track.get_endpoint_cell(),
 	}
@@ -158,7 +166,7 @@ func _track_geometry_facts(track) -> Array:
 	return facts
 
 
-func _assert_view_termination_clean(view, prefix: String) -> void:
+func _assert_view_termination_clean(view, prefix: String, require_previous_pointer_clear := true) -> void:
 	_assert_true(not view._left_capture_active, "%s clears view capture" % prefix)
 	_assert_equal(view._crossed_cells, [], "%s clears crossed cells" % prefix)
 	_assert_true(not view._left_pressed_pending, "%s clears pending left press" % prefix)
@@ -168,13 +176,53 @@ func _assert_view_termination_clean(view, prefix: String) -> void:
 	_assert_equal(view._right_press_cell, Vector2i(-1, -1), "%s clears right press cell" % prefix)
 	_assert_true(not view._left_press_inside_grid, "%s clears left press inside fact" % prefix)
 	_assert_true(not view._right_press_inside_grid, "%s clears right press inside fact" % prefix)
-	_assert_equal(view._previous_pointer_cell, Vector2i(-1, -1), "%s clears previous pointer" % prefix)
+	if require_previous_pointer_clear:
+		_assert_equal(view._previous_pointer_cell, Vector2i(-1, -1), "%s clears previous pointer" % prefix)
 	_assert_true(not view._release_clears_capture, "%s clears release capture state" % prefix)
 
 
 func _train_cell(config: SessionStartConfigScript, position: Vector2) -> Vector2i:
 	var cell_size := config.grid_cell_size_units
 	return Vector2i(floor((position - config.grid_origin_units) / Vector2(cell_size, cell_size)))
+
+
+func _preparation_metadata_transition_is_expected(before: Dictionary, after: Dictionary) -> bool:
+	var before_records: Array = before["records"]
+	var after_records: Array = after["records"]
+	if before_records.size() != after_records.size():
+		return false
+	for index in range(before_records.size()):
+		var before_record: Dictionary = before_records[index]
+		var after_record: Dictionary = after_records[index]
+		for key in ["serial", "cell", "distance", "state", "progress"]:
+			if before_record[key] != after_record[key]:
+				return false
+		if before_record["locked"] != after_record["locked"] and not after_record["locked"]:
+			return false
+	var before_pieces: Array = before["pieces"]
+	var after_pieces: Array = after["pieces"]
+	if before_pieces.size() != after_pieces.size():
+		return false
+	var expected_newly_locked := 0
+	var actual_newly_locked := 0
+	for index in range(before_pieces.size()):
+		var before_piece: Dictionary = before_pieces[index]
+		var after_piece: Dictionary = after_pieces[index]
+		for key in [
+			"first_serial", "last_serial", "kind", "distance", "length", "footprint",
+			"centerline", "active_start", "active_end"
+		]:
+			if before_piece[key] != after_piece[key]:
+				return false
+		if not before_piece["locked"]:
+			expected_newly_locked += 1
+			if not after_piece["locked"]:
+				return false
+		if before_piece["locked"] != after_piece["locked"]:
+			actual_newly_locked += 1
+	if actual_newly_locked != expected_newly_locked:
+		return false
+	return true
 
 
 func _run() -> void:
@@ -218,10 +266,13 @@ func _run() -> void:
 	var endpoint_observation: Dictionary = view.get_render_observation()
 	var running_train_cell := _train_cell(config, running_snapshot.get_train_position())
 	var running_endpoint := running_track.get_endpoint_cell()
-	var running_green: bool = running_snapshot.get_state() == SessionControllerScript.State.RUNNING \
-		and running_snapshot.is_train_active() \
-		and running_train_cell != running_endpoint \
-		and endpoint_observation.get("hover_extend_cell", Vector2i(-1, -1)) == Vector2i(5, 2)
+	var running_train_cell_inside := running_train_cell.x >= 0 and running_train_cell.y >= 0 \
+		and running_train_cell.x < config.grid_size.x and running_train_cell.y < config.grid_size.y
+	_assert_true(running_snapshot.get_state() == SessionControllerScript.State.RUNNING, "Running fixture publishes RUNNING state")
+	_assert_true(running_snapshot.is_train_active(), "Running fixture publishes an active train")
+	_assert_true(running_train_cell_inside, "Running train cell is inside the configured grid")
+	_assert_true(running_train_cell != running_endpoint, "Running train cell is distinct from the endpoint")
+	var running_green: bool = endpoint_observation.get("hover_extend_cell", Vector2i(-1, -1)) == Vector2i(5, 2)
 	_assert_true(running_green, "Endpoint reshape integration assertion failed endpoint green")
 	if running_green:
 		print("PASS: Endpoint reshape integration running endpoint green")
@@ -268,7 +319,13 @@ func _run() -> void:
 	abort_track.apply_left_input(abort_frame)
 	var abort_active_before: bool = abort_track.is_runtime_gesture_active()
 	var abort_candidate := _track_facts(abort_track)
-	var abort_candidate_changed: bool = abort_candidate != abort_origin
+	var abort_expected_cells: Array = _record_cells(abort_origin["records"])
+	abort_expected_cells.append(abort_origin_endpoint + Vector2i(1, 0))
+	var abort_candidate_cells: Array = _record_cells(abort_candidate["records"])
+	var abort_candidate_changed: bool = abort_candidate["records"].size() == abort_origin["records"].size() + 1 \
+		and abort_candidate_cells == abort_expected_cells \
+		and abort_candidate["endpoint"] == abort_origin_endpoint + Vector2i(1, 0) \
+		and abort_candidate["available"] == abort_origin["available"] - 1
 	view.present(_track_snapshot(abort_track, abort_controller.get_state()))
 	await _deliver(_button(_logical_to_viewport(view, Vector2(220.0, 100.0)), MOUSE_BUTTON_RIGHT, true))
 	var abort_right: TrackInputFrameScript = await _consume_view(shell)
@@ -284,55 +341,94 @@ func _run() -> void:
 	_assert_true(abort_cleared, "Endpoint reshape integration assertion failed abort clears capture")
 	if abort_cleared:
 		print("PASS: Endpoint reshape integration abort clears capture")
-	await _release_view(shell, departure)
-	await _consume_view(shell)
+	await _release_view(shell, _logical_to_viewport(view, Vector2(220.0, 100.0)))
+	var abort_release: TrackInputFrameScript = await _consume_view(shell, abort_track)
+	var abort_post_release := _track_facts(abort_track)
+	_assert_true(abort_release.left_released, "Abort release frame routes through the same TrackSystem")
+	_assert_true(not abort_track.is_left_capture_active() and not abort_track.is_runtime_gesture_active(), "Abort release clears same-system latches")
+	var abort_fresh_baseline_cells: Array = _record_cells(abort_post_release["records"])
+	var abort_fresh_endpoint: Vector2i = abort_track.get_endpoint_cell()
+	var abort_fresh_position := _logical_to_viewport(view, Vector2(abort_fresh_endpoint) * config.grid_cell_size_units + Vector2(config.grid_cell_size_units * 0.5, config.grid_cell_size_units * 0.5))
+	var abort_fresh_next := abort_fresh_endpoint + Vector2i(1, 0)
+	var abort_fresh_next_position := _logical_to_viewport(view, Vector2(abort_fresh_next) * config.grid_cell_size_units + Vector2(config.grid_cell_size_units * 0.5, config.grid_cell_size_units * 0.5))
+	await _deliver(_button(abort_fresh_position, MOUSE_BUTTON_LEFT, true))
+	await _deliver(_motion(abort_fresh_next_position, MOUSE_BUTTON_MASK_LEFT))
+	var abort_fresh_frame: TrackInputFrameScript = await _consume_view(shell, abort_track)
+	var abort_fresh_state := _track_facts(abort_track)
+	var abort_fresh_cells: Array = _record_cells(abort_fresh_state["records"])
+	var abort_fresh_started: bool = abort_fresh_frame.left_pressed and abort_track.is_left_capture_active() \
+		and abort_track.is_runtime_gesture_active() \
+		and abort_fresh_state["records"].size() == abort_post_release["records"].size() + 1 \
+		and abort_fresh_cells == abort_fresh_baseline_cells + [abort_fresh_next] \
+		and abort_fresh_state["endpoint"] == abort_fresh_next
+	_assert_true(abort_fresh_started, "Abort release and fresh press create a concrete new candidate")
+	await _release_view(shell, abort_fresh_next_position)
+	await _consume_view(shell, abort_track)
 
 	var prep_track := TrackSystemScript.new(config)
-	var prep_controller := SessionControllerScript.new(config, prep_track, TrainSystemScript.new(config.train_speed_cells_per_second))
-	prep_controller.start()
-	view.present(prep_controller.get_snapshot())
-	await _deliver(_button(departure, MOUSE_BUTTON_LEFT, true))
-	await _deliver(_motion(_logical_to_viewport(view, Vector2(220.0, 100.0)), MOUSE_BUTTON_MASK_LEFT))
-	var prep_seed = await _consume_view(shell)
-	prep_controller.advance_tick(prep_seed)
-	await _release_view(shell, _logical_to_viewport(view, Vector2(220.0, 100.0)))
-	var prep_seed_release = await _consume_view(shell)
-	prep_controller.advance_tick(prep_seed_release)
-	for _tick in range(20):
-		prep_controller.advance_tick()
-	view.present(prep_controller.get_snapshot())
+	view.present(_track_snapshot(prep_track))
 	var prep_origin := _track_facts(prep_track)
-	await _deliver(_button(_logical_to_viewport(view, Vector2(220.0, 100.0)), MOUSE_BUTTON_LEFT, true))
-	await _deliver(_motion(_logical_to_viewport(view, Vector2(260.0, 100.0)), MOUSE_BUTTON_MASK_LEFT))
-	var prep_frame = await _consume_view(shell)
-	prep_track.apply_left_input(prep_frame)
-	view.present(_track_snapshot(prep_track, prep_controller.get_state()))
+	await _deliver(_button(departure, MOUSE_BUTTON_LEFT, true))
+	await _deliver(_motion(_logical_to_viewport(view, Vector2(140.0, 100.0)), MOUSE_BUTTON_MASK_LEFT))
+	var prep_frame: TrackInputFrameScript = await _consume_view(shell, prep_track)
+	_assert_true(prep_frame.left_pressed, "Preparation fixture emits a real same-system left press")
+	view.present(_track_snapshot(prep_track))
 	var prep_active_before: bool = prep_track.is_runtime_gesture_active()
 	var prep_candidate := _track_facts(prep_track)
-	var prep_candidate_changed: bool = prep_candidate != prep_origin
+	var prep_origin_cells: Array = _record_cells(prep_origin["records"])
+	var prep_candidate_cells: Array = _record_cells(prep_candidate["records"])
+	var prep_expected_cells: Array = prep_origin_cells.duplicate()
+	prep_expected_cells.append(prep_origin["endpoint"] + Vector2i(1, 0))
+	var prep_candidate_changed: bool = prep_candidate["records"].size() == prep_origin["records"].size() + 1 \
+		and prep_candidate_cells == prep_expected_cells \
+		and prep_candidate["endpoint"] == prep_origin["endpoint"] + Vector2i(1, 0) \
+		and prep_candidate["available"] == prep_origin["available"] - 1
 	var prep_candidate_records := _record_content_facts(prep_track.get_cell_records())
 	var prep_candidate_geometry := _track_geometry_facts(prep_track)
-	var prep_candidate_inventory: int = prep_track.get_available_track_cells()
-	var prep_candidate_endpoint := prep_track.get_endpoint_cell()
-	var prep_result: bool = prep_track.prepare_for_train_sampling(2.0, 4.0)
+	var prep_result: bool = prep_track.prepare_for_train_sampling(0.0, 1.0)
 	var prep_inactive: bool = prep_active_before and prep_result and not prep_track.is_runtime_gesture_active()
 	view.present(_track_snapshot(prep_track))
-	_assert_view_termination_clean(view, "Train preparation")
+	_assert_view_termination_clean(view, "Train preparation", false)
+	var prep_frozen_state := _track_facts(prep_track)
+	var prep_metadata_stable := _preparation_metadata_transition_is_expected(prep_candidate, prep_frozen_state)
 	var prep_frozen_records := _record_content_facts(prep_track.get_cell_records())
 	var prep_frozen_geometry := _track_geometry_facts(prep_track)
 	await _deliver(_motion(_logical_to_viewport(view, Vector2(180.0, 100.0)), MOUSE_BUTTON_MASK_LEFT))
 	var frozen_frame: TrackInputFrameScript = await _consume_view(shell, prep_track)
+	var held_motion_state := _track_facts(prep_track)
 	var train_frozen: bool = prep_candidate_changed and prep_inactive \
+		and prep_metadata_stable \
 		and prep_frozen_records == prep_candidate_records \
 		and prep_frozen_geometry == prep_candidate_geometry \
-		and prep_track.get_available_track_cells() == prep_candidate_inventory \
-		and prep_track.get_endpoint_cell() == prep_candidate_endpoint \
+		and prep_frozen_state["contacts"] == prep_candidate["contacts"] \
+		and held_motion_state == prep_frozen_state \
 		and frozen_frame.crossed_cells.is_empty() and not view._left_capture_active
 	_assert_true(train_frozen, "Endpoint reshape integration assertion failed train preparation freezes overlap")
 	if train_frozen:
 		print("PASS: Endpoint reshape integration train preparation freezes overlap")
 	await _release_view(shell, _logical_to_viewport(view, Vector2(180.0, 100.0)))
-	await _consume_view(shell)
+	var prep_release: TrackInputFrameScript = await _consume_view(shell, prep_track)
+	var prep_post_release := _track_facts(prep_track)
+	_assert_true(prep_release.left_released, "Preparation release frame routes through the same TrackSystem")
+	_assert_true(not prep_track.is_left_capture_active() and not prep_track.is_runtime_gesture_active(), "Preparation release clears same-system latches")
+	var prep_fresh_baseline_cells: Array = _record_cells(prep_post_release["records"])
+	var prep_fresh_endpoint: Vector2i = prep_track.get_endpoint_cell()
+	var prep_fresh_position := _logical_to_viewport(view, Vector2(prep_fresh_endpoint) * config.grid_cell_size_units + Vector2(config.grid_cell_size_units * 0.5, config.grid_cell_size_units * 0.5))
+	var prep_fresh_next := prep_fresh_endpoint + Vector2i(1, 0)
+	var prep_fresh_next_position := _logical_to_viewport(view, Vector2(prep_fresh_next) * config.grid_cell_size_units + Vector2(config.grid_cell_size_units * 0.5, config.grid_cell_size_units * 0.5))
+	await _deliver(_button(prep_fresh_position, MOUSE_BUTTON_LEFT, true))
+	await _deliver(_motion(prep_fresh_next_position, MOUSE_BUTTON_MASK_LEFT))
+	var prep_fresh_frame: TrackInputFrameScript = await _consume_view(shell, prep_track)
+	var prep_fresh_state := _track_facts(prep_track)
+	var prep_fresh_cells: Array = _record_cells(prep_fresh_state["records"])
+	var prep_fresh_started: bool = prep_fresh_frame.left_pressed and prep_track.is_left_capture_active() \
+		and prep_track.is_runtime_gesture_active() \
+		and prep_fresh_state["records"].size() == prep_post_release["records"].size() + 1 \
+		and prep_fresh_cells == prep_fresh_baseline_cells + [prep_fresh_next] \
+		and prep_fresh_state["endpoint"] == prep_fresh_next
+	_assert_true(prep_fresh_started, "Preparation release and fresh press create a concrete new candidate")
+	await _release_view(shell, prep_fresh_next_position)
+	await _consume_view(shell, prep_track)
 
 	var horizontal_track = TrackSystemScript.new(config)
 	await _deliver(_button(departure, MOUSE_BUTTON_LEFT, true))
