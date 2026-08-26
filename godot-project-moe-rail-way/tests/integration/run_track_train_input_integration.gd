@@ -3,6 +3,7 @@ extends SceneTree
 const SHELL_SCENE_PATH := "res://src/presentation/session/session_shell.tscn"
 const SessionSnapshotScript = preload("res://src/domain/session/session_snapshot.gd")
 const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
+const TrackCellRecordScript = preload("res://src/domain/track/track_cell_record.gd")
 const TrackGeometryPieceScript = preload("res://src/domain/track/track_geometry_piece.gd")
 const TrackSystemScript = preload("res://src/domain/track/track_system.gd")
 const UILayoutProfileScript = preload("res://src/presentation/layout/ui_layout_profile.gd")
@@ -69,6 +70,19 @@ func _release(shell, track, position: Vector2) -> void:
 	await _consume(shell, track)
 
 
+func _endpoint_snapshot(
+	records: Array[TrackCellRecordScript] = [],
+	eligible := true,
+	gesture_active := false,
+	state: int = 1
+) -> SessionSnapshotScript:
+	return SessionSnapshotScript.new(
+		1, 0, 1, 60, true, state, records, [], [], 0.0, 0, 0, Vector2.ZERO,
+		0, 0, 0.0, false, 0.0, Vector2.ZERO, Vector2.RIGHT, 0.0, false,
+		&"integration", Vector2i(-1, -1), eligible, gesture_active
+	)
+
+
 func _run() -> void:
 	var packed = load(SHELL_SCENE_PATH) as PackedScene
 	_assert_true(packed != null, "Session shell scene loads")
@@ -89,6 +103,58 @@ func _run() -> void:
 	await process_frame
 	var view = shell.get_track_field_view()
 	var departure := _logical_to_viewport(view, Vector2(100.0, 100.0))
+
+	view.present(_endpoint_snapshot([], true, false))
+	await _deliver(_motion(departure))
+	var endpoint_observation: Dictionary = view.get_render_observation()
+	_assert_true(
+		endpoint_observation.get("hover_extend_cell", Vector2i(-1, -1)) == Vector2i(2, 2),
+		"Endpoint reshape integration assertion failed endpoint green"
+	)
+	if endpoint_observation.get("hover_extend_cell", Vector2i(-1, -1)) == Vector2i(2, 2):
+		print("PASS: Endpoint reshape integration running endpoint green")
+
+	var overlap_record := TrackCellRecordScript.new(1, Vector2i(2, 2), 0.0)
+	overlap_record.state = TrackCellRecordScript.State.RESERVED_GHOST
+	view.present(_endpoint_snapshot([overlap_record], true, false))
+	await _deliver(_motion(departure))
+	var overlap_observation: Dictionary = view.get_render_observation()
+	_assert_true(
+		overlap_observation.get("hover_extend_cell", Vector2i(-1, -1)) == Vector2i(2, 2)
+			and overlap_observation.get("hover_cancel_cell", Vector2i(-1, -1)) == Vector2i(2, 2),
+		"Endpoint reshape integration assertion failed overlap endpoint green"
+	)
+	if (
+		overlap_observation.get("hover_extend_cell", Vector2i(-1, -1)) == Vector2i(2, 2)
+		and overlap_observation.get("hover_cancel_cell", Vector2i(-1, -1)) == Vector2i(2, 2)
+	):
+		print("PASS: Endpoint reshape integration overlap endpoint green")
+
+	view.present(_endpoint_snapshot([], true, true))
+	await _deliver(_button(departure, MOUSE_BUTTON_LEFT, true))
+	await _deliver(_motion(_logical_to_viewport(view, Vector2(140.0, 100.0)), MOUSE_BUTTON_MASK_LEFT))
+	await _consume(shell, TrackSystemScript.new(config))
+	view.present(_endpoint_snapshot([], true, false))
+	var abort_cleared: bool = not view._left_capture_active and view._crossed_cells.is_empty()
+	_assert_true(abort_cleared, "Endpoint reshape integration assertion failed abort clears capture")
+	if abort_cleared:
+		print("PASS: Endpoint reshape integration abort clears capture")
+	await _deliver(_button(departure, MOUSE_BUTTON_LEFT, false))
+	await _consume(shell, TrackSystemScript.new(config))
+
+	view.present(_endpoint_snapshot([], true, true))
+	await _deliver(_button(departure, MOUSE_BUTTON_LEFT, true))
+	await _deliver(_motion(_logical_to_viewport(view, Vector2(140.0, 100.0)), MOUSE_BUTTON_MASK_LEFT))
+	await _consume(shell, TrackSystemScript.new(config))
+	view.present(_endpoint_snapshot([], true, false))
+	await _deliver(_motion(_logical_to_viewport(view, Vector2(180.0, 100.0)), MOUSE_BUTTON_MASK_LEFT))
+	var frozen_frame = await _consume(shell, TrackSystemScript.new(config))
+	var train_frozen: bool = frozen_frame.crossed_cells.is_empty()
+	_assert_true(train_frozen, "Endpoint reshape integration assertion failed train preparation freezes overlap")
+	if train_frozen:
+		print("PASS: Endpoint reshape integration train preparation freezes overlap")
+	await _deliver(_button(departure, MOUSE_BUTTON_LEFT, false))
+	await _consume(shell, TrackSystemScript.new(config))
 
 	var horizontal_track = TrackSystemScript.new(config)
 	await _deliver(_button(departure, MOUSE_BUTTON_LEFT, true))
@@ -128,8 +194,10 @@ func _run() -> void:
 	await _deliver(_motion(_logical_to_viewport(view, Vector2(220.0, 180.0)), MOUSE_BUTTON_MASK_LEFT))
 	var reflow_frame = await _consume(shell, reflow_track)
 	_assert_equal(reflow_frame.crossed_cells, [Vector2i(5, 3), Vector2i(5, 4)], "Second frame emits only cells not consumed by the first frame")
+	await _release(shell, reflow_track, _logical_to_viewport(view, Vector2(220.0, 180.0)))
 	_assert_equal(reflow_track.advance_construction(5.0), 5.0, "Head completes without geometry locking")
 	_assert_equal(reflow_track.get_geometry_pieces()[0].kind, TrackGeometryPieceScript.Kind.CURVE_3X3, "Completed head reflows as curve")
+	await _deliver(_button(_logical_to_viewport(view, Vector2(220.0, 180.0)), MOUSE_BUTTON_LEFT, true))
 	await _deliver(_motion(_logical_to_viewport(view, Vector2(220.0, 220.0)), MOUSE_BUTTON_MASK_LEFT))
 	var support_frame = await _consume(shell, reflow_track)
 	_assert_equal(support_frame.crossed_cells, [Vector2i(5, 5)], "Third frame appends G as exit support along F's direction")
@@ -139,8 +207,8 @@ func _run() -> void:
 	_assert_true(not reflow_track._left_capture_active, "Releasing G clears left capture before the support right-click")
 	await _deliver(_button(g_viewport_position, MOUSE_BUTTON_RIGHT, true))
 	await _consume(shell, reflow_track)
-	_assert_equal(reflow_track.get_cell_records().size(), support_count, "Right-clicking exit support is a no-op")
-	_assert_equal(reflow_track.get_endpoint_cell(), Vector2i(5, 5), "Exit support remains endpoint")
+	_assert_equal(reflow_track.get_cell_records().size(), support_count, "Rejected extension leaves the completed curve unchanged")
+	_assert_equal(reflow_track.get_endpoint_cell(), Vector2i(5, 4), "Canceled suffix restores the completed curve endpoint")
 
 	await _deliver(_button(_logical_to_viewport(view, Vector2(180.0, 100.0)), MOUSE_BUTTON_RIGHT, true))
 	var canceled = await _consume(shell, horizontal_track)

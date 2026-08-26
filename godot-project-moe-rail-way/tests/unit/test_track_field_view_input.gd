@@ -22,6 +22,15 @@ func run() -> PackedStringArray:
 	_test_ordinary_provisional_ghost_keeps_cancel_hover()
 	_test_locked_non_support_ghost_has_no_cancel_hover()
 	_test_exit_support_ghost_has_no_cancel_hover()
+	_test_endpoint_reshape_consume_frame_carries_current_pointer_facts()
+	_test_endpoint_reshape_actionable_endpoint_is_green()
+	_test_endpoint_reshape_green_over_gold_retains_cancellation()
+	_test_endpoint_reshape_outside_completion_and_inactive_clear_hover()
+	_test_endpoint_reshape_snapshot_termination_clears_view_capture_and_buffer()
+	_test_endpoint_reshape_no_green_negatives()
+	_test_endpoint_reshape_locked_extendable_endpoint_is_green()
+	_test_endpoint_reshape_no_operation_endpoint_is_not_green()
+	_test_endpoint_reshape_whole_suffix_dependency_is_negative()
 	return finish()
 
 
@@ -132,11 +141,153 @@ func _view_straight_piece(route_serial: int, cell: Vector2i) -> TrackGeometryPie
 	return piece
 
 
-func _view_snapshot(records: Array[TrackCellRecordScript], pieces: Array[TrackGeometryPieceScript]) -> SessionSnapshotScript:
+func _view_snapshot(
+	records: Array[TrackCellRecordScript],
+	pieces: Array[TrackGeometryPieceScript],
+	state: int = SessionControllerScript.State.PREPARING_DEPARTURE,
+	endpoint_eligible := false,
+	gesture_active := false
+) -> SessionSnapshotScript:
 	return SessionSnapshotScript.new(
-		1, 0, 1, 60, true, SessionControllerScript.State.PREPARING_DEPARTURE,
-		records, pieces
+		1, 0, 1, 60, true, state,
+		records, pieces, [], 0.0, 0, 0, Vector2.ZERO, 0, 0, 0.0,
+		false, 0.0, Vector2.ZERO, Vector2.RIGHT, 0.0, false, &"view",
+		Vector2i(-1, -1), endpoint_eligible, gesture_active
 	)
+
+
+func _endpoint_record(cell: Vector2i, state: int = TrackCellRecordScript.State.BUILT) -> TrackCellRecordScript:
+	var record := TrackCellRecordScript.new(1, cell, 0.0)
+	record.state = state
+	return record
+
+
+func _present_endpoint(view, records: Array[TrackCellRecordScript], pieces: Array[TrackGeometryPieceScript], eligible := true, active := false) -> void:
+	view.present(_view_snapshot(records, pieces, SessionControllerScript.State.PREPARING_DEPARTURE, eligible, active))
+
+
+func _test_endpoint_reshape_consume_frame_carries_current_pointer_facts() -> void:
+	print("Endpoint reshape: consume frame carries current pointer facts")
+	var fixture := _fixture()
+	var endpoint := _local_for_logical(fixture.view, Vector2(20.0, 20.0))
+	_deliver(fixture.view, _motion(endpoint))
+	var frame = fixture.view.consume_input_frame()
+	assert_equal(frame.current_pointer_cell, Vector2i(0, 0), "Consumed frame carries the latest pointer cell")
+	assert_true(frame.current_pointer_inside_grid, "Consumed frame carries the latest inside-grid fact")
+	fixture.parent.free()
+
+
+func _test_endpoint_reshape_actionable_endpoint_is_green() -> void:
+	print("Endpoint reshape: actionable endpoint is green")
+	var fixture := _fixture()
+	var record := _endpoint_record(Vector2i(2, 2))
+	_present_endpoint(fixture.view, [record], [], true)
+	_deliver(fixture.view, _motion(_local_for_logical(fixture.view, Vector2(100.0, 100.0))))
+	assert_equal(
+		fixture.view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)),
+		Vector2i(2, 2),
+		"Actionable presented endpoint publishes green hover"
+	)
+	fixture.parent.free()
+
+
+func _test_endpoint_reshape_green_over_gold_retains_cancellation() -> void:
+	print("Endpoint reshape: green over gold retains cancellation")
+	var fixture := _fixture()
+	var ghost := _endpoint_record(Vector2i(2, 2), TrackCellRecordScript.State.RESERVED_GHOST)
+	_present_endpoint(fixture.view, [ghost], [_view_straight_piece(1, ghost.cell)], true)
+	_deliver(fixture.view, _motion(_local_for_logical(fixture.view, Vector2(100.0, 100.0))))
+	var observation: Dictionary = fixture.view.get_render_observation()
+	assert_equal(observation.get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(2, 2), "Endpoint remains green when it is actionable")
+	assert_equal(observation.get("hover_cancel_cell", Vector2i(-1, -1)), Vector2i(2, 2), "Endpoint retains gold cancellation eligibility")
+	fixture.parent.free()
+
+
+func _test_endpoint_reshape_outside_completion_and_inactive_clear_hover() -> void:
+	print("Endpoint reshape: outside, completion, and inactive clear hover")
+	var fixture := _fixture()
+	var record := _endpoint_record(Vector2i(2, 2))
+	_present_endpoint(fixture.view, [record], [], true)
+	_deliver(fixture.view, _motion(_local_for_logical(fixture.view, Vector2(100.0, 100.0))))
+	_deliver(fixture.view, _motion(Vector2(-20.0, -20.0)))
+	var outside: Dictionary = fixture.view.get_render_observation()
+	assert_equal(outside.get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Outside pointer clears green hover")
+	assert_equal(outside.get("hover_cancel_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Outside pointer clears gold hover")
+	_present_endpoint(fixture.view, [record], [], true)
+	_deliver(fixture.view, _motion(_local_for_logical(fixture.view, Vector2(100.0, 100.0))))
+	fixture.view.present(_view_snapshot([record], [], SessionControllerScript.State.COMPLETED, true, false))
+	var completed: Dictionary = fixture.view.get_render_observation()
+	assert_equal(completed.get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Completion clears green hover")
+	assert_equal(completed.get("hover_cancel_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Completion clears gold hover")
+	fixture.parent.free()
+
+
+func _test_endpoint_reshape_snapshot_termination_clears_view_capture_and_buffer() -> void:
+	print("Endpoint reshape: snapshot termination clears view capture and buffer")
+	var fixture := _fixture()
+	var view = fixture.view
+	var endpoint := _local_for_logical(view, Vector2(20.0, 20.0))
+	_present_endpoint(view, [], [], true, true)
+	_deliver(view, _button(endpoint, MOUSE_BUTTON_LEFT, true))
+	_deliver(view, _motion(_local_for_logical(view, Vector2(100.0, 20.0))))
+	view.consume_input_frame()
+	assert_true(view._left_capture_active, "View capture is active before snapshot termination")
+	_present_endpoint(view, [], [], true, false)
+	assert_false(view._left_capture_active, "Snapshot termination clears view capture")
+	assert_equal(view._crossed_cells, [], "Snapshot termination clears crossed cells")
+	assert_false(view._left_pressed_pending, "Snapshot termination clears pending press")
+	assert_false(view._left_released_pending, "Snapshot termination clears pending release")
+	_deliver(view, _motion(_local_for_logical(view, Vector2(140.0, 20.0))))
+	assert_equal(view.consume_input_frame().crossed_cells, [], "Held motion remains ignored after termination")
+	_deliver(view, _button(_local_for_logical(view, Vector2(140.0, 20.0)), MOUSE_BUTTON_LEFT, false))
+	view.consume_input_frame()
+	assert_false(view._left_held, "Physical release clears the held state")
+	fixture.parent.free()
+
+
+func _test_endpoint_reshape_no_green_negatives() -> void:
+	print("Endpoint reshape: no-green negatives")
+	var fixture := _fixture()
+	var endpoint := _endpoint_record(Vector2i(2, 2))
+	_present_endpoint(fixture.view, [endpoint], [], false)
+	_deliver(fixture.view, _motion(_local_for_logical(fixture.view, Vector2(100.0, 100.0))))
+	assert_equal(fixture.view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Ineligible endpoint is not green")
+	_deliver(fixture.view, _motion(_local_for_logical(fixture.view, Vector2(140.0, 100.0))))
+	assert_equal(fixture.view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Arbitrary nonendpoint is not green")
+	fixture.parent.free()
+
+
+func _test_endpoint_reshape_locked_extendable_endpoint_is_green() -> void:
+	print("Endpoint reshape: locked extendable endpoint is green")
+	var fixture := _fixture()
+	var endpoint := _endpoint_record(Vector2i(2, 2))
+	endpoint.geometry_locked = true
+	var piece := _view_straight_piece(1, endpoint.cell)
+	piece.locked = true
+	_present_endpoint(fixture.view, [endpoint], [piece], true)
+	_deliver(fixture.view, _motion(_local_for_logical(fixture.view, Vector2(100.0, 100.0))))
+	assert_equal(fixture.view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(2, 2), "Locked endpoint with detached extension eligibility is green")
+	fixture.parent.free()
+
+
+func _test_endpoint_reshape_no_operation_endpoint_is_not_green() -> void:
+	print("Endpoint reshape: no-operation endpoint is not green")
+	var fixture := _fixture()
+	var endpoint := _endpoint_record(Vector2i(2, 2))
+	_present_endpoint(fixture.view, [endpoint], [], false)
+	_deliver(fixture.view, _motion(_local_for_logical(fixture.view, Vector2(100.0, 100.0))))
+	assert_equal(fixture.view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "No-operation endpoint is not green")
+	fixture.parent.free()
+
+
+func _test_endpoint_reshape_whole_suffix_dependency_is_negative() -> void:
+	print("Endpoint reshape: whole suffix dependency is negative")
+	var fixture := _fixture()
+	var endpoint := _endpoint_record(Vector2i(2, 2), TrackCellRecordScript.State.RESERVED_GHOST)
+	_present_endpoint(fixture.view, [endpoint], [], false)
+	_deliver(fixture.view, _motion(_local_for_logical(fixture.view, Vector2(100.0, 100.0))))
+	assert_equal(fixture.view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Whole-suffix dependency does not publish green")
+	fixture.parent.free()
 
 
 func _built_runtime_straight_head() -> GridTrackRuntimeScript:
