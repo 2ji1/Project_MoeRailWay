@@ -97,6 +97,86 @@ func _track_snapshot(track, state: int = SessionControllerScript.State.PREPARING
 	)
 
 
+func _record_facts(records: Array) -> Array:
+	var facts: Array = []
+	for record in records:
+		facts.append({
+			"serial": record.route_serial,
+			"cell": record.cell,
+			"distance": record.route_distance_start_cells,
+			"state": record.state,
+			"progress": record.build_progress,
+			"group": record.geometry_group_id,
+			"locked": record.geometry_locked,
+		})
+	return facts
+
+
+func _record_content_facts(records: Array) -> Array:
+	var facts := _record_facts(records)
+	for fact in facts:
+		fact.erase("group")
+		fact.erase("locked")
+	return facts
+
+
+func _piece_facts(pieces: Array, include_lock_metadata := true) -> Array:
+	var facts: Array = []
+	for piece in pieces:
+		var fact := {
+			"first_serial": piece.first_route_serial,
+			"last_serial": piece.last_route_serial,
+			"group": piece.group_id,
+			"kind": piece.kind,
+			"distance": piece.absolute_start_distance_cells,
+			"length": piece.nominal_length_cells,
+			"footprint": Array(piece.footprint_cells),
+			"centerline": Array(piece.centerline),
+			"active_start": piece.active_local_start_cells,
+			"active_end": piece.active_local_end_cells,
+		}
+		if include_lock_metadata:
+			fact["locked"] = piece.locked
+			fact["exit_support"] = piece.exit_support_route_serial
+		facts.append(fact)
+	return facts
+
+
+func _track_facts(track) -> Dictionary:
+	return {
+		"records": _record_facts(track.get_cell_records()),
+		"pieces": _piece_facts(track.get_geometry_pieces()),
+		"available": track.get_available_track_cells(),
+		"endpoint": track.get_endpoint_cell(),
+	}
+
+
+func _track_geometry_facts(track) -> Array:
+	var facts := _piece_facts(track.get_geometry_pieces(), false)
+	for fact in facts:
+		fact.erase("group")
+	return facts
+
+
+func _assert_view_termination_clean(view, prefix: String) -> void:
+	_assert_true(not view._left_capture_active, "%s clears view capture" % prefix)
+	_assert_equal(view._crossed_cells, [], "%s clears crossed cells" % prefix)
+	_assert_true(not view._left_pressed_pending, "%s clears pending left press" % prefix)
+	_assert_true(not view._left_released_pending, "%s clears pending left release" % prefix)
+	_assert_true(not view._right_pressed_pending, "%s clears pending right press" % prefix)
+	_assert_equal(view._left_press_cell, Vector2i(-1, -1), "%s clears left press cell" % prefix)
+	_assert_equal(view._right_press_cell, Vector2i(-1, -1), "%s clears right press cell" % prefix)
+	_assert_true(not view._left_press_inside_grid, "%s clears left press inside fact" % prefix)
+	_assert_true(not view._right_press_inside_grid, "%s clears right press inside fact" % prefix)
+	_assert_equal(view._previous_pointer_cell, Vector2i(-1, -1), "%s clears previous pointer" % prefix)
+	_assert_true(not view._release_clears_capture, "%s clears release capture state" % prefix)
+
+
+func _train_cell(config: SessionStartConfigScript, position: Vector2) -> Vector2i:
+	var cell_size := config.grid_cell_size_units
+	return Vector2i(floor((position - config.grid_origin_units) / Vector2(cell_size, cell_size)))
+
+
 func _run() -> void:
 	var packed = load(SHELL_SCENE_PATH) as PackedScene
 	_assert_true(packed != null, "Session shell scene loads")
@@ -136,8 +216,11 @@ func _run() -> void:
 	view.present(running_snapshot)
 	await _deliver(_motion(_logical_to_viewport(view, Vector2(220.0, 100.0))))
 	var endpoint_observation: Dictionary = view.get_render_observation()
+	var running_train_cell := _train_cell(config, running_snapshot.get_train_position())
+	var running_endpoint := running_track.get_endpoint_cell()
 	var running_green: bool = running_snapshot.get_state() == SessionControllerScript.State.RUNNING \
 		and running_snapshot.is_train_active() \
+		and running_train_cell != running_endpoint \
 		and endpoint_observation.get("hover_extend_cell", Vector2i(-1, -1)) == Vector2i(5, 2)
 	_assert_true(running_green, "Endpoint reshape integration assertion failed endpoint green")
 	if running_green:
@@ -177,21 +260,27 @@ func _run() -> void:
 	for _tick in range(20):
 		abort_controller.advance_tick()
 	view.present(abort_controller.get_snapshot())
+	var abort_origin := _track_facts(abort_track)
+	var abort_origin_endpoint := abort_track.get_endpoint_cell()
 	await _deliver(_button(_logical_to_viewport(view, Vector2(220.0, 100.0)), MOUSE_BUTTON_LEFT, true))
 	await _deliver(_motion(_logical_to_viewport(view, Vector2(260.0, 100.0)), MOUSE_BUTTON_MASK_LEFT))
-	var abort_origin_endpoint := abort_track.get_endpoint_cell()
 	var abort_frame = await _consume_view(shell)
 	abort_track.apply_left_input(abort_frame)
 	var abort_active_before: bool = abort_track.is_runtime_gesture_active()
+	var abort_candidate := _track_facts(abort_track)
+	var abort_candidate_changed: bool = abort_candidate != abort_origin
 	view.present(_track_snapshot(abort_track, abort_controller.get_state()))
 	await _deliver(_button(_logical_to_viewport(view, Vector2(220.0, 100.0)), MOUSE_BUTTON_RIGHT, true))
 	var abort_right: TrackInputFrameScript = await _consume_view(shell)
 	abort_track.apply_right_input(abort_right)
-	var abort_snapshot: SessionSnapshotScript = abort_controller.get_snapshot()
 	view.present(_track_snapshot(abort_track, abort_controller.get_state()))
-	var abort_cleared: bool = abort_active_before and not abort_track.is_runtime_gesture_active() \
+	_assert_view_termination_clean(view, "Abort")
+	var abort_restored: bool = _track_facts(abort_track) == abort_origin
+	var abort_cleared: bool = abort_active_before and abort_candidate_changed \
+		and abort_restored and not abort_track.is_runtime_gesture_active() \
 		and abort_track.get_endpoint_cell() == abort_origin_endpoint and not view._left_capture_active \
-		and view._crossed_cells.is_empty()
+		and view._crossed_cells.is_empty() and not view._left_pressed_pending \
+		and not view._left_released_pending and not view._right_pressed_pending
 	_assert_true(abort_cleared, "Endpoint reshape integration assertion failed abort clears capture")
 	if abort_cleared:
 		print("PASS: Endpoint reshape integration abort clears capture")
@@ -212,19 +301,32 @@ func _run() -> void:
 	for _tick in range(20):
 		prep_controller.advance_tick()
 	view.present(prep_controller.get_snapshot())
+	var prep_origin := _track_facts(prep_track)
 	await _deliver(_button(_logical_to_viewport(view, Vector2(220.0, 100.0)), MOUSE_BUTTON_LEFT, true))
 	await _deliver(_motion(_logical_to_viewport(view, Vector2(260.0, 100.0)), MOUSE_BUTTON_MASK_LEFT))
 	var prep_frame = await _consume_view(shell)
 	prep_track.apply_left_input(prep_frame)
 	view.present(_track_snapshot(prep_track, prep_controller.get_state()))
 	var prep_active_before: bool = prep_track.is_runtime_gesture_active()
-	var prep_endpoint_before := prep_track.get_endpoint_cell()
+	var prep_candidate := _track_facts(prep_track)
+	var prep_candidate_changed: bool = prep_candidate != prep_origin
+	var prep_candidate_records := _record_content_facts(prep_track.get_cell_records())
+	var prep_candidate_geometry := _track_geometry_facts(prep_track)
+	var prep_candidate_inventory: int = prep_track.get_available_track_cells()
+	var prep_candidate_endpoint := prep_track.get_endpoint_cell()
 	var prep_result: bool = prep_track.prepare_for_train_sampling(2.0, 4.0)
 	var prep_inactive: bool = prep_active_before and prep_result and not prep_track.is_runtime_gesture_active()
 	view.present(_track_snapshot(prep_track))
+	_assert_view_termination_clean(view, "Train preparation")
+	var prep_frozen_records := _record_content_facts(prep_track.get_cell_records())
+	var prep_frozen_geometry := _track_geometry_facts(prep_track)
 	await _deliver(_motion(_logical_to_viewport(view, Vector2(180.0, 100.0)), MOUSE_BUTTON_MASK_LEFT))
 	var frozen_frame: TrackInputFrameScript = await _consume_view(shell, prep_track)
-	var train_frozen: bool = prep_inactive and prep_track.get_endpoint_cell() == prep_endpoint_before \
+	var train_frozen: bool = prep_candidate_changed and prep_inactive \
+		and prep_frozen_records == prep_candidate_records \
+		and prep_frozen_geometry == prep_candidate_geometry \
+		and prep_track.get_available_track_cells() == prep_candidate_inventory \
+		and prep_track.get_endpoint_cell() == prep_candidate_endpoint \
 		and frozen_frame.crossed_cells.is_empty() and not view._left_capture_active
 	_assert_true(train_frozen, "Endpoint reshape integration assertion failed train preparation freezes overlap")
 	if train_frozen:
