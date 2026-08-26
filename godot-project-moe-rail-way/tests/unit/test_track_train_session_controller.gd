@@ -78,6 +78,7 @@ func _test_right_cancellation_wins_before_buffered_left_cells() -> void:
 
 
 func _test_recovery_refund_is_not_spendable_until_next_tick() -> void:
+	print("Endpoint reshape: deferred construction and recovery resume")
 	var config := _config(10.0, 2, 0, 1.0)
 	var track = TrackSystemScript.new(config)
 	var initial: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0)]
@@ -108,6 +109,7 @@ func _test_regular_expiry_wins_a_same_tick_track_end_tie() -> void:
 
 
 func _test_snapshot_recursively_detaches_grid_observations() -> void:
+	print("Endpoint reshape: train session snapshot detaches endpoint gesture facts")
 	var record = TrackCellRecordScript.new(1, Vector2i(1, 0), 0.0)
 	var piece = TrackGeometryPieceScript.new()
 	piece.group_id = 4
@@ -120,12 +122,16 @@ func _test_snapshot_recursively_detaches_grid_observations() -> void:
 	var records: Array[TrackCellRecordScript] = [record]
 	var pieces: Array[TrackGeometryPieceScript] = [piece]
 	var contacts: Array[Dictionary] = [{"anchor_id": &"d", "nested": [[Vector2i(1, 0)]]}]
+	var eligible_source := true
+	var active_source := true
 	var snapshot = SessionSnapshotScript.new(
 		10, 2, 8, 1, true, int(SessionControllerScript.State.RUNNING),
 		records, pieces, contacts, 1.0, 3, 4, Vector2(10.0, 10.0),
 		1, 1, 0.5, true, 0.5, Vector2(50.0, 30.0), Vector2.RIGHT,
-		0.5, true, &"d", Vector2i(0, 0)
+		0.5, true, &"d", Vector2i(0, 0), eligible_source, active_source
 	)
+	eligible_source = false
+	active_source = false
 	record.cell = Vector2i(9, 9)
 	piece.footprint_cells[0] = Vector2i(9, 9)
 	piece.centerline[0] = Vector2(999.0, 999.0)
@@ -147,3 +153,9 @@ func _test_snapshot_recursively_detaches_grid_observations() -> void:
 	assert_equal(snapshot.get_departure_cell(), Vector2i(0, 0), "Departure cell exposed")
 	assert_equal(snapshot.get_available_track_cells(), 3, "Integer inventory exposed")
 	assert_equal(snapshot.get_train_route_distance_cells(), 0.5, "Nominal distance exposed")
+	assert_true(snapshot.has_method("is_endpoint_gesture_eligible"), "Train snapshot exposes endpoint eligibility getter")
+	assert_true(snapshot.has_method("is_endpoint_gesture_active"), "Train snapshot exposes endpoint active getter")
+	if snapshot.has_method("is_endpoint_gesture_eligible"):
+		assert_true(snapshot.call("is_endpoint_gesture_eligible"), "Train snapshot detaches endpoint eligibility")
+	if snapshot.has_method("is_endpoint_gesture_active"):
+		assert_true(snapshot.call("is_endpoint_gesture_active"), "Train snapshot detaches endpoint active state")

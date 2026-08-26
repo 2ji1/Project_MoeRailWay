@@ -95,6 +95,10 @@ func is_runtime_gesture_active() -> bool:
 	return _runtime.gesture_is_active()
 
 
+func is_endpoint_gesture_eligible() -> bool:
+	return _runtime.gesture_has_legal_operation(_runtime.get_endpoint_cell())
+
+
 func set_contact_anchors(anchors: Array[RouteContactAnchorScript]) -> void:
 	_runtime.set_contact_anchors(anchors)
 
@@ -140,7 +144,12 @@ func get_grid_origin_units() -> Vector2:
 
 
 func prepare_for_train_sampling(current_distance: float, through_distance: float) -> bool:
-	return _runtime.prepare_for_train_sampling(current_distance, through_distance)
+	var was_active := _left_capture_active
+	var result := _runtime.prepare_for_train_sampling(current_distance, through_distance)
+	var active_after := _runtime.gesture_is_active()
+	if was_active and not active_after:
+		_left_capture_active = false
+	return result
 
 
 func get_pose_sample_at_distance(route_distance: float) -> Dictionary:

@@ -3,6 +3,21 @@ extends "res://tests/support/prototype_test.gd"
 const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
 const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
 const TrackSystemScript = preload("res://src/domain/track/track_system.gd")
+const TrackGeometryResolverScript = preload("res://src/domain/track/track_geometry_resolver.gd")
+const TrackGeometryResolutionScript = preload("res://src/domain/track/track_geometry_resolution.gd")
+
+
+class _RejectingPrepareResolver extends TrackGeometryResolverScript:
+	func resolve(
+		_departure_cell: Vector2i,
+		records: Array,
+		_locked_pieces: Array,
+		_anchors: Array,
+		_grid_origin_units: Vector2,
+		_grid_size: Vector2i,
+		_cell_size_units: float
+	) -> RefCounted:
+		return TrackGeometryResolutionScript.rejected(records[-1].route_serial, &"prepare_rejected")
 
 
 func run() -> PackedStringArray:
@@ -21,6 +36,8 @@ func run() -> PackedStringArray:
 	_test_left_release_finalizes_once()
 	_test_same_frame_press_routes_through_gesture_transaction()
 	_test_left_press_latch_requires_release_after_rejection()
+	_test_prepare_preserves_original_result_and_clears_capture()
+	_test_prepare_termination_waits_for_release()
 	_test_observation_getters_are_detached()
 	return finish()
 
@@ -363,6 +380,47 @@ func _test_left_press_latch_requires_release_after_rejection() -> void:
 	rejected.apply_left_input(_left_frame([], false, false, true, Vector2i(0, 0)))
 	rejected.apply_left_input(_left_frame([], true, true, false, Vector2i(0, 0)))
 	assert_true(rejected.is_left_capture_active(), "Release clears a rejected press latch")
+
+
+func _test_prepare_preserves_original_result_and_clears_capture() -> void:
+	print("Endpoint reshape: prepare true returns true and clears capture")
+	var successful = TrackSystemScript.new(_config())
+	successful.apply_left_input(_left_frame([Vector2i(1, 0)], true, true))
+	assert_true(successful.has_method("prepare_for_train_sampling"), "Facade exposes train preparation")
+	if not successful.has_method("prepare_for_train_sampling"):
+		return
+	var was_active := successful.is_left_capture_active()
+	var original_result := bool(successful.call("prepare_for_train_sampling", 0.0, 1.0))
+	var active_after := successful.is_runtime_gesture_active()
+	assert_true(original_result, "Successful preparation returns the runtime result unchanged")
+	assert_false(active_after, "Successful overlapping preparation ends runtime capture")
+	assert_false(successful.is_left_capture_active(), "Successful overlapping preparation clears facade capture")
+	assert_equal(successful.is_left_capture_active(), false if was_active and not active_after else was_active, "Successful capture clearing follows was_active and active_after")
+
+	print("Endpoint reshape: prepare false returns false and clears capture")
+	var failed = TrackSystemScript.new(_config())
+	failed.apply_left_input(_left_frame([Vector2i(1, 0)], true, true))
+	failed._runtime._resolver = _RejectingPrepareResolver.new()
+	was_active = failed.is_left_capture_active()
+	original_result = bool(failed.call("prepare_for_train_sampling", 0.0, 1.0))
+	active_after = failed.is_runtime_gesture_active()
+	assert_false(original_result, "Failed preparation returns the runtime result unchanged")
+	assert_false(active_after, "Failed overlapping preparation still ends runtime capture")
+	assert_false(failed.is_left_capture_active(), "Failed overlapping preparation clears facade capture")
+	assert_equal(failed.is_left_capture_active(), false if was_active and not active_after else was_active, "Failed capture clearing follows was_active and active_after")
+
+
+func _test_prepare_termination_waits_for_release() -> void:
+	print("Endpoint reshape: held motion waits for release after termination")
+	var track = TrackSystemScript.new(_config())
+	track.apply_left_input(_left_frame([Vector2i(1, 0)], true, true))
+	assert_true(track.call("prepare_for_train_sampling", 0.0, 1.0), "Overlapping preparation succeeds before held-motion check")
+	var endpoint_after_prepare := track.get_endpoint_cell()
+	track.apply_left_input(_left_frame([Vector2i(2, 0)], false, true, false, endpoint_after_prepare))
+	assert_equal(track.get_endpoint_cell(), endpoint_after_prepare, "Held motion after preparation termination is ignored")
+	track.apply_left_input(_left_frame([], false, false, true, endpoint_after_prepare))
+	track.apply_left_input(_left_frame([Vector2i(2, 0)], true, true, false, endpoint_after_prepare))
+	assert_true(track.is_left_capture_active(), "Fresh press after release starts a new capture")
 
 func _record_values(records: Array) -> Array:
 	var values: Array = []

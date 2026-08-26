@@ -2,6 +2,7 @@ extends "res://tests/support/prototype_test.gd"
 
 const SessionControllerScript = preload("res://src/domain/session/session_controller.gd")
 const SessionResultScript = preload("res://src/domain/session/session_result.gd")
+const SessionSnapshotScript = preload("res://src/domain/session/session_snapshot.gd")
 const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
 const TrackCellRecordScript = preload("res://src/domain/track/track_cell_record.gd")
 const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
@@ -35,6 +36,7 @@ func run() -> PackedStringArray:
 	_test_prepare_failure_keeps_preparing_snapshot_and_time_unchanged()
 	_test_prepare_failure_keeps_running_without_recovery_or_events()
 	_test_terminal_snapshot_pose_precedes_reason_only_result_after_full_recovery()
+	_test_snapshot_detaches_endpoint_gesture_facts()
 	return finish()
 
 
@@ -80,6 +82,7 @@ func _snapshot_values(snapshot) -> Dictionary:
 
 
 func _test_preparation_freezes_timer_and_departure_moves_same_tick() -> void:
+	print("Endpoint reshape: deferred construction and recovery resume")
 	var config = _config()
 	var fixture := _fixture(config)
 	var controller = fixture.controller
@@ -110,6 +113,7 @@ func _test_fractional_duration_rounds_up() -> void:
 
 
 func _test_terminal_snapshot_precedes_result_and_completion_is_inert() -> void:
+	print("Endpoint reshape: session tick and completion order")
 	var config = _config(1.0, 1, 0.1, 10.0)
 	var fixture := _fixture(config)
 	var controller = fixture.controller
@@ -230,3 +234,23 @@ func _test_terminal_snapshot_pose_precedes_reason_only_result_after_full_recover
 		var terminal_snapshot = terminal_snapshots[0]
 		assert_true(terminal_snapshot.get_train_position().is_equal_approx(expected_pose.position), "Pre-recovery pose retained")
 		assert_true(terminal_snapshot.get_train_heading().is_equal_approx(expected_pose.heading), "Pre-recovery heading retained")
+
+
+func _test_snapshot_detaches_endpoint_gesture_facts() -> void:
+	print("Endpoint reshape: snapshot detaches endpoint gesture facts")
+	var eligible_source := true
+	var active_source := true
+	var snapshot = SessionSnapshotScript.new(
+		10, 2, 8, 1, true, int(SessionControllerScript.State.RUNNING),
+		[], [], [], 0.0, 3, 4, Vector2.ZERO,
+		0, 1, 0.0, false, 0.0, Vector2.ZERO, Vector2.RIGHT,
+		0.0, false, &"detached", Vector2i(0, 0), eligible_source, active_source
+	)
+	eligible_source = false
+	active_source = false
+	assert_true(snapshot.has_method("is_endpoint_gesture_eligible"), "Snapshot exposes endpoint eligibility getter")
+	assert_true(snapshot.has_method("is_endpoint_gesture_active"), "Snapshot exposes endpoint active getter")
+	if snapshot.has_method("is_endpoint_gesture_eligible"):
+		assert_true(snapshot.call("is_endpoint_gesture_eligible"), "Snapshot detaches endpoint eligibility")
+	if snapshot.has_method("is_endpoint_gesture_active"):
+		assert_true(snapshot.call("is_endpoint_gesture_active"), "Snapshot detaches endpoint active state")

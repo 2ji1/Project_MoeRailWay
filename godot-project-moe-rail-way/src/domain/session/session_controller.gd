@@ -198,5 +198,7 @@ func _create_snapshot() -> SessionSnapshotScript:
 		estimated_track_end_seconds,
 		warning_urgent,
 		_start_config.departure_candidate_id,
-		_start_config.departure_cell
+		_start_config.departure_cell,
+		_track_system.is_endpoint_gesture_eligible(),
+		_track_system.is_runtime_gesture_active()
 	)

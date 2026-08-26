@@ -464,6 +464,8 @@ func get_grid_origin_units() -> Vector2:
 func prepare_for_train_sampling(current_distance: float, through_distance: float) -> bool:
     if _pieces.is_empty():
         return false
+    if _train_sampling_intersects_active_gesture(current_distance, through_distance):
+        _clear_gesture_state()
     var current = _canonical_distance_and_owner(current_distance)
     var through = _canonical_distance_and_owner(through_distance)
     var current_owner = current.piece
@@ -522,6 +524,51 @@ func prepare_for_train_sampling(current_distance: float, through_distance: float
     _commit_candidate(candidate_sequence, candidate_ledger, resolution)
     _refresh_contact_observations()
     return true
+
+
+func _train_sampling_intersects_active_gesture(
+    current_distance: float,
+    through_distance: float
+) -> bool:
+    if not _gesture_active or _gesture_origin_sequence == null or through_distance < current_distance:
+        return false
+    var active_serials: Dictionary = {}
+    if not _gesture_editable_span.is_empty():
+        var first_serial: int = _gesture_editable_span["first_route_serial"]
+        var last_serial: int = _gesture_editable_span["last_route_serial"]
+        for serial in range(first_serial, last_serial + 1):
+            active_serials[serial] = true
+    for fact in _gesture_suffix_input_facts:
+        active_serials[int(fact["serial"])] = true
+    for fact in _gesture_ordinary_input_facts:
+        active_serials[int(fact["serial"])] = true
+    if active_serials.is_empty():
+        return false
+    var current_owner = _canonical_distance_and_owner(current_distance).piece
+    var through_owner = _canonical_distance_and_owner(through_distance).piece
+    if _piece_owns_any_active_serial(current_owner, active_serials):
+        return true
+    if _piece_owns_any_active_serial(through_owner, active_serials):
+        return true
+    for piece in _pieces:
+        if not _piece_owns_any_active_serial(piece, active_serials):
+            continue
+        var piece_start: float = piece.absolute_start_distance_cells
+        var piece_end := piece_start + float(piece.nominal_length_cells)
+        var interval_start := maxf(current_distance, piece_start)
+        var interval_end := minf(through_distance, piece_end)
+        if interval_end - interval_start > NOMINAL_BOUNDARY_EPSILON:
+            return true
+    return false
+
+
+func _piece_owns_any_active_serial(piece, active_serials: Dictionary) -> bool:
+    if piece == null:
+        return false
+    for serial in active_serials:
+        if piece.contains_serial(int(serial)):
+            return true
+    return false
 
 
 func get_pose_sample_at_distance(route_distance: float) -> Dictionary:

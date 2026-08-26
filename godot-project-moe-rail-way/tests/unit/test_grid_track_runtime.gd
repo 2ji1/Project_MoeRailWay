@@ -40,6 +40,9 @@ func run() -> PackedStringArray:
 	_test_endpoint_reshape_abort_restores_exact_origin()
 	_test_endpoint_reshape_locked_and_prepared_geometry_reject_mutation()
 	_test_endpoint_reshape_locked_boundary_rejects_template_mutation()
+	_test_endpoint_reshape_replacement_overlap_terminates_last_valid()
+	_test_endpoint_reshape_extension_overlap_terminates_last_valid()
+	_test_endpoint_reshape_nonoverlap_remains_active()
 	_test_ordered_append_growth_and_transactional_rollback()
 	_test_built_head_reflows_without_geometry_lock()
 	_test_construction_excess_and_group_assignment()
@@ -1528,6 +1531,64 @@ func _test_endpoint_reshape_locked_boundary_rejects_template_mutation() -> void:
 	assert_equal(track.get_contact_observations(), contacts_before, "Locked boundary preserves contact observations")
 	assert_equal(_anchor_values(track._anchors), anchors_before, "Locked boundary preserves anchors")
 	track.call("gesture_abort")
+
+
+func _test_endpoint_reshape_replacement_overlap_terminates_last_valid() -> void:
+	print("Endpoint reshape: replacement overlap terminates last valid")
+	var track = _make_three_by_three_curve_runtime()
+	assert_true(track.has_method("gesture_begin"), "Replacement overlap exposes gesture begin")
+	if not track.has_method("gesture_begin"):
+		return
+	var origin = track.call("gesture_begin", track.get_endpoint_cell())
+	assert_true(origin is Dictionary and not origin.is_empty(), "Replacement overlap starts a gesture")
+	if not origin is Dictionary or origin.is_empty():
+		return
+	var target: Vector2i = origin["targets"]["straight"]
+	assert_true(track.has_method("gesture_update"), "Replacement overlap exposes gesture update")
+	if not track.has_method("gesture_update"):
+		return
+	var target_cells: Array[Vector2i] = [target]
+	assert_true(track.call("gesture_update", target_cells), "Replacement overlap publishes a candidate")
+	var candidate_records := _record_values(track.get_cell_records())
+	assert_true(track.has_method("prepare_for_train_sampling"), "Replacement overlap exposes preparation")
+	if not track.has_method("prepare_for_train_sampling"):
+		return
+	assert_true(track.call("prepare_for_train_sampling", 0.0, 1.0), "Replacement overlap preparation succeeds")
+	assert_false(track.call("gesture_is_active"), "Replacement overlap terminates before locking")
+	assert_equal(_record_values(track.get_cell_records())[0].cell, candidate_records[0].cell, "Replacement overlap keeps the last valid candidate")
+	assert_true(track.get_geometry_pieces()[0].locked, "Replacement overlap locks only after preserving the candidate")
+
+
+func _test_endpoint_reshape_extension_overlap_terminates_last_valid() -> void:
+	print("Endpoint reshape: extension overlap terminates last valid")
+	var track = _make_three_by_three_curve_runtime()
+	var origin = track.call("gesture_begin", track.get_endpoint_cell())
+	assert_true(origin is Dictionary and not origin.is_empty(), "Extension overlap starts a gesture")
+	if not origin is Dictionary or origin.is_empty():
+		return
+	var target: Vector2i = origin["targets"]["straight"]
+	var extension := Vector2i(target.x, target.y + 1)
+	var extension_cells: Array[Vector2i] = [target, extension]
+	assert_true(track.call("gesture_update", extension_cells), "Extension overlap publishes a suffix candidate")
+	var candidate_records := _record_values(track.get_cell_records())
+	assert_true(track.call("prepare_for_train_sampling", 5.0, 5.5), "Extension overlap preparation succeeds")
+	assert_false(track.call("gesture_is_active"), "Extension overlap terminates before locking")
+	assert_equal(_record_values(track.get_cell_records())[-1].cell, candidate_records[-1].cell, "Extension overlap keeps the last valid candidate")
+
+
+func _test_endpoint_reshape_nonoverlap_remains_active() -> void:
+	print("Endpoint reshape: nonoverlap remains active")
+	var track = _boundary_runtime()
+	assert_true(track.call("prepare_for_train_sampling", 0.0, 1.0), "Nonoverlap fixture locks a fixed prefix")
+	var origin = track.call("gesture_begin", track.get_endpoint_cell())
+	assert_true(origin is Dictionary and not origin.is_empty(), "Nonoverlap starts a gesture")
+	if not origin is Dictionary or origin.is_empty():
+		return
+	var was_active := bool(track.call("gesture_is_active"))
+	var result := bool(track.call("prepare_for_train_sampling", 0.0, 0.5))
+	assert_true(result, "Nonoverlap preparation succeeds")
+	assert_true(was_active, "Nonoverlap began active")
+	assert_true(track.call("gesture_is_active"), "Nonoverlap keeps the gesture active")
 
 
 func _test_ordered_append_growth_and_transactional_rollback() -> void:
