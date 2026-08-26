@@ -23,7 +23,7 @@ func run() -> PackedStringArray:
 	_test_endpoint_reshape_target_reentry_rebuilds_from_origin()
 	_test_endpoint_reshape_invalid_bounds_preserve_last_valid()
 	_test_endpoint_reshape_invalid_overlap_preserve_last_valid()
-	_test_endpoint_reshape_invalid_anchor_preserve_last_valid()
+	_test_endpoint_reshape_anchor_compatible_downgrade_preserves_observations()
 	_test_endpoint_reshape_duplicate_preserves_last_valid()
 	_test_endpoint_reshape_insufficient_inventory_preserves_last_valid()
 	_test_endpoint_reshape_empty_departure_and_straight_accept_ordinary_extension()
@@ -650,7 +650,7 @@ func _test_endpoint_reshape_invalid_overlap_preserve_last_valid() -> void:
 	track.call("gesture_finalize")
 
 
-func _test_endpoint_reshape_invalid_anchor_preserve_last_valid() -> void:
+func _test_endpoint_reshape_anchor_compatible_downgrade_preserves_observations() -> void:
 	var track = GridTrackRuntimeScript.new(
 		Vector2i(-1, 2), 18, Vector2.ZERO, Vector2i(8, 8), 40.0
 	)
@@ -659,21 +659,21 @@ func _test_endpoint_reshape_invalid_anchor_preserve_last_valid() -> void:
 		Vector2i(3, 2), Vector2i(3, 1), Vector2i(3, 0),
 	]), 6, "Anchor fixture appends")
 	track.set_contact_anchors([
-		RouteContactAnchorScript.new(&"reshape_anchor", Vector2i(3, 5)),
+		RouteContactAnchorScript.new(&"reshape_anchor", Vector2i(2, 4)),
 	])
+	var origin_records := _record_values(track.get_cell_records())
+	var origin_pieces := _piece_values(track.get_geometry_pieces())
+	var origin_inventory: int = track.get_available_track_cells()
+	var origin_ledger := _piece_values(track._locked_ledger)
+	var origin_recovery := _recovery_observation_values(track)
+	var origin_contacts := track.get_contact_observations().duplicate(true)
 	var began = track.call("gesture_begin", track.get_endpoint_cell())
 	assert_true(began is Dictionary, "Anchor fixture begins a gesture")
 	if not began is Dictionary:
 		return
 	var targets: Dictionary = began["targets"]
-	var valid_cells: Array[Vector2i] = [targets["left"], Vector2i(4, 4)]
-	assert_true(track.call("gesture_update", valid_cells), "Anchor fixture publishes a valid candidate")
-	var records_before := _record_values(track.get_cell_records())
-	var pieces_before := _piece_values(track.get_geometry_pieces())
-	var inventory_before: int = track.get_available_track_cells()
-	var ledger_before := _piece_values(track._locked_ledger)
-	var contacts_before := track.get_contact_observations().duplicate(true)
-	print("Endpoint reshape: invalid anchor preserve last valid")
+	var origin_observation: Dictionary = track.call("get_gesture_origin_observation")
+	print("Endpoint reshape: anchor-compatible downgrade preserves observations")
 	assert_true(track.has_method("gesture_update"), "Gesture update anchor contract exists")
 	if not track.has_method("gesture_update"):
 		return
@@ -697,18 +697,21 @@ func _test_endpoint_reshape_invalid_anchor_preserve_last_valid() -> void:
 		candidate_route_cells.has(track._gesture_origin_anchors[0].cell),
 		"Anchor fixture keeps the authoritative anchor off the route centerline"
 	)
-	for cell in [Vector2i(4, 4), Vector2i(4, 5), Vector2i(5, 5), Vector2i(5, 4)]:
-		assert_not_null(candidate_sequence.try_append_candidate(cell), "Anchor fixture stages each suffix cell")
-	var candidate_turns = track._resolver._turn_candidates(
-		track._departure_cell, candidate_sequence.get_records(), {}
+	var anchor_free_resolution = track._resolver.resolve(
+		track._departure_cell,
+		candidate_sequence.get_records(),
+		track._gesture_origin_locked_ledger,
+		[],
+		track._grid_origin_units,
+		track._grid_size,
+		track._cell_size_units
 	)
-	var anchor_in_rejected_footprint := false
-	for candidate in candidate_turns:
-		if track._resolver._candidate_footprint(candidate, candidate_sequence.get_records()).has(
-			track._gesture_origin_anchors[0].cell
-		):
-			anchor_in_rejected_footprint = true
-	assert_true(anchor_in_rejected_footprint, "Authoritative anchor lies in the rejected candidate footprint")
+	assert_true(anchor_free_resolution.is_valid, "Without an authoritative anchor the larger curve is accepted")
+	var anchor_free_curve = _piece_containing(anchor_free_resolution.pieces, 3)
+	assert_not_null(anchor_free_curve, "Anchor-free resolution publishes the larger curve")
+	if anchor_free_curve != null:
+		assert_equal(anchor_free_curve.kind, TrackGeometryPieceScript.Kind.CURVE_3X3, "Anchor-free resolution keeps the larger curve template")
+		assert_true(anchor_free_curve.footprint_cells.has(Vector2i(2, 4)), "Authoritative anchor lies in the larger curve footprint")
 	var anchor_resolution = track._resolver.resolve(
 		track._departure_cell,
 		candidate_sequence.get_records(),
@@ -718,15 +721,44 @@ func _test_endpoint_reshape_invalid_anchor_preserve_last_valid() -> void:
 		track._grid_size,
 		track._cell_size_units
 	)
-	assert_false(anchor_resolution.is_valid, "Production resolver rejects the anchor-conflicting footprint")
-	assert_equal(anchor_resolution.reason, &"final_overlap", "Production resolver reports the real overlapping conflict")
-	var invalid_cells: Array[Vector2i] = [Vector2i(4, 5), Vector2i(5, 5), Vector2i(5, 4)]
-	assert_false(track.call("gesture_update", invalid_cells), "Anchor-conflicting candidate is rejected")
-	assert_equal(_record_values(track.get_cell_records()), records_before, "Anchor rejection preserves last-valid records")
-	assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before, "Anchor rejection preserves last-valid pieces")
-	assert_equal(track.get_available_track_cells(), inventory_before, "Anchor rejection preserves last-valid inventory")
-	assert_equal(_piece_values(track._locked_ledger), ledger_before, "Anchor rejection preserves last-valid ledger")
-	assert_equal(track.get_contact_observations(), contacts_before, "Anchor rejection preserves last-valid observations")
+	assert_true(anchor_resolution.is_valid, "Authoritative anchor accepts a compatible downgraded curve")
+	var anchored_curve = _piece_containing(anchor_resolution.pieces, 3)
+	assert_not_null(anchored_curve, "Anchored resolution publishes the smaller curve")
+	if anchored_curve != null:
+		assert_equal(anchored_curve.kind, TrackGeometryPieceScript.Kind.CURVE_2X2, "Authoritative anchor deterministically downgrades the curve")
+		assert_false(anchored_curve.footprint_cells.has(Vector2i(2, 4)), "Downgraded footprint no longer overlaps the anchor")
+	var anchored_target: Array[Vector2i] = [targets["left"]]
+	assert_true(track.call("gesture_update", anchored_target), "Anchor-compatible target publishes through the runtime resolver")
+	var current_records := track.get_cell_records()
+	assert_equal(current_records.size(), origin_records.size(), "Downgrade keeps the route record count")
+	for index in range(candidate_route_cells.size()):
+		assert_equal(current_records[index].cell, candidate_route_cells[index], "Downgrade publishes the selected route cell %d" % index)
+	for index in range(current_records.size()):
+		assert_equal(current_records[index].route_serial, origin_records[index]["serial"], "Downgrade preserves route serial %d" % index)
+		assert_equal(current_records[index].route_distance_start_cells, origin_records[index]["distance"], "Downgrade preserves route distance %d" % index)
+		assert_equal(current_records[index].state, origin_records[index]["state"], "Downgrade preserves construction state %d" % index)
+		assert_equal(current_records[index].build_progress, origin_records[index]["progress"], "Downgrade preserves construction progress %d" % index)
+	assert_equal(track.get_available_track_cells(), origin_inventory, "Downgrade preserves inventory")
+	assert_equal(_piece_values(track._locked_ledger), origin_ledger, "Downgrade preserves the locked ledger")
+	assert_equal(track._recovered_cells_by_piece, origin_recovery["recovered_cells_by_piece"], "Downgrade preserves recovery cells")
+	assert_equal(track._recovered_end_distance_cells, origin_recovery["recovered_end_distance_cells"], "Downgrade preserves recovery distance")
+	assert_equal(track.get_contact_observations(), origin_contacts, "Downgrade preserves authoritative anchor observations")
+	var runtime_curve = _piece_containing(track.get_geometry_pieces(), 3)
+	assert_not_null(runtime_curve, "Runtime publishes the downgraded curve")
+	if runtime_curve != null and anchored_curve != null:
+		assert_equal(runtime_curve.kind, anchored_curve.kind, "Runtime uses the resolver's smaller curve")
+	var origin_after: Dictionary = track.call("get_gesture_origin_observation")
+	assert_equal(_record_values(origin_after["route_records"]), _record_values(origin_observation["route_records"]), "Downgrade preserves detached origin route observations")
+	assert_equal(_piece_values(origin_after["pieces"]), _piece_values(origin_observation["pieces"]), "Downgrade preserves detached origin geometry observations")
+	assert_equal(_piece_values(origin_after["locked_ledger"]), _piece_values(origin_observation["locked_ledger"]), "Downgrade preserves detached origin ledger observations")
+	assert_equal(origin_after["anchors"][0].anchor_id, origin_observation["anchors"][0].anchor_id, "Downgrade preserves detached authoritative anchor identity")
+	assert_equal(origin_after["anchors"][0].cell, origin_observation["anchors"][0].cell, "Downgrade preserves detached authoritative anchor cell")
+	assert_equal(origin_after["recovery"], origin_observation["recovery"], "Downgrade preserves detached origin recovery observations")
+	assert_equal(_record_values(origin_after["construction"]), _record_values(origin_observation["construction"]), "Downgrade preserves detached origin construction observations")
+	assert_equal(origin_after["inventory"], origin_observation["inventory"], "Downgrade preserves detached origin inventory observation")
+	assert_equal(origin_after["contact_observations"], origin_observation["contact_observations"], "Downgrade preserves detached origin contact observations")
+	_assert_record_piece_sync(track)
+	_assert_conservation(track, "Anchor-compatible downgrade preserves transaction conservation")
 	track.call("gesture_finalize")
 
 
