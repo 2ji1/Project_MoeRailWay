@@ -10,6 +10,7 @@ const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.
 
 var _runtime: GridTrackRuntimeScript
 var _left_capture_active := false
+var _runtime_capture_active := false
 
 
 func _init(start_config: SessionStartConfigScript) -> void:
@@ -48,6 +49,11 @@ func apply_right_input(input_frame: TrackInputFrameScript) -> bool:
 	assert(input_frame != null, "Track input frame is required")
 	if not input_frame.right_pressed:
 		return false
+	if _left_capture_active and _runtime.gesture_is_active():
+		_runtime.gesture_abort()
+		_left_capture_active = false
+		_runtime_capture_active = false
+		return true
 	_left_capture_active = false
 	if input_frame.right_press_inside_grid:
 		_runtime.cancel_ghost_suffix(input_frame.right_press_cell)
@@ -56,15 +62,44 @@ func apply_right_input(input_frame: TrackInputFrameScript) -> bool:
 
 func apply_left_input(input_frame: TrackInputFrameScript) -> void:
 	assert(input_frame != null, "Track input frame is required")
-	if input_frame.left_pressed:
-		_left_capture_active = (
+	var legacy_press_handled := false
+	if _runtime_capture_active and not _runtime.gesture_is_active():
+		_left_capture_active = false
+		_runtime_capture_active = false
+	if input_frame.left_pressed and not _left_capture_active:
+		var endpoint := _runtime.get_endpoint_cell()
+		if (
 			input_frame.left_press_inside_grid
-			and input_frame.left_press_cell == _runtime.get_endpoint_cell()
-		)
-	if _left_capture_active:
+			and input_frame.left_press_cell == endpoint
+			and _runtime.gesture_has_legal_operation(endpoint)
+		):
+			if input_frame.crossed_cells.is_empty():
+				_left_capture_active = not _runtime.gesture_begin(endpoint).is_empty()
+				_runtime_capture_active = _left_capture_active
+			else:
+				_runtime.append_cells(input_frame.crossed_cells)
+				_left_capture_active = true
+				legacy_press_handled = true
+	if _left_capture_active and _runtime.gesture_is_active():
+		if not input_frame.crossed_cells.is_empty():
+			_runtime.gesture_update(input_frame.crossed_cells)
+		if input_frame.left_released:
+			_runtime.gesture_finalize()
+			_left_capture_active = false
+			_runtime_capture_active = false
+	elif _left_capture_active and not legacy_press_handled and not input_frame.crossed_cells.is_empty():
 		_runtime.append_cells(input_frame.crossed_cells)
 	if input_frame.left_released:
 		_left_capture_active = false
+		_runtime_capture_active = false
+
+
+func is_left_capture_active() -> bool:
+	return _left_capture_active
+
+
+func is_runtime_gesture_active() -> bool:
+	return _runtime.gesture_is_active()
 
 
 func set_contact_anchors(anchors: Array[RouteContactAnchorScript]) -> void:

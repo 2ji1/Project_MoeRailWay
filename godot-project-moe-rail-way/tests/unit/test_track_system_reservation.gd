@@ -14,6 +14,11 @@ func run() -> PackedStringArray:
 	_test_invalid_candidates_stop_without_corrupting_ownership()
 	_test_right_edge_consumes_the_frame_and_cancels_a_suffix()
 	_test_right_edge_ends_left_capture_until_a_fresh_press()
+	_test_fresh_capture_is_endpoint_only_and_legal()
+	_test_active_right_abort_consumes_edge_before_cancellation()
+	_test_facade_clears_capture_after_runtime_abort()
+	_test_held_input_waits_for_release_and_fresh_press()
+	_test_left_release_finalizes_once()
 	_test_observation_getters_are_detached()
 	return finish()
 
@@ -161,6 +166,7 @@ func _test_right_edge_consumes_the_frame_and_cancels_a_suffix() -> void:
 	var track = TrackSystemScript.new(_config())
 	var cells: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)]
 	track.apply_left_input(_left_frame(cells, true))
+	track.apply_left_input(_left_frame([], false, false, true, Vector2i(3, 0)))
 	assert_true(track.apply_right_input(_right_frame(Vector2i(2, 0))), "Right edge is consumed")
 	assert_equal(track.get_endpoint_cell(), Vector2i(1, 0), "Clicked cell and its suffix cancel")
 	assert_equal(track.get_available_track_cells(), 7, "Canceled ghosts refund once")
@@ -174,6 +180,7 @@ func _test_right_edge_ends_left_capture_until_a_fresh_press() -> void:
 	var track = TrackSystemScript.new(_config())
 	var initial: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0)]
 	track.apply_left_input(_left_frame(initial, true, true))
+	track.apply_left_input(_left_frame([], false, false, true, Vector2i(2, 0)))
 	assert_true(track.apply_right_input(_right_frame(Vector2i(2, 0))), "Right edge cancels held drag")
 	assert_equal(track.get_endpoint_cell(), Vector2i(1, 0), "Right edge cancels the selected suffix")
 	var held_motion: Array[Vector2i] = [Vector2i(2, 0)]
@@ -186,6 +193,90 @@ func _test_right_edge_ends_left_capture_until_a_fresh_press() -> void:
 	track.apply_left_input(_left_frame([], false, false, true, Vector2i(1, 0)))
 	track.apply_left_input(_left_frame(held_motion, true, true, false, Vector2i(1, 0)))
 	assert_equal(track.get_endpoint_cell(), Vector2i(2, 0), "Fresh valid press starts a new capture")
+
+
+func _test_fresh_capture_is_endpoint_only_and_legal() -> void:
+	print("Endpoint reshape: fresh capture is endpoint-only")
+	var track = TrackSystemScript.new(_config())
+	track.apply_left_input(_left_frame([Vector2i(1, 0)], true, true, false, Vector2i(4, 4)))
+	assert_equal(track.get_cell_records(), [], "Nonendpoint press discards crossed cells")
+	assert_false(track._left_capture_active, "Nonendpoint press does not capture")
+	assert_true(track.has_method("is_left_capture_active"), "Facade exposes capture state")
+	assert_true(track.has_method("is_runtime_gesture_active"), "Facade exposes runtime active state")
+	if track.has_method("is_left_capture_active"):
+		assert_false(track.is_left_capture_active(), "Nonendpoint facade state is inactive")
+	if track.has_method("is_runtime_gesture_active"):
+		assert_false(track.is_runtime_gesture_active(), "Nonendpoint runtime state is inactive")
+	track.apply_left_input(_left_frame([], true, true, false, Vector2i(0, 0)))
+	assert_true(track._left_capture_active, "Endpoint press captures")
+	assert_true(track._runtime.gesture_is_active(), "Endpoint press begins runtime gesture")
+	assert_true(track._runtime.gesture_has_legal_operation(Vector2i(0, 0)), "Capture requires a legal endpoint operation")
+
+
+func _test_active_right_abort_consumes_edge_before_cancellation() -> void:
+	print("Endpoint reshape: active right abort consumes edge")
+	var track = TrackSystemScript.new(_config())
+	track.apply_left_input(_left_frame([Vector2i(1, 0), Vector2i(2, 0)], true, true))
+	track.apply_left_input(_left_frame([], false, false, true, Vector2i(2, 0)))
+	track.apply_left_input(_left_frame([], true, true, false, Vector2i(2, 0)))
+	track.apply_left_input(_left_frame([Vector2i(3, 0)], false, true, false, Vector2i(2, 0)))
+	assert_equal(track.get_endpoint_cell(), Vector2i(3, 0), "Active gesture publishes its candidate")
+	assert_true(track.apply_right_input(_right_frame(Vector2i(1, 0))), "Active right edge is consumed")
+	assert_equal(track.get_endpoint_cell(), Vector2i(2, 0), "Abort restores the exact gesture origin")
+	assert_equal(track.get_cell_records().size(), 2, "Abort skips ordinary suffix cancellation")
+	assert_false(track._left_capture_active, "Abort clears facade capture")
+	assert_false(track._runtime.gesture_is_active(), "Abort clears runtime active state")
+
+
+func _test_facade_clears_capture_after_runtime_abort() -> void:
+	print("Endpoint reshape: facade clears capture after runtime abort")
+	var track = TrackSystemScript.new(_config())
+	track.apply_left_input(_left_frame([], true, true, false, Vector2i(0, 0)))
+	assert_true(track._left_capture_active, "Facade captures before external runtime abort")
+	assert_true(track._runtime.gesture_abort(), "Runtime abort succeeds")
+	track.apply_left_input(_left_frame([Vector2i(1, 0)], false, true, false, Vector2i(0, 0)))
+	assert_false(track._left_capture_active, "Facade clears stale capture after runtime abort")
+	assert_false(track._runtime.gesture_is_active(), "Runtime remains inactive after abort")
+	if track.has_method("is_left_capture_active"):
+		assert_false(track.is_left_capture_active(), "Exposed facade capture state is inactive")
+
+
+func _test_held_input_waits_for_release_and_fresh_press() -> void:
+	print("Endpoint reshape: held input waits for release and fresh press")
+	var track = TrackSystemScript.new(_config())
+	track.apply_left_input(_left_frame([], true, true, false, Vector2i(0, 0)))
+	track.apply_left_input(_left_frame([Vector2i(1, 0)], false, true, false, Vector2i(0, 0)))
+	track.apply_left_input(_left_frame([], false, false, true, Vector2i(1, 0)))
+	var completed_endpoint := track.get_endpoint_cell()
+	track.apply_left_input(_left_frame([Vector2i(2, 0)], false, true, false, completed_endpoint))
+	assert_equal(track.get_endpoint_cell(), completed_endpoint, "Held motion after completion is ignored")
+	track.apply_left_input(_left_frame([], true, true, false, completed_endpoint))
+	assert_true(track._left_capture_active, "Fresh press after release captures")
+	track.apply_right_input(_right_frame(Vector2i(9, 5)))
+	track.apply_left_input(_left_frame([Vector2i(2, 0)], false, true, false, completed_endpoint))
+	assert_false(track._left_capture_active, "Held motion after abort remains ignored")
+	track.apply_left_input(_left_frame([], false, false, true, completed_endpoint))
+	track.apply_left_input(_left_frame([], true, true, false, completed_endpoint))
+	assert_true(track._left_capture_active, "Abort requires release and a fresh press")
+	var exhausted = TrackSystemScript.new(_config(1))
+	exhausted.apply_left_input(_left_frame([Vector2i(1, 0)], true, true))
+	exhausted.apply_left_input(_left_frame([], false, false, true, Vector2i(1, 0)))
+	exhausted.apply_left_input(_left_frame([Vector2i(2, 0)], true, true, false, Vector2i(1, 0)))
+	assert_false(exhausted._left_capture_active, "Rejected fresh press does not capture without a legal operation")
+
+
+func _test_left_release_finalizes_once() -> void:
+	print("Endpoint reshape: left release finalizes")
+	var track = TrackSystemScript.new(_config())
+	track.apply_left_input(_left_frame([], true, true, false, Vector2i(0, 0)))
+	track.apply_left_input(_left_frame([Vector2i(1, 0)], false, true, false, Vector2i(0, 0)))
+	assert_true(track._runtime.gesture_is_active(), "Held left input keeps runtime gesture active")
+	track.apply_left_input(_left_frame([], false, false, true, Vector2i(1, 0)))
+	assert_false(track._left_capture_active, "Release clears facade capture")
+	assert_false(track._runtime.gesture_is_active(), "Release finalizes runtime gesture")
+	var endpoint_after_release := track.get_endpoint_cell()
+	track.apply_left_input(_left_frame([Vector2i(2, 0)], false, false, true, Vector2i(1, 0)))
+	assert_equal(track.get_endpoint_cell(), endpoint_after_release, "Second release does not finalize twice")
 
 
 func _test_observation_getters_are_detached() -> void:
