@@ -1079,6 +1079,21 @@ func _test_endpoint_reshape_five_straight_records_are_not_a_generic_horizon() ->
 	assert_false(pieces[2].locked, "First incoming support remains editable")
 	assert_false(pieces[3].locked, "Second incoming support remains editable")
 	assert_false(pieces[4].locked, "Endpoint owner remains editable")
+	var began = track.gesture_begin(track.get_endpoint_cell())
+	assert_true(began is Dictionary and not began.is_empty(), "Five straight replacement starts from the endpoint")
+	if began is Dictionary and not began.is_empty():
+		var replacement_cells: Array[Vector2i] = [began["targets"]["left"]]
+		assert_true(track.gesture_update(replacement_cells), "Five straight replacement publishes a curve candidate")
+	assert_true(track.gesture_finalize(), "Five straight replacement finalizes before sampling")
+	assert_true(track.prepare_for_train_sampling(0.0, 1.0), "Five straight replacement samples the stable prefix")
+	var stable_pieces = track.get_geometry_pieces()
+	assert_true(stable_pieces[0].locked, "Five straight stable prefix keeps the first owner immutable")
+	assert_true(stable_pieces[1].locked, "Five straight stable prefix keeps the second owner immutable")
+	assert_false(stable_pieces[2].locked, "Five straight replacement keeps endpoint owner and supports mutable")
+	var stable_records = track.get_cell_records()
+	assert_false(stable_records[2].geometry_locked, "Five straight replacement keeps the first incoming support record mutable")
+	assert_false(stable_records[3].geometry_locked, "Five straight replacement keeps the second incoming support record mutable")
+	assert_false(stable_records[4].geometry_locked, "Five straight replacement keeps the endpoint record mutable")
 
 
 func _test_endpoint_reshape_full_curve_does_not_retain_unrelated_predecessor() -> void:
@@ -1550,27 +1565,55 @@ func _test_endpoint_reshape_replacement_overlap_terminates_last_valid() -> void:
 	var target_cells: Array[Vector2i] = [target]
 	assert_true(track.call("gesture_update", target_cells), "Replacement overlap publishes a candidate")
 	var candidate_records := _record_values(track.get_cell_records())
-	var candidate_route_shape := _route_sampling_values(track.get_cell_records())
-	var candidate_geometry_shape := _piece_sampling_values(track.get_geometry_pieces())
+	var candidate_route_content := _route_content_values(track.get_cell_records())
+	var candidate_geometry_content := _piece_content_values(track.get_geometry_pieces())
 	var candidate_inventory: int = track.get_available_track_cells()
-	var candidate_recovery := _recovery_sampling_values(track)
+	var candidate_recovery_content := _recovery_content_values(track)
 	var candidate_contacts: Array = track.get_contact_observations().duplicate(true)
-	var candidate_ledger_shape := _piece_sampling_values(track._locked_ledger)
-	var expected_new_ledger_shape: Array[Dictionary] = []
-	expected_new_ledger_shape.append(candidate_geometry_shape[0])
+	var candidate_anchors := _anchor_values(track._anchors)
+	var control = _make_three_by_three_curve_runtime()
+	var control_origin = control.call("gesture_begin", control.get_endpoint_cell())
+	assert_true(control_origin is Dictionary and not control_origin.is_empty(), "Replacement control starts a gesture")
+	if control_origin is Dictionary and not control_origin.is_empty():
+		var control_target_cells: Array[Vector2i] = [control_origin["targets"]["straight"]]
+		assert_true(control.call("gesture_update", control_target_cells), "Replacement control publishes the candidate")
+		assert_true(control.call("gesture_finalize"), "Replacement control applies stable retirement")
+		assert_true(control.call("prepare_for_train_sampling", 0.0, 1.0), "Replacement control prepares the sampled prefix")
+	var control_route := _route_sampling_values(control.get_cell_records())
+	var control_geometry := _piece_sampling_values(control.get_geometry_pieces())
+	var control_recovery := _recovery_sampling_values(control)
+	var control_contacts: Array = control.get_contact_observations().duplicate(true)
+	var control_anchors := _anchor_values(control._anchors)
 	assert_true(track.has_method("prepare_for_train_sampling"), "Replacement overlap exposes preparation")
 	if not track.has_method("prepare_for_train_sampling"):
 		return
 	assert_true(track.call("prepare_for_train_sampling", 0.0, 1.0), "Replacement overlap preparation succeeds")
 	assert_false(track.call("gesture_is_active"), "Replacement overlap terminates before locking")
-	assert_equal(_route_sampling_values(track.get_cell_records()), candidate_route_shape, "Replacement overlap preserves every candidate route fact")
-	assert_equal(_piece_sampling_values(track.get_geometry_pieces()), candidate_geometry_shape, "Replacement overlap preserves every candidate geometry shape")
+	assert_equal(_route_content_values(track.get_cell_records()), candidate_route_content, "Replacement overlap preserves candidate route cells and build state")
+	assert_equal(_piece_content_values(track.get_geometry_pieces()), candidate_geometry_content, "Replacement overlap preserves candidate geometry shape")
 	assert_equal(track.get_available_track_cells(), candidate_inventory, "Replacement overlap preserves candidate inventory")
-	assert_equal(_recovery_sampling_values(track), candidate_recovery, "Replacement overlap preserves candidate recovery state")
+	assert_equal(_recovery_content_values(track), candidate_recovery_content, "Replacement overlap preserves candidate recovery facts")
 	assert_equal(track.get_contact_observations(), candidate_contacts, "Replacement overlap preserves candidate contact observations")
-	assert_equal(_piece_sampling_values(track._locked_ledger), candidate_ledger_shape + expected_new_ledger_shape, "Replacement overlap adds only sampled candidate pieces to the lock ledger")
+	assert_equal(_anchor_values(track._anchors), candidate_anchors, "Replacement overlap preserves candidate anchors")
+	assert_equal(_route_sampling_values(track.get_cell_records()), control_route, "Replacement overlap applies the same stable route retirement as explicit finalize")
+	assert_equal(_piece_sampling_values(track.get_geometry_pieces()), control_geometry, "Replacement overlap applies the same stable geometry retirement as explicit finalize")
+	assert_equal(_recovery_sampling_values(track), control_recovery, "Replacement overlap applies the same stable recovery state as explicit finalize")
+	assert_equal(track.get_contact_observations(), control_contacts, "Replacement overlap applies the same stable contact state as explicit finalize")
+	assert_equal(_anchor_values(track._anchors), control_anchors, "Replacement overlap applies the same stable anchors as explicit finalize")
+	assert_equal(_piece_sampling_values(track._locked_ledger), _piece_sampling_values(control._locked_ledger), "Replacement overlap adds exactly the expected stable ledger pieces")
 	assert_equal(_record_values(track.get_cell_records())[0].cell, candidate_records[0].cell, "Replacement overlap keeps the last valid candidate")
 	assert_true(track.get_geometry_pieces()[0].locked, "Replacement overlap locks only after preserving the candidate")
+	var failed = _make_three_by_three_curve_runtime()
+	var failed_origin = failed.call("gesture_begin", failed.get_endpoint_cell())
+	if failed_origin is Dictionary and not failed_origin.is_empty():
+		var failed_target_cells: Array[Vector2i] = [failed_origin["targets"]["straight"]]
+		assert_true(failed.call("gesture_update", failed_target_cells), "Failed-retirement fixture publishes a candidate")
+		var failed_candidate := _route_content_values(failed.get_cell_records())
+		failed._resolver = _RejectingResolver.new()
+		assert_false(failed.call("prepare_for_train_sampling", 0.0, 1.0), "Stable retirement failure returns false")
+		assert_false(failed.call("gesture_is_active"), "Stable retirement failure ends the gesture")
+		assert_equal(_route_content_values(failed.get_cell_records()), failed_candidate, "Stable retirement failure preserves the candidate")
+		assert_false(failed.call("prepare_for_train_sampling", 0.0, 1.0), "Stable retirement failure is idempotent")
 
 
 func _test_endpoint_reshape_extension_overlap_terminates_last_valid() -> void:
@@ -1585,20 +1628,41 @@ func _test_endpoint_reshape_extension_overlap_terminates_last_valid() -> void:
 	var extension_cells: Array[Vector2i] = [target, extension]
 	assert_true(track.call("gesture_update", extension_cells), "Extension overlap publishes a suffix candidate")
 	var candidate_records := _record_values(track.get_cell_records())
-	var candidate_route_shape := _route_sampling_values(track.get_cell_records())
-	var candidate_geometry_shape := _piece_sampling_values(track.get_geometry_pieces())
+	var candidate_route_content := _route_content_values(track.get_cell_records())
+	var candidate_geometry_content := _piece_content_values(track.get_geometry_pieces())
 	var candidate_inventory: int = track.get_available_track_cells()
-	var candidate_recovery := _recovery_sampling_values(track)
+	var candidate_recovery_content := _recovery_content_values(track)
 	var candidate_contacts: Array = track.get_contact_observations().duplicate(true)
-	var candidate_ledger_shape := _piece_sampling_values(track._locked_ledger)
+	var candidate_anchors := _anchor_values(track._anchors)
+	var control = _make_three_by_three_curve_runtime()
+	var control_origin = control.call("gesture_begin", control.get_endpoint_cell())
+	assert_true(control_origin is Dictionary and not control_origin.is_empty(), "Extension control starts a gesture")
+	if control_origin is Dictionary and not control_origin.is_empty():
+		var control_target: Vector2i = control_origin["targets"]["straight"]
+		var control_extension := Vector2i(control_target.x, control_target.y + 1)
+		var control_extension_cells: Array[Vector2i] = [control_target, control_extension]
+		assert_true(control.call("gesture_update", control_extension_cells), "Extension control publishes the suffix candidate")
+		assert_true(control.call("gesture_finalize"), "Extension control applies stable retirement")
+		assert_true(control.call("prepare_for_train_sampling", 5.0, 5.5), "Extension control prepares the sampled suffix")
+	var control_route := _route_sampling_values(control.get_cell_records())
+	var control_geometry := _piece_sampling_values(control.get_geometry_pieces())
+	var control_recovery := _recovery_sampling_values(control)
+	var control_contacts: Array = control.get_contact_observations().duplicate(true)
+	var control_anchors := _anchor_values(control._anchors)
 	assert_true(track.call("prepare_for_train_sampling", 5.0, 5.5), "Extension overlap preparation succeeds")
 	assert_false(track.call("gesture_is_active"), "Extension overlap terminates before locking")
-	assert_equal(_route_sampling_values(track.get_cell_records()), candidate_route_shape, "Extension overlap preserves every candidate route fact")
-	assert_equal(_piece_sampling_values(track.get_geometry_pieces()), candidate_geometry_shape, "Extension overlap preserves every candidate geometry shape")
+	assert_equal(_route_content_values(track.get_cell_records()), candidate_route_content, "Extension overlap preserves candidate route cells and build state")
+	assert_equal(_piece_content_values(track.get_geometry_pieces()), candidate_geometry_content, "Extension overlap preserves candidate geometry shape")
 	assert_equal(track.get_available_track_cells(), candidate_inventory, "Extension overlap preserves candidate inventory")
-	assert_equal(_recovery_sampling_values(track), candidate_recovery, "Extension overlap preserves candidate recovery state")
+	assert_equal(_recovery_content_values(track), candidate_recovery_content, "Extension overlap preserves candidate recovery facts")
 	assert_equal(track.get_contact_observations(), candidate_contacts, "Extension overlap preserves candidate contact observations")
-	assert_equal(_piece_sampling_values(track._locked_ledger), candidate_ledger_shape + candidate_geometry_shape, "Extension overlap adds only candidate pieces to the lock ledger")
+	assert_equal(_anchor_values(track._anchors), candidate_anchors, "Extension overlap preserves candidate anchors")
+	assert_equal(_route_sampling_values(track.get_cell_records()), control_route, "Extension overlap applies the same stable route retirement as explicit finalize")
+	assert_equal(_piece_sampling_values(track.get_geometry_pieces()), control_geometry, "Extension overlap applies the same stable geometry retirement as explicit finalize")
+	assert_equal(_recovery_sampling_values(track), control_recovery, "Extension overlap applies the same stable recovery state as explicit finalize")
+	assert_equal(track.get_contact_observations(), control_contacts, "Extension overlap applies the same stable contact state as explicit finalize")
+	assert_equal(_anchor_values(track._anchors), control_anchors, "Extension overlap applies the same stable anchors as explicit finalize")
+	assert_equal(_piece_sampling_values(track._locked_ledger), _piece_sampling_values(control._locked_ledger), "Extension overlap adds exactly the expected stable ledger pieces")
 	assert_equal(_record_values(track.get_cell_records())[-1].cell, candidate_records[-1].cell, "Extension overlap keeps the last valid candidate")
 
 
@@ -2226,11 +2290,45 @@ func _route_sampling_values(records: Array) -> Array[Dictionary]:
 			"distance": record.route_distance_start_cells,
 			"state": record.state,
 			"progress": record.build_progress,
+			"group": record.geometry_group_id,
+			"locked": record.geometry_locked,
 		})
 	return values
 
 
 func _piece_sampling_values(pieces: Array) -> Array[Dictionary]:
+	var values: Array[Dictionary] = []
+	for piece in pieces:
+		values.append({
+			"serials": Vector2i(piece.first_route_serial, piece.last_route_serial),
+			"group": piece.group_id,
+			"kind": piece.kind,
+			"distance": piece.absolute_start_distance_cells,
+			"length": piece.nominal_length_cells,
+			"footprint": piece.footprint_cells,
+			"centerline": piece.centerline,
+			"active_start": piece.active_local_start_cells,
+			"active_end": piece.active_local_end_cells,
+			"support": piece.exit_support_route_serial,
+			"locked": piece.locked,
+		})
+	return values
+
+
+func _route_content_values(records: Array) -> Array[Dictionary]:
+	var values: Array[Dictionary] = []
+	for record in records:
+		values.append({
+			"serial": record.route_serial,
+			"cell": record.cell,
+			"distance": record.route_distance_start_cells,
+			"state": record.state,
+			"progress": record.build_progress,
+		})
+	return values
+
+
+func _piece_content_values(pieces: Array) -> Array[Dictionary]:
 	var values: Array[Dictionary] = []
 	for piece in pieces:
 		values.append({
@@ -2244,6 +2342,16 @@ func _piece_sampling_values(pieces: Array) -> Array[Dictionary]:
 			"active_end": piece.active_local_end_cells,
 		})
 	return values
+
+
+func _recovery_content_values(track: GridTrackRuntimeScript) -> Dictionary:
+	return {
+		"records": _route_content_values(track.get_cell_records()),
+		"pieces": _piece_content_values(track.get_geometry_pieces()),
+		"built_end": track.get_built_end_distance_cells(),
+		"recovered_cells_by_piece": track._recovered_cells_by_piece.duplicate(true),
+		"recovered_end_distance_cells": track._recovered_end_distance_cells,
+	}
 
 
 func _recovery_sampling_values(track: GridTrackRuntimeScript) -> Dictionary:
@@ -2599,6 +2707,17 @@ func _make_three_by_three_curve_runtime():
 		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
 		Vector2i(2, 1), Vector2i(2, 2),
 	]), 5, "3x3 fixture accepts five cells")
+	return track
+
+
+func _make_five_straight_runtime():
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 18, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(track.append_cells([
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+		Vector2i(3, 0), Vector2i(4, 0),
+	]), 5, "Five straight replacement fixture accepts five cells")
 	return track
 
 

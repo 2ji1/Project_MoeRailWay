@@ -465,7 +465,8 @@ func prepare_for_train_sampling(current_distance: float, through_distance: float
     if _pieces.is_empty():
         return false
     if _train_sampling_intersects_active_gesture(current_distance, through_distance):
-        _clear_gesture_state()
+        if not gesture_finalize():
+            return false
     var current = _canonical_distance_and_owner(current_distance)
     var through = _canonical_distance_and_owner(through_distance)
     var current_owner = current.piece

@@ -29,35 +29,87 @@ class TogglePrepareTrackSystem extends TrackSystemScript:
 
 
 class OrderingTrackSystem extends TrackSystemScript:
-	var events: Array[String] = []
+	var event_log: Array[String] = []
 	func apply_right_input(input_frame: TrackInputFrameScript) -> bool:
-		events.append("right")
-		return super.apply_right_input(input_frame)
+		var active_before := is_runtime_gesture_active()
+		var result := super.apply_right_input(input_frame)
+		var path := "none"
+		if input_frame.right_pressed:
+			path = "abort" if active_before else "ordinary"
+		_record("right:pressed=%s:left_released=%s:active_before=%s:active_after=%s:path=%s:inside=%s" % [
+			input_frame.right_pressed,
+			input_frame.left_released,
+			active_before,
+			is_runtime_gesture_active(),
+			path,
+			input_frame.right_press_inside_grid,
+		])
+		return result
 	func apply_left_input(input_frame: TrackInputFrameScript) -> void:
-		events.append("left")
+		var active_before := is_runtime_gesture_active()
+		var eligible_before := is_endpoint_gesture_eligible()
+		var endpoint_before := get_endpoint_cell()
+		var record_count_before := get_cell_records().size()
 		super.apply_left_input(input_frame)
+		var endpoint_after := get_endpoint_cell()
+		var update_published := (
+			not input_frame.crossed_cells.is_empty()
+			and (endpoint_after != endpoint_before or get_cell_records().size() != record_count_before)
+		)
+		_record("left:pressed=%s:released=%s:crossed=%d:eligible_before=%s:begin=%s:update=%s:active_after=%s:endpoint_before=%s:endpoint_after=%s" % [
+			input_frame.left_pressed,
+			input_frame.left_released,
+			input_frame.crossed_cells.size(),
+			eligible_before,
+			input_frame.left_pressed and not active_before and eligible_before,
+			update_published,
+			is_runtime_gesture_active(),
+			endpoint_before,
+			endpoint_after,
+		])
 	func advance_construction(progress_cells: float) -> float:
-		events.append("construction")
-		return super.advance_construction(progress_cells)
+		var consumed := super.advance_construction(progress_cells)
+		_record("construction:requested=%.3f:consumed=%.3f" % [progress_cells, consumed])
+		return consumed
 	func prepare_for_train_sampling(current_distance: float, through_distance: float) -> bool:
-		events.append("prepare")
-		return super.prepare_for_train_sampling(current_distance, through_distance)
+		var result := super.prepare_for_train_sampling(current_distance, through_distance)
+		_record("prepare:current=%.3f:through=%.3f:result=%s:active=%s" % [
+			current_distance, through_distance, result, is_runtime_gesture_active()
+		])
+		return result
 	func recover_behind(route_distance_cells: float) -> int:
-		events.append("recovery")
-		return super.recover_behind(route_distance_cells)
+		var recovered := super.recover_behind(route_distance_cells)
+		_record("recovery:cutoff=%.3f:count=%d" % [route_distance_cells, recovered])
+		return recovered
+	func terminate_for_session_completion() -> bool:
+		var active_before := is_runtime_gesture_active()
+		var capture_before := is_left_capture_active()
+		var terminated := super.terminate_for_session_completion()
+		_record("completion_cleanup:active_before=%s:capture_before=%s:terminated=%s:active_after=%s:capture_after=%s" % [
+			active_before,
+			capture_before,
+			terminated,
+			is_runtime_gesture_active(),
+			is_left_capture_active(),
+		])
+		return terminated
+	func _record(event: String) -> void:
+		event_log.append(event)
 
 
 class OrderingTrainSystem extends TrainSystemScript:
-	var events: Array[String] = []
+	var event_log: Array[String] = []
 	func depart(route_distance_cells: float = 0.0) -> void:
-		events.append("depart")
 		super.depart(route_distance_cells)
+		event_log.append("depart:distance=%.3f" % route_distance_cells)
 	func advance_tick(track_system: TrackSystemScript, seconds_per_tick: float) -> bool:
-		events.append("train")
-		return super.advance_tick(track_system, seconds_per_tick)
+		var reached_end := super.advance_tick(track_system, seconds_per_tick)
+		event_log.append("train:distance=%.3f:reached_end=%s" % [get_route_distance_cells(), reached_end])
+		return reached_end
 	func capture_pose(track_system: TrackSystemScript) -> Dictionary:
-		events.append("capture")
-		return super.capture_pose(track_system)
+		var pose := super.capture_pose(track_system)
+		event_log.append("capture:distance=%.3f" % get_route_distance_cells())
+		return pose
 
 
 func run() -> PackedStringArray:
@@ -121,11 +173,11 @@ func _release_endpoint(endpoint: Vector2i) -> TrackInputFrameScript:
 	)
 
 
-func _right_frame(cell: Vector2i) -> TrackInputFrameScript:
+func _right_frame(cell: Vector2i, left_released: bool = false) -> TrackInputFrameScript:
 	var empty: Array[Vector2i] = []
 	return TrackInputFrameScript.new(
 		empty, Vector2i(-1, -1), false, cell, true,
-		false, false, false, true, cell, true
+		false, false, left_released, true, cell, true
 	)
 
 
@@ -387,39 +439,62 @@ func _test_held_gesture_defers_work_until_train_termination() -> void:
 
 
 func _test_session_tick_order_is_causal_across_controlled_ticks() -> void:
-	var config := _config(3.0, 1, 0.25, 10.0, 8, 1)
+	var config := _config(3.0, 1, 2.0, 10.0, 8, 8)
 	var track = OrderingTrackSystem.new(config)
 	var train = OrderingTrainSystem.new(config.train_speed_cells_per_second)
-	track.apply_left_input(_held_draw_frame([Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)]))
+	var event_log: Array[String] = []
+	track.event_log = event_log
+	train.event_log = event_log
+	track.apply_left_input(_held_draw_frame([
+		Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0), Vector2i(4, 0), Vector2i(5, 0)
+	]))
 	track.apply_left_input(_release_endpoint(track.get_endpoint_cell()))
-	track.advance_construction(3.0)
+	track.advance_construction(5.0)
 	track.apply_left_input(_held_endpoint_frame(track.get_endpoint_cell()))
 	var controller = SessionControllerScript.new(config, track, train)
-	var events: Array[String] = []
-	controller.snapshot_published.connect(func(_snapshot): events.append("snapshot"))
-	controller.session_completed.connect(func(_result): events.append("result"))
+	controller.snapshot_published.connect(func(snapshot): event_log.append("snapshot:state=%d" % snapshot.get_state()))
+	controller.session_completed.connect(func(result):
+		event_log.append("result:reason=%d" % result.get_reason())
+	)
 	controller.start()
-	events.clear()
-	track.events.clear()
-	train.events.clear()
+	event_log.clear()
+	controller.advance_tick(_right_frame(track.get_endpoint_cell(), true))
+	assert_equal(event_log, [
+		"right:pressed=true:left_released=true:active_before=true:active_after=false:path=abort:inside=true",
+		"construction:requested=10.000:consumed=0.000",
+		"prepare:current=0.000:through=2.000:result=true:active=false",
+		"depart:distance=0.000",
+		"capture:distance=0.000",
+		"train:distance=2.000:reached_end=false",
+		"capture:distance=2.000",
+		"recovery:cutoff=-6.000:count=0",
+		"snapshot:state=2",
+	], "Active right abort tick has one shared causal event order")
+	event_log.clear()
 	controller.advance_tick(_right_frame(track.get_endpoint_cell()))
-	assert_equal(track.events, ["right", "construction", "prepare", "recovery"], "Active right abort tick orders domain phases")
-	assert_equal(train.events, ["depart", "capture", "train", "capture"], "Departure tick orders train phases")
-	assert_equal(events, ["snapshot"], "Active right abort tick publishes one snapshot")
-	track.events.clear()
-	train.events.clear()
-	events.clear()
-	controller.advance_tick(_right_frame(track.get_endpoint_cell()))
-	assert_equal(track.events, ["right", "construction", "prepare", "recovery"], "Ordinary right fallback tick orders domain phases")
-	assert_equal(train.events, ["train", "capture"], "Running fallback tick advances train once")
-	assert_equal(events, ["snapshot"], "Ordinary right fallback tick publishes one snapshot")
-	track.events.clear()
-	train.events.clear()
-	events.clear()
-	controller.advance_tick(_fresh_left_frame(track.get_endpoint_cell(), [Vector2i(4, 0)]))
-	assert_equal(track.events, ["right", "left", "construction", "prepare", "recovery"], "Fresh left update and release precede domain phases")
-	assert_equal(train.events, ["train", "capture"], "Completion tie tick advances train once")
-	assert_equal(events, ["snapshot", "result"], "Terminal snapshot precedes completion result")
+	assert_equal(event_log, [
+		"right:pressed=true:left_released=false:active_before=false:active_after=false:path=ordinary:inside=true",
+		"construction:requested=10.000:consumed=0.000",
+		"prepare:current=2.000:through=4.000:result=true:active=false",
+		"train:distance=4.000:reached_end=false",
+		"capture:distance=4.000",
+		"recovery:cutoff=-4.000:count=0",
+		"snapshot:state=2",
+	], "Ordinary right fallback tick has one shared causal event order")
+	event_log.clear()
+	controller.advance_tick(_fresh_left_frame(track.get_endpoint_cell(), [Vector2i(5, 1)]))
+	assert_equal(event_log, [
+		"right:pressed=false:left_released=true:active_before=false:active_after=false:path=none:inside=false",
+		"left:pressed=true:released=true:crossed=1:eligible_before=true:begin=true:update=true:active_after=false:endpoint_before=(5, 0):endpoint_after=(5, 1)",
+		"construction:requested=10.000:consumed=1.000",
+		"prepare:current=4.000:through=6.000:result=true:active=false",
+		"train:distance=6.000:reached_end=true",
+		"capture:distance=6.000",
+		"recovery:cutoff=-2.000:count=0",
+		"completion_cleanup:active_before=false:capture_before=false:terminated=false:active_after=false:capture_after=false",
+		"snapshot:state=3",
+		"result:reason=0",
+	], "Fresh left update and release prove the same-tick regular-expiry/track-end order")
 
 
 func _record_values(records: Array) -> Array[Dictionary]:

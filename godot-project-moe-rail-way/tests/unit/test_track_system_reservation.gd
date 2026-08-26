@@ -390,36 +390,61 @@ func _test_prepare_preserves_original_result_and_clears_capture() -> void:
 	var was_active := successful.is_left_capture_active()
 	var original_result := bool(successful.call("prepare_for_train_sampling", 0.0, 1.0))
 	var active_after := successful.is_runtime_gesture_active()
+	assert_true(was_active, "True overlap fixture starts with active facade capture")
 	assert_equal(original_result, expected_result, "Facade returns the public runtime result unchanged")
 	assert_equal(active_after, expected_active_after, "Facade observes the public runtime active state")
 	assert_false(active_after, "Successful overlapping preparation ends runtime capture")
 	assert_false(successful.is_left_capture_active(), "Successful overlapping preparation clears facade capture")
-	assert_equal(successful.is_left_capture_active(), false if was_active and not active_after else was_active, "Successful capture clearing follows was_active and active_after")
+	assert_equal(successful.is_left_capture_active(), was_active and active_after, "Successful capture clearing follows was_active and active_after")
 
-	print("Endpoint reshape: prepare false returns false and clears capture")
-	var nonoverlap_config := _config()
-	var nonoverlap = TrackSystemScript.new(nonoverlap_config)
-	nonoverlap.apply_left_input(_left_frame([Vector2i(1, 0)], true, true))
-	var nonoverlap_reference = GridTrackRuntimeScript.new(
-		nonoverlap_config.departure_cell,
-		nonoverlap_config.total_track_cells,
-		nonoverlap_config.grid_origin_units,
-		nonoverlap_config.grid_size,
-		nonoverlap_config.grid_cell_size_units
+	var false_overlap_config := _config()
+	var false_overlap = TrackSystemScript.new(false_overlap_config)
+	false_overlap.apply_left_input(_left_frame([Vector2i(1, 0)], true, true))
+	var false_overlap_reference = GridTrackRuntimeScript.new(
+		false_overlap_config.departure_cell,
+		false_overlap_config.total_track_cells,
+		false_overlap_config.grid_origin_units,
+		false_overlap_config.grid_size,
+		false_overlap_config.grid_cell_size_units
 	)
-	nonoverlap_reference.append_cells([Vector2i(1, 0)])
-	nonoverlap_reference.gesture_begin(Vector2i(1, 0))
-	var expected_nonoverlap_result := bool(nonoverlap_reference.call("prepare_for_train_sampling", 1.0, 0.0))
-	var expected_nonoverlap_active := bool(nonoverlap_reference.call("gesture_is_active"))
-	var nonoverlap_was_active := nonoverlap.is_left_capture_active()
-	var nonoverlap_result := bool(nonoverlap.call("prepare_for_train_sampling", 1.0, 0.0))
-	var nonoverlap_active_after := nonoverlap.is_runtime_gesture_active()
-	assert_false(nonoverlap_result, "Natural nonoverlap preparation returns false")
-	assert_equal(nonoverlap_result, expected_nonoverlap_result, "Facade preserves the natural false runtime result")
-	assert_equal(nonoverlap_active_after, expected_nonoverlap_active, "Natural false path preserves runtime active state")
-	assert_true(nonoverlap_active_after, "Natural false path remains active")
-	assert_true(nonoverlap.is_left_capture_active(), "Natural false path preserves facade capture")
-	assert_equal(nonoverlap.is_left_capture_active(), false if nonoverlap_was_active and not nonoverlap_active_after else nonoverlap_was_active, "False capture clearing follows was_active and active_after")
+	false_overlap_reference.append_cells([Vector2i(1, 0)])
+	false_overlap_reference.gesture_begin(Vector2i(1, 0))
+	var expected_false_overlap_result := bool(false_overlap_reference.call("prepare_for_train_sampling", 0.0, 2.0))
+	var expected_false_overlap_active := bool(false_overlap_reference.call("gesture_is_active"))
+	var false_overlap_was_active := false_overlap.is_left_capture_active()
+	print("Endpoint reshape: prepare false returns false and clears capture")
+	var false_overlap_result := bool(false_overlap.call("prepare_for_train_sampling", 0.0, 2.0))
+	var false_overlap_active_after := false_overlap.is_runtime_gesture_active()
+	assert_false(expected_false_overlap_result, "False overlap reference returns false after its through owner is missing")
+	assert_false(expected_false_overlap_active, "False overlap reference terminates its active gesture")
+	assert_false(false_overlap_result, "False overlap facade returns the original false result")
+	assert_equal(false_overlap_result, expected_false_overlap_result, "Facade preserves the false overlap runtime result")
+	assert_equal(false_overlap_active_after, expected_false_overlap_active, "Facade observes false overlap active state")
+	assert_equal(false_overlap.is_left_capture_active(), false_overlap_was_active and false_overlap_active_after, "False overlap clears capture iff active became false")
+
+	var ordered_nonoverlap_config := _config()
+	var ordered_nonoverlap = TrackSystemScript.new(ordered_nonoverlap_config)
+	ordered_nonoverlap.apply_left_input(_left_frame([Vector2i(1, 0)], true, true))
+	var ordered_nonoverlap_reference = GridTrackRuntimeScript.new(
+		ordered_nonoverlap_config.departure_cell,
+		ordered_nonoverlap_config.total_track_cells,
+		ordered_nonoverlap_config.grid_origin_units,
+		ordered_nonoverlap_config.grid_size,
+		ordered_nonoverlap_config.grid_cell_size_units
+	)
+	ordered_nonoverlap_reference.append_cells([Vector2i(1, 0)])
+	ordered_nonoverlap_reference.gesture_begin(Vector2i(1, 0))
+	var expected_ordered_nonoverlap_result := bool(ordered_nonoverlap_reference.call("prepare_for_train_sampling", 2.0, 3.0))
+	var expected_ordered_nonoverlap_active := bool(ordered_nonoverlap_reference.call("gesture_is_active"))
+	var ordered_nonoverlap_was_active := ordered_nonoverlap.is_left_capture_active()
+	var ordered_nonoverlap_result := bool(ordered_nonoverlap.call("prepare_for_train_sampling", 2.0, 3.0))
+	var ordered_nonoverlap_active_after := ordered_nonoverlap.is_runtime_gesture_active()
+	assert_false(expected_ordered_nonoverlap_result, "Ordered out-of-route reference returns false")
+	assert_true(expected_ordered_nonoverlap_active, "Ordered out-of-route reference keeps its active gesture")
+	assert_false(ordered_nonoverlap_result, "Ordered out-of-route facade returns false")
+	assert_equal(ordered_nonoverlap_result, expected_ordered_nonoverlap_result, "Facade preserves ordered nonoverlap runtime result")
+	assert_equal(ordered_nonoverlap_active_after, expected_ordered_nonoverlap_active, "Facade observes ordered nonoverlap active state")
+	assert_equal(ordered_nonoverlap.is_left_capture_active(), ordered_nonoverlap_was_active and ordered_nonoverlap_active_after, "Ordered nonoverlap preserves capture while active")
 
 
 func _test_prepare_termination_waits_for_release() -> void:
