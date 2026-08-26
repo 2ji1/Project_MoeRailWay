@@ -44,6 +44,7 @@ func run() -> PackedStringArray:
 	_test_zero_extent_internal_wait_does_not_lock_successor_reflow()
 	_test_departure_forward_boundary_and_route_end_ownership()
 	_test_two_sided_outside_epsilon_stitch_continuity()
+	_test_prepared_built_curve_recovers_same_serials_without_ledger_mutation()
 	return finish()
 
 
@@ -318,6 +319,83 @@ func _test_twenty_construction_steps_keep_completed_head_reflowable() -> void:
 	assert_equal(track.get_cell_records()[4].build_progress, 1.0 / 20.0, "F first step is one twentieth")
 	assert_equal(track.get_geometry_pieces()[0].kind, TrackGeometryPieceScript.Kind.CURVE_3X3, "B through F resolves as 3x3")
 	assert_false(track.get_geometry_pieces()[0].locked, "Completed B through E remains reflowable")
+
+
+func _test_prepared_built_curve_recovers_same_serials_without_ledger_mutation() -> void:
+	var track = _reflow_runtime()
+	assert_equal(track.append_cells(_reflow_curve_cells()), 5, "B through F append as one route candidate")
+	assert_equal(track.advance_construction(5.0), 5.0, "B through F are built before preparation")
+	var provisional = track.get_geometry_pieces()[0]
+	assert_equal(provisional.kind, TrackGeometryPieceScript.Kind.CURVE_3X3, "Built B through F is a provisional 3x3 curve")
+	assert_false(provisional.locked, "Built B through F remains provisional before preparation")
+	var pre_prepare_geometry = _geometry_values(provisional)
+	assert_true(track.prepare_for_train_sampling(0.0, 0.0), "Prepare locks the complete B through F owner")
+	var prepared = track.get_geometry_pieces()[0]
+	assert_true(prepared.locked, "Prepared B through F curve is whole-piece locked")
+	assert_equal(_geometry_values(prepared), pre_prepare_geometry, "Preparation preserves B through F geometry")
+	assert_equal(prepared.exit_support_route_serial, -1, "Prepared B through F has no successor support")
+	var immutable_ledger = _immutable_ledger_values(prepared)
+	assert_equal(track.append_cells([Vector2i(2, 3)]), 1, "G appends only after B through F preparation")
+	for cutoff in [1, 2, 3]:
+		var before_inventory := track.get_available_track_cells()
+		assert_equal(track.recover_behind(float(cutoff)), 1, "Cutoff %d recovers exactly one B through F serial" % cutoff)
+		assert_equal(track.get_available_track_cells(), before_inventory + 1, "Cutoff %d refunds exactly one inventory cell" % cutoff)
+		var pieces = track.get_geometry_pieces()
+		assert_equal(pieces.size(), 2, "Cutoff %d retains locked B through F and provisional G pieces" % cutoff)
+		var active = pieces[0]
+		var g_piece = pieces[1]
+		assert_true(active.locked, "Surviving B through F slice remains locked at cutoff %d" % cutoff)
+		assert_equal(_immutable_ledger_values(active), immutable_ledger, "Cutoff %d preserves B through F ledger identity and geometry" % cutoff)
+		assert_equal(active.active_local_start_cells, float(cutoff), "Active slice start advances by one at cutoff %d" % cutoff)
+		assert_equal(active.active_local_end_cells, 5.0, "Active slice end remains the B through F nominal end")
+		assert_equal(g_piece.first_route_serial, 6, "G remains the successor serial at cutoff %d" % cutoff)
+		assert_equal(g_piece.last_route_serial, 6, "G remains one nominal route record at cutoff %d" % cutoff)
+		assert_false(g_piece.locked, "G remains a provisional suffix at cutoff %d" % cutoff)
+		_assert_locked_prefix_then_provisional(pieces, "Cutoff %d keeps locked B through F before provisional G" % cutoff)
+		var records = track.get_cell_records()
+		assert_equal(records.size(), 6 - cutoff, "Cutoff %d retains exactly the B through F suffix plus G" % cutoff)
+		for index in range(5 - cutoff):
+			assert_equal(records[index].route_serial, cutoff + index + 1, "Cutoff %d retains the expected B through F serial" % cutoff)
+			assert_equal(records[index].state, TrackCellRecordScript.State.BUILT, "Surviving B through F serial stays built")
+			assert_true(records[index].geometry_locked, "Surviving B through F serial stays locked")
+		assert_equal(records[-1].route_serial, 6, "G remains the active route endpoint serial")
+		assert_equal(records[-1].state, TrackCellRecordScript.State.RESERVED_GHOST, "G remains a genuine provisional ghost suffix")
+		assert_false(records[-1].geometry_locked, "G record remains unlocked")
+		_assert_conservation(track, "Cutoff %d conserves the B through F route inventory" % cutoff)
+
+
+func _geometry_values(piece: TrackGeometryPieceScript) -> Dictionary:
+	return {
+		"kind": piece.kind,
+		"first_route_serial": piece.first_route_serial,
+		"last_route_serial": piece.last_route_serial,
+		"nominal_length_cells": piece.nominal_length_cells,
+		"absolute_start_distance_cells": piece.absolute_start_distance_cells,
+		"footprint_cells": piece.footprint_cells.duplicate(),
+		"centerline": piece.centerline.duplicate(),
+		"exit_support_route_serial": piece.exit_support_route_serial,
+	}
+
+
+func _immutable_ledger_values(piece: TrackGeometryPieceScript) -> Dictionary:
+	var values = _geometry_values(piece)
+	values["group_id"] = piece.group_id
+	return values
+
+
+func _assert_locked_prefix_then_provisional(pieces: Array[TrackGeometryPieceScript], message: String) -> void:
+	assert_equal(pieces.size(), 2, message)
+	if pieces.size() != 2:
+		return
+	assert_true(pieces[0].locked, message)
+	assert_false(pieces[1].locked, message)
+	assert_equal(pieces[0].last_route_serial + 1, pieces[1].first_route_serial, message)
+	var saw_provisional := false
+	for piece in pieces:
+		if not piece.locked:
+			saw_provisional = true
+		else:
+			assert_false(saw_provisional, message)
 
 
 func run_unprepared_pose_probe() -> bool:
