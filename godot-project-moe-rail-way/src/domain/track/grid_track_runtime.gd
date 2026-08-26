@@ -98,12 +98,28 @@ func cancel_ghost_suffix(cell: Vector2i) -> bool:
 
 
 func set_contact_anchors(anchors: Array[RouteContactAnchorScript]) -> void:
-    _anchors.clear()
+    var candidate_anchors: Array[RouteContactAnchorScript] = []
     for anchor in anchors:
-        _anchors.append(anchor.duplicate_anchor())
-    var resolution = _resolve_records()
+        candidate_anchors.append(anchor.duplicate_anchor())
+    var candidate_sequence = _sequence.duplicate_sequence()
+    var candidate_ledger = _duplicate_pieces(_locked_ledger)
+    var resolution = _stage_stable_retirement(
+        candidate_sequence,
+        candidate_ledger,
+        candidate_anchors
+    )
     if resolution.is_valid:
-        _replace_pieces(resolution.pieces)
+        _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
+        candidate_sequence.apply_resolved_geometry(resolution.pieces)
+        if _validate_candidate(
+            candidate_sequence,
+            candidate_ledger,
+            resolution,
+            _recovered_cells_by_piece,
+            _recovered_end_distance_cells
+        ):
+            _commit_candidate(candidate_sequence, candidate_ledger, resolution)
+    _anchors = candidate_anchors
     _refresh_contact_observations()
 
 
@@ -440,14 +456,15 @@ func _stable_retirement_index(
             support_count = maxi(0, 3 - int(endpoint.kind))
         else:
             support_count = 2
-        for index in range(endpoint_index - 1, -1, -1):
-            var support = pieces[index]
-            if support.locked or support.kind != TrackGeometryPieceScript.Kind.STRAIGHT:
-                break
-            retained_indices[index] = true
-            support_count -= 1
-            if support_count <= 0:
-                break
+        if support_count > 0:
+            for index in range(endpoint_index - 1, -1, -1):
+                var support = pieces[index]
+                if support.locked or support.kind != TrackGeometryPieceScript.Kind.STRAIGHT:
+                    break
+                retained_indices[index] = true
+                support_count -= 1
+                if support_count <= 0:
+                    break
     for index in range(endpoint_index):
         if not pieces[index].locked and not retained_indices.has(index):
             return index

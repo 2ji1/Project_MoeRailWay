@@ -9,6 +9,8 @@ const TrackGeometryResolutionScript = preload("res://src/domain/track/track_geom
 
 
 func run() -> PackedStringArray:
+	_test_endpoint_reshape_full_curve_does_not_retain_unrelated_predecessor()
+	_test_endpoint_reshape_anchor_path_retires_stable_pieces_atomically()
 	_test_endpoint_reshape_five_straight_records_are_not_a_generic_horizon()
 	_test_endpoint_reshape_endpoint_owner_and_incoming_supports_are_concrete()
 	_test_endpoint_reshape_locked_boundary_downgrades_the_template()
@@ -59,19 +61,68 @@ func _test_endpoint_reshape_five_straight_records_are_not_a_generic_horizon() ->
 	)
 	assert_equal(track.append_cells([
 		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
-		Vector2i(3, 0), Vector2i(4, 0), Vector2i(5, 0),
-	]), 6, "Six straight records append")
+		Vector2i(3, 0), Vector2i(4, 0),
+	]), 5, "Five straight records append")
 	var pieces = track.get_geometry_pieces()
 	print("Endpoint reshape: five straight records are not a generic horizon")
-	assert_equal(pieces.size(), 6, "Each straight record retains its concrete owner")
+	assert_equal(pieces.size(), 5, "Each straight record retains its concrete owner")
 	assert_equal(pieces[0].first_route_serial, 1, "First straight owner starts at serial one")
-	assert_equal(pieces[-1].last_route_serial, 6, "Endpoint owner reaches serial six")
+	assert_equal(pieces[-1].last_route_serial, 5, "Endpoint owner reaches serial five")
 	assert_true(pieces[0].locked, "Retirement locks only the stable predecessor pieces")
 	assert_true(pieces[1].locked, "Retirement keeps support span concrete")
-	assert_true(pieces[2].locked, "Retirement is not a five-record provisional horizon")
-	assert_false(pieces[3].locked, "First incoming support remains editable")
-	assert_false(pieces[4].locked, "Second incoming support remains editable")
-	assert_false(pieces[5].locked, "Endpoint owner remains editable")
+	assert_false(pieces[2].locked, "First incoming support remains editable")
+	assert_false(pieces[3].locked, "Second incoming support remains editable")
+	assert_false(pieces[4].locked, "Endpoint owner remains editable")
+
+
+func _test_endpoint_reshape_full_curve_does_not_retain_unrelated_predecessor() -> void:
+	var track = _reflow_runtime()
+	var predecessor = TrackGeometryPieceScript.new()
+	predecessor.kind = TrackGeometryPieceScript.Kind.STRAIGHT
+	predecessor.first_route_serial = 1
+	predecessor.last_route_serial = 1
+	var endpoint = TrackGeometryPieceScript.new()
+	endpoint.kind = TrackGeometryPieceScript.Kind.CURVE_3X3
+	endpoint.first_route_serial = 2
+	endpoint.last_route_serial = 6
+	var pieces: Array[TrackGeometryPieceScript] = [predecessor, endpoint]
+	var records: Array[TrackCellRecordScript] = []
+	for serial in range(1, 7):
+		records.append(TrackCellRecordScript.new(serial, Vector2i(serial - 1, 0), float(serial - 1)))
+	print("Endpoint reshape: full curve does not retain unrelated predecessor")
+	assert_equal(
+		track._stable_retirement_index(pieces, records),
+		0,
+		"A full-size endpoint curve needs no unrelated predecessor support"
+	)
+
+
+func _test_endpoint_reshape_anchor_path_retires_stable_pieces_atomically() -> void:
+	var track = _reflow_runtime()
+	var cells: Array[Vector2i] = [
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+		Vector2i(3, 0), Vector2i(4, 0), Vector2i(5, 0),
+	]
+	track._sequence.append_candidates(cells)
+	track.set_contact_anchors([
+		RouteContactAnchorScript.new(&"endpoint_anchor", Vector2i(5, 0)),
+	])
+	var pieces = track.get_geometry_pieces()
+	print("Endpoint reshape: anchor path retires stable pieces atomically")
+	assert_equal(pieces.size(), 6, "Anchor path retains concrete piece ownership")
+	assert_true(pieces[0].locked, "Anchor path retires the first complete piece")
+	assert_true(pieces[1].locked, "Anchor path retires the second complete piece")
+	assert_true(pieces[2].locked, "Anchor path retires the third complete piece")
+	assert_false(pieces[3].locked, "Anchor path retains the first incoming support")
+	assert_false(pieces[4].locked, "Anchor path retains the second incoming support")
+	assert_false(pieces[5].locked, "Anchor path retains the endpoint owner")
+	assert_equal(track._locked_ledger.size(), 3, "Anchor path stages the same whole-piece ledger")
+	if track._locked_ledger.size() >= 3:
+		assert_equal(track._locked_ledger[0].first_route_serial, 1, "Anchor ledger preserves first serial")
+		assert_equal(track._locked_ledger[2].last_route_serial, 3, "Anchor ledger preserves last serial")
+		assert_equal(track._locked_ledger[2].exit_support_route_serial, 4, "Anchor ledger preserves exit support")
+	_assert_conservation(track, "Anchor path preserves inventory conservation")
+	assert_true(track.get_contact_observations()[0].contacted, "Anchor path publishes contact observation")
 
 
 func _test_endpoint_reshape_endpoint_owner_and_incoming_supports_are_concrete() -> void:
@@ -142,6 +193,11 @@ func _test_endpoint_reshape_construction_completion_does_not_lock() -> void:
 func _test_endpoint_reshape_stable_paths_retire_whole_pieces() -> void:
 	var track = _reflow_runtime()
 	assert_equal(track.append_cells(_reflow_curve_cells()), 5, "Stable path curve appends")
+	var initial_curve = _piece_containing(track.get_geometry_pieces(), 1)
+	assert_not_null(initial_curve, "Stable path has an L-shaped owner")
+	if initial_curve != null:
+		assert_equal(initial_curve.kind, TrackGeometryPieceScript.Kind.CURVE_3X3, "L-shaped route resolves as CURVE_3X3")
+		assert_equal(initial_curve.nominal_length_cells, 5, "L-shaped CURVE_3X3 owns nominal length five")
 	assert_equal(track.append_cells([Vector2i(2, 3)]), 1, "Stable path successor appends")
 	var curve = _piece_containing(track.get_geometry_pieces(), 1)
 	print("Endpoint reshape: stable paths retire whole pieces")
@@ -153,14 +209,46 @@ func _test_endpoint_reshape_stable_paths_retire_whole_pieces() -> void:
 	assert_equal(curve.last_route_serial, 5, "Retirement preserves curve last serial")
 	assert_equal(curve.exit_support_route_serial, 6, "Retirement preserves exit support serial")
 	assert_false(track.cancel_ghost_suffix(Vector2i(2, 3)), "Exit support remains cancellation-ineligible")
+	assert_equal(track.append_cells([Vector2i(2, 4)]), 1, "Stable path appends a suffix beyond its support")
+	var available_before_cancel: int = track.get_available_track_cells()
+	assert_true(track.cancel_ghost_suffix(Vector2i(2, 4)), "Stable path cancels an eligible suffix")
+	assert_equal(track.get_available_track_cells(), available_before_cancel + 1, "Suffix cancellation refunds one inventory cell")
+	assert_equal(track.get_cell_records()[-1].route_serial, 6, "Successful cancellation preserves the support endpoint serial")
+	track.set_contact_anchors([
+		RouteContactAnchorScript.new(&"stable_support", Vector2i(2, 3)),
+	])
+	assert_equal(track.get_geometry_pieces()[0].first_route_serial, 1, "Anchor re-resolution preserves ledger first serial")
+	assert_equal(track.get_geometry_pieces()[0].last_route_serial, 5, "Anchor re-resolution preserves ledger last serial")
+	assert_true(track.get_contact_observations()[0].contacted, "Anchor re-resolution publishes contact")
 	assert_equal(track.advance_construction(6.0), 6.0, "Stable path builds before recovery")
 	assert_equal(track.recover_behind(1.0), 1, "Stable path recovers one cell")
+	assert_equal(track.get_available_track_cells(), track.get_total_track_cells() - 5, "Recovery refunds one complete active record")
+	assert_equal(track._recovered_end_distance_cells, 1.0, "Recovery frontier advances by one nominal cell")
+	assert_true(track._recovered_cells_by_piece.has("1:5"), "Recovery retains ledger piece facts")
 	var surviving_curve = _piece_containing(track.get_geometry_pieces(), 2)
 	assert_not_null(surviving_curve, "Recovery keeps the whole ledger piece")
 	if surviving_curve != null:
 		assert_equal(surviving_curve.first_route_serial, 1, "Recovery keeps ledger first serial")
 		assert_equal(surviving_curve.last_route_serial, 5, "Recovery keeps ledger last serial")
 	assert_true(track.prepare_for_train_sampling(1.5, 4.5), "Stable path preparation succeeds")
+	_assert_conservation(track, "Stable path preserves inventory after recovery and preparation")
+
+	var prepare_track = _reflow_runtime()
+	assert_equal(prepare_track.append_cells([
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+	]), 3, "Prepare postcondition fixture appends")
+	assert_equal(prepare_track.advance_construction(3.0), 3.0, "Prepare postcondition fixture builds")
+	var available_before_prepare: int = prepare_track.get_available_track_cells()
+	assert_true(prepare_track.prepare_for_train_sampling(0.0, 0.0), "Prepare postcondition locks the sampled owner")
+	var prepared_owner = _piece_containing(prepare_track.get_geometry_pieces(), 1)
+	assert_not_null(prepared_owner, "Prepared owner remains concrete")
+	if prepared_owner != null:
+		assert_true(prepared_owner.locked, "Prepare locks a complete piece")
+		assert_equal(prepared_owner.first_route_serial, 1, "Prepare preserves owner first serial")
+		assert_equal(prepared_owner.last_route_serial, 1, "Prepare preserves owner last serial")
+		assert_equal(prepared_owner.exit_support_route_serial, 2, "Prepare preserves successor support metadata")
+	assert_equal(prepare_track.get_available_track_cells(), available_before_prepare, "Prepare does not charge inventory")
+	_assert_conservation(prepare_track, "Prepare preserves inventory conservation")
 
 
 func _test_ordered_append_growth_and_transactional_rollback() -> void:
