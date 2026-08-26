@@ -22,6 +22,8 @@ const SUITES = [
     preload("res://tests/unit/test_grid_pointer_rasterizer.gd"),
 ]
 
+const GridTrackRuntimeSuiteScript = preload("res://tests/unit/test_grid_track_runtime.gd")
+
 
 func _initialize() -> void:
     call_deferred("_run_suites")
@@ -37,16 +39,38 @@ func _run_suites() -> void:
             quit(0)
             return
 
-    var failures := PackedStringArray()
+    for argument in OS.get_cmdline_user_args():
+        if argument == "--reflow-unprepared-pose-probe":
+            print("REFLOW_UNPREPARED_POSE_PROBE_BEGIN")
+            if not GridTrackRuntimeSuiteScript.new().run_unprepared_pose_probe():
+                quit(1)
+                return
+            quit(0)
+            return
 
-    for suite_script in SUITES:
+    var requested_suite := ""
+    for argument in OS.get_cmdline_user_args():
+        if argument.begins_with("--suite="):
+            requested_suite = argument.trim_prefix("--suite=")
+    var selected_suites := SUITES
+    if not requested_suite.is_empty():
+        selected_suites = []
+        for suite_script in SUITES:
+            if suite_script.resource_path.get_file() == requested_suite:
+                selected_suites.append(suite_script)
+        if selected_suites.is_empty():
+            push_error("Unknown prototype suite: " + requested_suite)
+            quit(1)
+            return
+    var failures := PackedStringArray()
+    for suite_script in selected_suites:
         var suite = suite_script.new()
         var suite_failures: PackedStringArray = suite.run()
         for failure in suite_failures:
             failures.append("%s: %s" % [suite_script.resource_path, failure])
 
     if failures.is_empty():
-        print("PASS: %d prototype test suite(s)" % SUITES.size())
+        print("PASS: %d prototype test suite(s)" % selected_suites.size())
         quit(0)
         return
 

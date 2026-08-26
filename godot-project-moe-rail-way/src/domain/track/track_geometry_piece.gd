@@ -12,6 +12,7 @@ var absolute_start_distance_cells: float = 0.0
 var footprint_cells: Array[Vector2i] = []
 var centerline := PackedVector2Array()
 var locked := false
+var exit_support_route_serial: int = -1
 var active_local_start_cells := 0.0
 var active_local_end_cells := 0.0
 
@@ -87,6 +88,7 @@ func duplicate_piece() -> RefCounted:
     copy.footprint_cells = footprint_cells.duplicate()
     copy.centerline = centerline.duplicate()
     copy.locked = locked
+    copy.exit_support_route_serial = exit_support_route_serial
     copy.active_local_start_cells = active_local_start_cells
     copy.active_local_end_cells = active_local_end_cells
     return copy

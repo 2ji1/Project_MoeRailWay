@@ -528,7 +528,14 @@ func _update_hover_cell(local_position: Vector2) -> void:
 func _is_cancelable_cell(cell: Vector2i) -> bool:
 	for record in _presented_cells:
 		if record.cell == cell:
-			return record.state == TrackCellRecordScript.State.RESERVED_GHOST
+			if record.state != TrackCellRecordScript.State.RESERVED_GHOST:
+				return false
+			for piece in _presented_pieces:
+				if piece.contains_serial(record.route_serial) and (piece.locked or record.geometry_locked):
+					return false
+				if piece.exit_support_route_serial == record.route_serial:
+					return false
+			return true
 	return false
 
 

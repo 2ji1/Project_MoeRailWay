@@ -31,6 +31,7 @@ var _ticks_per_second: int
 var _seconds_per_tick: float
 var _construction_cells_per_tick: float
 var _snapshot: SessionSnapshotScript
+var _cached_tick_pose: Dictionary = {"position": Vector2.ZERO, "heading": Vector2.RIGHT}
 
 
 func _init(
@@ -75,17 +76,35 @@ func advance_tick(input_frame: TrackInputFrameScript = null) -> void:
 		_track_system.apply_left_input(frame)
 
 	_track_system.advance_construction(_construction_cells_per_tick)
+	var track_end_requested := false
 	if (
 		_state == State.PREPARING_DEPARTURE
 		and _track_system.get_built_end_distance_cells() + DISTANCE_EPSILON
 			>= float(_start_config.departure_required_built_cells)
 	):
-		_state = State.RUNNING
+		var departure_through := minf(
+			_start_config.train_speed_cells_per_second * _seconds_per_tick,
+			_track_system.get_built_end_distance_cells()
+		)
+		if not _prepare_or_abort(0.0, departure_through):
+			return
 		_train_system.depart(0.0)
-
-	var track_end_requested := false
-	if _state == State.RUNNING:
+		_train_system.capture_pose(_track_system)
+		_state = State.RUNNING
 		track_end_requested = _train_system.advance_tick(_track_system, _seconds_per_tick)
+		_cached_tick_pose = _train_system.capture_pose(_track_system)
+	elif _state == State.RUNNING:
+		var current_distance := _train_system.get_route_distance_cells()
+		var through_distance := minf(
+			current_distance + _start_config.train_speed_cells_per_second * _seconds_per_tick,
+			_track_system.get_built_end_distance_cells()
+		)
+		if not _prepare_or_abort(current_distance, through_distance):
+			return
+		track_end_requested = _train_system.advance_tick(_track_system, _seconds_per_tick)
+		_cached_tick_pose = _train_system.capture_pose(_track_system)
+
+	if _state == State.RUNNING:
 		_track_system.recover_behind(
 			_train_system.get_route_distance_cells() - float(_start_config.recovery_lag_cells)
 		)
@@ -112,6 +131,10 @@ func get_state() -> State:
 	return _state
 
 
+func _prepare_or_abort(current_distance: float, through_distance: float) -> bool:
+	return _track_system.prepare_for_train_sampling(current_distance, through_distance)
+
+
 func _complete(reason: SessionResultScript.Reason) -> void:
 	if _state == State.COMPLETED:
 		return
@@ -136,8 +159,8 @@ func _create_snapshot() -> SessionSnapshotScript:
 	var train_position := Vector2(_start_config.departure_position)
 	var train_heading := Vector2.RIGHT
 	if train_active:
-		train_position = _train_system.get_position(_track_system)
-		train_heading = _train_system.get_heading(_track_system)
+		train_position = _cached_tick_pose.position
+		train_heading = _cached_tick_pose.heading
 	var built_end := _track_system.get_built_end_distance_cells()
 	var built_distance_ahead := maxf(0.0, built_end - train_distance)
 	var estimated_track_end_seconds := 0.0

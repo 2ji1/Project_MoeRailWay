@@ -2,6 +2,7 @@ extends "res://tests/support/prototype_test.gd"
 
 const TrackCellRecordScript = preload("res://src/domain/track/track_cell_record.gd")
 const TrackCellSequenceScript = preload("res://src/domain/track/track_cell_sequence.gd")
+const TrackGeometryPieceScript = preload("res://src/domain/track/track_geometry_piece.gd")
 
 
 func run() -> PackedStringArray:
@@ -16,6 +17,7 @@ func run() -> PackedStringArray:
 	_test_serial_and_nominal_distance_continuity()
 	_test_invalid_buffer_stops_immediately()
 	_test_departure_anchor_cannot_be_reserved_again()
+	_test_start_building_does_not_lock_geometry()
 	return finish()
 
 
@@ -167,3 +169,21 @@ func _test_departure_anchor_cannot_be_reserved_again() -> void:
 	assert_equal(route.get_available_track_cells(), 7, "Only three route cells are charged")
 	assert_equal(route.get_records().size(), 3, "Departure anchor is never a route record")
 	assert_true(route.is_conservation_valid(), "Rejected departure re-entry keeps conservation")
+
+
+func _test_start_building_does_not_lock_geometry() -> void:
+	var sequence = TrackCellSequenceScript.new(Vector2i.ZERO, 3)
+	assert_not_null(sequence.try_append_candidate(Vector2i(1, 0)), "Fixture record")
+	var piece = TrackGeometryPieceScript.new()
+	piece.group_id = 0
+	piece.first_route_serial = 1
+	piece.last_route_serial = 1
+	piece.nominal_length_cells = 1
+	var footprint_cells: Array[Vector2i] = [Vector2i(1, 0)]
+	piece.footprint_cells = footprint_cells
+	piece.centerline = PackedVector2Array([Vector2(20.0, 20.0), Vector2(60.0, 20.0)])
+	sequence.apply_resolved_geometry([piece])
+	sequence.start_building(1)
+	var record = sequence.get_records()[0]
+	assert_equal(record.state, TrackCellRecordScript.State.BUILDING, "Construction starts")
+	assert_false(record.geometry_locked, "Construction state does not lock geometry")

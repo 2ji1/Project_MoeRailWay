@@ -22,6 +22,10 @@ class PresetFixture extends RefCounted:
 	var authored_candidate
 	var authored_position := Vector2.ZERO
 	var results: Array = []
+	var event_order: Array[String] = []
+	var result_observer: Callable
+	var snapshot_observer: Callable
+	var event_result_observer: Callable
 
 	func _logical_to_local(logical: Vector2) -> Vector2:
 		var content: Rect2 = view.get_logical_content_rect()
@@ -97,7 +101,11 @@ func compose_preset_fixture(preset: int, departure_cell: Vector2i):
 	selected_candidate.position = field.grid_cell_center(departure_cell)
 	var authored_position: Vector2 = selected_candidate.position
 	var results: Array = []
-	app.session_result_presented.connect(func(result): results.append(result))
+	var event_order: Array[String] = []
+	var result_observer := func(result): results.append(result)
+	var snapshot_observer := func(_snapshot): event_order.append("snapshot")
+	var event_result_observer := func(_result): event_order.append("result")
+	app.session_result_presented.connect(result_observer)
 	root.add_child(app)
 	await process_frame
 	app.set_physics_process(false)
@@ -106,10 +114,16 @@ func compose_preset_fixture(preset: int, departure_cell: Vector2i):
 	fixture.field = field
 	fixture.view = view
 	fixture.controller = app.session_controller
+	fixture.controller.snapshot_published.connect(snapshot_observer)
+	app.session_result_presented.connect(event_result_observer)
 	fixture.latest_snapshot = app.session_controller.get_snapshot()
 	fixture.authored_candidate = selected_candidate
 	fixture.authored_position = authored_position
 	fixture.results = results
+	fixture.event_order = event_order
+	fixture.result_observer = result_observer
+	fixture.snapshot_observer = snapshot_observer
+	fixture.event_result_observer = event_result_observer
 	return fixture
 
 
@@ -137,6 +151,10 @@ func assert_centered_preset_end_to_end(preset: int, expected_origin: Vector2) ->
 	_assert_equal(fixture.results.size(), 1, "Real app presents one result")
 	if not fixture.results.is_empty():
 		_assert_equal(fixture.results[0].get_reason(), SessionResultScript.Reason.TRACK_END_REACHED, "Track-end reason")
+	_assert_equal(fixture.event_order.slice(-2), ["snapshot", "result"], "Terminal snapshot publishes before result")
+	fixture.controller.snapshot_published.disconnect(fixture.snapshot_observer)
+	fixture.app.session_result_presented.disconnect(fixture.result_observer)
+	fixture.app.session_result_presented.disconnect(fixture.event_result_observer)
 	fixture.app.queue_free()
 	await process_frame
 
@@ -204,6 +222,9 @@ func _run_reconfiguration_probe() -> void:
 		_assert_equal(after.selected_departure_position, before.selected_departure_position, "Rejected reconfiguration preserves the active departure position")
 		_assert_equal(after.valid_start_cell, before.valid_start_cell, "Rejected reconfiguration preserves the active valid-start cell")
 		_assert_equal(after.valid_start_rect, before.valid_start_rect, "Rejected reconfiguration preserves the active valid-start rectangle")
+		fixture.controller.snapshot_published.disconnect(fixture.snapshot_observer)
+		fixture.app.session_result_presented.disconnect(fixture.result_observer)
+		fixture.app.session_result_presented.disconnect(fixture.event_result_observer)
 		fixture.app.queue_free()
 		await process_frame
 	if _failures.is_empty():

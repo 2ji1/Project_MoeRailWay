@@ -98,11 +98,12 @@ func cancel_ghost_suffix(cell: Vector2i) -> int:
 
 func apply_resolved_geometry(pieces: Array[TrackGeometryPieceScript]) -> void:
     for record in _records:
-        if not record.geometry_locked:
-            record.geometry_group_id = -1
+        record.geometry_group_id = -1
+        record.geometry_locked = false
         for piece in pieces:
             if piece.contains_serial(record.route_serial):
                 record.geometry_group_id = piece.group_id
+                record.geometry_locked = piece.locked
                 break
 
 
@@ -121,9 +122,6 @@ func start_building(route_serial: int) -> void:
         or target.geometry_group_id < 0
     ):
         return
-    for record in _records:
-        if record.geometry_group_id == target.geometry_group_id:
-            record.geometry_locked = true
     target.state = TrackCellRecordScript.State.BUILDING
     target.build_progress = 0.0
 
@@ -204,3 +202,31 @@ func is_conservation_valid() -> bool:
         and _available_track_cells + _records.size() == _total_track_cells
         and _active_cells.size() == _records.size()
     )
+
+
+func duplicate_sequence() -> TrackCellSequence:
+    var copy = get_script().new(_departure_cell, _total_track_cells)
+    copy._available_track_cells = _available_track_cells
+    copy._next_route_serial = _next_route_serial
+    copy._next_nominal_start_cells = _next_nominal_start_cells
+    copy._active_predecessor_cell = _active_predecessor_cell
+    for record in _records:
+        var record_copy = record.duplicate_record()
+        copy._records.append(record_copy)
+        copy._active_cells[record_copy.cell] = true
+    return copy
+
+
+func replace_with(source: TrackCellSequence) -> void:
+    _departure_cell = source._departure_cell
+    _total_track_cells = source._total_track_cells
+    _available_track_cells = source._available_track_cells
+    _next_route_serial = source._next_route_serial
+    _next_nominal_start_cells = source._next_nominal_start_cells
+    _active_predecessor_cell = source._active_predecessor_cell
+    _records.clear()
+    _active_cells.clear()
+    for record in source._records:
+        var record_copy = record.duplicate_record()
+        _records.append(record_copy)
+        _active_cells[record_copy.cell] = true
