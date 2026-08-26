@@ -105,7 +105,115 @@ func gesture_begin(endpoint: Vector2i) -> Dictionary:
 func gesture_finalize() -> bool:
     if not _gesture_active:
         return false
+    var candidate_sequence = _sequence.duplicate_sequence()
+    var candidate_ledger = _duplicate_pieces(_locked_ledger)
+    var candidate_anchors = _duplicate_anchors(_anchors)
+    var resolution = _stage_stable_retirement(
+        candidate_sequence,
+        candidate_ledger,
+        candidate_anchors
+    )
+    if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
+        _clear_gesture_state()
+        return false
+    _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
+    candidate_sequence.apply_resolved_geometry(resolution.pieces)
+    if not _validate_candidate(
+        candidate_sequence,
+        candidate_ledger,
+        resolution,
+        _recovered_cells_by_piece,
+        _recovered_end_distance_cells
+    ):
+        _clear_gesture_state()
+        return false
+    var candidate_contacts := _build_contact_observations(
+        resolution.pieces,
+        candidate_anchors,
+        _recovered_cells_by_piece
+    )
+    _commit_candidate(candidate_sequence, candidate_ledger, resolution)
+    _contact_observations = candidate_contacts.duplicate(true)
     _clear_gesture_state()
+    return true
+
+
+func gesture_update(crossed_cells: Array[Vector2i]) -> bool:
+    if not _gesture_active:
+        return false
+    var template_index := -1
+    var selected_target_index := -1
+    for cell_index in range(crossed_cells.size()):
+        var cell: Vector2i = crossed_cells[cell_index]
+        for index in range([&"straight", &"left", &"right"].size()):
+            var template_name: StringName = [&"straight", &"left", &"right"][index]
+            if _gesture_target_endpoints.get(template_name, Vector2i(-1, -1)) == cell:
+                template_index = index
+                selected_target_index = cell_index
+    var templates := _template_cells(_gesture_editable_span)
+    if template_index < 0 or template_index >= templates.size():
+        var ordinary_sequence = _gesture_origin_sequence.duplicate_sequence()
+        if crossed_cells.is_empty():
+            return false
+        for cell in crossed_cells:
+            if ordinary_sequence.try_append_candidate(cell) == null:
+                return false
+        var ordinary_ledger = _duplicate_pieces(_gesture_origin_locked_ledger)
+        var ordinary_anchors = _duplicate_anchors(_gesture_origin_anchors)
+        var ordinary_resolution = _resolve_candidate(
+            ordinary_sequence,
+            ordinary_ledger,
+            ordinary_anchors
+        )
+        if not ordinary_resolution.is_valid or not _pieces_are_continuous(ordinary_resolution.pieces):
+            return false
+        _assign_unique_unlocked_group_ids(ordinary_resolution.pieces, ordinary_ledger)
+        ordinary_sequence.apply_resolved_geometry(ordinary_resolution.pieces)
+        if not _validate_candidate(ordinary_sequence, ordinary_ledger, ordinary_resolution):
+            return false
+        var ordinary_contacts := _build_contact_observations(
+            ordinary_resolution.pieces,
+            ordinary_anchors,
+            _gesture_origin_recovered_cells_by_piece
+        )
+        _commit_candidate(ordinary_sequence, ordinary_ledger, ordinary_resolution)
+        _advance_gesture_serial_watermark(ordinary_sequence)
+        _contact_observations = ordinary_contacts.duplicate(true)
+        return true
+    var template_cells: Array[Vector2i] = []
+    for cell in templates[template_index]:
+        template_cells.append(cell)
+    var candidate_sequence = _gesture_origin_sequence.duplicate_sequence()
+    if not candidate_sequence.replace_span_in_place(
+        _gesture_editable_span["first_route_serial"],
+        _gesture_editable_span["last_route_serial"],
+        template_cells
+    ):
+        return false
+    var extension_rejected := false
+    for index in range(selected_target_index + 1, crossed_cells.size()):
+        if candidate_sequence.try_append_candidate(crossed_cells[index]) == null:
+            extension_rejected = true
+            break
+    if extension_rejected:
+        return false
+    var candidate_ledger = _duplicate_pieces(_gesture_origin_locked_ledger)
+    var candidate_anchors = _duplicate_anchors(_gesture_origin_anchors)
+    var resolution = _resolve_candidate(candidate_sequence, candidate_ledger, candidate_anchors)
+    if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
+        return false
+    _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
+    candidate_sequence.apply_resolved_geometry(resolution.pieces)
+    if not _validate_candidate(candidate_sequence, candidate_ledger, resolution):
+        return false
+    var candidate_contacts := _build_contact_observations(
+        resolution.pieces,
+        candidate_anchors,
+        _gesture_origin_recovered_cells_by_piece
+    )
+    _commit_candidate(candidate_sequence, candidate_ledger, resolution)
+    _advance_gesture_serial_watermark(candidate_sequence)
+    _contact_observations = candidate_contacts.duplicate(true)
     return true
 
 
@@ -857,6 +965,15 @@ func _commit_candidate(
     _sequence.replace_with(sequence)
     _locked_ledger = _duplicate_pieces(ledger)
     _pieces = _duplicate_pieces(resolution.pieces)
+
+
+func _advance_gesture_serial_watermark(candidate_sequence: TrackCellSequenceScript) -> void:
+    if _gesture_origin_sequence == null:
+        return
+    _gesture_origin_sequence._next_route_serial = maxi(
+        _gesture_origin_sequence._next_route_serial,
+        candidate_sequence._next_route_serial
+    )
 
 
 func _first_unbuilt_record():

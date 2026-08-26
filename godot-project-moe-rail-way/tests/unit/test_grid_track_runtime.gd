@@ -17,6 +17,19 @@ func run() -> PackedStringArray:
 	_test_endpoint_reshape_gesture_begin_captures_detached_origin()
 	_test_endpoint_reshape_editable_span_has_deterministic_targets()
 	_test_endpoint_reshape_active_gesture_defers_construction_and_recovery()
+	_test_endpoint_reshape_right_left_straight_back_preserves_fixed_prefix()
+	_test_endpoint_reshape_one_gesture_extends_after_selected_target()
+	_test_endpoint_reshape_control_cells_are_omitted()
+	_test_endpoint_reshape_target_reentry_rebuilds_from_origin()
+	_test_endpoint_reshape_invalid_bounds_preserve_last_valid()
+	_test_endpoint_reshape_invalid_overlap_preserve_last_valid()
+	_test_endpoint_reshape_invalid_anchor_preserve_last_valid()
+	_test_endpoint_reshape_duplicate_preserves_last_valid()
+	_test_endpoint_reshape_insufficient_inventory_preserves_last_valid()
+	_test_endpoint_reshape_empty_departure_and_straight_accept_ordinary_extension()
+	_test_endpoint_reshape_locked_endpoint_accepts_only_extension()
+	_test_endpoint_reshape_gesture_rejects_illegal_starts()
+	_test_endpoint_reshape_finalize_applies_retirement()
 	_test_endpoint_reshape_full_curve_does_not_retain_unrelated_predecessor()
 	_test_endpoint_reshape_anchor_path_retires_stable_pieces_atomically()
 	_test_endpoint_reshape_five_straight_records_are_not_a_generic_horizon()
@@ -331,6 +344,572 @@ func _test_endpoint_reshape_active_gesture_defers_construction_and_recovery() ->
 	assert_true(track.has_method("gesture_finalize"), "Gesture finalize deferral contract exists")
 	if track.has_method("gesture_finalize"):
 		track.call("gesture_finalize")
+
+
+func _test_endpoint_reshape_right_left_straight_back_preserves_fixed_prefix() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 2), 18, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	var origin_cells: Array[Vector2i] = [
+		Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2),
+		Vector2i(3, 2), Vector2i(3, 1), Vector2i(3, 0),
+	]
+	assert_equal(track.append_cells(origin_cells), 6, "Reshape sequence fixture appends")
+	assert_equal(track.advance_construction(6.0), 6.0, "Reshape sequence fixture builds")
+	var origin_records := _record_values(track.get_cell_records())
+	var origin_prefix := origin_records[0]
+	var origin_prefix_piece = _piece_containing(track.get_geometry_pieces(), 1)
+	assert_not_null(origin_prefix_piece, "Reshape sequence has a fixed prefix owner")
+	var origin_prefix_piece_values := {}
+	if origin_prefix_piece != null:
+		origin_prefix_piece_values = _piece_values([origin_prefix_piece])[0]
+	var origin_inventory: int = track.get_available_track_cells()
+	print("Endpoint reshape: right left straight back preserves fixed prefix")
+	assert_true(track.has_method("gesture_update"), "Gesture update contract exists")
+	if not track.has_method("gesture_update"):
+		return
+	var began = track.call("gesture_begin", track.get_endpoint_cell())
+	assert_true(began is Dictionary, "Reshape sequence begins from the endpoint")
+	if not began is Dictionary:
+		return
+	var targets: Dictionary = began["targets"]
+	var left_cells: Array[Vector2i] = [targets["left"]]
+	var straight_cells: Array[Vector2i] = [targets["straight"]]
+	var right_cells: Array[Vector2i] = [targets["right"]]
+	for selection in [left_cells, straight_cells, right_cells]:
+		assert_true(track.call("gesture_update", selection), "Template target publishes a candidate")
+		var records := _record_values(track.get_cell_records())
+		assert_equal(records[0], origin_prefix, "Fixed prefix record survives template replacement")
+		assert_equal(track.get_available_track_cells(), origin_inventory, "Template replacement preserves inventory")
+		var prefix_piece = _piece_containing(track.get_geometry_pieces(), 1)
+		assert_not_null(prefix_piece, "Fixed prefix owner survives template replacement")
+		if prefix_piece != null:
+			assert_equal(_piece_values([prefix_piece])[0], origin_prefix_piece_values, "Fixed prefix geometry survives template replacement")
+	var final_records := _record_values(track.get_cell_records())
+	assert_equal(final_records, origin_records, "Returning to the right target rebuilds the origin route")
+	track.call("gesture_finalize")
+
+
+func _test_endpoint_reshape_one_gesture_extends_after_selected_target() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 2), 18, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(track.append_cells([
+		Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2),
+		Vector2i(3, 2), Vector2i(3, 1), Vector2i(3, 0),
+	]), 6, "Extension fixture appends")
+	var began = track.call("gesture_begin", track.get_endpoint_cell())
+	assert_true(began is Dictionary, "Extension fixture begins a gesture")
+	if not began is Dictionary:
+		return
+	var targets: Dictionary = began["targets"]
+	var crossed: Array[Vector2i] = [
+		targets["left"], Vector2i(4, 4), Vector2i(5, 4),
+	]
+	print("Endpoint reshape: one gesture extends after selected target")
+	assert_true(track.has_method("gesture_update"), "Gesture update extension contract exists")
+	if not track.has_method("gesture_update"):
+		return
+	assert_true(track.call("gesture_update", crossed), "Target and suffix publish in one update")
+	var records = track.get_cell_records()
+	assert_equal(records.size(), 8, "One gesture appends two post-target records")
+	if records.size() < 8:
+		return
+	assert_equal(records[5].cell, targets["left"], "Selected template endpoint is retained")
+	assert_equal(records[6].cell, Vector2i(4, 4), "First post-target cell is appended")
+	assert_equal(records[7].cell, Vector2i(5, 4), "Second post-target cell is appended")
+	assert_equal(records[6].route_serial, 7, "First suffix receives a fresh serial")
+	assert_equal(records[7].route_serial, 8, "Second suffix receives a fresh serial")
+	assert_equal(track.get_endpoint_cell(), Vector2i(5, 4), "One gesture reaches the suffix endpoint")
+	assert_equal(track.get_available_track_cells(), 10, "Suffix charges one inventory cell per record")
+	track.call("gesture_finalize")
+
+
+func _test_endpoint_reshape_control_cells_are_omitted() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 2), 18, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(track.append_cells([
+		Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2),
+		Vector2i(3, 2), Vector2i(3, 1), Vector2i(3, 0),
+	]), 6, "Control-cell fixture appends")
+	var began = track.call("gesture_begin", track.get_endpoint_cell())
+	assert_true(began is Dictionary, "Control-cell fixture begins a gesture")
+	if not began is Dictionary:
+		return
+	var targets: Dictionary = began["targets"]
+	var crossed: Array[Vector2i] = [
+		Vector2i(4, 0), Vector2i(4, 1), Vector2i(4, 2),
+		Vector2i(3, 2), Vector2i(3, 3), targets["left"],
+	]
+	print("Endpoint reshape: control cells are omitted")
+	assert_true(track.has_method("gesture_update"), "Gesture update control-cell contract exists")
+	if not track.has_method("gesture_update"):
+		return
+	assert_true(track.call("gesture_update", crossed), "Selected target publishes after control motion")
+	var records = track.get_cell_records()
+	assert_equal(records.size(), 6, "Control motion does not append extra records")
+	var record_cells: Array[Vector2i] = []
+	for record in records:
+		record_cells.append(record.cell)
+	for control in [Vector2i(4, 0), Vector2i(4, 1), Vector2i(4, 2)]:
+		assert_false(record_cells.has(control), "Control cell is not a route record")
+	track.call("gesture_finalize")
+
+
+func _test_endpoint_reshape_target_reentry_rebuilds_from_origin() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 2), 18, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(track.append_cells([
+		Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2),
+		Vector2i(3, 2), Vector2i(3, 1), Vector2i(3, 0),
+	]), 6, "Re-entry fixture appends")
+	var began = track.call("gesture_begin", track.get_endpoint_cell())
+	assert_true(began is Dictionary, "Re-entry fixture begins a gesture")
+	if not began is Dictionary:
+		return
+	var targets: Dictionary = began["targets"]
+	var left_with_suffix: Array[Vector2i] = [targets["left"], Vector2i(4, 4)]
+	var straight_only: Array[Vector2i] = [targets["straight"]]
+	print("Endpoint reshape: target re-entry rebuilds from origin")
+	assert_true(track.has_method("gesture_update"), "Gesture update re-entry contract exists")
+	if not track.has_method("gesture_update"):
+		return
+	assert_true(track.call("gesture_update", left_with_suffix), "Initial target and suffix publish")
+	assert_equal(track.get_cell_records().size(), 7, "Initial target retains its suffix")
+	assert_true(track.call("gesture_update", straight_only), "Re-entered target publishes")
+	var records = track.get_cell_records()
+	assert_equal(records.size(), 6, "Re-entry discards the prior candidate suffix")
+	if records.size() < 6:
+		return
+	var expected_cells: Array[Vector2i] = [
+		Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2),
+		Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2),
+	]
+	for index in range(expected_cells.size()):
+		assert_equal(records[index].cell, expected_cells[index], "Re-entry rebuilds route from the origin")
+	assert_false(records.any(func(record): return record.cell == Vector2i(4, 4)), "Re-entry does not compose suffix")
+	assert_equal(track.get_available_track_cells(), 12, "Re-entry restores origin inventory before replacement")
+	var reentered_with_suffix: Array[Vector2i] = [targets["straight"], Vector2i(6, 2)]
+	assert_true(track.call("gesture_update", reentered_with_suffix), "Re-entry can extend the new candidate")
+	var reentered_records = track.get_cell_records()
+	assert_equal(reentered_records.size(), 7, "Re-entry keeps the new suffix")
+	if reentered_records.size() == 7:
+		assert_equal(reentered_records[-1].route_serial, 8, "Re-entry never reuses a consumed suffix serial")
+		assert_equal(reentered_records[-1].route_distance_start_cells, 6.0, "Re-entry preserves monotonic suffix distance")
+	track.call("gesture_finalize")
+
+
+func _test_endpoint_reshape_invalid_bounds_preserve_last_valid() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 2), 18, Vector2.ZERO, Vector2i(6, 8), 40.0
+	)
+	assert_equal(track.append_cells([
+		Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2),
+		Vector2i(3, 2), Vector2i(3, 1), Vector2i(3, 0),
+	]), 6, "Bounds fixture appends")
+	var began = track.call("gesture_begin", track.get_endpoint_cell())
+	assert_true(began is Dictionary, "Bounds fixture begins a gesture")
+	if not began is Dictionary:
+		return
+	var targets: Dictionary = began["targets"]
+	var valid_cells: Array[Vector2i] = [targets["left"], Vector2i(4, 4)]
+	assert_true(track.call("gesture_update", valid_cells), "Bounds fixture publishes a valid candidate")
+	var records_before := _record_values(track.get_cell_records())
+	var pieces_before := _piece_values(track.get_geometry_pieces())
+	var inventory_before: int = track.get_available_track_cells()
+	var ledger_before := _piece_values(track._locked_ledger)
+	var contacts_before := track.get_contact_observations().duplicate(true)
+	var origin_before: Dictionary = track.call("get_gesture_origin_observation")
+	var origin_records_before := _record_values(origin_before["route_records"])
+	var origin_pieces_before := _piece_values(origin_before["pieces"])
+	var invalid_cells: Array[Vector2i] = [
+		targets["straight"], Vector2i(6, 2),
+	]
+	print("Endpoint reshape: invalid bounds preserve last valid")
+	assert_true(track.has_method("gesture_update"), "Gesture update bounds contract exists")
+	if not track.has_method("gesture_update"):
+		return
+	assert_false(track.call("gesture_update", invalid_cells), "Out-of-bounds candidate is rejected")
+	assert_equal(_record_values(track.get_cell_records()), records_before, "Bounds rejection preserves last-valid records")
+	assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before, "Bounds rejection preserves last-valid pieces")
+	assert_equal(track.get_available_track_cells(), inventory_before, "Bounds rejection preserves last-valid inventory")
+	assert_equal(_piece_values(track._locked_ledger), ledger_before, "Bounds rejection preserves last-valid ledger")
+	assert_equal(track.get_contact_observations(), contacts_before, "Bounds rejection preserves last-valid observations")
+	var origin_after: Dictionary = track.call("get_gesture_origin_observation")
+	assert_equal(_record_values(origin_after["route_records"]), origin_records_before, "Bounds rejection preserves origin records")
+	assert_equal(_piece_values(origin_after["pieces"]), origin_pieces_before, "Bounds rejection preserves origin pieces")
+	assert_equal(origin_after["inventory"], origin_before["inventory"], "Bounds rejection preserves origin inventory")
+	assert_equal(origin_after["contact_observations"], origin_before["contact_observations"], "Bounds rejection preserves origin observations")
+	track.call("gesture_finalize")
+
+
+func _test_endpoint_reshape_invalid_overlap_preserve_last_valid() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 2), 18, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(track.append_cells([
+		Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2),
+		Vector2i(3, 2), Vector2i(3, 1), Vector2i(3, 0),
+	]), 6, "Overlap fixture appends")
+	var began = track.call("gesture_begin", track.get_endpoint_cell())
+	assert_true(began is Dictionary, "Overlap fixture begins a gesture")
+	if not began is Dictionary:
+		return
+	var targets: Dictionary = began["targets"]
+	var valid_cells: Array[Vector2i] = [targets["left"], Vector2i(4, 4)]
+	assert_true(track.call("gesture_update", valid_cells), "Overlap fixture publishes a valid candidate")
+	var records_before := _record_values(track.get_cell_records())
+	var pieces_before := _piece_values(track.get_geometry_pieces())
+	var inventory_before: int = track.get_available_track_cells()
+	var ledger_before := _piece_values(track._locked_ledger)
+	var contacts_before := track.get_contact_observations().duplicate(true)
+	var origin_before: Dictionary = track.call("get_gesture_origin_observation")
+	var origin_records_before := _record_values(origin_before["route_records"])
+	var origin_pieces_before := _piece_values(origin_before["pieces"])
+	var resolver := _RejectOverlapResolver.new()
+	resolver.reject_overlap = true
+	track._resolver = resolver
+	var invalid_cells: Array[Vector2i] = [targets["straight"]]
+	print("Endpoint reshape: invalid overlap preserve last valid")
+	assert_true(track.has_method("gesture_update"), "Gesture update overlap contract exists")
+	if not track.has_method("gesture_update"):
+		return
+	assert_false(track.call("gesture_update", invalid_cells), "Overlapping candidate is rejected")
+	assert_equal(_record_values(track.get_cell_records()), records_before, "Overlap rejection preserves last-valid records")
+	assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before, "Overlap rejection preserves last-valid pieces")
+	assert_equal(track.get_available_track_cells(), inventory_before, "Overlap rejection preserves last-valid inventory")
+	assert_equal(_piece_values(track._locked_ledger), ledger_before, "Overlap rejection preserves last-valid ledger")
+	assert_equal(track.get_contact_observations(), contacts_before, "Overlap rejection preserves last-valid observations")
+	var origin_after: Dictionary = track.call("get_gesture_origin_observation")
+	assert_equal(_record_values(origin_after["route_records"]), origin_records_before, "Overlap rejection preserves origin records")
+	assert_equal(_piece_values(origin_after["pieces"]), origin_pieces_before, "Overlap rejection preserves origin pieces")
+	track.call("gesture_finalize")
+
+
+func _test_endpoint_reshape_invalid_anchor_preserve_last_valid() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 2), 18, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(track.append_cells([
+		Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2),
+		Vector2i(3, 2), Vector2i(3, 1), Vector2i(3, 0),
+	]), 6, "Anchor fixture appends")
+	track.set_contact_anchors([
+		RouteContactAnchorScript.new(&"reshape_anchor", Vector2i(0, 0)),
+	])
+	var began = track.call("gesture_begin", track.get_endpoint_cell())
+	assert_true(began is Dictionary, "Anchor fixture begins a gesture")
+	if not began is Dictionary:
+		return
+	var targets: Dictionary = began["targets"]
+	var valid_cells: Array[Vector2i] = [targets["left"], Vector2i(4, 4)]
+	assert_true(track.call("gesture_update", valid_cells), "Anchor fixture publishes a valid candidate")
+	var records_before := _record_values(track.get_cell_records())
+	var pieces_before := _piece_values(track.get_geometry_pieces())
+	var inventory_before: int = track.get_available_track_cells()
+	var ledger_before := _piece_values(track._locked_ledger)
+	var contacts_before := track.get_contact_observations().duplicate(true)
+	var resolver := _RejectAnchorCandidateResolver.new()
+	resolver.reject_anchor = true
+	track._resolver = resolver
+	print("Endpoint reshape: invalid anchor preserve last valid")
+	assert_true(track.has_method("gesture_update"), "Gesture update anchor contract exists")
+	if not track.has_method("gesture_update"):
+		return
+	var invalid_cells: Array[Vector2i] = [targets["straight"]]
+	assert_false(track.call("gesture_update", invalid_cells), "Anchor-conflicting candidate is rejected")
+	assert_equal(_record_values(track.get_cell_records()), records_before, "Anchor rejection preserves last-valid records")
+	assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before, "Anchor rejection preserves last-valid pieces")
+	assert_equal(track.get_available_track_cells(), inventory_before, "Anchor rejection preserves last-valid inventory")
+	assert_equal(_piece_values(track._locked_ledger), ledger_before, "Anchor rejection preserves last-valid ledger")
+	assert_equal(track.get_contact_observations(), contacts_before, "Anchor rejection preserves last-valid observations")
+	track.call("gesture_finalize")
+
+
+func _test_endpoint_reshape_duplicate_preserves_last_valid() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 2), 18, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(track.append_cells([
+		Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2),
+		Vector2i(3, 2), Vector2i(3, 1), Vector2i(3, 0),
+	]), 6, "Duplicate fixture appends")
+	var began = track.call("gesture_begin", track.get_endpoint_cell())
+	assert_true(began is Dictionary, "Duplicate fixture begins a gesture")
+	if not began is Dictionary:
+		return
+	var targets: Dictionary = began["targets"]
+	var valid_cells: Array[Vector2i] = [targets["left"], Vector2i(4, 4)]
+	assert_true(track.call("gesture_update", valid_cells), "Duplicate fixture publishes a last-valid candidate")
+	var records_before := _record_values(track.get_cell_records())
+	var pieces_before := _piece_values(track.get_geometry_pieces())
+	var inventory_before: int = track.get_available_track_cells()
+	var ledger_before := _piece_values(track._locked_ledger)
+	var observations_before := track.get_contact_observations().duplicate(true)
+	var origin_before: Dictionary = track.call("get_gesture_origin_observation")
+	var origin_values_before := {
+		"records": _record_values(origin_before["route_records"]),
+		"pieces": _piece_values(origin_before["pieces"]),
+		"ledger": _piece_values(origin_before["locked_ledger"]),
+		"inventory": origin_before["inventory"],
+		"observations": origin_before["contact_observations"].duplicate(true),
+	}
+	var invalid_cells: Array[Vector2i] = [
+		targets["left"], Vector2i(4, 4), Vector2i(4, 4),
+	]
+	print("Endpoint reshape: duplicate preserves last valid")
+	assert_true(track.has_method("gesture_update"), "Gesture update duplicate contract exists")
+	if not track.has_method("gesture_update"):
+		return
+	assert_false(track.call("gesture_update", invalid_cells), "Duplicate candidate is rejected")
+	assert_equal(_record_values(track.get_cell_records()), records_before, "Duplicate rejection preserves last-valid records")
+	assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before, "Duplicate rejection preserves last-valid pieces")
+	assert_equal(track.get_available_track_cells(), inventory_before, "Duplicate rejection preserves last-valid inventory")
+	assert_equal(_piece_values(track._locked_ledger), ledger_before, "Duplicate rejection preserves last-valid ledger")
+	assert_equal(track.get_contact_observations(), observations_before, "Duplicate rejection preserves last-valid observations")
+	var origin_after: Dictionary = track.call("get_gesture_origin_observation")
+	assert_equal(_record_values(origin_after["route_records"]), origin_values_before["records"], "Duplicate rejection preserves origin records")
+	assert_equal(_piece_values(origin_after["pieces"]), origin_values_before["pieces"], "Duplicate rejection preserves origin pieces")
+	assert_equal(_piece_values(origin_after["locked_ledger"]), origin_values_before["ledger"], "Duplicate rejection preserves origin ledger")
+	assert_equal(origin_after["inventory"], origin_values_before["inventory"], "Duplicate rejection preserves origin inventory")
+	assert_equal(origin_after["contact_observations"], origin_values_before["observations"], "Duplicate rejection preserves origin observations")
+	track.call("gesture_finalize")
+
+
+func _test_endpoint_reshape_insufficient_inventory_preserves_last_valid() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 2), 6, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(track.append_cells([
+		Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2),
+		Vector2i(3, 2), Vector2i(3, 1), Vector2i(3, 0),
+	]), 6, "Insufficient-inventory fixture appends")
+	assert_equal(track.get_available_track_cells(), 0, "Insufficient-inventory fixture is exhausted")
+	var began = track.call("gesture_begin", track.get_endpoint_cell())
+	assert_true(began is Dictionary, "Insufficient-inventory fixture begins a gesture")
+	if not began is Dictionary:
+		return
+	var targets: Dictionary = began["targets"]
+	var records_before := _record_values(track.get_cell_records())
+	var pieces_before := _piece_values(track.get_geometry_pieces())
+	var inventory_before: int = track.get_available_track_cells()
+	var ledger_before := _piece_values(track._locked_ledger)
+	var observations_before := track.get_contact_observations().duplicate(true)
+	var origin_before: Dictionary = track.call("get_gesture_origin_observation")
+	var origin_values_before := {
+		"records": _record_values(origin_before["route_records"]),
+		"pieces": _piece_values(origin_before["pieces"]),
+		"ledger": _piece_values(origin_before["locked_ledger"]),
+		"inventory": origin_before["inventory"],
+		"observations": origin_before["contact_observations"].duplicate(true),
+	}
+	var invalid_cells: Array[Vector2i] = [targets["left"], Vector2i(4, 4)]
+	print("Endpoint reshape: insufficient inventory preserves last valid")
+	assert_true(track.has_method("gesture_update"), "Gesture update inventory contract exists")
+	if not track.has_method("gesture_update"):
+		return
+	assert_false(track.call("gesture_update", invalid_cells), "Insufficient-inventory candidate is rejected")
+	assert_equal(_record_values(track.get_cell_records()), records_before, "Inventory rejection preserves last-valid records")
+	assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before, "Inventory rejection preserves last-valid pieces")
+	assert_equal(track.get_available_track_cells(), inventory_before, "Inventory rejection preserves last-valid inventory")
+	assert_equal(_piece_values(track._locked_ledger), ledger_before, "Inventory rejection preserves last-valid ledger")
+	assert_equal(track.get_contact_observations(), observations_before, "Inventory rejection preserves last-valid observations")
+	var origin_after: Dictionary = track.call("get_gesture_origin_observation")
+	assert_equal(_record_values(origin_after["route_records"]), origin_values_before["records"], "Inventory rejection preserves origin records")
+	assert_equal(_piece_values(origin_after["pieces"]), origin_values_before["pieces"], "Inventory rejection preserves origin pieces")
+	assert_equal(_piece_values(origin_after["locked_ledger"]), origin_values_before["ledger"], "Inventory rejection preserves origin ledger")
+	assert_equal(origin_after["inventory"], origin_values_before["inventory"], "Inventory rejection preserves origin inventory")
+	assert_equal(origin_after["contact_observations"], origin_values_before["observations"], "Inventory rejection preserves origin observations")
+	track.call("gesture_finalize")
+
+
+func _test_endpoint_reshape_empty_departure_and_straight_accept_ordinary_extension() -> void:
+	var empty_track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 5, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	var empty_began = empty_track.call("gesture_begin", empty_track.get_endpoint_cell())
+	assert_true(empty_began is Dictionary, "Empty-departure fixture begins a gesture")
+	if not empty_began is Dictionary:
+		return
+	print("Endpoint reshape: empty departure and straight endpoints accept ordinary extension")
+	assert_true(empty_track.has_method("gesture_update"), "Gesture update ordinary-extension contract exists")
+	if not empty_track.has_method("gesture_update"):
+		return
+	var empty_cells: Array[Vector2i] = [Vector2i(0, 0), Vector2i(1, 0)]
+	assert_true(empty_track.call("gesture_update", empty_cells), "Empty departure accepts ordinary extension")
+	var empty_records = empty_track.get_cell_records()
+	assert_equal(empty_records.size(), 2, "Empty departure creates two fresh records")
+	if empty_records.size() == 2:
+		assert_equal(empty_records[0].cell, Vector2i(0, 0), "Empty departure keeps first appended cell")
+		assert_equal(empty_records[1].cell, Vector2i(1, 0), "Empty departure keeps second appended cell")
+		assert_equal(empty_records[0].route_serial, 1, "Empty departure starts fresh serials at one")
+		assert_equal(empty_records[1].route_serial, 2, "Empty departure increments serials monotonically")
+		assert_equal(empty_records[0].route_distance_start_cells, 0.0, "Empty departure starts nominal distance at zero")
+		assert_equal(empty_records[1].route_distance_start_cells, 1.0, "Empty departure increments nominal distance")
+	assert_equal(empty_track.get_available_track_cells(), 3, "Empty departure charges ordinary extension inventory")
+	assert_true(empty_track._sequence.is_conservation_valid(), "Empty departure preserves conservation")
+	empty_track.call("gesture_finalize")
+
+	var straight_track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 2), 6, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(straight_track.append_cells([
+		Vector2i(0, 2), Vector2i(1, 2),
+	]), 2, "Straight-endpoint fixture appends")
+	var straight_began = straight_track.call("gesture_begin", straight_track.get_endpoint_cell())
+	assert_true(straight_began is Dictionary, "Straight-endpoint fixture begins a gesture")
+	if not straight_began is Dictionary:
+		return
+	var straight_cells: Array[Vector2i] = [Vector2i(1, 3)]
+	assert_true(straight_track.call("gesture_update", straight_cells), "Straight endpoint accepts ordinary extension")
+	var straight_records = straight_track.get_cell_records()
+	assert_equal(straight_records.size(), 3, "Straight endpoint creates a fresh extension record")
+	if straight_records.size() == 3:
+		assert_equal(straight_records[2].cell, Vector2i(1, 3), "Straight endpoint keeps the appended cell")
+		assert_equal(straight_records[2].route_serial, 3, "Straight endpoint receives the next monotonic serial")
+		assert_equal(straight_records[2].route_distance_start_cells, 2.0, "Straight endpoint receives the next nominal distance")
+	assert_equal(straight_track.get_available_track_cells(), 3, "Straight endpoint charges ordinary extension inventory")
+	assert_true(straight_track._sequence.is_conservation_valid(), "Straight endpoint preserves conservation")
+	straight_track.call("gesture_finalize")
+
+
+func _test_endpoint_reshape_locked_endpoint_accepts_only_extension() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 2), 6, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(track.append_cells([
+		Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2),
+	]), 3, "Locked-endpoint fixture appends")
+	assert_true(track.prepare_for_train_sampling(0.0, 3.0), "Locked-endpoint fixture prepares through the endpoint")
+	var locked_before := _piece_values(track.get_geometry_pieces())
+	assert_true(locked_before.size() > 0, "Locked-endpoint fixture has locked geometry")
+	for piece in track.get_geometry_pieces():
+		assert_true(piece.locked, "Locked-endpoint fixture locks every existing piece")
+	var began = track.call("gesture_begin", track.get_endpoint_cell())
+	assert_true(began is Dictionary, "Locked endpoint begins an extension gesture")
+	if not began is Dictionary:
+		return
+	print("Endpoint reshape: locked endpoint accepts only extension")
+	assert_true(track.has_method("gesture_update"), "Gesture update locked-endpoint contract exists")
+	if not track.has_method("gesture_update"):
+		return
+	var rejected_template_cells: Array[Vector2i] = [Vector2i(4, 2)]
+	assert_false(track.call("gesture_update", rejected_template_cells), "Locked endpoint rejects template replacement")
+	assert_equal(_piece_values(track.get_geometry_pieces()), locked_before, "Rejected replacement preserves locked geometry")
+	var extension_cells: Array[Vector2i] = [Vector2i(3, 2)]
+	assert_true(track.call("gesture_update", extension_cells), "Locked endpoint accepts a legal adjacent extension")
+	var records = track.get_cell_records()
+	assert_equal(records.size(), 4, "Locked endpoint adds one extension record")
+	if records.size() == 4:
+		assert_equal(records[-1].cell, Vector2i(3, 2), "Locked endpoint appends the adjacent cell")
+		assert_false(records[-1].geometry_locked, "New extension remains outside locked geometry")
+	var locked_after: Array = []
+	for piece in track.get_geometry_pieces():
+		if piece.locked:
+			locked_after.append(piece)
+	assert_equal(_piece_values(locked_after), locked_before, "Legal extension does not change locked geometry")
+	assert_equal(track.get_available_track_cells(), 2, "Locked endpoint charges only the extension cell")
+	assert_true(track._sequence.is_conservation_valid(), "Locked endpoint preserves conservation")
+	track.call("gesture_finalize")
+
+
+func _test_endpoint_reshape_gesture_rejects_illegal_starts() -> void:
+	var nonendpoint_track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 5, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(nonendpoint_track.append_cells([Vector2i(0, 0)]), 1, "Nonendpoint fixture appends")
+	var outside_track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 5, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	var illegal_first_step_track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 5, Vector2.ZERO, Vector2i(1, 1), 40.0
+	)
+	assert_equal(illegal_first_step_track.append_cells([Vector2i(0, 0)]), 1, "Illegal-first-step fixture appends")
+	var insufficient_inventory_track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 1, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(insufficient_inventory_track.append_cells([Vector2i(0, 0)]), 1, "Insufficient-inventory fixture appends")
+	print("Endpoint reshape: gesture rejects illegal starts")
+	assert_true(nonendpoint_track.has_method("gesture_begin"), "Gesture begin nonendpoint contract exists")
+	assert_true(outside_track.has_method("gesture_begin"), "Gesture begin outside-grid contract exists")
+	assert_true(illegal_first_step_track.has_method("gesture_begin"), "Gesture begin illegal-first-step contract exists")
+	assert_true(insufficient_inventory_track.has_method("gesture_begin"), "Gesture begin inventory contract exists")
+	if (
+		not nonendpoint_track.has_method("gesture_begin")
+		or not outside_track.has_method("gesture_begin")
+		or not illegal_first_step_track.has_method("gesture_begin")
+		or not insufficient_inventory_track.has_method("gesture_begin")
+	):
+		return
+	assert_equal(nonendpoint_track.call("gesture_begin", Vector2i(0, 1)), {}, "Nonendpoint start is rejected")
+	assert_equal(outside_track.call("gesture_begin", Vector2i(8, 0)), {}, "Outside-grid start is rejected")
+	assert_equal(
+		illegal_first_step_track.call("gesture_begin", illegal_first_step_track.get_endpoint_cell()),
+		{},
+		"Illegal first step start is rejected"
+	)
+	assert_equal(
+		insufficient_inventory_track.call("gesture_begin", insufficient_inventory_track.get_endpoint_cell()),
+		{},
+		"Insufficient-inventory start is rejected"
+	)
+
+
+func _test_endpoint_reshape_finalize_applies_retirement() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 12, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	var initial_cells: Array[Vector2i] = [
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+		Vector2i(3, 0), Vector2i(3, 1), Vector2i(3, 2),
+	]
+	assert_equal(track.append_cells(initial_cells), 6, "Finalize fixture appends")
+	assert_equal(track.advance_construction(6.0), 6.0, "Finalize fixture builds complete pieces")
+	var began = track.call("gesture_begin", track.get_endpoint_cell())
+	assert_true(began is Dictionary, "Finalize fixture begins a gesture")
+	if not began is Dictionary:
+		return
+	var extension_cells: Array[Vector2i] = [Vector2i(3, 3)]
+	assert_true(track.has_method("gesture_update"), "Gesture update finalize fixture contract exists")
+	if not track.has_method("gesture_update"):
+		return
+	assert_true(track.call("gesture_update", extension_cells), "Finalize fixture publishes a suffix candidate")
+	assert_equal(track.get_cell_records().size(), 7, "Finalize fixture retains the complete suffix candidate")
+	assert_equal(track._locked_ledger.size(), 1, "Finalize defers new retirement while the gesture is active")
+	print("Endpoint reshape: finalize applies retirement")
+	assert_true(track.has_method("gesture_finalize"), "Gesture finalize retirement contract exists")
+	if not track.has_method("gesture_finalize"):
+		return
+	assert_true(track.call("gesture_finalize"), "Finalize retires stable complete pieces")
+	assert_false(track.gesture_is_active(), "Finalize clears the transient gesture")
+	assert_equal(track.call("get_gesture_origin_observation"), {}, "Finalize clears detached origin observation")
+	var records = track.get_cell_records()
+	assert_equal(records.size(), 7, "Finalize preserves the published route")
+	if records.size() == 7:
+		for index in range(records.size()):
+			assert_equal(records[index].route_serial, index + 1, "Finalize preserves monotonic serial %d" % (index + 1))
+			assert_equal(records[index].route_distance_start_cells, float(index), "Finalize preserves monotonic distance %d" % (index + 1))
+			assert_equal(records[index].state, TrackCellRecordScript.State.BUILT if index < 6 else TrackCellRecordScript.State.RESERVED_GHOST, "Finalize preserves build identity %d" % (index + 1))
+	var ledger = track._locked_ledger
+	assert_equal(ledger.size(), 2, "Finalize adds one whole-piece ledger entry")
+	if ledger.size() == 2:
+		assert_equal(ledger[0].first_route_serial, 1, "Finalize keeps the leading one-record span")
+		assert_equal(ledger[0].last_route_serial, 1, "Finalize does not split the leading span")
+		assert_equal(ledger[0].exit_support_route_serial, 2, "Finalize retains the leading exit support")
+		assert_equal(ledger[1].first_route_serial, 2, "Finalize starts the complete curve span")
+		assert_equal(ledger[1].last_route_serial, 6, "Finalize retires the complete five-record curve")
+		assert_equal(ledger[1].nominal_length_cells, 5, "Finalize keeps the curve nominal length")
+		assert_equal(ledger[1].kind, TrackGeometryPieceScript.Kind.CURVE_3X3, "Finalize keeps the curve kind")
+		assert_equal(ledger[1].exit_support_route_serial, 7, "Finalize records the suffix exit support")
+	for piece in ledger:
+		var span_length: int = piece.last_route_serial - piece.first_route_serial + 1
+		assert_true([1, 3, 5].has(span_length), "Finalize retires only complete 1/3/5-record pieces")
+		assert_equal(piece.nominal_length_cells, span_length, "Finalize ledger span is never split")
+		assert_true(piece.locked, "Finalize ledger pieces are immutable")
+	assert_equal(track.get_available_track_cells(), 5, "Finalize does not charge or refund inventory")
+	assert_true(track._sequence.is_conservation_valid(), "Finalize preserves conservation")
 
 
 func _test_endpoint_reshape_five_straight_records_are_not_a_generic_horizon() -> void:
@@ -1090,6 +1669,40 @@ class _RejectAfterFirstLedgerCandidateResolver extends TrackGeometryResolverScri
 		if not locked_pieces.is_empty():
 			resolve_calls_with_ledger += 1
 			return TrackGeometryResolutionScript.rejected(records[-1].route_serial, &"reject_after_first_ledger_candidate")
+		return super.resolve(departure_cell, records, locked_pieces, anchors, grid_origin_units, grid_size, cell_size_units)
+
+
+class _RejectOverlapResolver extends TrackGeometryResolverScript:
+	var reject_overlap := false
+
+	func resolve(
+		departure_cell: Vector2i,
+		records: Array,
+		locked_pieces: Array,
+		anchors: Array,
+		grid_origin_units: Vector2,
+		grid_size: Vector2i,
+		cell_size_units: float
+	) -> RefCounted:
+		if reject_overlap:
+			return TrackGeometryResolutionScript.rejected(records[-1].route_serial, &"final_overlap")
+		return super.resolve(departure_cell, records, locked_pieces, anchors, grid_origin_units, grid_size, cell_size_units)
+
+
+class _RejectAnchorCandidateResolver extends TrackGeometryResolverScript:
+	var reject_anchor := false
+
+	func resolve(
+		departure_cell: Vector2i,
+		records: Array,
+		locked_pieces: Array,
+		anchors: Array,
+		grid_origin_units: Vector2,
+		grid_size: Vector2i,
+		cell_size_units: float
+	) -> RefCounted:
+		if reject_anchor and not anchors.is_empty():
+			return TrackGeometryResolutionScript.rejected(records[-1].route_serial, &"anchor_contact")
 		return super.resolve(departure_cell, records, locked_pieces, anchors, grid_origin_units, grid_size, cell_size_units)
 
 

@@ -18,6 +18,7 @@ func run() -> PackedStringArray:
 	_test_invalid_buffer_stops_immediately()
 	_test_departure_anchor_cannot_be_reserved_again()
 	_test_start_building_does_not_lock_geometry()
+	_test_endpoint_reshape_replacement_preserves_identity()
 	return finish()
 
 
@@ -187,3 +188,45 @@ func _test_start_building_does_not_lock_geometry() -> void:
 	var record = sequence.get_records()[0]
 	assert_equal(record.state, TrackCellRecordScript.State.BUILDING, "Construction starts")
 	assert_false(record.geometry_locked, "Construction state does not lock geometry")
+
+
+func _test_endpoint_reshape_replacement_preserves_identity() -> void:
+	var route = TrackCellSequenceScript.new(Vector2i(-1, 0), 5)
+	route.append_candidates([
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0),
+	])
+	route._records[1].state = TrackCellRecordScript.State.BUILDING
+	route._records[1].build_progress = 0.25
+	route._records[1].geometry_group_id = 9
+	var before = route.get_records()
+	var inventory_before: int = route.get_available_track_cells()
+	print("Endpoint reshape: replacement preserves identity")
+	assert_true(route.has_method("replace_span_in_place"), "Span replacement contract exists")
+	if not route.has_method("replace_span_in_place"):
+		return
+	var replacement_cells: Array[Vector2i] = [
+		Vector2i(1, 0), Vector2i(1, 1), Vector2i(2, 1),
+	]
+	var replaced = route.call(
+		"replace_span_in_place",
+		2,
+		4,
+		replacement_cells
+	)
+	assert_true(replaced, "Equal-length span replacement succeeds")
+	if not replaced:
+		return
+	var after = route.get_records()
+	assert_equal(after.size(), before.size(), "Replacement preserves record count")
+	assert_equal(route.get_available_track_cells(), inventory_before, "Replacement does not charge inventory")
+	for index in range(before.size()):
+		assert_equal(after[index].route_serial, before[index].route_serial, "Replacement preserves route serial")
+		assert_equal(after[index].route_distance_start_cells, before[index].route_distance_start_cells, "Replacement preserves nominal distance")
+		assert_equal(after[index].state, before[index].state, "Replacement preserves construction state")
+		assert_equal(after[index].build_progress, before[index].build_progress, "Replacement preserves build progress")
+		assert_equal(after[index].geometry_group_id, before[index].geometry_group_id, "Replacement preserves geometry identity")
+	assert_equal(after[0].cell, before[0].cell, "Replacement leaves prefix cell unchanged")
+	assert_equal(after[1].cell, Vector2i(1, 0), "Replacement applies first span cell")
+	assert_equal(after[2].cell, Vector2i(1, 1), "Replacement applies second span cell")
+	assert_equal(after[3].cell, Vector2i(2, 1), "Replacement applies third span cell")
+	assert_true(route.is_conservation_valid(), "Replacement preserves conservation")
