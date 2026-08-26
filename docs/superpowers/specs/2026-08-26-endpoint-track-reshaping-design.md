@@ -274,7 +274,7 @@ The implementation must add focused RED/GREEN coverage proving:
 4. A single held gesture reshapes the head and appends post-target extension cells.
 5. Intermediate cells between the old endpoint and selected target are control input and never become route records.
 6. Re-entering a different target rebuilds from the gesture origin instead of composing edits.
-7. Invalid bounds, overlap, anchor, duplicate, and inventory candidates preserve the last valid state exactly.
+7. Invalid bounds, overlap, duplicate, and inventory candidates preserve the last valid state exactly. A causal production-resolver anchor compatibility/downgrade case uses the same staged route: it resolves at the larger template without the authoritative anchor, then deterministically downgrades to a compatible template when that authoritative anchor is present, preserving anchor observations, inventory, ledger, and every other transaction invariant. The evidence must not require artificial anchor rejection.
 8. Left-drag plus right press restores the exact gesture-origin cells, pieces, serials, construction states, inventory, ledger, recovery, and observations.
 9. Gesture abort consumes the right press, clears capture, and requires a fresh left press.
 10. Ordinary right-click ghost suffix cancellation remains unchanged when no gesture is active.
@@ -285,6 +285,8 @@ The implementation must add focused RED/GREEN coverage proving:
 15. An endpoint that is both extendable and cancelable renders green while retaining right-click eligibility.
 16. Session completion and pointer exit clear both hover observations.
 17. Full inventory, construction, recovery, train-motion, input, presentation, smoke, and integration regressions remain green.
+
+For anchor evidence, the existing resolver downgrade and contact-anchor behavior remains authoritative and resolver changes are forbidden. An otherwise-valid curve candidate may therefore be downgraded when an authoritative anchor is incompatible; a radius-1 curve contacts its sole footprint turn cell. The causal test proves compatibility and deterministic downgrade rather than manufacturing an anchor-only rejection.
 
 ## 12. Manual Acceptance
 
