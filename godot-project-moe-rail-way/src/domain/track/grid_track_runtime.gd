@@ -32,6 +32,9 @@ var _gesture_origin_recovered_end_distance_cells := 0.0
 var _gesture_origin_contacts: Array[Dictionary] = []
 var _gesture_editable_span: Dictionary = {}
 var _gesture_target_endpoints: Dictionary = {}
+var _gesture_selected_template_index := -1
+var _gesture_suffix_input_facts: Array[Dictionary] = []
+var _gesture_ordinary_input_facts: Array[Dictionary] = []
 
 
 func _init(
@@ -98,6 +101,9 @@ func gesture_begin(endpoint: Vector2i) -> Dictionary:
     _gesture_origin_contacts = _contact_observations.duplicate(true)
     _gesture_editable_span = _discover_editable_span()
     _gesture_target_endpoints = _calculate_target_endpoints(_gesture_editable_span)
+    _gesture_selected_template_index = -1
+    _gesture_suffix_input_facts.clear()
+    _gesture_ordinary_input_facts.clear()
     _gesture_active = true
     return _gesture_origin_observation()
 
@@ -139,64 +145,63 @@ func gesture_finalize() -> bool:
 
 
 func gesture_update(crossed_cells: Array[Vector2i]) -> bool:
-    if not _gesture_active:
+    if not _gesture_active or crossed_cells.is_empty():
         return false
-    var template_index := -1
-    var selected_target_index := -1
+    var frame_template_index := -1
+    var frame_target_index := -1
     for cell_index in range(crossed_cells.size()):
         var cell: Vector2i = crossed_cells[cell_index]
         for index in range([&"straight", &"left", &"right"].size()):
             var template_name: StringName = [&"straight", &"left", &"right"][index]
             if _gesture_target_endpoints.get(template_name, Vector2i(-1, -1)) == cell:
-                template_index = index
-                selected_target_index = cell_index
+                frame_template_index = index
+                frame_target_index = cell_index
     var templates := _template_cells(_gesture_editable_span)
-    if template_index < 0 or template_index >= templates.size():
-        var ordinary_sequence = _gesture_origin_sequence.duplicate_sequence()
-        if crossed_cells.is_empty():
-            return false
+    var next_template_index := _gesture_selected_template_index
+    var next_suffix_input_facts: Array[Dictionary] = _gesture_suffix_input_facts.duplicate(true)
+    var next_ordinary_input_facts: Array[Dictionary] = _gesture_ordinary_input_facts.duplicate(true)
+    if frame_template_index >= 0 and frame_template_index < templates.size():
+        next_template_index = frame_template_index
+        next_suffix_input_facts.clear()
+        for index in range(frame_target_index + 1, crossed_cells.size()):
+            next_suffix_input_facts = _append_new_gesture_input_fact(
+                next_suffix_input_facts,
+                crossed_cells[index]
+            )
+        next_ordinary_input_facts.clear()
+    elif _gesture_selected_template_index >= 0:
         for cell in crossed_cells:
-            if ordinary_sequence.try_append_candidate(cell) == null:
-                return false
-        var ordinary_ledger = _duplicate_pieces(_gesture_origin_locked_ledger)
-        var ordinary_anchors = _duplicate_anchors(_gesture_origin_anchors)
-        var ordinary_resolution = _resolve_candidate(
-            ordinary_sequence,
-            ordinary_ledger,
-            ordinary_anchors
-        )
-        if not ordinary_resolution.is_valid or not _pieces_are_continuous(ordinary_resolution.pieces):
-            return false
-        _assign_unique_unlocked_group_ids(ordinary_resolution.pieces, ordinary_ledger)
-        ordinary_sequence.apply_resolved_geometry(ordinary_resolution.pieces)
-        if not _validate_candidate(ordinary_sequence, ordinary_ledger, ordinary_resolution):
-            return false
-        var ordinary_contacts := _build_contact_observations(
-            ordinary_resolution.pieces,
-            ordinary_anchors,
-            _gesture_origin_recovered_cells_by_piece
-        )
-        _commit_candidate(ordinary_sequence, ordinary_ledger, ordinary_resolution)
-        _advance_gesture_serial_watermark(ordinary_sequence)
-        _contact_observations = ordinary_contacts.duplicate(true)
-        return true
-    var template_cells: Array[Vector2i] = []
-    for cell in templates[template_index]:
-        template_cells.append(cell)
+            next_suffix_input_facts = _append_new_gesture_input_fact(
+                next_suffix_input_facts,
+                cell
+            )
+    elif not _gesture_editable_span.is_empty() and not templates.is_empty():
+        return false
+    else:
+        for cell in crossed_cells:
+            next_ordinary_input_facts = _append_new_gesture_input_fact(
+                next_ordinary_input_facts,
+                cell
+            )
+
     var candidate_sequence = _gesture_origin_sequence.duplicate_sequence()
-    if not candidate_sequence.replace_span_in_place(
-        _gesture_editable_span["first_route_serial"],
-        _gesture_editable_span["last_route_serial"],
-        template_cells
-    ):
-        return false
-    var extension_rejected := false
-    for index in range(selected_target_index + 1, crossed_cells.size()):
-        if candidate_sequence.try_append_candidate(crossed_cells[index]) == null:
-            extension_rejected = true
-            break
-    if extension_rejected:
-        return false
+    if next_template_index >= 0:
+        var template_cells: Array[Vector2i] = []
+        for cell in templates[next_template_index]:
+            template_cells.append(cell)
+        if not candidate_sequence.replace_span_in_place(
+            _gesture_editable_span["first_route_serial"],
+            _gesture_editable_span["last_route_serial"],
+            template_cells
+        ):
+            return false
+        if not _append_gesture_input_facts(candidate_sequence, next_suffix_input_facts):
+            return false
+    else:
+        if next_ordinary_input_facts.is_empty():
+            return false
+        if not _append_gesture_input_facts(candidate_sequence, next_ordinary_input_facts):
+            return false
     var candidate_ledger = _duplicate_pieces(_gesture_origin_locked_ledger)
     var candidate_anchors = _duplicate_anchors(_gesture_origin_anchors)
     var resolution = _resolve_candidate(candidate_sequence, candidate_ledger, candidate_anchors)
@@ -213,6 +218,9 @@ func gesture_update(crossed_cells: Array[Vector2i]) -> bool:
     )
     _commit_candidate(candidate_sequence, candidate_ledger, resolution)
     _advance_gesture_serial_watermark(candidate_sequence)
+    _gesture_selected_template_index = next_template_index
+    _gesture_suffix_input_facts = next_suffix_input_facts
+    _gesture_ordinary_input_facts = next_ordinary_input_facts
     _contact_observations = candidate_contacts.duplicate(true)
     return true
 
@@ -742,6 +750,9 @@ func _clear_gesture_state() -> void:
     _gesture_origin_contacts.clear()
     _gesture_editable_span.clear()
     _gesture_target_endpoints.clear()
+    _gesture_selected_template_index = -1
+    _gesture_suffix_input_facts.clear()
+    _gesture_ordinary_input_facts.clear()
 
 
 func _resolve_records():
@@ -974,6 +985,34 @@ func _advance_gesture_serial_watermark(candidate_sequence: TrackCellSequenceScri
         _gesture_origin_sequence._next_route_serial,
         candidate_sequence._next_route_serial
     )
+
+
+func _append_new_gesture_input_fact(
+    existing: Array[Dictionary],
+    cell: Vector2i
+) -> Array[Dictionary]:
+    var facts: Array[Dictionary] = existing.duplicate(true)
+    var next_serial: int = _gesture_origin_sequence._next_route_serial
+    if not facts.is_empty():
+        next_serial = maxi(next_serial, int(facts[-1]["serial"]) + 1)
+    facts.append({"serial": next_serial, "cell": cell})
+    return facts
+
+
+func _append_gesture_input_facts(
+    sequence: TrackCellSequenceScript,
+    facts: Array[Dictionary]
+) -> bool:
+    var watermark: int = sequence._next_route_serial
+    for fact in facts:
+        var serial: int = fact["serial"]
+        var cell: Vector2i = fact["cell"]
+        sequence._next_route_serial = serial
+        var appended = sequence.try_append_candidate(cell)
+        if appended == null or appended.route_serial != serial:
+            return false
+    sequence._next_route_serial = maxi(watermark, sequence._next_route_serial)
+    return true
 
 
 func _first_unbuilt_record():

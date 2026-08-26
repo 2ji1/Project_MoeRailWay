@@ -74,7 +74,7 @@ func replace_span_in_place(
     last_serial: int,
     new_cells: Array[Vector2i]
 ) -> bool:
-    if first_serial > last_serial or new_cells.size() != last_serial - first_serial + 1:
+    if first_serial > last_serial:
         return false
     var first_index := -1
     var last_index := -1
