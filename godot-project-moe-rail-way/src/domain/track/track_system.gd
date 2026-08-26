@@ -11,7 +11,6 @@ const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.
 var _runtime: GridTrackRuntimeScript
 var _left_capture_active := false
 var _left_press_latched := false
-var _legacy_transaction_pending := false
 
 
 func _init(start_config: SessionStartConfigScript) -> void:
@@ -53,8 +52,12 @@ func apply_right_input(input_frame: TrackInputFrameScript) -> bool:
 	if _left_capture_active and _runtime.gesture_is_active():
 		_runtime.gesture_abort()
 		_left_capture_active = false
+		if input_frame.left_released:
+			_left_press_latched = false
 		return true
 	_left_capture_active = false
+	if input_frame.left_released:
+		_left_press_latched = false
 	if input_frame.right_press_inside_grid:
 		_runtime.cancel_ghost_suffix(input_frame.right_press_cell)
 	return true
@@ -64,7 +67,6 @@ func apply_left_input(input_frame: TrackInputFrameScript) -> void:
 	assert(input_frame != null, "Track input frame is required")
 	if _left_capture_active and not _runtime.gesture_is_active():
 		_left_capture_active = false
-		_legacy_transaction_pending = false
 	if input_frame.left_pressed and not _left_press_latched:
 		_left_press_latched = true
 		var endpoint := _runtime.get_endpoint_cell()
@@ -74,22 +76,15 @@ func apply_left_input(input_frame: TrackInputFrameScript) -> void:
 			and _runtime.gesture_has_legal_operation(endpoint)
 		):
 			_left_capture_active = not _runtime.gesture_begin(endpoint).is_empty()
-			_legacy_transaction_pending = (
-				_left_capture_active
-				and not input_frame.current_pointer_inside_grid
-				and not input_frame.crossed_cells.is_empty()
-			)
 	if _left_capture_active and _runtime.gesture_is_active():
 		if not input_frame.crossed_cells.is_empty():
 			_runtime.gesture_update(input_frame.crossed_cells)
 		if input_frame.left_released:
 			_runtime.gesture_finalize()
 			_left_capture_active = false
-			_legacy_transaction_pending = false
 	if input_frame.left_released:
 		_left_capture_active = false
 		_left_press_latched = false
-		_legacy_transaction_pending = false
 
 
 func is_left_capture_active() -> bool:
@@ -105,10 +100,6 @@ func set_contact_anchors(anchors: Array[RouteContactAnchorScript]) -> void:
 
 
 func advance_construction(progress_cells: float) -> float:
-	if _legacy_transaction_pending and _left_capture_active and _runtime.gesture_is_active():
-		_runtime.gesture_finalize()
-		_left_capture_active = false
-		_legacy_transaction_pending = false
 	return _runtime.advance_construction(progress_cells)
 
 

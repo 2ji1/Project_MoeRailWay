@@ -30,7 +30,7 @@ func _straight_track(build_cells: float) -> TrackSystemScript:
 	var cells: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)]
 	track.apply_left_input(TrackInputFrameScript.new(
 		cells, Vector2i(0, 0), true, Vector2i(-1, -1), false,
-		true, true, false, false
+		true, false, true, false, cells[-1], true
 	))
 	track.advance_construction(build_cells)
 	return track
@@ -99,7 +99,7 @@ func _test_capture_pose_is_the_only_pair_sampler() -> void:
 	var track = TrackSystemScript.new(config)
 	track.apply_left_input(TrackInputFrameScript.new([
 		Vector2i(1, 0), Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2)
-	], Vector2i(0, 0), true, Vector2i(-1, -1), false, true, true, false, false))
+	], Vector2i(0, 0), true, Vector2i(-1, -1), false, true, false, true, false, Vector2i(2, 2), true))
 	track.advance_construction(4.0)
 	var pieces = track.get_geometry_pieces()
 	var boundary: float = pieces[0].absolute_start_distance_cells + float(pieces[0].nominal_length_cells)

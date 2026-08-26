@@ -64,7 +64,7 @@ func _fixture(config: SessionStartConfigScript) -> Dictionary:
 func _draw_frame(cells: Array[Vector2i]) -> TrackInputFrameScript:
 	return TrackInputFrameScript.new(
 		cells, Vector2i(0, 0), true, Vector2i(-1, -1), false,
-		true, true, false, false
+		true, false, true, false, cells[-1], true
 	)
 
 
