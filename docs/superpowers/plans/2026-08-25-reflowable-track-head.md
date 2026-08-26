@@ -2105,7 +2105,7 @@ Append a dated English entry to the ignored `.superpowers/sdd/2026-08-25-reflowa
 
 - [ ] **Step 11: Repeat both Sol reviews over the unchanged complete Task 3 review range**
 
-Review exactly `94faa243f761d19a9459328f22792fa9e4f1dc3e..HEAD` through the final correction commit; never substitute `TASK3_CORRECTION_BASE` or narrow the range to the latest correction commit. Classify each documentation bridge separately from the five-path Task 3 outputs, then review every Task 3 output across the complete range. The specification review must verify the actual runtime straight-to-curve test transition and `BUILT` render state, plus the automated B–F provisional-to-lock-to-cutoff-`1`/`2`/`3` lifecycle. The quality review must verify both temporary mutation sensitivity REDs, the restored durable production blob before GREEN/staging, distinct G/H cancellation observations, literal one-cell inventory refund, the automated immutable-ledger/active-slice/contiguity/conservation recovery assertions, durable-SHA attribution, wrapper safety, unchanged production blob, and report retraction of the two overstated integration claims. If a later correction changes the production blob, stop treating `f72534e7e6aa6398b7071b8489d3b779e3d6cc66` as tested and return to the full durable implementation/launcher sequence with a new tested SHA.
+Review exactly `94faa243f761d19a9459328f22792fa9e4f1dc3e..HEAD` through the final correction commit; never substitute `TASK3_CORRECTION_BASE` or narrow the range to the latest correction commit. Classify each documentation bridge separately from the five-path Task 3 outputs, then review every Task 3 output across the complete range. The specification review must verify the actual runtime straight-to-curve test transition and `BUILT` render state, plus the automated B–F provisional-to-lock-to-cutoff-`1`/`2`/`3` lifecycle with G appended only after preparation. The quality review must verify both temporary mutation sensitivity REDs, the restored durable production blob before GREEN/staging, distinct G/H cancellation observations, literal one-cell inventory refund, the automated post-prepare group-id/immutable-ledger oracle, B–F active-slice/contiguity/conservation recovery assertions, persistent provisional G suffix, durable-SHA attribution, wrapper safety, unchanged production blob, and report retraction of the two overstated integration claims. If a later correction changes the production blob, stop treating `f72534e7e6aa6398b7071b8489d3b779e3d6cc66` as tested and return to the full durable implementation/launcher sequence with a new tested SHA.
 
 #### Task 3 automated same-serial recovery-lifecycle correction after the view-test correction
 
@@ -2138,7 +2138,7 @@ if ($Task3RecoveryOriginalRuntimeBlob -ne $Task3RecoveryDurableBlob) { throw 'ST
 if ((Get-Task3Lines (Invoke-Task3FeatureGit @('status','--porcelain=v1','-uall')).Stdout).Count -ne 0) { throw 'STOP: recovery automation starts from a dirty worktree' }
 ```
 
-In `test_grid_track_runtime.gd`, add `_test_prepared_built_curve_recovers_same_serials_without_ledger_mutation()` to `run()`. The fixture uses only B–F: append `[Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2)]`, build all five records, and save a detached static-value dictionary for its one provisional `CURVE_3X3`. That dictionary contains `kind`, `first_route_serial`, `last_route_serial`, `nominal_length_cells`, `absolute_start_distance_cells`, `footprint_cells`, `centerline`, and `exit_support_route_serial`; it deliberately excludes `active_local_start_cells` and `active_local_end_cells`.
+In `test_grid_track_runtime.gd`, add `_test_prepared_built_curve_recovers_same_serials_without_ledger_mutation()` to `run()`. The fixture first uses only B–F: append `[Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2)]`, build all five records, and save a detached geometry-value dictionary for its one provisional `CURVE_3X3`. Prepare B–F before appending any successor, then capture the immutable ledger oracle from the prepared piece. That post-prepare oracle contains `group_id`, `kind`, `first_route_serial`, `last_route_serial`, `nominal_length_cells`, `absolute_start_distance_cells`, `footprint_cells`, `centerline`, and `exit_support_route_serial`; it deliberately excludes only `active_local_start_cells` and `active_local_end_cells`. Append G only after that capture, so serial 6 remains a genuine `RESERVED_GHOST`, provisional, unlocked suffix and cannot be confused with B–F's preparation or immutable ledger identity.
 
 ```gdscript
 func _test_prepared_built_curve_recovers_same_serials_without_ledger_mutation() -> void:
@@ -2148,24 +2148,42 @@ func _test_prepared_built_curve_recovers_same_serials_without_ledger_mutation() 
 	var provisional = track.get_geometry_pieces()[0]
 	assert_equal(provisional.kind, TrackGeometryPieceScript.Kind.CURVE_3X3, "Built B through F is a provisional 3x3 curve")
 	assert_false(provisional.locked, "Built B through F remains provisional before preparation")
-	var immutable = _static_piece_values(provisional)
+	var pre_prepare_geometry = _geometry_values(provisional)
 	assert_true(track.prepare_for_train_sampling(0.0, 0.0), "Prepare locks the complete B through F owner")
 	var prepared = track.get_geometry_pieces()[0]
 	assert_true(prepared.locked, "Prepared B through F curve is whole-piece locked")
-	assert_equal(_static_piece_values(prepared), immutable, "Preparation preserves B through F immutable geometry")
+	assert_equal(_geometry_values(prepared), pre_prepare_geometry, "Preparation preserves B through F geometry")
+	assert_equal(prepared.exit_support_route_serial, -1, "Prepared B through F has no successor support")
+	var immutable_ledger = _immutable_ledger_values(prepared)
+	assert_equal(track.append_cells([Vector2i(2, 3)]), 1, "G appends only after B through F preparation")
 	for cutoff in [1, 2, 3]:
 		var before_inventory := track.get_available_track_cells()
 		assert_equal(track.recover_behind(float(cutoff)), 1, "Cutoff %d recovers exactly one B through F serial" % cutoff)
 		assert_equal(track.get_available_track_cells(), before_inventory + 1, "Cutoff %d refunds exactly one inventory cell" % cutoff)
-		var active = track.get_geometry_pieces()[0]
+		var pieces = track.get_geometry_pieces()
+		assert_equal(pieces.size(), 2, "Cutoff %d retains locked B through F and provisional G pieces" % cutoff)
+		var active = pieces[0]
+		var g_piece = pieces[1]
 		assert_true(active.locked, "Surviving B through F slice remains locked at cutoff %d" % cutoff)
-		assert_equal(_static_piece_values(active), immutable, "Cutoff %d preserves immutable B through F geometry" % cutoff)
+		assert_equal(_immutable_ledger_values(active), immutable_ledger, "Cutoff %d preserves B through F ledger identity and geometry" % cutoff)
 		assert_equal(active.active_local_start_cells, float(cutoff), "Active slice start advances by one at cutoff %d" % cutoff)
 		assert_equal(active.active_local_end_cells, 5.0, "Active slice end remains the B through F nominal end")
-		_assert_locked_prefix_then_provisional(track.get_geometry_pieces(), "Cutoff %d keeps locked ownership before provisional ownership" % cutoff)
+		assert_equal(g_piece.first_route_serial, 6, "G remains the successor serial at cutoff %d" % cutoff)
+		assert_equal(g_piece.last_route_serial, 6, "G remains one nominal route record at cutoff %d" % cutoff)
+		assert_false(g_piece.locked, "G remains a provisional suffix at cutoff %d" % cutoff)
+		_assert_locked_prefix_then_provisional(pieces, "Cutoff %d keeps locked B through F before provisional G" % cutoff)
+		var records = track.get_cell_records()
+		assert_equal(records.size(), 6 - cutoff, "Cutoff %d retains exactly the B through F suffix plus G" % cutoff)
+		for index in range(5 - cutoff):
+			assert_equal(records[index].route_serial, cutoff + index + 1, "Cutoff %d retains the expected B through F serial" % cutoff)
+			assert_equal(records[index].state, TrackCellRecordScript.State.BUILT, "Surviving B through F serial stays built")
+			assert_true(records[index].geometry_locked, "Surviving B through F serial stays locked")
+		assert_equal(records[-1].route_serial, 6, "G remains the active route endpoint serial")
+		assert_equal(records[-1].state, TrackCellRecordScript.State.RESERVED_GHOST, "G remains a genuine provisional ghost suffix")
+		assert_false(records[-1].geometry_locked, "G record remains unlocked")
 		_assert_conservation(track, "Cutoff %d conserves the B through F route inventory" % cutoff)
 
-func _static_piece_values(piece: TrackGeometryPieceScript) -> Dictionary:
+func _geometry_values(piece: TrackGeometryPieceScript) -> Dictionary:
 	return {
 		"kind": piece.kind,
 		"first_route_serial": piece.first_route_serial,
@@ -2177,7 +2195,18 @@ func _static_piece_values(piece: TrackGeometryPieceScript) -> Dictionary:
 		"exit_support_route_serial": piece.exit_support_route_serial,
 	}
 
+func _immutable_ledger_values(piece: TrackGeometryPieceScript) -> Dictionary:
+	var values = _geometry_values(piece)
+	values["group_id"] = piece.group_id
+	return values
+
 func _assert_locked_prefix_then_provisional(pieces: Array[TrackGeometryPieceScript], message: String) -> void:
+	assert_equal(pieces.size(), 2, message)
+	if pieces.size() != 2:
+		return
+	assert_true(pieces[0].locked, message)
+	assert_false(pieces[1].locked, message)
+	assert_equal(pieces[0].last_route_serial + 1, pieces[1].first_route_serial, message)
 	var saw_provisional := false
 	for piece in pieces:
 		if not piece.locked:
@@ -2186,7 +2215,7 @@ func _assert_locked_prefix_then_provisional(pieces: Array[TrackGeometryPieceScri
 			assert_false(saw_provisional, message)
 ```
 
-The fixture must additionally assert after each cutoff that the surviving record serials are exactly `cutoff + 1` through `5`, all are `BUILT`, and all have `geometry_locked == true`. Its exit-support value is intentionally `-1`: B–F has no successor during `prepare_for_train_sampling(0.0, 0.0)`, so this case proves that the same prepared candidate retains its own immutable support metadata rather than introducing a new dependency during recovery.
+The fixture must additionally assert after each cutoff that the surviving B–F record serials are exactly `cutoff + 1` through `5`, all are `BUILT`, and all have `geometry_locked == true`; G is exactly serial `6`, `RESERVED_GHOST`, and unlocked. The prepared B–F exit-support value is intentionally `-1`: G is appended only after `prepare_for_train_sampling(0.0, 0.0)`, so this case proves that the already-prepared candidate retains both its original no-support metadata and its post-prepare `group_id` through recovery while G remains a distinct provisional suffix.
 
 Because the current implementation is expected to be GREEN before this coverage is added, make the test sensitivity explicit. Temporarily change only the `ledger_piece.locked = true` assignment inside `GridTrackRuntime.prepare_for_train_sampling` to `ledger_piece.locked = false`, run the focused suite, and require the exact RED marker `Prepared B through F curve is whole-piece locked`. Reverse that exact one-line mutation immediately. Before GREEN, require both the original blob and no production diff:
 
@@ -2216,7 +2245,7 @@ if ((Get-Task3Lines (Invoke-Task3FeatureGit @('status','--porcelain=v1','-uall')
 Write-Host "TASK3_RECOVERY_AUTOMATION_CORRECTION_SHA: $Task3RecoveryCorrectionSha"
 ```
 
-Append an English entry to the ignored `task-3-report.md` before the repeated reviews. It must record `TASK3_RECOVERY_AUTOMATION_BASE`, the new test-only SHA, the unchanged durable runtime blob, the temporary mutation RED marker, the focused/full GREEN anchors, and the statement that manual recovery frames were removed because they cannot prove the mutually exclusive same-candidate lifecycle. Do not launch the wrapper or create a manual commit for this automation-only correction.
+Append an English entry to the ignored `task-3-report.md` before the repeated reviews. It must record `TASK3_RECOVERY_AUTOMATION_BASE`, the new test-only SHA, the unchanged durable runtime blob, the temporary mutation RED marker, the focused/full GREEN anchors, the post-prepare B–F `group_id` oracle, and the separately verified G serial-6 provisional suffix. State that manual recovery frames were removed because they cannot prove the mutually exclusive same-candidate lifecycle. Do not launch the wrapper or create a manual commit for this automation-only correction.
 
 ## Final Feature Verification and Handoff
 
