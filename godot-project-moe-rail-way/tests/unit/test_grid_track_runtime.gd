@@ -9,6 +9,11 @@ const TrackGeometryResolutionScript = preload("res://src/domain/track/track_geom
 
 
 func run() -> PackedStringArray:
+	_test_endpoint_reshape_five_straight_records_are_not_a_generic_horizon()
+	_test_endpoint_reshape_endpoint_owner_and_incoming_supports_are_concrete()
+	_test_endpoint_reshape_locked_boundary_downgrades_the_template()
+	_test_endpoint_reshape_construction_completion_does_not_lock()
+	_test_endpoint_reshape_stable_paths_retire_whole_pieces()
 	_test_ordered_append_growth_and_transactional_rollback()
 	_test_built_head_reflows_without_geometry_lock()
 	_test_construction_excess_and_group_assignment()
@@ -46,6 +51,116 @@ func run() -> PackedStringArray:
 	_test_two_sided_outside_epsilon_stitch_continuity()
 	_test_prepared_built_curve_recovers_same_serials_without_ledger_mutation()
 	return finish()
+
+
+func _test_endpoint_reshape_five_straight_records_are_not_a_generic_horizon() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 18, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(track.append_cells([
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+		Vector2i(3, 0), Vector2i(4, 0), Vector2i(5, 0),
+	]), 6, "Six straight records append")
+	var pieces = track.get_geometry_pieces()
+	print("Endpoint reshape: five straight records are not a generic horizon")
+	assert_equal(pieces.size(), 6, "Each straight record retains its concrete owner")
+	assert_equal(pieces[0].first_route_serial, 1, "First straight owner starts at serial one")
+	assert_equal(pieces[-1].last_route_serial, 6, "Endpoint owner reaches serial six")
+	assert_true(pieces[0].locked, "Retirement locks only the stable predecessor pieces")
+	assert_true(pieces[1].locked, "Retirement keeps support span concrete")
+	assert_true(pieces[2].locked, "Retirement is not a five-record provisional horizon")
+	assert_false(pieces[3].locked, "First incoming support remains editable")
+	assert_false(pieces[4].locked, "Second incoming support remains editable")
+	assert_false(pieces[5].locked, "Endpoint owner remains editable")
+
+
+func _test_endpoint_reshape_endpoint_owner_and_incoming_supports_are_concrete() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 18, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(track.append_cells([
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+		Vector2i(3, 0), Vector2i(4, 0), Vector2i(5, 0),
+	]), 6, "Concrete owner fixture appends")
+	var pieces = track.get_geometry_pieces()
+	var endpoint_owner = _piece_containing(pieces, 6)
+	var first_support = _piece_containing(pieces, 4)
+	var second_support = _piece_containing(pieces, 5)
+	print("Endpoint reshape: endpoint owner and incoming supports are concrete")
+	assert_not_null(endpoint_owner, "Endpoint route serial has a concrete owner")
+	assert_not_null(first_support, "First incoming support has a concrete owner")
+	assert_not_null(second_support, "Second incoming support has a concrete owner")
+	if endpoint_owner == null or first_support == null or second_support == null:
+		return
+	assert_equal(endpoint_owner.first_route_serial, 6, "Endpoint owner starts at the active endpoint")
+	assert_equal(endpoint_owner.last_route_serial, 6, "Endpoint owner ends at the active endpoint")
+	assert_equal(first_support.first_route_serial, 4, "First support is the immediately preceding route")
+	assert_equal(second_support.first_route_serial, 5, "Second support is the nearest preceding route")
+	assert_false(first_support.locked, "First support remains editable")
+	assert_false(second_support.locked, "Second support remains editable")
+
+
+func _test_endpoint_reshape_locked_boundary_downgrades_the_template() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 18, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(track.append_cells([
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+		Vector2i(3, 0), Vector2i(4, 0),
+	]), 5, "Downgrade fixture appends")
+	assert_true(track.prepare_for_train_sampling(0.0, 3.0), "Prefix preparation establishes a locked boundary")
+	var locked_before = _piece_containing(track.get_geometry_pieces(), 3).duplicate_piece()
+	assert_equal(track.append_cells([Vector2i(4, 1), Vector2i(4, 2)]), 2, "Turn after locked boundary appends")
+	var pieces = track.get_geometry_pieces()
+	var downgraded = _piece_containing(pieces, 4)
+	print("Endpoint reshape: locked boundary downgrades the template")
+	assert_not_null(downgraded, "Downgraded endpoint template has an owner")
+	if downgraded == null:
+		return
+	assert_equal(downgraded.kind, TrackGeometryPieceScript.Kind.CURVE_2X2, "One available support selects 2x2")
+	assert_equal(downgraded.first_route_serial, 4, "Downgrade starts after the locked boundary")
+	assert_equal(downgraded.last_route_serial, 6, "Downgrade owns its complete three-record span")
+	var locked_after = _piece_containing(pieces, 3)
+	assert_equal(locked_after.centerline, locked_before.centerline, "Locked boundary geometry is immutable")
+	assert_equal(locked_after.first_route_serial, locked_before.first_route_serial, "Locked serial span is retained")
+	assert_equal(locked_after.last_route_serial, locked_before.last_route_serial, "Locked serial end is retained")
+
+
+func _test_endpoint_reshape_construction_completion_does_not_lock() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 18, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(track.append_cells([
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+	]), 3, "Construction fixture appends")
+	assert_equal(track.advance_construction(3.0), 3.0, "Construction fixture completes")
+	print("Endpoint reshape: construction completion does not lock")
+	for piece in track.get_geometry_pieces():
+		assert_false(piece.locked, "Construction completion leaves geometry unlocked")
+
+
+func _test_endpoint_reshape_stable_paths_retire_whole_pieces() -> void:
+	var track = _reflow_runtime()
+	assert_equal(track.append_cells(_reflow_curve_cells()), 5, "Stable path curve appends")
+	assert_equal(track.append_cells([Vector2i(2, 3)]), 1, "Stable path successor appends")
+	var curve = _piece_containing(track.get_geometry_pieces(), 1)
+	print("Endpoint reshape: stable paths retire whole pieces")
+	assert_not_null(curve, "Stable path retains a complete curve owner")
+	if curve == null:
+		return
+	assert_true(curve.locked, "Retirement locks the complete curve piece")
+	assert_equal(curve.first_route_serial, 1, "Retirement preserves curve first serial")
+	assert_equal(curve.last_route_serial, 5, "Retirement preserves curve last serial")
+	assert_equal(curve.exit_support_route_serial, 6, "Retirement preserves exit support serial")
+	assert_false(track.cancel_ghost_suffix(Vector2i(2, 3)), "Exit support remains cancellation-ineligible")
+	assert_equal(track.advance_construction(6.0), 6.0, "Stable path builds before recovery")
+	assert_equal(track.recover_behind(1.0), 1, "Stable path recovers one cell")
+	var surviving_curve = _piece_containing(track.get_geometry_pieces(), 2)
+	assert_not_null(surviving_curve, "Recovery keeps the whole ledger piece")
+	if surviving_curve != null:
+		assert_equal(surviving_curve.first_route_serial, 1, "Recovery keeps ledger first serial")
+		assert_equal(surviving_curve.last_route_serial, 5, "Recovery keeps ledger last serial")
+	assert_true(track.prepare_for_train_sampling(1.5, 4.5), "Stable path preparation succeeds")
 
 
 func _test_ordered_append_growth_and_transactional_rollback() -> void:

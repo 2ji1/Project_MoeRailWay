@@ -47,7 +47,7 @@ func append_cells(cells: Array[Vector2i]) -> int:
             break
         var candidate_ledger = _duplicate_pieces(_locked_ledger)
         var candidate_anchors = _duplicate_anchors(_anchors)
-        var resolution = _stage_horizon(candidate_sequence, candidate_ledger, candidate_anchors)
+        var resolution = _stage_stable_retirement(candidate_sequence, candidate_ledger, candidate_anchors)
         if not resolution.is_valid:
             break
         _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
@@ -85,7 +85,7 @@ func cancel_ghost_suffix(cell: Vector2i) -> bool:
         return false
     var candidate_ledger = _duplicate_pieces(_locked_ledger)
     var candidate_anchors = _duplicate_anchors(_anchors)
-    var resolution = _stage_horizon(candidate_sequence, candidate_ledger, candidate_anchors)
+    var resolution = _stage_stable_retirement(candidate_sequence, candidate_ledger, candidate_anchors)
     if not resolution.is_valid:
         return false
     _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
@@ -376,29 +376,6 @@ func _next_ledger_group_id(ledger: Array[TrackGeometryPieceScript]) -> int:
     return next_group_id
 
 
-func _count_provisional_records(
-    pieces: Array[TrackGeometryPieceScript],
-    records: Array[TrackCellRecordScript]
-) -> int:
-    var count := 0
-    for record in records:
-        for piece in pieces:
-            if piece.contains_serial(record.route_serial):
-                if not piece.locked:
-                    count += 1
-                break
-    return count
-
-
-func _earliest_provisional_piece(
-    pieces: Array[TrackGeometryPieceScript]
-) -> TrackGeometryPieceScript:
-    for piece in pieces:
-        if not piece.locked:
-            return piece
-    return null
-
-
 func _exit_support_serial(
     piece: TrackGeometryPieceScript,
     records: Array[TrackCellRecordScript]
@@ -412,7 +389,7 @@ func _exit_support_serial(
     return -1
 
 
-func _stage_horizon(
+func _stage_stable_retirement(
     sequence: TrackCellSequenceScript,
     ledger: Array[TrackGeometryPieceScript],
     anchors: Array[RouteContactAnchorScript]
@@ -421,12 +398,11 @@ func _stage_horizon(
     if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
         return TrackGeometryResolutionScript.rejected(-1, &"candidate_resolution")
     var records: Array[TrackCellRecordScript] = sequence.get_records()
-    var provisional_count := _count_provisional_records(resolution.pieces, records)
-    while provisional_count > 5:
-        var earliest = _earliest_provisional_piece(resolution.pieces)
-        if earliest == null:
-            return TrackGeometryResolutionScript.rejected(-1, &"missing_provisional_piece")
-        var ledger_piece = earliest.duplicate_piece()
+    while true:
+        var retire_index := _stable_retirement_index(resolution.pieces, records)
+        if retire_index < 0:
+            return resolution
+        var ledger_piece = resolution.pieces[retire_index].duplicate_piece()
         ledger_piece.group_id = _next_ledger_group_id(ledger)
         ledger_piece.locked = true
         ledger_piece.exit_support_route_serial = _exit_support_serial(ledger_piece, records)
@@ -438,9 +414,44 @@ func _stage_horizon(
         ledger.append(ledger_piece)
         resolution = _resolve_candidate(sequence, ledger, anchors)
         if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
-            return TrackGeometryResolutionScript.rejected(-1, &"horizon_resolution")
-        provisional_count = _count_provisional_records(resolution.pieces, records)
+            return TrackGeometryResolutionScript.rejected(-1, &"retirement_resolution")
     return resolution
+
+
+func _stable_retirement_index(
+    pieces: Array[TrackGeometryPieceScript],
+    records: Array[TrackCellRecordScript]
+) -> int:
+    if pieces.is_empty() or records.is_empty():
+        return -1
+    var endpoint_serial: int = records[-1].route_serial
+    var endpoint_index := -1
+    for index in range(pieces.size()):
+        if pieces[index].contains_serial(endpoint_serial):
+            endpoint_index = index
+            break
+    if endpoint_index < 0:
+        return -1
+    var retained_indices: Dictionary = {endpoint_index: true}
+    var endpoint = pieces[endpoint_index]
+    if not endpoint.locked:
+        var support_count := 0
+        if endpoint.kind != TrackGeometryPieceScript.Kind.STRAIGHT:
+            support_count = maxi(0, 3 - int(endpoint.kind))
+        else:
+            support_count = 2
+        for index in range(endpoint_index - 1, -1, -1):
+            var support = pieces[index]
+            if support.locked or support.kind != TrackGeometryPieceScript.Kind.STRAIGHT:
+                break
+            retained_indices[index] = true
+            support_count -= 1
+            if support_count <= 0:
+                break
+    for index in range(endpoint_index):
+        if not pieces[index].locked and not retained_indices.has(index):
+            return index
+    return -1
 
 
 func _validate_candidate(
@@ -453,8 +464,6 @@ func _validate_candidate(
     if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
         return false
     var records: Array[TrackCellRecordScript] = sequence.get_records()
-    if _count_provisional_records(resolution.pieces, records) > 5:
-        return false
     var saw_provisional := false
     var active_group_ids: Dictionary = {}
     for piece in resolution.pieces:
