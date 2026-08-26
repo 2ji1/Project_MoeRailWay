@@ -1566,24 +1566,28 @@ func _test_endpoint_reshape_replacement_overlap_terminates_last_valid() -> void:
 	assert_true(track.call("gesture_update", target_cells), "Replacement overlap publishes a candidate")
 	var candidate_records := _record_values(track.get_cell_records())
 	var candidate_route_content := _route_content_values(track.get_cell_records())
+	var candidate_route_full := _route_sampling_values(track.get_cell_records())
 	var candidate_geometry_content := _piece_content_values(track.get_geometry_pieces())
+	var candidate_geometry_full := _piece_sampling_values(track.get_geometry_pieces())
+	var candidate_ledger_full := _piece_sampling_values(track._locked_ledger)
 	var candidate_inventory: int = track.get_available_track_cells()
 	var candidate_recovery_content := _recovery_content_values(track)
+	var candidate_recovery_full := _recovery_sampling_values(track)
 	var candidate_contacts: Array = track.get_contact_observations().duplicate(true)
 	var candidate_anchors := _anchor_values(track._anchors)
-	var control = _make_three_by_three_curve_runtime()
-	var control_origin = control.call("gesture_begin", control.get_endpoint_cell())
-	assert_true(control_origin is Dictionary and not control_origin.is_empty(), "Replacement control starts a gesture")
-	if control_origin is Dictionary and not control_origin.is_empty():
-		var control_target_cells: Array[Vector2i] = [control_origin["targets"]["straight"]]
-		assert_true(control.call("gesture_update", control_target_cells), "Replacement control publishes the candidate")
-		assert_true(control.call("gesture_finalize"), "Replacement control applies stable retirement")
-		assert_true(control.call("prepare_for_train_sampling", 0.0, 1.0), "Replacement control prepares the sampled prefix")
-	var control_route := _route_sampling_values(control.get_cell_records())
-	var control_geometry := _piece_sampling_values(control.get_geometry_pieces())
-	var control_recovery := _recovery_sampling_values(control)
-	var control_contacts: Array = control.get_contact_observations().duplicate(true)
-	var control_anchors := _anchor_values(control._anchors)
+	assert_equal(candidate_ledger_full, [], "Replacement candidate starts without locked ledger")
+	var expected_route := candidate_route_full.duplicate(true)
+	expected_route[0]["locked"] = true
+	expected_route[1]["locked"] = true
+	var expected_geometry := candidate_geometry_full.duplicate(true)
+	expected_geometry[0]["locked"] = true
+	expected_geometry[0]["support"] = 2
+	expected_geometry[1]["locked"] = true
+	expected_geometry[1]["support"] = 3
+	var expected_ledger: Array = [expected_geometry[0].duplicate(true), expected_geometry[1].duplicate(true)]
+	var expected_recovery := candidate_recovery_full.duplicate(true)
+	expected_recovery["records"] = expected_route.duplicate(true)
+	expected_recovery["pieces"] = expected_geometry.duplicate(true)
 	assert_true(track.has_method("prepare_for_train_sampling"), "Replacement overlap exposes preparation")
 	if not track.has_method("prepare_for_train_sampling"):
 		return
@@ -1592,15 +1596,26 @@ func _test_endpoint_reshape_replacement_overlap_terminates_last_valid() -> void:
 	assert_equal(_route_content_values(track.get_cell_records()), candidate_route_content, "Replacement overlap preserves candidate route cells and build state")
 	assert_equal(_piece_content_values(track.get_geometry_pieces()), candidate_geometry_content, "Replacement overlap preserves candidate geometry shape")
 	assert_equal(track.get_available_track_cells(), candidate_inventory, "Replacement overlap preserves candidate inventory")
-	assert_equal(_recovery_content_values(track), candidate_recovery_content, "Replacement overlap preserves candidate recovery facts")
+	assert_equal(_recovery_content_values(track), candidate_recovery_content, "Replacement overlap preserves candidate recovery content")
 	assert_equal(track.get_contact_observations(), candidate_contacts, "Replacement overlap preserves candidate contact observations")
 	assert_equal(_anchor_values(track._anchors), candidate_anchors, "Replacement overlap preserves candidate anchors")
-	assert_equal(_route_sampling_values(track.get_cell_records()), control_route, "Replacement overlap applies the same stable route retirement as explicit finalize")
-	assert_equal(_piece_sampling_values(track.get_geometry_pieces()), control_geometry, "Replacement overlap applies the same stable geometry retirement as explicit finalize")
-	assert_equal(_recovery_sampling_values(track), control_recovery, "Replacement overlap applies the same stable recovery state as explicit finalize")
-	assert_equal(track.get_contact_observations(), control_contacts, "Replacement overlap applies the same stable contact state as explicit finalize")
-	assert_equal(_anchor_values(track._anchors), control_anchors, "Replacement overlap applies the same stable anchors as explicit finalize")
-	assert_equal(_piece_sampling_values(track._locked_ledger), _piece_sampling_values(control._locked_ledger), "Replacement overlap adds exactly the expected stable ledger pieces")
+	assert_equal(_route_sampling_values(track.get_cell_records()), expected_route, "Replacement overlap permits only expected route lock transitions")
+	assert_equal(_piece_sampling_values(track.get_geometry_pieces()), expected_geometry, "Replacement overlap permits only expected piece lock/support transitions")
+	assert_equal(_piece_sampling_values(track._locked_ledger), expected_ledger, "Replacement overlap adds exactly the expected stable ledger pieces")
+	assert_equal(_recovery_sampling_values(track), expected_recovery, "Replacement overlap applies the expected stable recovery state")
+	assert_equal(expected_route[0]["serial"], 1, "Replacement expected first route serial is one")
+	assert_equal(expected_route[1]["serial"], 2, "Replacement expected second route serial is two")
+	assert_true(expected_route[0]["locked"] and expected_route[1]["locked"], "Replacement expected sampled route owners are locked")
+	assert_false(expected_route[2]["locked"] or expected_route[3]["locked"] or expected_route[4]["locked"], "Replacement expected endpoint owner and two supports remain mutable")
+	assert_equal(expected_geometry[0]["group"], 0, "Replacement expected first owner group is unchanged")
+	assert_equal(expected_geometry[1]["group"], 1, "Replacement expected second owner group is unchanged")
+	assert_equal(expected_geometry[0]["support"], 2, "Replacement expected first owner support is serial two")
+	assert_equal(expected_geometry[1]["support"], 3, "Replacement expected second owner support is serial three")
+	assert_false(expected_geometry[2]["locked"] or expected_geometry[3]["locked"] or expected_geometry[4]["locked"], "Replacement expected mutable geometry suffix is unchanged")
+	for index in range(2, expected_route.size()):
+		assert_equal(expected_route[index], candidate_route_full[index], "Replacement unaffected route entry %d remains candidate-identical" % index)
+	for index in range(2, expected_geometry.size()):
+		assert_equal(expected_geometry[index], candidate_geometry_full[index], "Replacement unaffected piece entry %d remains candidate-identical" % index)
 	assert_equal(_record_values(track.get_cell_records())[0].cell, candidate_records[0].cell, "Replacement overlap keeps the last valid candidate")
 	assert_true(track.get_geometry_pieces()[0].locked, "Replacement overlap locks only after preserving the candidate")
 	var failed = _make_three_by_three_curve_runtime()
@@ -1608,12 +1623,38 @@ func _test_endpoint_reshape_replacement_overlap_terminates_last_valid() -> void:
 	if failed_origin is Dictionary and not failed_origin.is_empty():
 		var failed_target_cells: Array[Vector2i] = [failed_origin["targets"]["straight"]]
 		assert_true(failed.call("gesture_update", failed_target_cells), "Failed-retirement fixture publishes a candidate")
-		var failed_candidate := _route_content_values(failed.get_cell_records())
+		var failed_route_before := _route_sampling_values(failed.get_cell_records())
+		var failed_pieces_before := _piece_sampling_values(failed.get_geometry_pieces())
+		var failed_ledger_before := _piece_sampling_values(failed._locked_ledger)
+		var failed_inventory_before: int = failed.get_available_track_cells()
+		var failed_recovery_before := _recovery_sampling_values(failed)
+		var failed_anchors_before := _anchor_values(failed._anchors)
+		var failed_contacts_before: Array = failed.get_contact_observations().duplicate(true)
 		failed._resolver = _RejectingResolver.new()
 		assert_false(failed.call("prepare_for_train_sampling", 0.0, 1.0), "Stable retirement failure returns false")
 		assert_false(failed.call("gesture_is_active"), "Stable retirement failure ends the gesture")
-		assert_equal(_route_content_values(failed.get_cell_records()), failed_candidate, "Stable retirement failure preserves the candidate")
+		assert_equal(_route_sampling_values(failed.get_cell_records()), failed_route_before, "Stable retirement failure preserves all route state")
+		assert_equal(_piece_sampling_values(failed.get_geometry_pieces()), failed_pieces_before, "Stable retirement failure preserves all piece state")
+		assert_equal(_piece_sampling_values(failed._locked_ledger), failed_ledger_before, "Stable retirement failure preserves all ledger state")
+		assert_equal(failed.get_available_track_cells(), failed_inventory_before, "Stable retirement failure preserves inventory")
+		assert_equal(_recovery_sampling_values(failed), failed_recovery_before, "Stable retirement failure preserves all recovery state")
+		assert_equal(_anchor_values(failed._anchors), failed_anchors_before, "Stable retirement failure preserves anchors")
+		assert_equal(failed.get_contact_observations(), failed_contacts_before, "Stable retirement failure preserves contacts")
+		var failed_route_after_first := _route_sampling_values(failed.get_cell_records())
+		var failed_pieces_after_first := _piece_sampling_values(failed.get_geometry_pieces())
+		var failed_ledger_after_first := _piece_sampling_values(failed._locked_ledger)
+		var failed_recovery_after_first := _recovery_sampling_values(failed)
+		var failed_anchors_after_first := _anchor_values(failed._anchors)
+		var failed_contacts_after_first: Array = failed.get_contact_observations().duplicate(true)
 		assert_false(failed.call("prepare_for_train_sampling", 0.0, 1.0), "Stable retirement failure is idempotent")
+		assert_false(failed.call("gesture_is_active"), "Repeated stable retirement failure keeps the gesture inactive")
+		assert_equal(_route_sampling_values(failed.get_cell_records()), failed_route_after_first, "Repeated stable retirement failure preserves all route state")
+		assert_equal(_piece_sampling_values(failed.get_geometry_pieces()), failed_pieces_after_first, "Repeated stable retirement failure preserves all piece state")
+		assert_equal(_piece_sampling_values(failed._locked_ledger), failed_ledger_after_first, "Repeated stable retirement failure preserves all ledger state")
+		assert_equal(failed.get_available_track_cells(), failed_inventory_before, "Repeated stable retirement failure preserves inventory")
+		assert_equal(_recovery_sampling_values(failed), failed_recovery_after_first, "Repeated stable retirement failure preserves all recovery state")
+		assert_equal(_anchor_values(failed._anchors), failed_anchors_after_first, "Repeated stable retirement failure preserves anchors")
+		assert_equal(failed.get_contact_observations(), failed_contacts_after_first, "Repeated stable retirement failure preserves contacts")
 
 
 func _test_endpoint_reshape_extension_overlap_terminates_last_valid() -> void:
@@ -1629,40 +1670,55 @@ func _test_endpoint_reshape_extension_overlap_terminates_last_valid() -> void:
 	assert_true(track.call("gesture_update", extension_cells), "Extension overlap publishes a suffix candidate")
 	var candidate_records := _record_values(track.get_cell_records())
 	var candidate_route_content := _route_content_values(track.get_cell_records())
+	var candidate_route_full := _route_sampling_values(track.get_cell_records())
 	var candidate_geometry_content := _piece_content_values(track.get_geometry_pieces())
+	var candidate_geometry_full := _piece_sampling_values(track.get_geometry_pieces())
+	var candidate_ledger_full := _piece_sampling_values(track._locked_ledger)
 	var candidate_inventory: int = track.get_available_track_cells()
 	var candidate_recovery_content := _recovery_content_values(track)
+	var candidate_recovery_full := _recovery_sampling_values(track)
 	var candidate_contacts: Array = track.get_contact_observations().duplicate(true)
 	var candidate_anchors := _anchor_values(track._anchors)
-	var control = _make_three_by_three_curve_runtime()
-	var control_origin = control.call("gesture_begin", control.get_endpoint_cell())
-	assert_true(control_origin is Dictionary and not control_origin.is_empty(), "Extension control starts a gesture")
-	if control_origin is Dictionary and not control_origin.is_empty():
-		var control_target: Vector2i = control_origin["targets"]["straight"]
-		var control_extension := Vector2i(control_target.x, control_target.y + 1)
-		var control_extension_cells: Array[Vector2i] = [control_target, control_extension]
-		assert_true(control.call("gesture_update", control_extension_cells), "Extension control publishes the suffix candidate")
-		assert_true(control.call("gesture_finalize"), "Extension control applies stable retirement")
-		assert_true(control.call("prepare_for_train_sampling", 5.0, 5.5), "Extension control prepares the sampled suffix")
-	var control_route := _route_sampling_values(control.get_cell_records())
-	var control_geometry := _piece_sampling_values(control.get_geometry_pieces())
-	var control_recovery := _recovery_sampling_values(control)
-	var control_contacts: Array = control.get_contact_observations().duplicate(true)
-	var control_anchors := _anchor_values(control._anchors)
+	assert_equal(candidate_ledger_full, [], "Extension candidate starts without locked ledger")
+	var expected_route := candidate_route_full.duplicate(true)
+	for index in range(expected_route.size()):
+		expected_route[index]["locked"] = true
+	var expected_geometry := candidate_geometry_full.duplicate(true)
+	for index in range(expected_geometry.size()):
+		expected_geometry[index]["locked"] = true
+	expected_geometry[0]["support"] = 2
+	expected_geometry[1]["support"] = 3
+	expected_geometry[2]["support"] = 4
+	expected_geometry[3]["support"] = -1
+	var expected_ledger: Array = []
+	for piece in expected_geometry:
+		expected_ledger.append(piece.duplicate(true))
+	var expected_recovery := candidate_recovery_full.duplicate(true)
+	expected_recovery["records"] = expected_route.duplicate(true)
+	expected_recovery["pieces"] = expected_geometry.duplicate(true)
 	assert_true(track.call("prepare_for_train_sampling", 5.0, 5.5), "Extension overlap preparation succeeds")
 	assert_false(track.call("gesture_is_active"), "Extension overlap terminates before locking")
 	assert_equal(_route_content_values(track.get_cell_records()), candidate_route_content, "Extension overlap preserves candidate route cells and build state")
 	assert_equal(_piece_content_values(track.get_geometry_pieces()), candidate_geometry_content, "Extension overlap preserves candidate geometry shape")
 	assert_equal(track.get_available_track_cells(), candidate_inventory, "Extension overlap preserves candidate inventory")
-	assert_equal(_recovery_content_values(track), candidate_recovery_content, "Extension overlap preserves candidate recovery facts")
+	assert_equal(_piece_sampling_values(track._locked_ledger), expected_ledger, "Extension overlap adds exactly the expected stable ledger pieces")
+	assert_equal(_recovery_content_values(track), candidate_recovery_content, "Extension overlap preserves candidate recovery content")
 	assert_equal(track.get_contact_observations(), candidate_contacts, "Extension overlap preserves candidate contact observations")
 	assert_equal(_anchor_values(track._anchors), candidate_anchors, "Extension overlap preserves candidate anchors")
-	assert_equal(_route_sampling_values(track.get_cell_records()), control_route, "Extension overlap applies the same stable route retirement as explicit finalize")
-	assert_equal(_piece_sampling_values(track.get_geometry_pieces()), control_geometry, "Extension overlap applies the same stable geometry retirement as explicit finalize")
-	assert_equal(_recovery_sampling_values(track), control_recovery, "Extension overlap applies the same stable recovery state as explicit finalize")
-	assert_equal(track.get_contact_observations(), control_contacts, "Extension overlap applies the same stable contact state as explicit finalize")
-	assert_equal(_anchor_values(track._anchors), control_anchors, "Extension overlap applies the same stable anchors as explicit finalize")
-	assert_equal(_piece_sampling_values(track._locked_ledger), _piece_sampling_values(control._locked_ledger), "Extension overlap adds exactly the expected stable ledger pieces")
+	assert_equal(_route_sampling_values(track.get_cell_records()), expected_route, "Extension overlap permits only expected route lock transitions")
+	assert_equal(_piece_sampling_values(track.get_geometry_pieces()), expected_geometry, "Extension overlap permits only expected piece lock/support transitions")
+	assert_equal(_recovery_sampling_values(track), expected_recovery, "Extension overlap applies the expected stable recovery state")
+	assert_equal(expected_route.size(), 6, "Extension expected route has six serials")
+	assert_equal(expected_geometry[0]["serials"], Vector2i(1, 1), "Extension expected first owner serial span is one")
+	assert_equal(expected_geometry[3]["serials"], Vector2i(4, 6), "Extension expected curve owner serial span is four through six")
+	assert_equal(expected_geometry[0]["support"], 2, "Extension expected first owner support is serial two")
+	assert_equal(expected_geometry[1]["support"], 3, "Extension expected second owner support is serial three")
+	assert_equal(expected_geometry[2]["support"], 4, "Extension expected third owner support is serial four")
+	assert_equal(expected_geometry[3]["support"], -1, "Extension expected terminal curve has no exit support")
+	for index in range(expected_route.size()):
+		assert_equal(expected_route[index]["group"], candidate_route_full[index]["group"], "Extension route group %d remains candidate-identical" % index)
+	for index in range(expected_geometry.size()):
+		assert_equal(expected_geometry[index]["group"], candidate_geometry_full[index]["group"], "Extension piece group %d remains candidate-identical" % index)
 	assert_equal(_record_values(track.get_cell_records())[-1].cell, candidate_records[-1].cell, "Extension overlap keeps the last valid candidate")
 
 
