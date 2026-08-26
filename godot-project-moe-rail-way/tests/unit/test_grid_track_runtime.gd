@@ -1313,12 +1313,40 @@ func _test_endpoint_reshape_abort_restores_exact_origin() -> void:
 	for record in track.get_cell_records():
 		consumed_serials.append(record.route_serial)
 	assert_true(consumed_serials.size() > 0, "Abort fixture records candidate serials")
+	var candidate_construction_before := _record_values(track.get_cell_records())
+	var candidate_ledger_before := _piece_values(track._locked_ledger)
+	var candidate_recovery_cells_before: Dictionary = track._recovered_cells_by_piece.duplicate(true)
+	var candidate_recovery_frontier_before: float = track._recovered_end_distance_cells
+	var candidate_anchors_before := _anchor_values(track._anchors)
+	var candidate_contacts_before: Array = track.get_contact_observations().duplicate(true)
+	var detached_origin: Dictionary = track.call("get_gesture_origin_observation")
+	assert_true(detached_origin is Dictionary and not detached_origin.is_empty(), "Abort fixture retains detached origin after publication")
+	if not detached_origin is Dictionary or detached_origin.is_empty():
+		return
+	var detached_origin_values := _abort_origin_values(detached_origin)
+	_assert_abort_origin_detached(track, detached_origin, detached_origin_values, "after publication")
 	var perturbed_record = track._sequence._records[0]
-	perturbed_record.state = TrackCellRecordScript.State.BUILDING
-	perturbed_record.build_progress = 0.25
+	var perturbed_state: TrackCellRecordScript.State = TrackCellRecordScript.State.BUILDING
+	if perturbed_record.state == perturbed_state:
+		perturbed_state = TrackCellRecordScript.State.BUILT
+	perturbed_record.state = perturbed_state
+	var perturbed_progress := 0.25
+	if is_equal_approx(perturbed_record.build_progress, perturbed_progress):
+		perturbed_progress = 0.75
+	perturbed_record.build_progress = perturbed_progress
+	assert_true(
+		_record_values(track.get_cell_records()) != candidate_construction_before,
+		"Abort fixture perturbation changes construction and build progress"
+	)
+	_assert_abort_origin_detached(track, detached_origin, detached_origin_values, "after construction perturbation")
 	assert_true(track._locked_ledger.size() > 0, "Abort fixture has ledger state to perturb")
 	if not track._locked_ledger.is_empty():
 		track._locked_ledger[0].group_id += 100
+	assert_true(
+		_piece_values(track._locked_ledger) != candidate_ledger_before,
+		"Abort fixture perturbation changes ledger group identity"
+	)
+	_assert_abort_origin_detached(track, detached_origin, detached_origin_values, "after ledger perturbation")
 	var recovery_keys: Array = track._recovered_cells_by_piece.keys()
 	assert_true(recovery_keys.size() > 0, "Abort fixture has recovery state to perturb")
 	if not recovery_keys.is_empty():
@@ -1326,18 +1354,36 @@ func _test_endpoint_reshape_abort_restores_exact_origin() -> void:
 		var recovered_cell_keys: Array = recovered_cells.keys()
 		assert_true(recovered_cell_keys.size() > 0, "Abort fixture has a recovered cell to perturb")
 		if not recovered_cell_keys.is_empty():
-			recovered_cells[recovered_cell_keys[0]] = false
+			recovered_cells[recovered_cell_keys[0]] = not recovered_cells[recovered_cell_keys[0]]
+	assert_true(
+		track._recovered_cells_by_piece.duplicate(true) != candidate_recovery_cells_before,
+		"Abort fixture perturbation changes nested recovery"
+	)
+	assert_equal(
+		track._recovered_end_distance_cells,
+		candidate_recovery_frontier_before,
+		"Abort fixture keeps recovery frontier isolated from nested perturbation"
+	)
+	_assert_abort_origin_detached(track, detached_origin, detached_origin_values, "after recovery perturbation")
 	assert_true(track._anchors.size() > 0, "Abort fixture has anchor state to perturb")
 	if not track._anchors.is_empty():
-		track._anchors[0].cell = Vector2i(7, 7)
+		var perturbed_anchor_cell := Vector2i(7, 7)
+		if track._anchors[0].cell == perturbed_anchor_cell:
+			perturbed_anchor_cell = Vector2i(7, 8)
+		track._anchors[0].cell = perturbed_anchor_cell
+	assert_true(
+		_anchor_values(track._anchors) != candidate_anchors_before,
+		"Abort fixture perturbation changes anchors"
+	)
+	_assert_abort_origin_detached(track, detached_origin, detached_origin_values, "after anchor perturbation")
 	assert_true(track._contact_observations.size() > 0, "Abort fixture has contact state to perturb")
 	if not track._contact_observations.is_empty():
 		track._contact_observations[0].contacted = not track._contact_observations[0].contacted
-	assert_true(_record_values(track.get_cell_records()) != origin_records, "Abort fixture perturbation changes construction")
-	assert_true(_piece_values(track._locked_ledger) != origin_ledger, "Abort fixture perturbation changes ledger")
-	assert_true(_recovery_observation_values(track) != origin_recovery, "Abort fixture perturbation changes recovery")
-	assert_true(_anchor_values(track._anchors) != origin_anchors, "Abort fixture perturbation changes anchors")
-	assert_true(track.get_contact_observations() != origin_contacts, "Abort fixture perturbation changes contacts")
+	assert_true(
+		track.get_contact_observations() != candidate_contacts_before,
+		"Abort fixture perturbation changes contacts"
+	)
+	_assert_abort_origin_detached(track, detached_origin, detached_origin_values, "after contact perturbation")
 	assert_true(track.has_method("gesture_abort"), "Gesture abort contract exists")
 	if not track.has_method("gesture_abort"):
 		return
@@ -1383,6 +1429,10 @@ func _test_endpoint_reshape_abort_restores_exact_origin() -> void:
 	var after_append_anchors := _anchor_values(track._anchors)
 	var after_append_contacts: Array = track.get_contact_observations().duplicate(true)
 	var after_append_inventory: int = track.get_available_track_cells()
+	var after_append_next_route_serial: int = track._sequence._next_route_serial
+	var after_append_next_nominal_start_cells: float = track._sequence._next_nominal_start_cells
+	var after_append_active_predecessor_cell: Vector2i = track._sequence._active_predecessor_cell
+	var after_append_active_cells: Dictionary = track._sequence._active_cells.duplicate(true)
 	assert_false(track.call("gesture_abort"), "Inactive gesture abort returns false")
 	assert_equal(_record_values(track.get_cell_records()), after_append_records, "Inactive abort preserves records")
 	assert_equal(_piece_values(track.get_geometry_pieces()), after_append_pieces, "Inactive abort preserves pieces")
@@ -1391,6 +1441,18 @@ func _test_endpoint_reshape_abort_restores_exact_origin() -> void:
 	assert_equal(_anchor_values(track._anchors), after_append_anchors, "Inactive abort preserves anchors")
 	assert_equal(track.get_contact_observations(), after_append_contacts, "Inactive abort preserves contacts")
 	assert_equal(track.get_available_track_cells(), after_append_inventory, "Inactive abort preserves inventory")
+	assert_equal(track._sequence._next_route_serial, after_append_next_route_serial, "Inactive abort preserves next route serial")
+	assert_equal(
+		track._sequence._next_nominal_start_cells,
+		after_append_next_nominal_start_cells,
+		"Inactive abort preserves next nominal start distance"
+	)
+	assert_equal(
+		track._sequence._active_predecessor_cell,
+		after_append_active_predecessor_cell,
+		"Inactive abort preserves active predecessor cell"
+	)
+	assert_equal(track._sequence._active_cells, after_append_active_cells, "Inactive abort preserves active cells")
 
 
 func _test_endpoint_reshape_locked_and_prepared_geometry_reject_mutation() -> void:
@@ -2073,6 +2135,52 @@ func _anchor_values(anchors: Array) -> Array[Dictionary]:
 	for anchor in anchors:
 		values.append({"anchor_id": anchor.anchor_id, "cell": anchor.cell})
 	return values
+
+
+func _abort_origin_values(origin: Dictionary) -> Dictionary:
+	return {
+		"records": _record_values(origin["route_records"]),
+		"pieces": _piece_values(origin["pieces"]),
+		"ledger": _piece_values(origin["locked_ledger"]),
+		"anchors": _anchor_values(origin["anchors"]),
+		"recovery_cells": origin["recovery"]["recovered_cells_by_piece"].duplicate(true),
+		"recovery_frontier": origin["recovery"]["recovered_end_distance_cells"],
+		"construction": _record_values(origin["construction"]),
+		"inventory": origin["inventory"],
+		"contacts": origin["contact_observations"].duplicate(true),
+	}
+
+
+func _assert_abort_origin_detached(
+	track: GridTrackRuntimeScript,
+	origin: Dictionary,
+	expected: Dictionary,
+	phase: String
+) -> void:
+	var detached_recovery: Dictionary = origin["recovery"]
+	assert_equal(_record_values(origin["route_records"]), expected["records"], "Detached origin route remains unchanged %s" % phase)
+	assert_equal(_piece_values(origin["pieces"]), expected["pieces"], "Detached origin pieces remain unchanged %s" % phase)
+	assert_equal(_piece_values(origin["locked_ledger"]), expected["ledger"], "Detached origin ledger remains unchanged %s" % phase)
+	assert_equal(_anchor_values(origin["anchors"]), expected["anchors"], "Detached origin anchors remain unchanged %s" % phase)
+	assert_equal(
+		detached_recovery["recovered_cells_by_piece"],
+		expected["recovery_cells"],
+		"Detached origin nested recovery remains unchanged %s" % phase
+	)
+	assert_equal(
+		detached_recovery["recovered_end_distance_cells"],
+		expected["recovery_frontier"],
+		"Detached origin recovery frontier remains unchanged %s" % phase
+	)
+	assert_equal(_record_values(origin["construction"]), expected["construction"], "Detached origin construction remains unchanged %s" % phase)
+	assert_equal(origin["inventory"], expected["inventory"], "Detached origin inventory remains unchanged %s" % phase)
+	assert_equal(origin["contact_observations"], expected["contacts"], "Detached origin contacts remain unchanged %s" % phase)
+	var stored = track.call("get_gesture_origin_observation")
+	assert_true(stored is Dictionary and not stored.is_empty(), "Stored origin remains available %s" % phase)
+	if not stored is Dictionary or stored.is_empty():
+		return
+	var stored_values := _abort_origin_values(stored)
+	assert_equal(stored_values, expected, "Stored gesture-origin copies remain byte-for-byte unchanged %s" % phase)
 
 
 func _recovery_observation_values(track: GridTrackRuntimeScript) -> Dictionary:
