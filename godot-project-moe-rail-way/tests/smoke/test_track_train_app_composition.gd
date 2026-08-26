@@ -59,7 +59,11 @@ func _curve_track(config) -> TrackSystemScript:
 	]
 	track.apply_left_input(TrackInputFrameScript.new(
 		cells, Vector2i(0, 0), true, Vector2i(-1, -1), false,
-		true, true, false, false
+		true, true, false, false, Vector2i(3, 2), true
+	))
+	track.apply_left_input(TrackInputFrameScript.new(
+		[], Vector2i(-1, -1), false, Vector2i(-1, -1), false,
+		false, false, true, false, Vector2i(3, 2), true
 	))
 	return track
 
@@ -69,18 +73,18 @@ func _gap_curve_track(config) -> TrackSystemScript:
 	var initial: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)]
 	track.apply_left_input(TrackInputFrameScript.new(
 		initial, Vector2i(0, 0), true, Vector2i(-1, -1), false,
-		true, false, true, false
+		true, false, true, false, Vector2i(3, 0), true
 	))
 	track.apply_right_input(TrackInputFrameScript.new(
 		[], Vector2i(-1, -1), false, Vector2i(3, 0), true,
-		false, false, false, true
+		false, false, false, true, Vector2i(3, 0), true
 	))
 	var continuation: Array[Vector2i] = [
 		Vector2i(3, 0), Vector2i(3, 1), Vector2i(3, 2),
 	]
 	track.apply_left_input(TrackInputFrameScript.new(
 		continuation, Vector2i(2, 0), true, Vector2i(-1, -1), false,
-		true, false, true, false
+		true, false, true, false, Vector2i(3, 2), true
 	))
 	return track
 
@@ -171,10 +175,18 @@ func _test_standard_curve_intervals_and_integer_hud() -> void:
 	assert_equal(track.get_built_end_distance_cells(), 0.0, "Building interval remains blocked")
 	track.advance_construction(4.5)
 	var available_before_support := track.get_available_track_cells()
-	var support_cells: Array[Vector2i] = [Vector2i(3, 3)]
+	var endpoint := track.get_endpoint_cell()
 	track.apply_left_input(TrackInputFrameScript.new(
-		support_cells, Vector2i(3, 2), true, Vector2i(-1, -1), false,
-		true, true, false, false
+		[], endpoint, true, Vector2i(-1, -1), false,
+		true, true, false, false, endpoint, true
+	))
+	track.apply_left_input(TrackInputFrameScript.new(
+		[endpoint, Vector2i(3, 3)], endpoint, true, Vector2i(-1, -1), false,
+		false, true, false, false, Vector2i(3, 3), true
+	))
+	track.apply_left_input(TrackInputFrameScript.new(
+		[], Vector2i(-1, -1), false, Vector2i(-1, -1), false,
+		false, false, true, false, Vector2i(3, 3), true
 	))
 	var locked_piece = track.get_geometry_pieces()[0].duplicate_piece()
 	assert_true(locked_piece.locked, "G locks the whole B through F curve at the horizon")

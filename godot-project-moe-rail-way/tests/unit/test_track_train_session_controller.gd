@@ -37,7 +37,7 @@ func _config(
 func _left(cells: Array[Vector2i], press_cell: Vector2i) -> TrackInputFrameScript:
 	return TrackInputFrameScript.new(
 		cells, press_cell, true, Vector2i(-1, -1), false,
-		true, true, false, false
+		true, false, true, false, cells[-1], true
 	)
 
 
@@ -71,7 +71,7 @@ func _test_right_cancellation_wins_before_buffered_left_cells() -> void:
 	var buffered: Array[Vector2i] = [Vector2i(3, 1)]
 	controller.advance_tick(TrackInputFrameScript.new(
 		buffered, Vector2i(3, 0), true, Vector2i(2, 0), true,
-		true, true, false, true
+		true, false, true, true, Vector2i(3, 1), true
 	))
 	assert_equal(track.get_endpoint_cell(), Vector2i(1, 0), "Right cancellation wins before left buffer")
 	assert_equal(track.get_cell_records().size(), 1, "Same-tick left cell was not accepted")
