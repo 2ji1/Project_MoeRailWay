@@ -71,7 +71,12 @@ func gesture_has_legal_operation(endpoint: Vector2i = Vector2i(-1, -1)) -> bool:
         if candidate_sequence.try_append_candidate(cell) == null:
             continue
         var candidate_ledger = _duplicate_pieces(_locked_ledger)
-        var resolution = _resolve_candidate(candidate_sequence, candidate_ledger, _anchors)
+        var candidate_anchors = _duplicate_anchors(_anchors)
+        var resolution = _stage_stable_retirement(
+            candidate_sequence,
+            candidate_ledger,
+            candidate_anchors
+        )
         if not resolution.is_valid:
             continue
         _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
@@ -457,7 +462,7 @@ func _discover_editable_span() -> Dictionary:
                 break
             first_index -= 1
             support_count -= 1
-    var entry_cell: Vector2i = _departure_cell
+    var entry_cell: Vector2i = _sequence.get_active_predecessor_cell()
     if first_index > 0:
         entry_cell = records[first_index - 1].cell
     var incoming_heading: Vector2i = records[first_index].cell - entry_cell
@@ -534,22 +539,32 @@ func _template_candidate_is_legal(span: Dictionary, template_cells: Array[Vector
     var last_index: int = span["last_index"]
     if first_index < 0 or last_index >= records.size() or last_index - first_index + 1 != template_cells.size():
         return false
+    var differs_from_origin := false
+    for index in range(template_cells.size()):
+        if records[first_index + index].cell != template_cells[index]:
+            differs_from_origin = true
+            break
+    if not differs_from_origin:
+        return false
     for index in range(template_cells.size()):
         records[first_index + index].cell = template_cells[index]
     var occupied: Dictionary = {}
+    var active_predecessor := _sequence.get_active_predecessor_cell()
     for index in range(records.size()):
         var record = records[index]
         if not _cell_in_grid(record.cell) or occupied.has(record.cell):
             return false
         occupied[record.cell] = true
-        var predecessor: Vector2i = _departure_cell if index == 0 else records[index - 1].cell
+        var predecessor: Vector2i = active_predecessor if index == 0 else records[index - 1].cell
         if absi(record.cell.x - predecessor.x) + absi(record.cell.y - predecessor.y) != 1:
             return false
+    var candidate_ledger = _duplicate_pieces(_locked_ledger)
+    var candidate_anchors = _duplicate_anchors(_anchors)
     var resolution = _resolver.resolve(
-        _departure_cell,
+        active_predecessor,
         records,
-        _locked_ledger,
-        _anchors,
+        candidate_ledger,
+        candidate_anchors,
         _grid_origin_units,
         _grid_size,
         _cell_size_units

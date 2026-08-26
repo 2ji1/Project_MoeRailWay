@@ -10,7 +10,9 @@ const TrackGeometryResolutionScript = preload("res://src/domain/track/track_geom
 
 func run() -> PackedStringArray:
 	_test_endpoint_reshape_legal_operation_requires_concrete_candidate()
+	_test_endpoint_reshape_identical_template_is_not_a_legal_operation()
 	_test_endpoint_reshape_supported_straight_head_has_non_degenerate_targets()
+	_test_endpoint_reshape_recovered_prefix_uses_active_predecessor()
 	_test_endpoint_reshape_populated_origin_observations_are_detached()
 	_test_endpoint_reshape_gesture_begin_captures_detached_origin()
 	_test_endpoint_reshape_editable_span_has_deterministic_targets()
@@ -88,6 +90,27 @@ func _test_endpoint_reshape_legal_operation_requires_concrete_candidate() -> voi
 	)
 
 
+func _test_endpoint_reshape_identical_template_is_not_a_legal_operation() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 3, Vector2.ZERO, Vector2i(4, 1), 40.0
+	)
+	assert_equal(
+		track.append_cells([Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0)]),
+		3,
+		"Exhausted boundary straight fixture appends"
+	)
+	print("Endpoint reshape fix: identical template requires a real mutation")
+	assert_false(
+		track.gesture_has_legal_operation(Vector2i(2, 0)),
+		"Identical straight template is not a legal operation"
+	)
+	assert_equal(
+		track.gesture_begin(Vector2i(2, 0)),
+		{},
+		"Identical-only boundary endpoint cannot begin a gesture"
+	)
+
+
 func _test_endpoint_reshape_supported_straight_head_has_non_degenerate_targets() -> void:
 	var track = GridTrackRuntimeScript.new(
 		Vector2i(-1, 3), 5, Vector2.ZERO, Vector2i(8, 8), 40.0
@@ -114,6 +137,35 @@ func _test_endpoint_reshape_supported_straight_head_has_non_degenerate_targets()
 		track.gesture_finalize()
 
 
+func _test_endpoint_reshape_recovered_prefix_uses_active_predecessor() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 3), 8, Vector2.ZERO, Vector2i(5, 8), 40.0
+	)
+	var cells: Array[Vector2i] = [
+		Vector2i(0, 3), Vector2i(1, 3), Vector2i(2, 3),
+		Vector2i(3, 3), Vector2i(4, 3),
+	]
+	assert_equal(track.append_cells(cells), 5, "Recovered-prefix straight fixture appends")
+	assert_equal(track.advance_construction(5.0), 5.0, "Recovered-prefix straight fixture builds")
+	assert_equal(track.recover_behind(2.0), 2, "Recovered-prefix straight fixture removes its prefix")
+	print("Endpoint reshape fix: recovered prefix preserves active predecessor targets")
+	var result = track.gesture_begin(Vector2i(4, 3))
+	assert_true(result is Dictionary, "Recovered-prefix supported endpoint starts a gesture")
+	if not result is Dictionary:
+		return
+	var span: Dictionary = result["editable_span"]
+	var targets: Dictionary = result["targets"]
+	assert_equal(span["first_index"], 0, "Recovered span starts at active index zero")
+	assert_equal(span["first_route_serial"], 3, "Recovered span keeps the first active support serial")
+	assert_equal(span["entry_predecessor_cell"], Vector2i(1, 3), "Recovered span uses the active predecessor")
+	assert_equal(span["incoming_heading"], Vector2i(1, 0), "Recovered span keeps the incoming heading")
+	assert_equal(targets["straight"], Vector2i(4, 3), "Recovered straight target uses the active predecessor")
+	assert_equal(targets["left"], Vector2i(3, 4), "Recovered left target uses the active predecessor")
+	assert_equal(targets["right"], Vector2i(3, 2), "Recovered right target uses the active predecessor")
+	if track.gesture_is_active():
+		track.gesture_finalize()
+
+
 func _test_endpoint_reshape_populated_origin_observations_are_detached() -> void:
 	var track = _reflow_runtime()
 	var cells: Array[Vector2i] = _reflow_curve_cells()
@@ -128,6 +180,7 @@ func _test_endpoint_reshape_populated_origin_observations_are_detached() -> void
 	var authoritative_pieces := _piece_values(track.get_geometry_pieces())
 	var authoritative_ledger := _piece_values(track._locked_ledger)
 	var authoritative_recovery := _recovery_observation_values(track)
+	var authoritative_anchor_cell: Vector2i = track._anchors[0].cell
 	print("Endpoint reshape fix: populated origin observations stay detached")
 	var result = track.gesture_begin(track.get_endpoint_cell())
 	assert_true(result is Dictionary, "Populated origin begins")
@@ -142,7 +195,14 @@ func _test_endpoint_reshape_populated_origin_observations_are_detached() -> void
 	result["pieces"][0].centerline[0] = Vector2(999.0, 999.0)
 	result["locked_ledger"][0].centerline[0] = Vector2(998.0, 998.0)
 	result["anchors"][0].cell = Vector2i(98, 98)
-	result["recovery"]["recovered_cells_by_piece"]["mutated"] = true
+	var recovery_keys: Array = result["recovery"]["recovered_cells_by_piece"].keys()
+	assert_true(recovery_keys.size() > 0, "Returned recovery contains an existing piece key")
+	if not recovery_keys.is_empty():
+		var recovery_inner: Dictionary = result["recovery"]["recovered_cells_by_piece"][recovery_keys[0]]
+		var recovered_cell_keys: Array = recovery_inner.keys()
+		assert_true(recovered_cell_keys.size() > 0, "Returned recovery contains an existing inner cell")
+		if not recovered_cell_keys.is_empty():
+			result["recovery"]["recovered_cells_by_piece"][recovery_keys[0]][recovered_cell_keys[0]] = false
 	result["construction"][0].build_progress = 99.0
 	result["contact_observations"][0].contacted = true
 	var stored = track.call("get_gesture_origin_observation")
@@ -156,6 +216,7 @@ func _test_endpoint_reshape_populated_origin_observations_are_detached() -> void
 	assert_equal(_record_values(track.get_cell_records()), authoritative_records, "Authoritative records remain unchanged")
 	assert_equal(_piece_values(track.get_geometry_pieces()), authoritative_pieces, "Authoritative pieces remain unchanged")
 	assert_equal(_piece_values(track._locked_ledger), authoritative_ledger, "Authoritative ledger remains unchanged")
+	assert_equal(track._anchors[0].cell, authoritative_anchor_cell, "Authoritative anchors remain unchanged")
 	assert_equal(_recovery_observation_values(track), authoritative_recovery, "Authoritative recovery remains unchanged")
 	track.gesture_finalize()
 
