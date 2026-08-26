@@ -81,3 +81,27 @@ Registered suites and observation APIs cover the following items. These are auto
 - `DIAGNOSTICS_SCANNED: 6`
 
 **PASS.** All required Task 3 route, reflow, hover/cancel, extension, rejected-input, train-entry, and terminal-order observations were completed against the durable tested implementation SHA.
+
+## Final Task 3 evidence correction — 2026-08-26
+
+**Durable tested implementation SHA:** `f72534e7e6aa6398b7071b8489d3b779e3d6cc66`
+**Coverage-only view correction SHA:** `b70a8e0ad68a76508178f4f23e47c03a02e7c6e0`
+**Coverage-only automated recovery correction SHA:** `9109dca4e9a9d1008940b44425c7d1c60871a683`
+
+The durable tested implementation SHA is the source identified by the preserved task-owned launcher. Neither coverage-only correction SHA is claimed as a launched source. The observations below came from distinct sources and runs; they are not one continuous screenshot sequence and were not all witnessed by one observer.
+
+### Distinct direct task-owned observations
+
+- In a direct task-owned run, synchronized G had no cancel-hover affordance and ignored right click at `TRACK 12/18` and `TRACK END 6/9`.
+- In a separate direct task-owned run, ordinary provisional H showed its normal hover affordance at `TRACK 11/18` and `TRACK END 7/9`.
+- In another separate direct task-owned immediate cancellation observation, right-clicking H changed `TRACK 11/18` and `TRACK END 7/9` to `TRACK 12/18` and `TRACK END 6/9`. H alone was removed and G remained the endpoint, which is one exact-cell inventory refund.
+
+### Independent user confirmation
+
+The user independently confirmed the combined provisional-hover, right-click cancellation, and `+1` inventory-refund flow. The user also independently confirmed that a later RUNNING curve gesture succeeds when its drag starts from the highlighted endpoint cell. These confirmations are attributed to the user, not to the separate task-owned observation runs above.
+
+### Automated lifecycle boundary and corrected result
+
+The same-candidate provisional-to-lock-to-sequential-recovery serial proof is intentionally not a manual evidence claim: mutually exclusive lifecycle states cannot be established in one manual frame. Coverage-only automated correction `9109dca4e9a9d1008940b44425c7d1c60871a683` supplies that same-serial lifecycle evidence instead.
+
+**Corrected PASS.** This supersedes the preceding broad Task 3 PASS summary only for final evidence attribution. The final manual evidence correction passes only for the exact G/H observations and the separately attributed user confirmations recorded in this section, together with the earlier direct train-entry and terminal-order replay. It does not claim that one screenshot sequence, one run, or one observer proved every hover, cancellation, refund, and running-turn fact.
