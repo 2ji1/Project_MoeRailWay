@@ -37,6 +37,8 @@ func run() -> PackedStringArray:
 	_test_endpoint_reshape_locked_boundary_downgrades_the_template()
 	_test_endpoint_reshape_construction_completion_does_not_lock()
 	_test_endpoint_reshape_stable_paths_retire_whole_pieces()
+	_test_endpoint_reshape_abort_restores_exact_origin()
+	_test_endpoint_reshape_locked_and_prepared_geometry_reject_mutation()
 	_test_ordered_append_growth_and_transactional_rollback()
 	_test_built_head_reflows_without_geometry_lock()
 	_test_construction_excess_and_group_assignment()
@@ -1277,6 +1279,88 @@ func _test_endpoint_reshape_stable_paths_retire_whole_pieces() -> void:
 	_assert_conservation(prepare_track, "Prepare preserves inventory conservation")
 
 
+func _test_endpoint_reshape_abort_restores_exact_origin() -> void:
+	var track = _reflow_runtime()
+	assert_equal(track.append_cells(_reflow_curve_cells()), 5, "Abort fixture appends curve")
+	assert_equal(track.append_cells([Vector2i(2, 3), Vector2i(2, 4)]), 2, "Abort fixture appends editable suffix")
+	track.set_contact_anchors([
+		RouteContactAnchorScript.new(&"abort_anchor", Vector2i(2, 3)),
+	])
+	assert_equal(track.advance_construction(7.0), 7.0, "Abort fixture builds route")
+	assert_equal(track.recover_behind(1.0), 1, "Abort fixture records recovery state")
+	var endpoint: Vector2i = track.get_endpoint_cell()
+	var origin_records := _record_values(track.get_cell_records())
+	var origin_pieces := _piece_values(track.get_geometry_pieces())
+	var origin_ledger := _piece_values(track._locked_ledger)
+	var origin_anchors := _anchor_values(track._anchors)
+	var origin_recovery := _recovery_observation_values(track)
+	var origin_contacts: Array = track.get_contact_observations().duplicate(true)
+	var origin_inventory: int = track.get_available_track_cells()
+	print("Endpoint reshape: abort restores exact origin")
+	assert_true(track.has_method("gesture_begin"), "Abort fixture has gesture begin")
+	if not track.has_method("gesture_begin"):
+		return
+	var origin = track.call("gesture_begin", endpoint)
+	assert_true(origin is Dictionary, "Abort fixture captures origin")
+	if not origin is Dictionary:
+		return
+	var abort_cells: Array[Vector2i] = [Vector2i(3, 4)]
+	assert_true(track.call("gesture_update", abort_cells), "Abort fixture publishes changed candidate")
+	assert_true(_record_values(track.get_cell_records()) != origin_records, "Abort fixture changes route before abort")
+	assert_true(track.get_available_track_cells() != origin_inventory, "Abort fixture changes inventory before abort")
+	assert_true(track.has_method("gesture_abort"), "Gesture abort contract exists")
+	if not track.has_method("gesture_abort"):
+		return
+	assert_true(track.call("gesture_abort"), "Gesture abort restores the origin")
+	assert_false(track.gesture_is_active(), "Gesture abort clears active state")
+	assert_equal(track.call("get_gesture_origin_observation"), {}, "Gesture abort clears transient origin")
+	assert_equal(_record_values(track.get_cell_records()), origin_records, "Abort restores route records")
+	assert_equal(_piece_values(track.get_geometry_pieces()), origin_pieces, "Abort restores geometry pieces")
+	assert_equal(_piece_values(track._locked_ledger), origin_ledger, "Abort restores immutable ledger")
+	assert_equal(_anchor_values(track._anchors), origin_anchors, "Abort restores anchors")
+	assert_equal(_recovery_observation_values(track), origin_recovery, "Abort restores recovery and construction")
+	assert_equal(track.get_contact_observations(), origin_contacts, "Abort restores contact observations")
+	assert_equal(track.get_available_track_cells(), origin_inventory, "Abort restores inventory")
+
+
+func _test_endpoint_reshape_locked_and_prepared_geometry_reject_mutation() -> void:
+	var track = _make_three_by_three_curve_runtime()
+	var prepared_anchors: Array[RouteContactAnchorScript] = [
+		RouteContactAnchorScript.new(&"prepared_anchor", Vector2i(7, 7)),
+	]
+	track.set_contact_anchors(prepared_anchors)
+	assert_equal(track.advance_construction(5.0), 5.0, "Prepared fixture builds curve")
+	var began = track.call("gesture_begin", track.get_endpoint_cell())
+	assert_true(began is Dictionary, "Prepared fixture starts a reshape gesture")
+	if not began is Dictionary:
+		return
+	assert_true(track.prepare_for_train_sampling(0.0, 5.0), "Prepared fixture locks the active curve")
+	assert_true(track._locked_ledger.size() > 0, "Prepared fixture records the locked curve")
+	for piece in track.get_geometry_pieces():
+		assert_true(piece.locked, "Prepared fixture leaves geometry locked")
+	var records_before := _record_values(track.get_cell_records())
+	var pieces_before := _piece_values(track.get_geometry_pieces())
+	var ledger_before := _piece_values(track._locked_ledger)
+	var inventory_before: int = track.get_available_track_cells()
+	var recovery_before := _recovery_observation_values(track)
+	var contacts_before: Array = track.get_contact_observations().duplicate(true)
+	var locked_anchor_before := _anchor_values(track._anchors)
+	print("Endpoint reshape: locked and prepared geometry reject mutation")
+	assert_true(track.has_method("gesture_update"), "Prepared fixture has gesture update")
+	if not track.has_method("gesture_update"):
+		return
+	var target_cells: Array[Vector2i] = [began["targets"]["straight"]]
+	assert_false(track.call("gesture_update", target_cells), "Prepared geometry rejects template mutation")
+	assert_equal(_record_values(track.get_cell_records()), records_before, "Prepared rejection preserves records")
+	assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before, "Prepared rejection preserves pieces")
+	assert_equal(_piece_values(track._locked_ledger), ledger_before, "Prepared rejection preserves ledger")
+	assert_equal(track.get_available_track_cells(), inventory_before, "Prepared rejection preserves inventory")
+	assert_equal(_recovery_observation_values(track), recovery_before, "Prepared rejection preserves recovery")
+	assert_equal(track.get_contact_observations(), contacts_before, "Prepared rejection preserves contacts")
+	assert_equal(_anchor_values(track._anchors), locked_anchor_before, "Prepared rejection preserves anchors")
+	track.call("gesture_abort")
+
+
 func _test_ordered_append_growth_and_transactional_rollback() -> void:
 	var track = GridTrackRuntimeScript.new(
 		Vector2i(-1, 0), 18, Vector2.ZERO, Vector2i(8, 8), 40.0
@@ -1873,6 +1957,13 @@ func _piece_values(pieces: Array) -> Array[Dictionary]:
 			"locked": piece.locked,
 			"support": piece.exit_support_route_serial,
 		})
+	return values
+
+
+func _anchor_values(anchors: Array) -> Array[Dictionary]:
+	var values: Array[Dictionary] = []
+	for anchor in anchors:
+		values.append({"anchor_id": anchor.anchor_id, "cell": anchor.cell})
 	return values
 
 

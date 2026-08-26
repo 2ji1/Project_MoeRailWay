@@ -144,6 +144,21 @@ func gesture_finalize() -> bool:
     return true
 
 
+func gesture_abort() -> bool:
+    if not _gesture_active or _gesture_origin_sequence == null:
+        return false
+    _sequence.replace_with(_gesture_origin_sequence)
+    _locked_ledger = _duplicate_pieces(_gesture_origin_locked_ledger)
+    _pieces = _duplicate_pieces(_gesture_origin_pieces)
+    _sequence.apply_resolved_geometry(_pieces)
+    _anchors = _duplicate_anchors(_gesture_origin_anchors)
+    _recovered_cells_by_piece = _gesture_origin_recovered_cells_by_piece.duplicate(true)
+    _recovered_end_distance_cells = _gesture_origin_recovered_end_distance_cells
+    _contact_observations = _gesture_origin_contacts.duplicate(true)
+    _clear_gesture_state()
+    return true
+
+
 func gesture_update(crossed_cells: Array[Vector2i]) -> bool:
     if not _gesture_active or crossed_cells.is_empty():
         return false
@@ -186,6 +201,8 @@ func gesture_update(crossed_cells: Array[Vector2i]) -> bool:
 
     var candidate_sequence = _gesture_origin_sequence.duplicate_sequence()
     if next_template_index >= 0:
+        if not _gesture_template_mutation_is_safe():
+            return false
         var template_cells: Array[Vector2i] = []
         for cell in templates[next_template_index]:
             template_cells.append(cell)
@@ -717,6 +734,26 @@ func _piece_containing_serial(route_serial: int):
         if piece.contains_serial(route_serial):
             return piece
     return null
+
+
+func _gesture_template_mutation_is_safe() -> bool:
+    if _gesture_editable_span.is_empty():
+        return false
+    var first_serial: int = _gesture_editable_span["first_route_serial"]
+    var last_serial: int = _gesture_editable_span["last_route_serial"]
+    for record in _sequence.get_records():
+        if record.route_serial < first_serial or record.route_serial > last_serial:
+            continue
+        if record.geometry_locked:
+            return false
+        var owner = _piece_containing_serial(record.route_serial)
+        if owner == null or owner.locked:
+            return false
+    for locked in _locked_ledger:
+        if locked.last_route_serial < first_serial or locked.first_route_serial > last_serial:
+            continue
+        return false
+    return true
 
 
 func _gesture_origin_observation() -> Dictionary:
