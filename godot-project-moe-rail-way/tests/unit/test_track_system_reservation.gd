@@ -20,7 +20,7 @@ func run() -> PackedStringArray:
 	_test_held_input_waits_for_release_and_fresh_press()
 	_test_left_release_finalizes_once()
 	_test_same_frame_press_routes_through_gesture_transaction()
-	_test_left_press_latch_requires_release_after_rejection_and_external_abort()
+	_test_left_press_latch_requires_release_after_rejection()
 	_test_observation_getters_are_detached()
 	return finish()
 
@@ -334,8 +334,6 @@ func _test_same_frame_press_routes_through_gesture_transaction() -> void:
 			selected_target, true
 		)
 	)
-	assert_true(track.is_left_capture_active(), "Fresh endpoint press captures before same-frame motion")
-	assert_true(track.is_runtime_gesture_active(), "Fresh endpoint press activates runtime before same-frame motion")
 	assert_true(track.is_left_capture_active(), "Same-frame motion keeps facade capture active")
 	assert_true(track.is_runtime_gesture_active(), "Same-frame motion keeps runtime gesture active")
 	assert_equal(track.get_endpoint_cell(), selected_target, "Same-frame motion publishes the candidate")
@@ -356,7 +354,7 @@ func _test_same_frame_press_routes_through_gesture_transaction() -> void:
 	assert_true(track.is_left_capture_active(), "Fresh press after release starts a new gesture")
 
 
-func _test_left_press_latch_requires_release_after_rejection_and_external_abort() -> void:
+func _test_left_press_latch_requires_release_after_rejection() -> void:
 	print("Endpoint reshape: left press latch requires release")
 	var rejected = TrackSystemScript.new(_config())
 	rejected.apply_left_input(_left_frame([Vector2i(1, 0)], true, true, false, Vector2i(4, 4)))
