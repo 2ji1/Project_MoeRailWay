@@ -39,6 +39,7 @@ func run() -> PackedStringArray:
 	_test_endpoint_reshape_stable_paths_retire_whole_pieces()
 	_test_endpoint_reshape_abort_restores_exact_origin()
 	_test_endpoint_reshape_locked_and_prepared_geometry_reject_mutation()
+	_test_endpoint_reshape_locked_boundary_rejects_template_mutation()
 	_test_ordered_append_growth_and_transactional_rollback()
 	_test_built_head_reflows_without_geometry_lock()
 	_test_construction_excess_and_group_assignment()
@@ -1308,6 +1309,35 @@ func _test_endpoint_reshape_abort_restores_exact_origin() -> void:
 	assert_true(track.call("gesture_update", abort_cells), "Abort fixture publishes changed candidate")
 	assert_true(_record_values(track.get_cell_records()) != origin_records, "Abort fixture changes route before abort")
 	assert_true(track.get_available_track_cells() != origin_inventory, "Abort fixture changes inventory before abort")
+	var consumed_serials: Array[int] = []
+	for record in track.get_cell_records():
+		consumed_serials.append(record.route_serial)
+	assert_true(consumed_serials.size() > 0, "Abort fixture records candidate serials")
+	var perturbed_record = track._sequence._records[0]
+	perturbed_record.state = TrackCellRecordScript.State.BUILDING
+	perturbed_record.build_progress = 0.25
+	assert_true(track._locked_ledger.size() > 0, "Abort fixture has ledger state to perturb")
+	if not track._locked_ledger.is_empty():
+		track._locked_ledger[0].group_id += 100
+	var recovery_keys: Array = track._recovered_cells_by_piece.keys()
+	assert_true(recovery_keys.size() > 0, "Abort fixture has recovery state to perturb")
+	if not recovery_keys.is_empty():
+		var recovered_cells: Dictionary = track._recovered_cells_by_piece[recovery_keys[0]]
+		var recovered_cell_keys: Array = recovered_cells.keys()
+		assert_true(recovered_cell_keys.size() > 0, "Abort fixture has a recovered cell to perturb")
+		if not recovered_cell_keys.is_empty():
+			recovered_cells[recovered_cell_keys[0]] = false
+	assert_true(track._anchors.size() > 0, "Abort fixture has anchor state to perturb")
+	if not track._anchors.is_empty():
+		track._anchors[0].cell = Vector2i(7, 7)
+	assert_true(track._contact_observations.size() > 0, "Abort fixture has contact state to perturb")
+	if not track._contact_observations.is_empty():
+		track._contact_observations[0].contacted = not track._contact_observations[0].contacted
+	assert_true(_record_values(track.get_cell_records()) != origin_records, "Abort fixture perturbation changes construction")
+	assert_true(_piece_values(track._locked_ledger) != origin_ledger, "Abort fixture perturbation changes ledger")
+	assert_true(_recovery_observation_values(track) != origin_recovery, "Abort fixture perturbation changes recovery")
+	assert_true(_anchor_values(track._anchors) != origin_anchors, "Abort fixture perturbation changes anchors")
+	assert_true(track.get_contact_observations() != origin_contacts, "Abort fixture perturbation changes contacts")
 	assert_true(track.has_method("gesture_abort"), "Gesture abort contract exists")
 	if not track.has_method("gesture_abort"):
 		return
@@ -1321,6 +1351,46 @@ func _test_endpoint_reshape_abort_restores_exact_origin() -> void:
 	assert_equal(_recovery_observation_values(track), origin_recovery, "Abort restores recovery and construction")
 	assert_equal(track.get_contact_observations(), origin_contacts, "Abort restores contact observations")
 	assert_equal(track.get_available_track_cells(), origin_inventory, "Abort restores inventory")
+	assert_true(track._gesture_origin_sequence == null, "Gesture abort clears origin sequence")
+	assert_true(track._gesture_origin_pieces.is_empty(), "Gesture abort clears origin pieces")
+	assert_true(track._gesture_origin_locked_ledger.is_empty(), "Gesture abort clears origin ledger")
+	assert_true(track._gesture_origin_anchors.is_empty(), "Gesture abort clears origin anchors")
+	assert_true(track._gesture_origin_recovered_cells_by_piece.is_empty(), "Gesture abort clears origin recovery")
+	assert_equal(track._gesture_origin_recovered_end_distance_cells, 0.0, "Gesture abort clears origin recovery frontier")
+	assert_true(track._gesture_origin_contacts.is_empty(), "Gesture abort clears origin contacts")
+	assert_true(track._gesture_editable_span.is_empty(), "Gesture abort clears editable span")
+	assert_true(track._gesture_target_endpoints.is_empty(), "Gesture abort clears target endpoints")
+	assert_equal(track._gesture_selected_template_index, -1, "Gesture abort clears selected template")
+	assert_true(track._gesture_suffix_input_facts.is_empty(), "Gesture abort clears suffix input facts")
+	assert_true(track._gesture_ordinary_input_facts.is_empty(), "Gesture abort clears ordinary input facts")
+	var maximum_consumed_serial := 0
+	for serial in consumed_serials:
+		maximum_consumed_serial = maxi(maximum_consumed_serial, serial)
+	var fresh_cell: Array[Vector2i] = [Vector2i(3, 4)]
+	assert_equal(track.append_cells(fresh_cell), 1, "Abort permits a fresh ordinary append")
+	var fresh_record = track.get_cell_records()[-1]
+	assert_true(fresh_record.route_serial > maximum_consumed_serial, "Fresh append skips every consumed candidate serial")
+	assert_equal(fresh_record.route_distance_start_cells, origin_records[-1]["distance"] + 1.0, "Fresh append keeps nominal distance")
+	assert_true(track._sequence.is_conservation_valid(), "Fresh append preserves conservation")
+	var active_cells: Dictionary = {}
+	for record in track.get_cell_records():
+		assert_false(active_cells.has(record.cell), "Fresh append preserves active-cell uniqueness")
+		active_cells[record.cell] = true
+	var after_append_records := _record_values(track.get_cell_records())
+	var after_append_pieces := _piece_values(track.get_geometry_pieces())
+	var after_append_ledger := _piece_values(track._locked_ledger)
+	var after_append_recovery := _recovery_observation_values(track)
+	var after_append_anchors := _anchor_values(track._anchors)
+	var after_append_contacts: Array = track.get_contact_observations().duplicate(true)
+	var after_append_inventory: int = track.get_available_track_cells()
+	assert_false(track.call("gesture_abort"), "Inactive gesture abort returns false")
+	assert_equal(_record_values(track.get_cell_records()), after_append_records, "Inactive abort preserves records")
+	assert_equal(_piece_values(track.get_geometry_pieces()), after_append_pieces, "Inactive abort preserves pieces")
+	assert_equal(_piece_values(track._locked_ledger), after_append_ledger, "Inactive abort preserves ledger")
+	assert_equal(_recovery_observation_values(track), after_append_recovery, "Inactive abort preserves recovery")
+	assert_equal(_anchor_values(track._anchors), after_append_anchors, "Inactive abort preserves anchors")
+	assert_equal(track.get_contact_observations(), after_append_contacts, "Inactive abort preserves contacts")
+	assert_equal(track.get_available_track_cells(), after_append_inventory, "Inactive abort preserves inventory")
 
 
 func _test_endpoint_reshape_locked_and_prepared_geometry_reject_mutation() -> void:
@@ -1358,6 +1428,43 @@ func _test_endpoint_reshape_locked_and_prepared_geometry_reject_mutation() -> vo
 	assert_equal(_recovery_observation_values(track), recovery_before, "Prepared rejection preserves recovery")
 	assert_equal(track.get_contact_observations(), contacts_before, "Prepared rejection preserves contacts")
 	assert_equal(_anchor_values(track._anchors), locked_anchor_before, "Prepared rejection preserves anchors")
+	track.call("gesture_abort")
+
+
+func _test_endpoint_reshape_locked_boundary_rejects_template_mutation() -> void:
+	var track = _make_three_by_three_curve_runtime()
+	var boundary_anchors: Array[RouteContactAnchorScript] = [
+		RouteContactAnchorScript.new(&"boundary_anchor", Vector2i(7, 7)),
+	]
+	track.set_contact_anchors(boundary_anchors)
+	assert_equal(track.advance_construction(2.5), 2.5, "Boundary fixture leaves construction progress")
+	var began = track.call("gesture_begin", track.get_endpoint_cell())
+	assert_true(began is Dictionary, "Boundary fixture starts a reshape gesture")
+	if not began is Dictionary:
+		return
+	var endpoint_piece = track._pieces[-1]
+	var locked_boundary = endpoint_piece.duplicate_piece()
+	locked_boundary.locked = true
+	track._pieces[-1].locked = true
+	track._locked_ledger.append(locked_boundary)
+	track._sequence.apply_resolved_geometry(track._pieces)
+	var records_before := _record_values(track.get_cell_records())
+	var pieces_before := _piece_values(track.get_geometry_pieces())
+	var ledger_before := _piece_values(track._locked_ledger)
+	var inventory_before: int = track.get_available_track_cells()
+	var recovery_before := _recovery_observation_values(track)
+	var contacts_before: Array = track.get_contact_observations().duplicate(true)
+	var anchors_before := _anchor_values(track._anchors)
+	print("Endpoint reshape: locked boundary rejects template mutation")
+	var target_cells: Array[Vector2i] = [began["targets"]["straight"]]
+	assert_false(track.call("gesture_update", target_cells), "Locked boundary rejects template mutation")
+	assert_equal(_record_values(track.get_cell_records()), records_before, "Locked boundary preserves records")
+	assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before, "Locked boundary preserves pieces")
+	assert_equal(_piece_values(track._locked_ledger), ledger_before, "Locked boundary preserves ledger")
+	assert_equal(track.get_available_track_cells(), inventory_before, "Locked boundary preserves inventory")
+	assert_equal(_recovery_observation_values(track), recovery_before, "Locked boundary preserves construction and recovery")
+	assert_equal(track.get_contact_observations(), contacts_before, "Locked boundary preserves contact observations")
+	assert_equal(_anchor_values(track._anchors), anchors_before, "Locked boundary preserves anchors")
 	track.call("gesture_abort")
 
 
@@ -1947,6 +2054,7 @@ func _piece_values(pieces: Array) -> Array[Dictionary]:
 	for piece in pieces:
 		values.append({
 			"serials": Vector2i(piece.first_route_serial, piece.last_route_serial),
+			"group": piece.group_id,
 			"kind": piece.kind,
 			"distance": piece.absolute_start_distance_cells,
 			"length": piece.nominal_length_cells,
