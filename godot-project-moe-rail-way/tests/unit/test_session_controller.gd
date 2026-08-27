@@ -118,7 +118,7 @@ func run() -> PackedStringArray:
 	_test_terminal_snapshot_precedes_result_and_completion_is_inert()
 	_test_controller_requests_prepare_once_before_departure()
 	_test_prepare_failure_keeps_preparing_snapshot_and_time_unchanged()
-	_test_running_prepare_failure_completes_instead_of_stalling()
+	_test_prepare_failure_keeps_running_without_recovery_or_events()
 	_test_terminal_snapshot_pose_precedes_reason_only_result_after_full_recovery()
 	_test_snapshot_detaches_endpoint_gesture_facts()
 	_test_completion_terminates_active_gesture_before_terminal_snapshot()
@@ -294,7 +294,7 @@ func _test_prepare_failure_keeps_preparing_snapshot_and_time_unchanged() -> void
 	assert_equal(track.recovery_calls, recovery_calls_before, "Preparing failure performs no recovery")
 
 
-func _test_running_prepare_failure_completes_instead_of_stalling() -> void:
+func _test_prepare_failure_keeps_running_without_recovery_or_events() -> void:
 	var config = _config(5.0, 1, 0.25, 10.0)
 	var track = TogglePrepareTrackSystem.new(config)
 	var train = TrainSystemScript.new(1.0)
@@ -305,11 +305,8 @@ func _test_running_prepare_failure_completes_instead_of_stalling() -> void:
 	track.allow_prepare = false
 	var events: Array[String] = []
 	controller.snapshot_published.connect(func(_snapshot): events.append("snapshot"))
-	var reasons: Array[SessionResultScript.Reason] = []
-	controller.session_completed.connect(func(result):
-		events.append("result")
-		reasons.append(result.get_reason())
-	)
+	controller.session_completed.connect(func(_result): events.append("result"))
+	var before = _snapshot_values(controller.get_snapshot())
 	var distance_before = train.get_route_distance_cells()
 	var elapsed_before = controller.get_snapshot().get_elapsed_ticks()
 	var remaining_before = controller.get_snapshot().get_remaining_ticks()
@@ -317,9 +314,9 @@ func _test_running_prepare_failure_completes_instead_of_stalling() -> void:
 	var recovery_calls_before = track.recovery_calls
 	var prepare_calls_before = track.prepare_calls
 	controller.advance_tick()
-	assert_equal(controller.get_state(), SessionControllerScript.State.COMPLETED, "Running preparation failure completes the session")
-	assert_equal(events, ["snapshot", "result"], "Preparation failure publishes the terminal snapshot before its result")
-	assert_equal(reasons, [SessionResultScript.Reason.TRACK_END_REACHED], "Preparation failure uses the supported track-end result")
+	assert_equal(controller.get_state(), SessionControllerScript.State.RUNNING, "Running remains")
+	assert_equal(_snapshot_values(controller.get_snapshot()), before, "No snapshot publication")
+	assert_equal(events, [], "No completion or snapshot event")
 	assert_equal(train.get_route_distance_cells(), distance_before, "Running distance remains unchanged")
 	assert_equal(track.prepare_calls, prepare_calls_before + 1, "Running failure attempts preparation once")
 	assert_equal(track.pose_sample_calls, pose_calls_before, "Running failure performs no pose capture")
@@ -328,10 +325,10 @@ func _test_running_prepare_failure_completes_instead_of_stalling() -> void:
 	assert_equal(controller.get_snapshot().get_remaining_ticks(), remaining_before, "Running failure does not consume remaining time")
 	track.allow_prepare = true
 	controller.advance_tick()
-	assert_equal(controller.get_snapshot().get_elapsed_ticks(), elapsed_before, "Completed fallback remains inert")
-	assert_equal(controller.get_snapshot().get_remaining_ticks(), remaining_before, "Completed fallback consumes no later time")
-	assert_equal(track.pose_sample_calls, pose_calls_before, "Completed fallback performs no later pose capture")
-	assert_equal(track.recovery_calls, recovery_calls_before, "Completed fallback performs no later recovery")
+	assert_equal(controller.get_snapshot().get_elapsed_ticks(), elapsed_before + 1, "Next successful tick advances elapsed exactly once")
+	assert_equal(controller.get_snapshot().get_remaining_ticks(), remaining_before - 1, "Next successful tick consumes remaining exactly once")
+	assert_equal(track.pose_sample_calls, pose_calls_before + 1, "Only the successful tick captures a running pose")
+	assert_equal(track.recovery_calls, recovery_calls_before + 1, "Only the successful tick recovers")
 
 
 func _test_terminal_snapshot_pose_precedes_reason_only_result_after_full_recovery() -> void:

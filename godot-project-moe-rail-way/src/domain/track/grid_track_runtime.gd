@@ -109,10 +109,6 @@ func gesture_begin(endpoint: Vector2i) -> Dictionary:
 
 
 func gesture_finalize() -> bool:
-    return _finalize_gesture(true)
-
-
-func _finalize_gesture(restore_origin_on_failure: bool) -> bool:
     if not _gesture_active:
         return false
     var candidate_sequence = _sequence.duplicate_sequence()
@@ -124,10 +120,7 @@ func _finalize_gesture(restore_origin_on_failure: bool) -> bool:
         candidate_anchors
     )
     if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
-        if restore_origin_on_failure:
-            gesture_abort()
-        else:
-            _clear_gesture_state()
+        _clear_gesture_state()
         return false
     _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
     candidate_sequence.apply_resolved_geometry(resolution.pieces)
@@ -138,10 +131,7 @@ func _finalize_gesture(restore_origin_on_failure: bool) -> bool:
         _recovered_cells_by_piece,
         _recovered_end_distance_cells
     ):
-        if restore_origin_on_failure:
-            gesture_abort()
-        else:
-            _clear_gesture_state()
+        _clear_gesture_state()
         return false
     var candidate_contacts := _build_contact_observations(
         resolution.pieces,
@@ -237,6 +227,8 @@ func gesture_update(crossed_cells: Array[Vector2i]) -> bool:
     _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
     candidate_sequence.apply_resolved_geometry(resolution.pieces)
     if not _validate_candidate(candidate_sequence, candidate_ledger, resolution):
+        return false
+    if not _gesture_candidate_can_finalize(candidate_sequence, candidate_ledger, candidate_anchors):
         return false
     var candidate_contacts := _build_contact_observations(
         resolution.pieces,
@@ -475,7 +467,7 @@ func prepare_for_train_sampling(current_distance: float, through_distance: float
     if _pieces.is_empty():
         return false
     if _train_sampling_intersects_active_gesture(current_distance, through_distance):
-        if not _finalize_gesture(false):
+        if not gesture_finalize():
             return false
     var current = _canonical_distance_and_owner(current_distance)
     var through = _canonical_distance_and_owner(through_distance)
@@ -957,6 +949,32 @@ func _exit_support_serial(
             return records[index + 1].route_serial
         return -1
     return -1
+
+
+func _gesture_candidate_can_finalize(
+    sequence: TrackCellSequenceScript,
+    ledger: Array[TrackGeometryPieceScript],
+    anchors: Array[RouteContactAnchorScript]
+) -> bool:
+    var final_sequence = sequence.duplicate_sequence()
+    var final_ledger = _duplicate_pieces(ledger)
+    var final_anchors = _duplicate_anchors(anchors)
+    var final_resolution = _stage_stable_retirement(
+        final_sequence,
+        final_ledger,
+        final_anchors
+    )
+    if not final_resolution.is_valid or not _pieces_are_continuous(final_resolution.pieces):
+        return false
+    _assign_unique_unlocked_group_ids(final_resolution.pieces, final_ledger)
+    final_sequence.apply_resolved_geometry(final_resolution.pieces)
+    return _validate_candidate(
+        final_sequence,
+        final_ledger,
+        final_resolution,
+        _gesture_origin_recovered_cells_by_piece,
+        _gesture_origin_recovered_end_distance_cells
+    )
 
 
 func _stage_stable_retirement(
