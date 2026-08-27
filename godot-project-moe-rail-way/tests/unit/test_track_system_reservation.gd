@@ -127,10 +127,29 @@ func _right_frame(
 
 
 func _test_input_frame_owns_an_independent_cell_buffer() -> void:
+	var empty_frame = TrackInputFrameScript.empty()
+	assert_not_null(empty_frame.get("live_gesture_path"), "Empty frame exposes the live gesture path")
+	if empty_frame.get("live_gesture_path") == null:
+		return
 	var source: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0)]
-	var frame = TrackInputFrameScript.new(source)
+	var source_path: Array[Vector2i] = [Vector2i(1, 0), Vector2i(1, 1)]
+	var frame_script = load("res://src/domain/track/track_input_frame.gd")
+	var frame = frame_script.call(
+		"new",
+		source, Vector2i(-1, -1), false, Vector2i(-1, -1), false,
+		false, false, false, false, Vector2i(-1, -1), false, source_path
+	)
+	assert_not_null(frame, "Frame constructor accepts an explicit live gesture path")
+	if frame == null:
+		return
 	source[0] = Vector2i(9, 9)
+	source_path[0] = Vector2i(9, 9)
 	assert_equal(frame.crossed_cells, [Vector2i(1, 0), Vector2i(2, 0)], "Frame copies cells")
+	assert_not_null(frame.get("live_gesture_path"), "Frame exposes the live gesture path")
+	assert_equal(frame.live_gesture_path, [Vector2i(1, 0), Vector2i(1, 1)], "Frame copies live gesture path")
+	var legacy = TrackInputFrameScript.new(source)
+	assert_not_null(legacy.get("live_gesture_path"), "Legacy frame exposes the live gesture path")
+	assert_equal(legacy.live_gesture_path, [Vector2i(9, 9), Vector2i(2, 0)], "Legacy constructor copies crossed cells into live gesture path")
 	var first = TrackInputFrameScript.empty()
 	var second = TrackInputFrameScript.empty()
 	first.crossed_cells.append(Vector2i(1, 0))

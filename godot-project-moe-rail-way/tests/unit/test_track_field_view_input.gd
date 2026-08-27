@@ -24,6 +24,8 @@ func run() -> PackedStringArray:
 	_test_locked_non_support_ghost_has_no_cancel_hover()
 	_test_exit_support_ghost_has_no_cancel_hover()
 	_test_endpoint_reshape_consume_frame_carries_current_pointer_facts()
+	_test_live_gesture_path_backtracks_and_rebranches_while_held()
+	_test_live_gesture_path_returns_to_press_origin()
 	_test_endpoint_reshape_actionable_endpoint_is_green()
 	_test_endpoint_reshape_green_over_gold_retains_cancellation()
 	_test_endpoint_reshape_pending_right_suppresses_present_hover()
@@ -229,6 +231,41 @@ func _test_endpoint_reshape_consume_frame_carries_current_pointer_facts() -> voi
 	var frame = fixture.view.consume_input_frame()
 	assert_equal(frame.current_pointer_cell, Vector2i(0, 0), "Consumed frame carries the latest pointer cell")
 	assert_true(frame.current_pointer_inside_grid, "Consumed frame carries the latest inside-grid fact")
+	fixture.parent.free()
+
+
+func _test_live_gesture_path_backtracks_and_rebranches_while_held() -> void:
+	print("Live gesture path: held backtrack truncates and rebranches")
+	var fixture := _fixture()
+	var view = fixture.view
+	var origin := _local_for_cell(view, Vector2i(0, 0))
+	_deliver(view, _button(origin, MOUSE_BUTTON_LEFT, true))
+	_deliver(view, _motion(_local_for_cell(view, Vector2i(3, 0))))
+	var first = view.consume_input_frame()
+	assert_not_null(first.get("live_gesture_path"), "First held frame exposes the live gesture path")
+	assert_equal(first.live_gesture_path, [Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)], "First held frame publishes the complete path")
+	_deliver(view, _motion(_local_for_cell(view, Vector2i(1, 0))))
+	_deliver(view, _motion(_local_for_cell(view, Vector2i(1, 2))))
+	var rebranched = view.consume_input_frame()
+	assert_true(rebranched.left_held and not rebranched.left_released, "Rebranch remains in the same press")
+	assert_equal(rebranched.live_gesture_path, [Vector2i(1, 0), Vector2i(1, 1), Vector2i(1, 2)], "Earlier suffix is replaced by the new branch")
+	assert_equal(first.live_gesture_path, [Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)], "Consumed snapshots remain detached")
+	fixture.parent.free()
+
+
+func _test_live_gesture_path_returns_to_press_origin() -> void:
+	print("Live gesture path: returning to press origin clears the path")
+	var fixture := _fixture()
+	var view = fixture.view
+	var origin := _local_for_cell(view, Vector2i(0, 0))
+	_deliver(view, _button(origin, MOUSE_BUTTON_LEFT, true))
+	_deliver(view, _motion(_local_for_cell(view, Vector2i(2, 0))))
+	view.consume_input_frame()
+	_deliver(view, _motion(origin))
+	var cleared = view.consume_input_frame()
+	assert_true(cleared.left_held and not cleared.left_released, "Origin return remains held")
+	assert_not_null(cleared.get("live_gesture_path"), "Origin return exposes the live gesture path")
+	assert_equal(cleared.live_gesture_path, [], "Origin return publishes an explicitly empty path")
 	fixture.parent.free()
 
 
