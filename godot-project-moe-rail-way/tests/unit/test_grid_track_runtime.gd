@@ -43,6 +43,7 @@ func run() -> PackedStringArray:
 	_test_endpoint_reshape_replacement_overlap_terminates_last_valid()
 	_test_endpoint_reshape_extension_overlap_terminates_last_valid()
 	_test_endpoint_reshape_nonoverlap_remains_active()
+	_test_endpoint_reshape_train_lock_survives_begin_prepare_update_and_abort()
 	_test_ordered_append_growth_and_transactional_rollback()
 	_test_built_head_reflows_without_geometry_lock()
 	_test_construction_excess_and_group_assignment()
@@ -1735,6 +1736,119 @@ func _test_endpoint_reshape_nonoverlap_remains_active() -> void:
 	assert_true(result, "Nonoverlap preparation succeeds")
 	assert_true(was_active, "Nonoverlap began active")
 	assert_true(track.call("gesture_is_active"), "Nonoverlap keeps the gesture active")
+
+
+func _test_endpoint_reshape_train_lock_survives_begin_prepare_update_and_abort() -> void:
+	print("Endpoint reshape: begin then prepare preserves immutable train locks through update and abort")
+	var update_track = _make_retained_predecessor_curve_2x2_runtime()
+	var abort_track = _make_retained_predecessor_curve_2x2_runtime()
+	_assert_train_lock_fixture_shape(update_track, "Update fixture")
+	_assert_train_lock_fixture_shape(abort_track, "Abort fixture")
+	_assert_begin_prepare_update_preserves_train_lock(update_track)
+	_assert_begin_prepare_abort_preserves_train_lock(abort_track)
+
+
+func _make_retained_predecessor_curve_2x2_runtime() -> GridTrackRuntimeScript:
+	var track = _boundary_runtime()
+	track.set_contact_anchors([
+		RouteContactAnchorScript.new(&"retained_predecessor", Vector2i(0, 0)),
+	])
+	return track
+
+
+func _assert_train_lock_fixture_shape(track: GridTrackRuntimeScript, label: String) -> void:
+	var records = track.get_cell_records()
+	var pieces = track.get_geometry_pieces()
+	assert_equal(records.size(), 4, "%s has a four-record route" % label)
+	assert_equal(pieces.size(), 2, "%s has a predecessor and CURVE_2X2 endpoint" % label)
+	if records.size() < 4 or pieces.size() < 2:
+		return
+	assert_equal(pieces[0].kind, TrackGeometryPieceScript.Kind.STRAIGHT, "%s retained predecessor is straight" % label)
+	assert_equal(pieces[1].kind, TrackGeometryPieceScript.Kind.CURVE_2X2, "%s endpoint owner is CURVE_2X2" % label)
+	assert_false(pieces[0].locked, "%s retained predecessor starts unlocked" % label)
+	assert_false(pieces[1].locked, "%s endpoint owner starts unlocked" % label)
+	assert_false(records[0].geometry_locked, "%s retained predecessor record starts unlocked" % label)
+	assert_true(track.get_contact_observations()[0].contacted, "%s retains a contacted anchor fact" % label)
+
+
+func _assert_begin_prepare_update_preserves_train_lock(track: GridTrackRuntimeScript) -> void:
+	var endpoint: Vector2i = track.get_endpoint_cell()
+	var origin: Dictionary = track.call("gesture_begin", endpoint)
+	assert_true(origin is Dictionary and not origin.is_empty(), "Update fixture begins at the CURVE_2X2 endpoint")
+	if not origin is Dictionary or origin.is_empty():
+		return
+	var origin_span: Dictionary = origin["editable_span"].duplicate(true)
+	var origin_targets: Dictionary = origin["targets"].duplicate(true)
+	var origin_watermark: int = track._gesture_origin_sequence._next_route_serial
+	assert_equal(origin_span["record_count"], 3, "Update fixture origin owns the CURVE_2X2 span")
+	assert_true(track.call("prepare_for_train_sampling", 0.0, 0.5), "Update fixture non-overlap preparation succeeds")
+	assert_true(track.call("gesture_is_active"), "Update fixture preparation keeps the gesture active")
+	var prepared_record = _record_values(track.get_cell_records())[0].duplicate(true)
+	var prepared_piece = _piece_values(track.get_geometry_pieces())[0].duplicate(true)
+	var prepared_ledger := _piece_values(track._locked_ledger)
+	var prepared_pose: Dictionary = track.get_pose_sample_at_distance(0.0)
+	var prepared_recovery := _train_lock_recovery_facts(track)
+	var prepared_anchors := _anchor_values(track._anchors)
+	var prepared_contacts: Array = track.get_contact_observations().duplicate(true)
+	var target_cells: Array[Vector2i] = [origin_targets["straight"]]
+	assert_true(track.call("gesture_update", target_cells), "Update fixture publishes a valid template update")
+	assert_true(track.call("gesture_is_active"), "Update fixture remains active after valid update")
+	var updated_record = _record_values(track.get_cell_records())[0]
+	var updated_piece = _piece_values(track.get_geometry_pieces())[0]
+	assert_equal(updated_record, prepared_record, "Updated candidate preserves the prepared prefix route lock facts")
+	assert_equal(updated_piece, prepared_piece, "Updated candidate preserves the prepared prefix piece identity and support")
+	assert_equal(_piece_values(track._locked_ledger), prepared_ledger, "Updated candidate preserves the prepared ledger group identity and serial span")
+	assert_equal(track.get_pose_sample_at_distance(0.0), prepared_pose, "Updated candidate preserves the prepared prefix pose sample")
+	assert_equal(_train_lock_recovery_facts(track), prepared_recovery, "Updated candidate preserves recovery facts")
+	assert_equal(_anchor_values(track._anchors), prepared_anchors, "Updated candidate preserves anchor facts")
+	assert_equal(track.get_contact_observations(), prepared_contacts, "Updated candidate preserves contact facts")
+	assert_equal(track.get_gesture_editable_span(), origin_span, "Updated candidate preserves the editable origin span")
+	assert_equal(track.get_gesture_target_endpoints(), origin_targets, "Updated candidate preserves origin target semantics")
+	assert_equal(track._gesture_origin_sequence._next_route_serial, origin_watermark, "Updated candidate preserves the origin serial watermark")
+	assert_equal(track._sequence._next_route_serial, origin_watermark, "Updated candidate does not consume a replacement serial")
+	assert_true(track.call("gesture_finalize"), "Update fixture finalizes after the valid update")
+	assert_equal(_piece_values(track._locked_ledger), prepared_ledger, "Finalized update preserves the prepared ledger")
+
+
+func _assert_begin_prepare_abort_preserves_train_lock(track: GridTrackRuntimeScript) -> void:
+	var endpoint: Vector2i = track.get_endpoint_cell()
+	var origin: Dictionary = track.call("gesture_begin", endpoint)
+	assert_true(origin is Dictionary and not origin.is_empty(), "Abort fixture begins at the CURVE_2X2 endpoint")
+	if not origin is Dictionary or origin.is_empty():
+		return
+	var origin_span: Dictionary = origin["editable_span"].duplicate(true)
+	var origin_targets: Dictionary = origin["targets"].duplicate(true)
+	var origin_watermark: int = track._gesture_origin_sequence._next_route_serial
+	assert_true(track.call("prepare_for_train_sampling", 0.0, 0.5), "Abort fixture non-overlap preparation succeeds")
+	assert_true(track.call("gesture_is_active"), "Abort fixture preparation keeps the gesture active")
+	var prepared_route := _route_sampling_values(track.get_cell_records())
+	var prepared_pieces := _piece_sampling_values(track.get_geometry_pieces())
+	var prepared_ledger := _piece_sampling_values(track._locked_ledger)
+	var prepared_recovery := _train_lock_recovery_facts(track)
+	var prepared_anchors := _anchor_values(track._anchors)
+	var prepared_contacts: Array = track.get_contact_observations().duplicate(true)
+	var prepared_pose: Dictionary = track.get_pose_sample_at_distance(0.0)
+	assert_true(track.call("gesture_abort"), "Abort fixture aborts the active gesture")
+	assert_false(track.call("gesture_is_active"), "Abort fixture clears only the transient gesture state")
+	assert_equal(_route_sampling_values(track.get_cell_records()), prepared_route, "Abort preserves prepared route lock flags and span")
+	assert_equal(_piece_sampling_values(track.get_geometry_pieces()), prepared_pieces, "Abort preserves prepared piece identity and exit support")
+	assert_equal(_piece_sampling_values(track._locked_ledger), prepared_ledger, "Abort preserves prepared ledger group identity")
+	assert_equal(_train_lock_recovery_facts(track), prepared_recovery, "Abort preserves prepared recovery facts")
+	assert_equal(_anchor_values(track._anchors), prepared_anchors, "Abort preserves prepared anchor facts")
+	assert_equal(track.get_contact_observations(), prepared_contacts, "Abort preserves prepared contact facts")
+	assert_equal(track.get_pose_sample_at_distance(0.0), prepared_pose, "Abort preserves the prepared prefix pose sample")
+	assert_equal(track.get_endpoint_cell(), endpoint, "Abort preserves the editable endpoint")
+	assert_equal(track._sequence._next_route_serial, origin_watermark, "Abort preserves the serial watermark")
+	assert_equal(origin_span["record_count"], 3, "Abort fixture keeps the CURVE_2X2 editable span semantics")
+	assert_true(origin_targets.has("straight"), "Abort fixture retains the original target semantics before restoration")
+
+
+func _train_lock_recovery_facts(track: GridTrackRuntimeScript) -> Dictionary:
+	return {
+		"built_end": track.get_built_end_distance_cells(),
+		"recovered_cells_by_piece": track._recovered_cells_by_piece.duplicate(true),
+		"recovered_end_distance_cells": track._recovered_end_distance_cells,
+	}
 
 
 func _test_ordered_append_growth_and_transactional_rollback() -> void:

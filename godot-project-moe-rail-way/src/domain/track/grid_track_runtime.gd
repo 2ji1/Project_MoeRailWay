@@ -522,8 +522,18 @@ func prepare_for_train_sampling(current_distance: float, through_distance: float
     candidate_sequence.apply_resolved_geometry(resolution.pieces)
     if not _validate_candidate(candidate_sequence, candidate_ledger, resolution):
         return false
+    var staged_origin := {}
+    if _gesture_active:
+        staged_origin = _stage_active_gesture_train_safety_origin(
+            candidate_sequence,
+            candidate_ledger
+        )
+        if staged_origin.is_empty():
+            return false
     _commit_candidate(candidate_sequence, candidate_ledger, resolution)
     _refresh_contact_observations()
+    if _gesture_active:
+        _apply_active_gesture_train_safety_origin(staged_origin)
     return true
 
 
@@ -1061,6 +1071,47 @@ func _commit_candidate(
     _sequence.replace_with(sequence)
     _locked_ledger = _duplicate_pieces(ledger)
     _pieces = _duplicate_pieces(resolution.pieces)
+
+
+func _stage_active_gesture_train_safety_origin(
+    candidate_sequence: TrackCellSequenceScript,
+    candidate_ledger: Array[TrackGeometryPieceScript]
+) -> Dictionary:
+    if not _gesture_active or _gesture_origin_sequence == null:
+        return {}
+    var origin_sequence := _gesture_origin_sequence.duplicate_sequence()
+    var origin_ledger := _duplicate_pieces(candidate_ledger)
+    var origin_resolution = _resolve_candidate(
+        origin_sequence,
+        origin_ledger,
+        _gesture_origin_anchors
+    )
+    if not origin_resolution.is_valid or not _pieces_are_continuous(origin_resolution.pieces):
+        return {}
+    _assign_unique_unlocked_group_ids(origin_resolution.pieces, origin_ledger)
+    origin_sequence.apply_resolved_geometry(origin_resolution.pieces)
+    return {
+        "sequence": origin_sequence,
+        "ledger": origin_ledger,
+        "pieces": _duplicate_pieces(origin_resolution.pieces),
+        "next_route_serial": maxi(
+            origin_sequence._next_route_serial,
+            candidate_sequence._next_route_serial
+        ),
+    }
+
+
+func _apply_active_gesture_train_safety_origin(staged_origin: Dictionary) -> void:
+    if not _gesture_active or staged_origin.is_empty():
+        return
+    _gesture_origin_sequence = staged_origin["sequence"]
+    _gesture_origin_locked_ledger = _duplicate_pieces(staged_origin["ledger"])
+    _gesture_origin_pieces = _duplicate_pieces(staged_origin["pieces"])
+    _gesture_origin_sequence._next_route_serial = maxi(
+        _gesture_origin_sequence._next_route_serial,
+        int(staged_origin["next_route_serial"])
+    )
+    _gesture_origin_contacts = _contact_observations.duplicate(true)
 
 
 func _advance_gesture_serial_watermark(candidate_sequence: TrackCellSequenceScript) -> void:
