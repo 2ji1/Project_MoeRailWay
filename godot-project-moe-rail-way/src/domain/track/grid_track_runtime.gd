@@ -35,7 +35,6 @@ var _gesture_target_endpoints: Dictionary = {}
 var _gesture_selected_template_index := -1
 var _gesture_suffix_input_facts: Array[Dictionary] = []
 var _gesture_ordinary_input_facts: Array[Dictionary] = []
-var _gesture_template_target_seen := false
 
 
 func _init(
@@ -105,7 +104,6 @@ func gesture_begin(endpoint: Vector2i) -> Dictionary:
     _gesture_selected_template_index = _matching_template_index(_gesture_editable_span)
     _gesture_suffix_input_facts.clear()
     _gesture_ordinary_input_facts.clear()
-    _gesture_template_target_seen = false
     _gesture_active = true
     return _gesture_origin_observation()
 
@@ -180,32 +178,16 @@ func gesture_update(
     var next_template_index := _gesture_selected_template_index
     var next_suffix_input_facts: Array[Dictionary] = _gesture_suffix_input_facts.duplicate(true)
     var next_ordinary_input_facts: Array[Dictionary] = _gesture_ordinary_input_facts.duplicate(true)
-    var reconcile_template_suffix := true
     var pointer_template_index := _template_index_from_pointer(current_pointer_cell, templates)
-    var template_target_selected := pointer_template_index >= 0
     if pointer_template_index >= 0:
         next_template_index = pointer_template_index
         next_ordinary_input_facts.clear()
     elif frame_template_index >= 0 and frame_template_index < templates.size():
         next_template_index = frame_template_index
-        template_target_selected = true
         next_ordinary_input_facts.clear()
-    elif (
-        _gesture_selected_template_index >= 0
-        and not _gesture_template_target_seen
-        and _gesture_suffix_input_facts.is_empty()
-    ):
-        reconcile_template_suffix = false
-        for cell in live_path:
-            next_suffix_input_facts = _append_new_gesture_input_fact(
-                next_suffix_input_facts,
-                cell
-            )
-    elif (
-        not _gesture_editable_span.is_empty()
-        and not templates.is_empty()
-        and not _gesture_template_target_seen
-    ):
+    elif _gesture_selected_template_index >= 0:
+        next_ordinary_input_facts.clear()
+    elif not _gesture_editable_span.is_empty() and not templates.is_empty():
         return false
     else:
         next_ordinary_input_facts = _reconcile_gesture_input_facts(
@@ -213,7 +195,7 @@ func gesture_update(
             live_path
         )
 
-    if next_template_index >= 0 and reconcile_template_suffix:
+    if next_template_index >= 0:
         var selected_target_index := -1
         if next_template_index < frame_target_indices.size():
             selected_target_index = frame_target_indices[next_template_index]
@@ -267,7 +249,6 @@ func gesture_update(
     _gesture_selected_template_index = next_template_index
     _gesture_suffix_input_facts = next_suffix_input_facts
     _gesture_ordinary_input_facts = next_ordinary_input_facts
-    _gesture_template_target_seen = _gesture_template_target_seen or template_target_selected
     _contact_observations = candidate_contacts.duplicate(true)
     return true
 
@@ -949,7 +930,6 @@ func _clear_gesture_state() -> void:
     _gesture_selected_template_index = -1
     _gesture_suffix_input_facts.clear()
     _gesture_ordinary_input_facts.clear()
-    _gesture_template_target_seen = false
 
 
 func _resolve_records():
