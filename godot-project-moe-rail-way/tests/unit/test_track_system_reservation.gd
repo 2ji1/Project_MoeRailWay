@@ -23,6 +23,9 @@ func run() -> PackedStringArray:
 	_test_left_release_finalizes_once()
 	_test_same_frame_press_routes_through_gesture_transaction()
 	_test_pending_release_preserves_fresh_press_gesture()
+	_test_pending_release_releases_inactive_rejected_latch()
+	_test_pending_release_reopens_after_train_preparation_termination()
+	_test_ineligible_coalesced_press_keeps_existing_rejection_latch_only()
 	_test_current_pointer_selects_completed_head_template()
 	_test_current_pointer_reselects_completed_head_template_while_held()
 	_test_completed_template_suffix_backtracks_while_held()
@@ -460,6 +463,65 @@ func _test_pending_release_preserves_fresh_press_gesture() -> void:
 	)
 	assert_true(track.is_left_capture_active(), "Coalesced fresh press remains captured")
 	assert_true(track.is_runtime_gesture_active(), "Coalesced fresh press remains active")
+
+
+func _test_pending_release_releases_inactive_rejected_latch() -> void:
+	print("Live gesture path: pending release releases inactive rejected latch")
+	var track = TrackSystemScript.new(_config(10))
+	track.apply_left_input(_left_frame([], true, true, false, Vector2i(4, 4)))
+	assert_false(track.is_left_capture_active(), "Rejected prior press has no facade capture")
+	assert_false(track.is_runtime_gesture_active(), "Rejected prior press has no runtime gesture")
+	var fresh_path: Array[Vector2i] = [Vector2i(1, 0)]
+	track.apply_left_input(_left_frame(fresh_path, true, true, true, Vector2i(0, 0)))
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		fresh_path,
+		"Fresh eligible press after an inactive rejected latch publishes its ghost"
+	)
+	assert_true(track.is_left_capture_active(), "Fresh eligible press restores facade capture")
+	assert_true(track.is_runtime_gesture_active(), "Fresh eligible press restores runtime gesture")
+
+
+func _test_pending_release_reopens_after_train_preparation_termination() -> void:
+	print("Live gesture path: pending release reopens after train preparation termination")
+	var track = TrackSystemScript.new(_config(10))
+	track.apply_left_input(_left_frame([Vector2i(1, 0)], true, true))
+	assert_true(track.prepare_for_train_sampling(0.0, 1.0), "Preparation terminates the active prior gesture")
+	var endpoint_after_prepare := track.get_endpoint_cell()
+	assert_false(track.is_left_capture_active(), "Preparation terminates facade capture")
+	assert_false(track.is_runtime_gesture_active(), "Preparation terminates runtime gesture")
+	var fresh_path: Array[Vector2i] = [Vector2i(2, 0)]
+	track.apply_left_input(_left_frame(fresh_path, true, true, true, endpoint_after_prepare))
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		[Vector2i(1, 0), Vector2i(2, 0)],
+		"Fresh eligible press after preparation termination publishes its ghost"
+	)
+	assert_true(track.is_left_capture_active(), "Preparation-terminated latch accepts fresh facade capture")
+	assert_true(track.is_runtime_gesture_active(), "Preparation-terminated latch accepts fresh runtime gesture")
+
+
+func _test_ineligible_coalesced_press_keeps_existing_rejection_latch_only() -> void:
+	print("Live gesture path: ineligible coalesced press keeps only the fresh rejection latch")
+	var track = TrackSystemScript.new(_config(10))
+	track.apply_left_input(_left_frame([Vector2i(1, 0)], true, true))
+	var endpoint := track.get_endpoint_cell()
+	track.apply_left_input(_left_frame([], true, true, true, Vector2i(4, 4)))
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		[Vector2i(1, 0)],
+		"Ineligible coalesced press does not remove the finalized prior route"
+	)
+	assert_false(track.is_left_capture_active(), "Ineligible fresh press has no facade capture")
+	assert_false(track.is_runtime_gesture_active(), "Ineligible fresh press has no runtime gesture")
+	track.apply_left_input(_left_frame([Vector2i(2, 0)], true, true, true, endpoint))
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		[Vector2i(1, 0), Vector2i(2, 0)],
+		"A later release-plus-eligible press clears only the fresh rejection latch"
+	)
+	assert_true(track.is_left_capture_active(), "Later eligible press restores facade capture")
+	assert_true(track.is_runtime_gesture_active(), "Later eligible press restores runtime gesture")
 
 
 func _test_current_pointer_selects_completed_head_template() -> void:

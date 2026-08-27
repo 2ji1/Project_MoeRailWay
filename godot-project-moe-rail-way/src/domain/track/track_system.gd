@@ -71,8 +71,9 @@ func apply_left_input(input_frame: TrackInputFrameScript) -> void:
 		and input_frame.left_released \
 		and input_frame.left_held \
 		and _left_press_latched
-	if pending_release_before_press and _left_capture_active and _runtime.gesture_is_active():
-		_runtime.gesture_finalize()
+	if pending_release_before_press:
+		if _runtime.gesture_is_active():
+			_runtime.gesture_finalize()
 		_left_capture_active = false
 		_left_press_latched = false
 	if input_frame.left_pressed and not _left_press_latched:
