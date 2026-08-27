@@ -458,6 +458,7 @@ func _run() -> void:
 		and not pending_followup_frame.left_released \
 		and pending_followup_frame.live_gesture_path == [Vector2i(4, 2), Vector2i(5, 2)] \
 		and pending_followup_cells == pending_first_path + [Vector2i(4, 2), Vector2i(5, 2)] \
+		and pending_track.get_available_track_cells() == config.total_track_cells - 3 \
 		and pending_track.is_left_capture_active() \
 		and pending_track.is_runtime_gesture_active()
 	if pending_first_persisted and pending_second_changed:
