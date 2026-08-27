@@ -515,7 +515,17 @@ func _test_explicit_release_facts_order_old_then_fresh() -> void:
 
 func _test_legacy_combined_frame_discriminates_without_release_snapshot() -> void:
 	print("Live gesture path: legacy combined frame does not contaminate old release")
-	var track = TrackSystemScript.new(_config(10))
+	var config := _config(10)
+	var track = TrackSystemScript.new(config)
+	var capturing_runtime := _CapturingTrackRuntime.new(
+		config.departure_cell,
+		config.total_track_cells,
+		config.grid_origin_units,
+		config.grid_size,
+		config.grid_cell_size_units
+	)
+	capturing_runtime.facade = track
+	track._runtime = capturing_runtime
 	var first_path: Array[Vector2i] = [Vector2i(1, 0)]
 	track.apply_left_input(_left_frame(first_path, true, true, false, Vector2i(0, 0), true, Vector2i(1, 0), true))
 	var frame_script = load("res://src/domain/track/track_input_frame.gd")
@@ -524,8 +534,24 @@ func _test_legacy_combined_frame_discriminates_without_release_snapshot() -> voi
 		legacy_cells, Vector2i(1, 0), true, Vector2i(-1, -1), false,
 		true, true, true, false, Vector2i(2, 0), true, legacy_cells
 	)
+	assert_not_null(legacy, "Legacy combined constructor returns a valid frame")
 	assert_false(legacy.has_explicit_release_snapshot, "Legacy constructor has no explicit release discriminator")
 	track.apply_left_input(legacy)
+	var events: Array = capturing_runtime.events
+	assert_equal(events.size(), 5, "Legacy combined frame records old update, finalize, fresh begin, and update")
+	if events.size() < 5:
+		return
+	assert_equal(events[1]["phase"], &"update", "Legacy old gesture update is recorded")
+	assert_equal(events[1]["path"], first_path, "Legacy old update does not receive fresh path facts")
+	assert_equal(events[1]["pointer"], Vector2i(1, 0), "Legacy old update retains old release pointer")
+	assert_equal(events[2]["phase"], &"finalize", "Legacy old last-valid candidate finalizes")
+	assert_equal(events[3]["phase"], &"begin", "Legacy fresh gesture begins after old finalize")
+	assert_equal(events[3]["endpoint"], Vector2i(1, 0), "Legacy fresh begin starts at old finalized endpoint")
+	assert_false(events[3]["capture_before"], "Legacy old facade capture ends before fresh begin")
+	assert_true(events[3]["latch_before"], "Legacy fresh latch is acquired only after old latch reset")
+	assert_equal(events[4]["phase"], &"update", "Legacy fresh gesture update is recorded")
+	assert_equal(events[4]["path"], legacy_cells, "Legacy fresh update receives fresh path facts")
+	assert_equal(events[4]["pointer"], Vector2i(2, 0), "Legacy fresh update receives fresh pointer")
 	assert_equal(
 		track.get_cell_records().map(func(record): return record.cell),
 		first_path + [Vector2i(2, 0)],
@@ -1042,3 +1068,32 @@ func _test_observation_getters_are_detached() -> void:
 		"Piece centerlines are detached"
 	)
 	assert_equal(track.get_contact_observations(), [], "Contact observations are detached")
+
+
+class _CapturingTrackRuntime extends GridTrackRuntimeScript:
+	var events: Array = []
+	var facade: Object
+
+	func gesture_begin(endpoint: Vector2i) -> Dictionary:
+		events.append({
+			"phase": &"begin",
+			"endpoint": endpoint,
+			"capture_before": bool(facade.get("_left_capture_active")) if facade != null else false,
+			"latch_before": bool(facade.get("_left_press_latched")) if facade != null else false,
+		})
+		return super.gesture_begin(endpoint)
+
+	func gesture_update(
+		live_path: Array[Vector2i],
+		current_pointer_cell: Vector2i = Vector2i(-1, -1)
+	) -> bool:
+		events.append({
+			"phase": &"update",
+			"path": live_path.duplicate(),
+			"pointer": current_pointer_cell,
+		})
+		return super.gesture_update(live_path, current_pointer_cell)
+
+	func gesture_finalize() -> bool:
+		events.append({"phase": &"finalize"})
+		return super.gesture_finalize()

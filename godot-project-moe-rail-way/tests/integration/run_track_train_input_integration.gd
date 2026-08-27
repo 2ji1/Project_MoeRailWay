@@ -485,12 +485,52 @@ func _run() -> void:
 	view.call("_gui_input", _button(pending_followup_position, MOUSE_BUTTON_LEFT, false))
 	var pending_cleanup_frame: TrackInputFrameScript = await _consume_view(shell)
 	pending_controller.advance_tick(pending_cleanup_frame)
+	var outside_track := TrackSystemScript.new(config)
+	var outside_old_path: Array[Vector2i] = [Vector2i(3, 2)]
+	var outside_old_frame := TrackInputFrameScript.new(
+		outside_old_path, Vector2i(2, 2), true, Vector2i(-1, -1), false,
+		true, true, false, false, Vector2i(3, 2), true, outside_old_path
+	)
+	outside_track.apply_left_input(outside_old_frame)
+	_assert_true(
+		outside_track.is_left_capture_active() and outside_track.is_runtime_gesture_active(),
+		"Outside release fixture starts with an active old runtime"
+	)
+	view.present(_track_snapshot(outside_track))
+	var outside_departure_viewport := _logical_to_viewport(view, Vector2(100.0, 100.0))
+	var outside_departure_position: Vector2 = view.get_global_transform_with_canvas().affine_inverse() * outside_departure_viewport
 	view.call("_gui_input", _button(Vector2(-20.0, -20.0), MOUSE_BUTTON_LEFT, true))
 	view.call("_gui_input", _button(Vector2(-20.0, -20.0), MOUSE_BUTTON_LEFT, false))
-	var outside_release_frame: TrackInputFrameScript = await _consume_view(shell)
+	view.call("_gui_input", _button(outside_departure_position, MOUSE_BUTTON_LEFT, true))
+	view.call("_gui_input", _motion(pending_endpoint_position, MOUSE_BUTTON_MASK_LEFT))
+	var outside_release_frame: TrackInputFrameScript = await _consume_view(shell, outside_track)
 	_assert_true(outside_release_frame.has_explicit_release_snapshot, "Outside release emits an explicit snapshot")
 	_assert_equal(outside_release_frame.release_live_gesture_path, [], "Outside release emits an empty detached path")
 	_assert_true(not outside_release_frame.left_release_pointer_inside_grid, "Outside release emits an outside pointer fact")
+	_assert_true(outside_release_frame.left_pressed, "Outside release coalesces a fresh press edge")
+	_assert_equal(outside_release_frame.left_press_cell, Vector2i(2, 2), "Outside release fresh press targets the old origin")
+	_assert_equal(outside_release_frame.live_gesture_path, [Vector2i(3, 2)], "Outside release fresh motion is captured")
+	_assert_equal(_record_cells(outside_track.get_cell_records()), [Vector2i(3, 2)], "Outside release invents no cells from the old pointer")
+	_assert_equal(outside_track.get_endpoint_cell(), Vector2i(3, 2), "Outside release finalizes old origin before fresh endpoint")
+	_assert_true(outside_track.is_left_capture_active(), "Outside release fresh facade capture remains active")
+	_assert_true(outside_track.is_runtime_gesture_active(), "Outside release fresh runtime remains active")
+	var outside_substantive := outside_release_frame.has_explicit_release_snapshot \
+		and outside_release_frame.release_live_gesture_path.is_empty() \
+		and not outside_release_frame.left_release_pointer_inside_grid \
+		and outside_release_frame.left_pressed \
+		and outside_release_frame.left_press_cell == Vector2i(2, 2) \
+		and outside_release_frame.live_gesture_path == [Vector2i(3, 2)] \
+		and _record_cells(outside_track.get_cell_records()) == [Vector2i(3, 2)] \
+		and outside_track.get_endpoint_cell() == Vector2i(3, 2) \
+		and outside_track.is_left_capture_active() \
+		and outside_track.is_runtime_gesture_active()
+	if outside_substantive:
+		print("PASS: active outside release orders old finalize and fresh begin")
+	view.call("_gui_input", _button(pending_endpoint_position, MOUSE_BUTTON_LEFT, false))
+	var outside_cleanup_frame: TrackInputFrameScript = await _consume_view(shell, outside_track)
+	_assert_true(outside_cleanup_frame.left_released, "Outside release fresh gesture has a terminating release")
+	_assert_true(not outside_track.is_left_capture_active(), "Outside release cleanup clears fresh facade capture")
+	_assert_true(not outside_track.is_runtime_gesture_active(), "Outside release cleanup clears fresh runtime")
 
 	var reshape_config := SessionStartConfigScript.new(
 		123, 120.0, 60,
@@ -532,7 +572,8 @@ func _run() -> void:
 	var signature_ok: bool = replay_away_frame.left_held \
 		and signature_frame.left_held \
 		and signature_records == reshape_right_curve \
-		and signature_inventory == reshape_available
+		and signature_inventory == reshape_available \
+		and bool(reshape_track._runtime.get("_gesture_template_selection_signature_valid"))
 	_assert_true(signature_ok, "Actual input selects the origin-equal absent target without a suffix")
 	await _deliver(_motion(_logical_to_viewport(view, reshape_endpoint_logical), MOUSE_BUTTON_MASK_LEFT))
 	var replay_frame: TrackInputFrameScript = await _consume_view(shell, reshape_track)
