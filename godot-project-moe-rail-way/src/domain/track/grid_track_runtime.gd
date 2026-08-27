@@ -160,16 +160,16 @@ func gesture_abort() -> bool:
 
 
 func gesture_update(
-    crossed_cells: Array[Vector2i],
+    live_path: Array[Vector2i],
     current_pointer_cell: Vector2i = Vector2i(-1, -1)
 ) -> bool:
-    if not _gesture_active or crossed_cells.is_empty():
+    if not _gesture_active:
         return false
     var frame_template_index := -1
     var frame_target_index := -1
     var frame_target_indices: Array[int] = [-1, -1, -1]
-    for cell_index in range(crossed_cells.size()):
-        var cell: Vector2i = crossed_cells[cell_index]
+    for cell_index in range(live_path.size()):
+        var cell: Vector2i = live_path[cell_index]
         for index in range([&"straight", &"left", &"right"].size()):
             var template_name: StringName = [&"straight", &"left", &"right"][index]
             if _gesture_target_endpoints.get(template_name, Vector2i(-1, -1)) == cell:
@@ -189,21 +189,21 @@ func gesture_update(
             next_suffix_input_facts.clear()
             next_ordinary_input_facts.clear()
             if frame_target_indices[pointer_template_index] >= 0:
-                for index in range(frame_target_indices[pointer_template_index] + 1, crossed_cells.size()):
+                for index in range(frame_target_indices[pointer_template_index] + 1, live_path.size()):
                     next_suffix_input_facts = _append_new_gesture_input_fact(
                         next_suffix_input_facts,
-                        crossed_cells[index]
+                        live_path[index]
                     )
         elif frame_target_indices[pointer_template_index] >= 0:
             next_suffix_input_facts.clear()
-            for index in range(frame_target_indices[pointer_template_index] + 1, crossed_cells.size()):
+            for index in range(frame_target_indices[pointer_template_index] + 1, live_path.size()):
                 next_suffix_input_facts = _append_new_gesture_input_fact(
                     next_suffix_input_facts,
-                    crossed_cells[index]
+                    live_path[index]
                 )
             next_ordinary_input_facts.clear()
         else:
-            for cell in crossed_cells:
+            for cell in live_path:
                 next_suffix_input_facts = _append_new_gesture_input_fact(
                     next_suffix_input_facts,
                     cell
@@ -211,14 +211,14 @@ func gesture_update(
     elif frame_template_index >= 0 and frame_template_index < templates.size():
         next_template_index = frame_template_index
         next_suffix_input_facts.clear()
-        for index in range(frame_target_index + 1, crossed_cells.size()):
+        for index in range(frame_target_index + 1, live_path.size()):
             next_suffix_input_facts = _append_new_gesture_input_fact(
                 next_suffix_input_facts,
-                crossed_cells[index]
+                live_path[index]
             )
         next_ordinary_input_facts.clear()
     elif _gesture_selected_template_index >= 0:
-        for cell in crossed_cells:
+        for cell in live_path:
             next_suffix_input_facts = _append_new_gesture_input_fact(
                 next_suffix_input_facts,
                 cell
@@ -226,11 +226,10 @@ func gesture_update(
     elif not _gesture_editable_span.is_empty() and not templates.is_empty():
         return false
     else:
-        for cell in crossed_cells:
-            next_ordinary_input_facts = _append_new_gesture_input_fact(
-                next_ordinary_input_facts,
-                cell
-            )
+        next_ordinary_input_facts = _reconcile_gesture_input_facts(
+            _gesture_ordinary_input_facts,
+            live_path
+        )
 
     var candidate_sequence = _gesture_origin_sequence.duplicate_sequence()
     if next_template_index >= 0:
@@ -248,8 +247,6 @@ func gesture_update(
         if not _append_gesture_input_facts(candidate_sequence, next_suffix_input_facts):
             return false
     else:
-        if next_ordinary_input_facts.is_empty():
-            return false
         if not _append_gesture_input_facts(candidate_sequence, next_ordinary_input_facts):
             return false
     var candidate_ledger = _duplicate_pieces(_gesture_origin_locked_ledger)
@@ -275,6 +272,23 @@ func gesture_update(
     _gesture_ordinary_input_facts = next_ordinary_input_facts
     _contact_observations = candidate_contacts.duplicate(true)
     return true
+
+
+func _reconcile_gesture_input_facts(
+    existing: Array[Dictionary],
+    cells: Array[Vector2i]
+) -> Array[Dictionary]:
+    var common_count := 0
+    while (
+        common_count < existing.size()
+        and common_count < cells.size()
+        and Vector2i(existing[common_count]["cell"]) == cells[common_count]
+    ):
+        common_count += 1
+    var reconciled: Array[Dictionary] = existing.slice(0, common_count).duplicate(true)
+    for index in range(common_count, cells.size()):
+        reconciled = _append_new_gesture_input_fact(reconciled, cells[index])
+    return reconciled
 
 
 func _template_index_from_pointer(

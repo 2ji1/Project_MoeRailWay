@@ -28,6 +28,8 @@ func run() -> PackedStringArray:
 	_test_endpoint_reshape_duplicate_preserves_last_valid()
 	_test_endpoint_reshape_insufficient_inventory_preserves_last_valid()
 	_test_endpoint_reshape_empty_departure_and_straight_accept_ordinary_extension()
+	_test_live_ordinary_path_reconciles_common_prefix_and_serial_watermark()
+	_test_invalid_live_rebranch_retains_last_valid_then_recovers()
 	_test_endpoint_reshape_locked_endpoint_accepts_only_extension()
 	_test_running_locked_curve_endpoint_remains_extendable()
 	_test_endpoint_reshape_gesture_rejects_illegal_starts()
@@ -415,9 +417,9 @@ func _test_endpoint_reshape_one_gesture_extends_after_selected_target() -> void:
 		return
 	var targets: Dictionary = began["targets"]
 	var target_only: Array[Vector2i] = [targets["left"]]
-	var invalid_suffix: Array[Vector2i] = [Vector2i(6, 4)]
-	var first_suffix_frame: Array[Vector2i] = [Vector2i(4, 4)]
-	var second_suffix_frame: Array[Vector2i] = [Vector2i(5, 4)]
+	var invalid_suffix: Array[Vector2i] = [targets["left"], Vector2i(6, 4)]
+	var first_suffix_frame: Array[Vector2i] = [targets["left"], Vector2i(4, 4)]
+	var second_suffix_frame: Array[Vector2i] = [targets["left"], Vector2i(4, 4), Vector2i(5, 4)]
 	print("Endpoint reshape: one gesture extends after selected target")
 	assert_true(track.has_method("gesture_update"), "Gesture update extension contract exists")
 	if not track.has_method("gesture_update"):
@@ -440,8 +442,8 @@ func _test_endpoint_reshape_one_gesture_extends_after_selected_target() -> void:
 	assert_equal(records[5].cell, targets["left"], "Selected template endpoint is retained")
 	assert_equal(records[6].cell, Vector2i(4, 4), "First post-target cell is appended")
 	assert_equal(records[7].cell, Vector2i(5, 4), "Second post-target cell is appended")
-	assert_equal(records[6].route_serial, 7, "First suffix receives a fresh serial")
-	assert_equal(records[7].route_serial, 8, "Second suffix receives a fresh serial")
+	assert_equal(records[6].route_serial, 8, "First suffix receives a fresh serial above the rejected suffix")
+	assert_equal(records[7].route_serial, 9, "Second suffix receives a fresh serial above the rejected suffix")
 	assert_equal(track.get_endpoint_cell(), Vector2i(5, 4), "One gesture reaches the suffix endpoint")
 	assert_equal(track.get_available_track_cells(), 10, "Suffix charges one inventory cell per record")
 	track.call("gesture_finalize")
@@ -967,7 +969,7 @@ func _test_endpoint_reshape_empty_departure_and_straight_accept_ordinary_extensi
 	if not empty_track.has_method("gesture_update"):
 		return
 	var empty_first_frame: Array[Vector2i] = [Vector2i(0, 0)]
-	var empty_second_frame: Array[Vector2i] = [Vector2i(1, 0)]
+	var empty_second_frame: Array[Vector2i] = [Vector2i(0, 0), Vector2i(1, 0)]
 	assert_true(empty_track.call("gesture_update", empty_first_frame), "Empty departure accepts the first ordinary extension frame")
 	assert_true(empty_track.call("gesture_update", empty_second_frame), "Empty departure accepts the second ordinary extension frame")
 	var empty_records = empty_track.get_cell_records()
@@ -994,7 +996,7 @@ func _test_endpoint_reshape_empty_departure_and_straight_accept_ordinary_extensi
 	if not straight_began is Dictionary:
 		return
 	var straight_first_frame: Array[Vector2i] = [Vector2i(2, 2)]
-	var straight_second_frame: Array[Vector2i] = [Vector2i(3, 2)]
+	var straight_second_frame: Array[Vector2i] = [Vector2i(2, 2), Vector2i(3, 2)]
 	assert_true(straight_track.call("gesture_update", straight_first_frame), "Straight endpoint accepts the first ordinary extension frame")
 	assert_true(straight_track.call("gesture_update", straight_second_frame), "Straight endpoint accepts the second ordinary extension frame")
 	var straight_records = straight_track.get_cell_records()
@@ -1009,6 +1011,68 @@ func _test_endpoint_reshape_empty_departure_and_straight_accept_ordinary_extensi
 	assert_equal(straight_track.get_available_track_cells(), 2, "Straight endpoint charges ordinary extension inventory")
 	assert_true(straight_track._sequence.is_conservation_valid(), "Straight endpoint preserves conservation")
 	straight_track.call("gesture_finalize")
+
+
+func _test_live_ordinary_path_reconciles_common_prefix_and_serial_watermark() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 8, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_true(track.gesture_begin(track.get_endpoint_cell()) is Dictionary, "Live path reflow fixture begins an empty departure gesture")
+	var first_path: Array[Vector2i] = [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0)]
+	var branch_path: Array[Vector2i] = [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2)]
+	print("Live gesture path: ordinary candidates rebuild from the authoritative path")
+	assert_true(track.gesture_update(first_path), "Initial authoritative path publishes")
+	var first_records = track.get_cell_records()
+	var first_serials: Array[int] = []
+	for record in first_records:
+		first_serials.append(record.route_serial)
+	assert_equal(track.get_available_track_cells(), 5, "Initial authoritative path charges three cells")
+	assert_true(track.gesture_update(branch_path), "Branched authoritative path replaces the ordinary suffix")
+	var branch_records = track.get_cell_records()
+	assert_equal(branch_records.map(func(record): return record.cell), branch_path, "Branched path becomes the visible candidate")
+	assert_equal(track.get_available_track_cells(), 5, "Equal-length reflow preserves exact inventory")
+	assert_equal(branch_records[0].route_serial, first_serials[0], "Common path prefix retains its serial")
+	assert_true(branch_records[1].route_serial > first_serials[-1], "Fresh branch serial exceeds the removed suffix")
+	var after_branch_watermark: int = track._sequence._next_route_serial
+	assert_true(after_branch_watermark > first_serials[-1], "Published watermark includes retired candidate serials")
+	assert_true(track.gesture_update([]), "Empty authoritative path restores the origin candidate")
+	assert_equal(track.get_cell_records(), [], "Empty authoritative path publishes the empty origin route")
+	assert_equal(track.get_available_track_cells(), 8, "Empty authoritative path refunds the complete candidate")
+	assert_true(track._sequence._next_route_serial >= after_branch_watermark, "Clearing the candidate preserves the serial watermark")
+	track.gesture_abort()
+
+
+func _test_invalid_live_rebranch_retains_last_valid_then_recovers() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 8, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_true(track.gesture_begin(track.get_endpoint_cell()) is Dictionary, "Invalid live rebranch fixture begins a gesture")
+	var valid_path: Array[Vector2i] = [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0)]
+	assert_true(track.gesture_update(valid_path), "Valid path publishes before invalid rebranch")
+	var origin_watermark: int = track._gesture_origin_sequence._next_route_serial
+	var valid_records := _record_values(track.get_cell_records())
+	var valid_pieces := _piece_values(track.get_geometry_pieces())
+	var valid_ledger := _piece_values(track._locked_ledger)
+	var valid_recovery := _recovery_observation_values(track)
+	var invalid_path: Array[Vector2i] = [Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 0)]
+	assert_false(track.gesture_update(invalid_path), "Duplicate live path is rejected")
+	assert_equal(_record_values(track.get_cell_records()), valid_records, "Invalid rebranch preserves last-valid records")
+	assert_equal(_piece_values(track.get_geometry_pieces()), valid_pieces, "Invalid rebranch preserves last-valid pieces")
+	assert_equal(_piece_values(track._locked_ledger), valid_ledger, "Invalid rebranch preserves last-valid ledger")
+	assert_equal(_recovery_observation_values(track), valid_recovery, "Invalid rebranch preserves recovery and contacts")
+	var shorter_path: Array[Vector2i] = [Vector2i(0, 0)]
+	assert_true(track.gesture_update(shorter_path), "Shorter valid path recovers after invalid rebranch")
+	var origin = track.call("get_gesture_origin_observation")
+	var origin_values := _abort_origin_values(origin)
+	assert_true(track.gesture_abort(), "Abort restores the gesture origin after recovery")
+	assert_equal(_record_values(track.get_cell_records()), origin_values["records"], "Abort restores origin records after invalid rebranch")
+	assert_equal(_piece_values(track.get_geometry_pieces()), origin_values["pieces"], "Abort restores origin pieces after invalid rebranch")
+	assert_equal(_piece_values(track._locked_ledger), origin_values["ledger"], "Abort restores origin ledger after invalid rebranch")
+	assert_equal(_recovery_observation_values(track)["recovered_cells_by_piece"], origin_values["recovery_cells"], "Abort restores origin recovery map after invalid rebranch")
+	assert_equal(_recovery_observation_values(track)["recovered_end_distance_cells"], origin_values["recovery_frontier"], "Abort restores origin recovery frontier after invalid rebranch")
+	assert_equal(track.get_contact_observations(), origin_values["contacts"], "Abort restores origin contacts after invalid rebranch")
+	assert_equal(track.get_available_track_cells(), origin_values["inventory"], "Abort restores origin inventory after invalid rebranch")
+	assert_equal(track._sequence._next_route_serial, origin_watermark, "Abort restores the gesture-origin serial watermark")
 
 
 func _test_endpoint_reshape_locked_endpoint_accepts_only_extension() -> void:

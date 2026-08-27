@@ -12,6 +12,7 @@ func run() -> PackedStringArray:
 	_test_input_frame_owns_an_independent_cell_buffer()
 	_test_facade_preserves_origin_and_exact_inventory()
 	_test_endpoint_capture_appends_ordered_cells()
+	_test_ordinary_held_path_replaces_visible_candidate()
 	_test_invalid_candidates_stop_without_corrupting_ownership()
 	_test_right_edge_consumes_the_frame_and_cancels_a_suffix()
 	_test_right_edge_ends_left_capture_until_a_fresh_press()
@@ -175,12 +176,47 @@ func _test_endpoint_capture_appends_ordered_cells() -> void:
 		assert_equal(records[index].cell, cells[index], "Physical crossing order is retained")
 	assert_equal(track.get_endpoint_cell(), Vector2i(3, 0), "Endpoint advances to the last cell")
 	assert_equal(track.get_available_track_cells(), 5, "Each unique cell charges exactly once")
-	var release_cells: Array[Vector2i] = [Vector2i(3, 1)]
+	var release_cells: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0), Vector2i(3, 1)]
 	track.apply_left_input(_left_frame(release_cells, false, false, true))
 	assert_equal(track.get_endpoint_cell(), Vector2i(3, 1), "Release crossings process before capture clears")
 	var after_release: Array[Vector2i] = [Vector2i(3, 2)]
 	track.apply_left_input(_left_frame(after_release))
 	assert_equal(track.get_endpoint_cell(), Vector2i(3, 1), "Held input after release has no capture")
+
+
+func _test_ordinary_held_path_replaces_visible_candidate() -> void:
+	print("Live gesture path: ordinary held candidate reflows before release")
+	var track = TrackSystemScript.new(_config(10))
+	var first_path: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)]
+	track.apply_left_input(TrackInputFrameScript.new(
+		first_path, Vector2i(0, 0), true, Vector2i(-1, -1), false,
+		true, true, false, false, Vector2i(3, 0), true, first_path
+	))
+	var first_serials := track.get_cell_records().map(func(record): return record.route_serial)
+	var replacement: Array[Vector2i] = [Vector2i(1, 0), Vector2i(1, 1), Vector2i(1, 2)]
+	track.apply_left_input(TrackInputFrameScript.new(
+		replacement, Vector2i(0, 0), true, Vector2i(-1, -1), false,
+		false, true, false, false, Vector2i(1, 2), true, replacement
+	))
+	assert_equal(track.get_cell_records().map(func(record): return record.cell), replacement, "Held replacement removes the superseded ordinary suffix")
+	assert_equal(track.get_available_track_cells(), 7, "Equal-length replacement preserves exact inventory")
+	assert_equal(track.get_cell_records()[0].route_serial, first_serials[0], "Common path prefix retains identity")
+	assert_true(track.get_cell_records()[1].route_serial > first_serials[-1], "New branch never reuses a removed serial")
+	assert_true(track.is_left_capture_active() and track.is_runtime_gesture_active(), "Replacement remains held")
+	var empty_path: Array[Vector2i] = []
+	track.apply_left_input(TrackInputFrameScript.new(
+		empty_path, Vector2i(0, 0), true, Vector2i(-1, -1), false,
+		false, true, false, false, Vector2i(0, 0), true, empty_path
+	))
+	assert_equal(track.get_cell_records(), [], "Empty authoritative path restores the departure origin")
+	assert_equal(track.get_available_track_cells(), 10, "Empty authoritative path refunds the full candidate")
+	var new_path: Array[Vector2i] = [Vector2i(1, 0)]
+	track.apply_left_input(TrackInputFrameScript.new(
+		new_path, Vector2i(0, 0), true, Vector2i(-1, -1), false,
+		false, true, false, false, Vector2i(1, 0), true, new_path
+	))
+	assert_equal(track.get_cell_records().map(func(record): return record.cell), new_path, "Held gesture accepts a new path after clearing")
+	assert_true(track.get_cell_records()[0].route_serial > first_serials[-1], "New path serial remains above every retired candidate")
 
 
 func _test_invalid_candidates_stop_without_corrupting_ownership() -> void:
@@ -193,7 +229,7 @@ func _test_invalid_candidates_stop_without_corrupting_ownership() -> void:
 		Vector2i(1, 0), Vector2i(2, 0), Vector2i(1, 0), Vector2i(2, 1),
 	]
 	track.apply_left_input(_left_frame(invalid_buffer.slice(0, 2), true))
-	track.apply_left_input(_left_frame(invalid_buffer.slice(2), false, true, false, Vector2i(2, 0)))
+	track.apply_left_input(_left_frame(invalid_buffer, false, true, false, Vector2i(2, 0)))
 	assert_equal(track.get_cell_records().size(), 2, "Candidates after the first invalid cell are ignored")
 	assert_equal(track.get_endpoint_cell(), Vector2i(2, 0), "Invalid suffix cannot move the endpoint")
 	assert_equal(track.get_available_track_cells(), 6, "Rejected cells never charge inventory")
@@ -203,7 +239,7 @@ func _test_right_edge_consumes_the_frame_and_cancels_a_suffix() -> void:
 	var track = TrackSystemScript.new(_config())
 	var cells: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)]
 	track.apply_left_input(_left_frame(cells, true))
-	track.apply_left_input(_left_frame([], false, false, true, Vector2i(3, 0)))
+	track.apply_left_input(_left_frame(cells, false, false, true, Vector2i(3, 0)))
 	assert_true(track.apply_right_input(_right_frame(Vector2i(2, 0))), "Right edge is consumed")
 	assert_equal(track.get_endpoint_cell(), Vector2i(1, 0), "Clicked cell and its suffix cancel")
 	assert_equal(track.get_available_track_cells(), 7, "Canceled ghosts refund once")
@@ -217,7 +253,7 @@ func _test_right_edge_ends_left_capture_until_a_fresh_press() -> void:
 	var track = TrackSystemScript.new(_config())
 	var initial: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0)]
 	track.apply_left_input(_left_frame(initial, true, true))
-	track.apply_left_input(_left_frame([], false, false, true, Vector2i(2, 0)))
+	track.apply_left_input(_left_frame(initial, false, false, true, Vector2i(2, 0)))
 	assert_true(track.apply_right_input(_right_frame(Vector2i(2, 0))), "Right edge cancels held drag")
 	assert_equal(track.get_endpoint_cell(), Vector2i(1, 0), "Right edge cancels the selected suffix")
 	var held_motion: Array[Vector2i] = [Vector2i(2, 0)]
@@ -254,7 +290,7 @@ func _test_active_right_abort_consumes_edge_before_cancellation() -> void:
 	print("Endpoint reshape: active right abort consumes edge")
 	var track = TrackSystemScript.new(_config())
 	track.apply_left_input(_left_frame([Vector2i(1, 0), Vector2i(2, 0)], true, true))
-	track.apply_left_input(_left_frame([], false, false, true, Vector2i(2, 0)))
+	track.apply_left_input(_left_frame([Vector2i(1, 0), Vector2i(2, 0)], false, false, true, Vector2i(2, 0)))
 	track.apply_left_input(_left_frame([], true, true, false, Vector2i(2, 0)))
 	track.apply_left_input(_left_frame([Vector2i(3, 0)], false, true, false, Vector2i(2, 0)))
 	assert_equal(track.get_endpoint_cell(), Vector2i(3, 0), "Active gesture publishes its candidate")
@@ -266,7 +302,7 @@ func _test_active_right_abort_consumes_edge_before_cancellation() -> void:
 
 	var simultaneous = TrackSystemScript.new(_config())
 	simultaneous.apply_left_input(_left_frame([Vector2i(1, 0), Vector2i(2, 0)], true, true))
-	simultaneous.apply_left_input(_left_frame([], false, false, true, Vector2i(2, 0)))
+	simultaneous.apply_left_input(_left_frame([Vector2i(1, 0), Vector2i(2, 0)], false, false, true, Vector2i(2, 0)))
 	simultaneous.apply_left_input(_left_frame([], true, true, false, Vector2i(2, 0)))
 	simultaneous.apply_left_input(_left_frame([Vector2i(3, 0)], false, true, false, Vector2i(2, 0)))
 	assert_true(
@@ -300,7 +336,7 @@ func _test_held_input_waits_for_release_and_fresh_press() -> void:
 	var track = TrackSystemScript.new(_config())
 	track.apply_left_input(_left_frame([], true, true, false, Vector2i(0, 0)))
 	track.apply_left_input(_left_frame([Vector2i(1, 0)], false, true, false, Vector2i(0, 0)))
-	track.apply_left_input(_left_frame([], false, false, true, Vector2i(1, 0)))
+	track.apply_left_input(_left_frame([Vector2i(1, 0)], false, false, true, Vector2i(1, 0)))
 	var completed_endpoint := track.get_endpoint_cell()
 	track.apply_left_input(_left_frame([Vector2i(2, 0)], false, true, false, completed_endpoint))
 	assert_equal(track.get_endpoint_cell(), completed_endpoint, "Held motion after completion is ignored")
@@ -331,7 +367,7 @@ func _test_left_release_finalizes_once() -> void:
 	assert_true(track.is_runtime_gesture_active(), "Held left input keeps runtime gesture active")
 	assert_equal(track.advance_construction(1.0), 0.0, "Active gesture defers construction")
 	assert_true(track.is_runtime_gesture_active(), "Construction cannot finalize the active gesture")
-	track.apply_left_input(_left_frame([], false, false, true, Vector2i(1, 0), true, Vector2i(1, 0), true))
+	track.apply_left_input(_left_frame([Vector2i(1, 0)], false, false, true, Vector2i(1, 0), true, Vector2i(1, 0), true))
 	assert_false(track.is_left_capture_active(), "Release clears facade capture")
 	assert_false(track.is_runtime_gesture_active(), "Release finalizes runtime gesture")
 	var endpoint_after_release := track.get_endpoint_cell()
@@ -348,7 +384,7 @@ func _test_same_frame_press_routes_through_gesture_transaction() -> void:
 		Vector2i(3, 1), Vector2i(3, 2),
 	]
 	track.apply_left_input(_left_frame(origin_cells, true, true, false, Vector2i(0, 0)))
-	track.apply_left_input(_left_frame([], false, false, true, Vector2i(3, 2)))
+	track.apply_left_input(_left_frame(origin_cells, false, false, true, Vector2i(3, 2)))
 	var origin_records = _record_values(track.get_cell_records())
 	var origin_pieces = _piece_values(track.get_geometry_pieces())
 	var endpoint := track.get_endpoint_cell()
@@ -394,7 +430,7 @@ func _test_current_pointer_selects_completed_head_template() -> void:
 		Vector2i(3, 3), Vector2i(3, 4),
 	]
 	track.apply_left_input(_left_frame(right_curve, true, true, false, Vector2i(0, 2)))
-	track.apply_left_input(_left_frame([], false, false, true, Vector2i(3, 4)))
+	track.apply_left_input(_left_frame(right_curve, false, false, true, Vector2i(3, 4)))
 	var curve_endpoint := track.get_endpoint_cell()
 	var left_target := Vector2i(3, 0)
 	var straight_target := Vector2i(5, 2)
@@ -439,7 +475,7 @@ func _test_current_pointer_reselects_completed_head_template_while_held() -> voi
 		Vector2i(3, 3), Vector2i(3, 4),
 	]
 	track.apply_left_input(_left_frame(right_curve, true, true, false, Vector2i(0, 2)))
-	track.apply_left_input(_left_frame([], false, false, true, Vector2i(3, 4)))
+	track.apply_left_input(_left_frame(right_curve, false, false, true, Vector2i(3, 4)))
 	var endpoint := track.get_endpoint_cell()
 	var available := track.get_available_track_cells()
 	track.apply_left_input(_left_frame([], true, true, false, endpoint, true, endpoint, true))
@@ -546,7 +582,7 @@ func _test_reselection_keeps_suffix_after_selected_target() -> void:
 		Vector2i(3, 3), Vector2i(3, 4),
 	]
 	track.apply_left_input(_left_frame(right_curve, true, true, false, Vector2i(0, 2)))
-	track.apply_left_input(_left_frame([], false, false, true, Vector2i(3, 4)))
+	track.apply_left_input(_left_frame(right_curve, false, false, true, Vector2i(3, 4)))
 	var endpoint := track.get_endpoint_cell()
 	var available := track.get_available_track_cells()
 	track.apply_left_input(_left_frame([], true, true, false, endpoint, true, endpoint, true))
