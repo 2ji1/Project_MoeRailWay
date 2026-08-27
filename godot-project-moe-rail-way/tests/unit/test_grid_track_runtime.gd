@@ -18,6 +18,7 @@ func run() -> PackedStringArray:
 	_test_endpoint_reshape_editable_span_has_deterministic_targets()
 	_test_endpoint_reshape_active_gesture_defers_construction_and_recovery()
 	_test_active_gesture_advances_only_origin_owned_frontier()
+	_test_active_gesture_lifecycle_preserves_latest_mirrored_state()
 	_test_endpoint_reshape_right_left_straight_back_preserves_fixed_prefix()
 	_test_endpoint_reshape_one_gesture_extends_after_selected_target()
 	_test_endpoint_reshape_consecutive_gesture_retains_current_template()
@@ -429,15 +430,80 @@ func _test_active_gesture_advances_only_origin_owned_frontier() -> void:
 	var template_began: Dictionary = template_track.gesture_begin(template_track.get_endpoint_cell())
 	assert_true(not template_began.is_empty(), "Template fixture begins a held reflow")
 	if not template_began.is_empty():
-		var template_target: Vector2i = template_began["targets"]["left"]
-		assert_true(template_track.gesture_update([template_target], template_target), "Template fixture publishes a selected reflow")
+		var template_before_cells: Array[Vector2i] = []
+		for record in template_track.get_cell_records():
+			template_before_cells.append(record.cell)
+		var template_before_geometry := _piece_values(template_track.get_geometry_pieces())
+		var template_target: Vector2i = template_began["targets"]["straight"]
+		var template_suffix := template_target + Vector2i(1, 0)
+		assert_true(template_track.gesture_update([template_target, template_suffix], template_target), "Template fixture publishes a selected reflow")
+		var template_after_cells: Array[Vector2i] = []
+		for record in template_track.get_cell_records():
+			template_after_cells.append(record.cell)
+		assert_true(template_after_cells != template_before_cells, "Template selection changes route cells")
+		assert_true(_piece_values(template_track.get_geometry_pieces()) != template_before_geometry, "Template selection changes resolved geometry")
 		assert_equal(template_track.advance_construction(0.75), 0.75, "Editable-template serials advance while reflow is held")
-		var template_current := _record_values(template_track.get_cell_records())
-		var template_origin := _record_values(template_track.call("get_gesture_origin_observation")["route_records"])
-		assert_equal(template_current, template_origin, "Editable-template construction mirrors by route serial")
-		assert_equal(template_current[2]["state"], TrackCellRecordScript.State.BUILT, "Editable-template frontier preserves route order")
-		assert_equal(template_current[3]["state"], TrackCellRecordScript.State.BUILDING, "Editable-template frontier advances the next serial")
-		assert_equal(template_current[3]["progress"], 0.25, "Editable-template frontier preserves configured rate")
+		var template_current := _construction_values(template_track.get_cell_records())
+		var template_origin := _construction_values(template_track.call("get_gesture_origin_observation")["route_records"])
+		assert_equal(_shared_construction_values(template_current, template_origin), template_origin, "Editable-template construction mirrors by route serial")
+		assert_equal(template_current[3]["state"], TrackCellRecordScript.State.BUILT, "Editable-template frontier preserves route order")
+		assert_equal(template_current[4]["state"], TrackCellRecordScript.State.BUILDING, "Editable-template frontier advances the next serial")
+		assert_equal(template_current[4]["progress"], 0.25, "Editable-template frontier preserves configured rate")
+		assert_equal(template_current[6]["state"], TrackCellRecordScript.State.RESERVED_GHOST, "Gesture-added template suffix remains a ghost")
+		assert_equal(template_current[6]["progress"], 0.0, "Gesture-added template suffix remains at zero progress")
+
+
+func _test_active_gesture_lifecycle_preserves_latest_mirrored_state() -> void:
+	print("Active gesture construction: reflow, rejection, abort, and finalize preserve state")
+	var track := _reflow_runtime()
+	assert_equal(track.append_cells(_reflow_curve_cells()), 5, "Lifecycle fixture appends origin route")
+	assert_equal(track.advance_construction(2.5), 2.5, "Lifecycle fixture creates partial construction")
+	var began: Dictionary = track.gesture_begin(track.get_endpoint_cell())
+	assert_true(not began.is_empty(), "Lifecycle fixture begins a gesture")
+	if began.is_empty():
+		return
+	var target: Vector2i = began["targets"]["straight"]
+	var first_path: Array[Vector2i] = [target, target + Vector2i(1, 0)]
+	assert_true(track.gesture_update(first_path, target), "Lifecycle fixture publishes first reflow")
+	assert_equal(track.advance_construction(0.75), 0.75, "Lifecycle fixture advances shared origin")
+	var first_map := _construction_values(track.get_cell_records())
+	var first_origin_map := _construction_values(track.call("get_gesture_origin_observation")["route_records"])
+	assert_equal(_shared_construction_values(first_map, first_origin_map), first_origin_map, "First reflow mirrors the origin map")
+	var second_path: Array[Vector2i] = [target, target + Vector2i(1, 0), target + Vector2i(1, 1)]
+	assert_true(track.gesture_update(second_path, second_path[-1]), "Lifecycle fixture publishes a second held reflow")
+	assert_equal(track.advance_construction(0.25), 0.25, "Lifecycle fixture advances after reflow")
+	var latest_map := _construction_values(track.get_cell_records())
+	var latest_origin_map := _construction_values(track.call("get_gesture_origin_observation")["route_records"])
+	assert_equal(_shared_construction_values(latest_map, latest_origin_map), latest_origin_map, "Second reflow preserves the latest mirrored map")
+	var records_before_rejection := _record_values(track.get_cell_records())
+	var origin_before_rejection := _construction_values(track.call("get_gesture_origin_observation")["route_records"])
+	var pieces_before_rejection := _piece_values(track.get_geometry_pieces())
+	var ledger_before_rejection := _piece_values(track._locked_ledger)
+	var inventory_before_rejection: int = track.get_available_track_cells()
+	assert_false(track.gesture_update([target, target + Vector2i(1, 0), Vector2i(7, 7)], Vector2i(7, 7)), "Rejected reflow does not publish")
+	assert_equal(_record_values(track.get_cell_records()), records_before_rejection, "Rejected reflow keeps the last-valid candidate")
+	assert_equal(_construction_values(track.call("get_gesture_origin_observation")["route_records"]), origin_before_rejection, "Rejected reflow keeps the origin map")
+	assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before_rejection, "Rejected reflow keeps pieces")
+	assert_equal(_piece_values(track._locked_ledger), ledger_before_rejection, "Rejected reflow keeps ledger and locks")
+	assert_equal(track.get_available_track_cells(), inventory_before_rejection, "Rejected reflow keeps inventory")
+	assert_true(track.gesture_abort(), "Lifecycle fixture aborts")
+	assert_equal(_construction_values(track.get_cell_records()), latest_origin_map, "Abort restores the latest mirrored progress")
+
+	var finalize_track := GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 8, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(finalize_track.append_cells([Vector2i(0, 0), Vector2i(1, 0)]), 2, "Finalize fixture appends origin route")
+	assert_equal(finalize_track.advance_construction(1.5), 1.5, "Finalize fixture creates partial construction")
+	assert_true(finalize_track.gesture_begin(finalize_track.get_endpoint_cell()) is Dictionary, "Finalize fixture begins a gesture")
+	assert_true(finalize_track.gesture_update([Vector2i(2, 0)], Vector2i(2, 0)), "Finalize fixture publishes a suffix")
+	assert_equal(finalize_track.advance_construction(0.5), 0.5, "Finalize fixture mirrors origin before release")
+	var finalized_origin_map := _construction_values(finalize_track.call("get_gesture_origin_observation")["route_records"])
+	assert_true(finalize_track.gesture_finalize(), "Finalize fixture finalizes the current candidate")
+	var finalized_records := finalize_track.get_cell_records()
+	assert_equal(_construction_values(finalized_records.slice(0, 2)), finalized_origin_map, "Finalize retains latest origin-owned state")
+	assert_equal(finalized_records[-1].state, TrackCellRecordScript.State.RESERVED_GHOST, "Finalized held suffix remains ghost-only")
+	assert_equal(finalize_track.advance_construction(1.0), 1.0, "Post-release construction can start the suffix")
+	assert_equal(finalize_track.get_cell_records()[-1].state, TrackCellRecordScript.State.BUILT, "Post-release tick builds the former suffix")
 
 
 func _test_endpoint_reshape_right_left_straight_back_preserves_fixed_prefix() -> void:
@@ -3026,6 +3092,23 @@ func _record_values(records: Array) -> Array[Dictionary]:
 			"group": record.geometry_group_id,
 			"locked": record.geometry_locked,
 		})
+	return values
+
+
+func _construction_values(records: Array) -> Dictionary:
+	var values: Dictionary = {}
+	for record in records:
+		values[record.route_serial] = {
+			"state": record.state,
+			"progress": record.build_progress,
+		}
+	return values
+
+
+func _shared_construction_values(current: Dictionary, origin: Dictionary) -> Dictionary:
+	var values: Dictionary = {}
+	for route_serial in origin:
+		values[route_serial] = current.get(route_serial, {})
 	return values
 
 

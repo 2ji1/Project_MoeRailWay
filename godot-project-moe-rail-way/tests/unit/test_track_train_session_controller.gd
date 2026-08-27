@@ -18,6 +18,7 @@ func run() -> PackedStringArray:
 	_test_regular_expiry_wins_a_same_tick_track_end_tie()
 	_test_snapshot_recursively_detaches_grid_observations()
 	_test_held_gesture_defers_work_until_train_termination()
+	_test_active_gesture_controller_tick_preserves_train_sampling_order()
 	return finish()
 
 
@@ -203,3 +204,25 @@ func _test_held_gesture_defers_work_until_train_termination() -> void:
 	assert_false(track.is_runtime_gesture_active(), "Overlapping train preparation terminates the held gesture")
 	assert_equal(track.advance_construction(0.5), 0.0, "No construction budget remains after the origin frontier completes")
 	assert_equal(track.recover_behind(1.0), 1, "Recovery resumes after train termination")
+
+
+func _test_active_gesture_controller_tick_preserves_train_sampling_order() -> void:
+	print("Active gesture construction: train controller advances origin before sampling")
+	var config := _config(5.0, 4, 1, 1.0)
+	var track := TrackSystemScript.new(config)
+	track.apply_left_input(_held_route([Vector2i(1, 0), Vector2i(2, 0)], Vector2i(0, 0)))
+	track.apply_left_input(_release_endpoint(Vector2i(2, 0)))
+	assert_equal(track.advance_construction(1.5), 1.5, "Train causal fixture creates partial origin progress")
+	var endpoint := track.get_endpoint_cell()
+	var held_path: Array[Vector2i] = [Vector2i(3, 0)]
+	var held_frame := TrackInputFrameScript.new(
+		held_path, endpoint, true, Vector2i(-1, -1), false,
+		true, true, false, false, held_path[-1], true, held_path
+	)
+	var controller := SessionControllerScript.new(config, track, TrainSystemScript.new(config.train_speed_cells_per_second))
+	controller.start()
+	controller.advance_tick(held_frame)
+	var records := track.get_cell_records()
+	assert_equal(records[1].state, TrackCellRecordScript.State.BUILT, "Train controller completes the shared origin serial")
+	assert_equal(records[-1].state, TrackCellRecordScript.State.RESERVED_GHOST, "Train controller leaves suffix ghost-only")
+	assert_false(track.is_runtime_gesture_active(), "Overlapping train sampling terminates the gesture safely")

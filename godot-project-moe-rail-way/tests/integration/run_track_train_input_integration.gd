@@ -14,6 +14,13 @@ const UILayoutProfileScript = preload("res://src/presentation/layout/ui_layout_p
 var _failures := PackedStringArray()
 
 
+class ConstructionRecordingTrackSystem extends TrackSystemScript:
+	var last_construction_consumed := -1.0
+	func advance_construction(progress_cells: float) -> float:
+		last_construction_consumed = super.advance_construction(progress_cells)
+		return last_construction_consumed
+
+
 func _initialize() -> void:
 	call_deferred("_run")
 
@@ -302,7 +309,9 @@ func _run() -> void:
 	var view = shell.get_track_field_view()
 	var departure := _logical_to_viewport(view, Vector2(100.0, 100.0))
 
-	var held_construction_track := TrackSystemScript.new(config)
+	var held_construction_config := _config()
+	held_construction_config.departure_required_built_cells = 99
+	var held_construction_track := ConstructionRecordingTrackSystem.new(held_construction_config)
 	_assert_equal(
 		held_construction_track._runtime.append_cells([Vector2i(3, 2), Vector2i(4, 2)]),
 		2,
@@ -320,9 +329,17 @@ func _run() -> void:
 	await _deliver(_motion(held_suffix, MOUSE_BUTTON_MASK_LEFT))
 	var held_construction_frame: TrackInputFrameScript = await _consume_view(shell, held_construction_track)
 	var held_before_tick := _record_facts(held_construction_track.get_cell_records())
-	var held_consumed := held_construction_track.advance_construction(2.0)
+	var held_controller := SessionControllerScript.new(
+		held_construction_config,
+		held_construction_track,
+		TrainSystemScript.new(held_construction_config.train_speed_cells_per_second)
+	)
+	held_controller.start()
+	held_controller.advance_tick(held_construction_frame)
+	var held_consumed: float = held_construction_track.last_construction_consumed
 	var held_after_tick := _record_facts(held_construction_track.get_cell_records())
-	var held_origin_records := _record_facts(held_construction_track._runtime._gesture_origin_sequence.get_records())
+	var held_origin_observation: Dictionary = held_construction_track._runtime.get_gesture_origin_observation()
+	var held_origin_records := _record_facts(held_origin_observation["route_records"])
 	var held_frontier_passed: bool = held_construction_frame.left_held \
 		and held_construction_frame.live_gesture_path == [Vector2i(5, 2)] \
 		and held_consumed == 0.5 \

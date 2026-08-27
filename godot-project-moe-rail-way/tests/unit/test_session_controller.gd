@@ -124,6 +124,7 @@ func run() -> PackedStringArray:
 	_test_completion_terminates_active_gesture_before_terminal_snapshot()
 	_test_held_gesture_defers_work_until_train_termination()
 	_test_session_tick_order_is_causal_across_controlled_ticks()
+	_test_active_gesture_tick_advances_before_overlapping_sampling()
 	return finish()
 
 
@@ -496,6 +497,38 @@ func _test_session_tick_order_is_causal_across_controlled_ticks() -> void:
 	], "Fresh left update and release prove the same-tick regular-expiry/track-end order")
 
 
+func _test_active_gesture_tick_advances_before_overlapping_sampling() -> void:
+	print("Active gesture construction: controller orders input, construction, and overlap sampling")
+	var config := _config(4.0, 2, 0.25, 1.0, 8, 8)
+	var track := OrderingTrackSystem.new(config)
+	var event_log: Array[String] = []
+	track.event_log = event_log
+	track.apply_left_input(_draw_frame([Vector2i(1, 0), Vector2i(2, 0)]))
+	assert_equal(track.advance_construction(1.5), 1.5, "Causal fixture creates partial origin progress")
+	var endpoint := track.get_endpoint_cell()
+	var held_path: Array[Vector2i] = [Vector2i(3, 0)]
+	var held_frame := TrackInputFrameScript.new(
+		held_path, endpoint, true, Vector2i(-1, -1), false,
+		true, true, false, false, held_path[-1], true, held_path
+	)
+	var origin_before: Array[Dictionary] = _record_values(track.get_cell_records())
+	var controller := SessionControllerScript.new(
+		config, track, OrderingTrainSystem.new(config.train_speed_cells_per_second)
+	)
+	controller.start()
+	event_log.clear()
+	controller.advance_tick(held_frame)
+	var input_index := _first_event_index(event_log, "left:")
+	var construction_index := _first_event_index(event_log, "construction:")
+	var prepare_index := _first_event_index(event_log, "prepare:")
+	assert_true(input_index >= 0 and input_index < construction_index and construction_index < prepare_index, "Controller orders input before construction before sampling")
+	assert_equal(track.get_cell_records()[1].state, TrackCellRecordScript.State.BUILT, "Overlapping sampling observes completed origin construction")
+	assert_equal(track.get_cell_records()[-1].state, TrackCellRecordScript.State.RESERVED_GHOST, "Overlapping sampling leaves suffix ghost-only")
+	assert_false(track.is_runtime_gesture_active(), "Overlapping sampling terminates the active gesture")
+	assert_equal(track.get_cell_records()[0].route_serial, origin_before[0]["serial"], "Overlap preserves origin serial identity")
+	assert_equal(track.get_cell_records()[1].route_serial, origin_before[1]["serial"], "Overlap preserves shared serial identity")
+
+
 func _record_values(records: Array) -> Array[Dictionary]:
 	var values: Array[Dictionary] = []
 	for record in records:
@@ -509,3 +542,10 @@ func _record_values(records: Array) -> Array[Dictionary]:
 			"locked": record.geometry_locked,
 		})
 	return values
+
+
+func _first_event_index(events: Array[String], prefix: String) -> int:
+	for index in range(events.size()):
+		if events[index].begins_with(prefix):
+			return index
+	return -1
