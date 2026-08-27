@@ -453,7 +453,68 @@ func set_contact_anchors(anchors: Array[RouteContactAnchorScript]) -> void:
 
 func advance_construction(progress_cells: float) -> float:
     if _gesture_active:
-        return 0.0
+        if _gesture_origin_sequence == null:
+            return 0.0
+        var candidate_sequence := _sequence.duplicate_sequence()
+        var origin_sequence := _gesture_origin_sequence.duplicate_sequence()
+        var origin_records_by_serial: Dictionary = {}
+        for origin_record in origin_sequence.get_records():
+            origin_records_by_serial[origin_record.route_serial] = origin_record
+        var remaining := maxf(progress_cells, 0.0)
+        var consumed_total := 0.0
+        while remaining > 0.0:
+            for candidate_record in candidate_sequence._records:
+                if not origin_records_by_serial.has(candidate_record.route_serial):
+                    continue
+                var shared_origin_record: TrackCellRecordScript = (
+                    origin_records_by_serial[candidate_record.route_serial]
+                    as TrackCellRecordScript
+                )
+                candidate_record.state = shared_origin_record.state
+                candidate_record.build_progress = shared_origin_record.build_progress
+            var target: TrackCellRecordScript = null
+            for candidate_record in candidate_sequence.get_records():
+                if not origin_records_by_serial.has(candidate_record.route_serial):
+                    continue
+                var origin_record: TrackCellRecordScript = (
+                    origin_records_by_serial[candidate_record.route_serial]
+                    as TrackCellRecordScript
+                )
+                if origin_record.state != TrackCellRecordScript.State.BUILT:
+                    target = candidate_record
+                    break
+            if target == null:
+                break
+            var origin_target: TrackCellRecordScript = (
+                origin_records_by_serial[target.route_serial]
+                as TrackCellRecordScript
+            )
+            if target.state == TrackCellRecordScript.State.RESERVED_GHOST:
+                candidate_sequence.start_building(target.route_serial)
+            if origin_target.state == TrackCellRecordScript.State.RESERVED_GHOST:
+                origin_sequence.start_building(origin_target.route_serial)
+            var candidate_consumed: float = candidate_sequence.add_build_progress(remaining)
+            var origin_consumed: float = origin_sequence.add_build_progress(remaining)
+            var consumed: float = minf(candidate_consumed, origin_consumed)
+            if consumed <= 0.0:
+                break
+            candidate_sequence.complete_building()
+            origin_sequence.complete_building()
+            consumed_total += consumed
+            remaining -= consumed
+            for candidate_record in candidate_sequence._records:
+                if not origin_records_by_serial.has(candidate_record.route_serial):
+                    continue
+                for origin_record in origin_sequence._records:
+                    if origin_record.route_serial != candidate_record.route_serial:
+                        continue
+                    candidate_record.state = origin_record.state
+                    candidate_record.build_progress = origin_record.build_progress
+                    origin_records_by_serial[candidate_record.route_serial] = origin_record.duplicate_record()
+                    break
+        _sequence.replace_with(candidate_sequence)
+        _gesture_origin_sequence = origin_sequence
+        return consumed_total
     var remaining := maxf(progress_cells, 0.0)
     var consumed_total := 0.0
     while remaining > 0.0:

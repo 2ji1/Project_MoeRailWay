@@ -17,6 +17,7 @@ func run() -> PackedStringArray:
 	_test_endpoint_reshape_gesture_begin_captures_detached_origin()
 	_test_endpoint_reshape_editable_span_has_deterministic_targets()
 	_test_endpoint_reshape_active_gesture_defers_construction_and_recovery()
+	_test_active_gesture_advances_only_origin_owned_frontier()
 	_test_endpoint_reshape_right_left_straight_back_preserves_fixed_prefix()
 	_test_endpoint_reshape_one_gesture_extends_after_selected_target()
 	_test_endpoint_reshape_consecutive_gesture_retains_current_template()
@@ -346,7 +347,7 @@ func _test_endpoint_reshape_active_gesture_defers_construction_and_recovery() ->
 	var pieces_before := _piece_values(track.get_geometry_pieces())
 	var inventory_before: int = track.get_available_track_cells()
 	var recovery_before := _recovery_observation_values(track)
-	print("Endpoint reshape: active gesture defers construction and recovery")
+	print("Endpoint reshape: active gesture advances origin construction and defers recovery")
 	assert_true(track.has_method("gesture_begin"), "Gesture begin deferral contract exists")
 	if not track.has_method("gesture_begin"):
 		return
@@ -354,16 +355,89 @@ func _test_endpoint_reshape_active_gesture_defers_construction_and_recovery() ->
 	assert_true(began is Dictionary, "Deferral fixture starts a gesture")
 	if not began is Dictionary:
 		return
-	for tick in range(3):
-		assert_equal(track.advance_construction(0.75), 0.0, "Construction is deferred on tick %d" % tick)
-		assert_equal(track.recover_behind(5.0), 0, "Recovery is deferred on tick %d" % tick)
-		assert_equal(_record_values(track.get_cell_records()), records_before, "Active gesture preserves route and build state on tick %d" % tick)
-		assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before, "Active gesture preserves geometry on tick %d" % tick)
-		assert_equal(track.get_available_track_cells(), inventory_before, "Active gesture preserves inventory on tick %d" % tick)
-		assert_equal(_recovery_observation_values(track), recovery_before, "Active gesture preserves recovery on tick %d" % tick)
+	var origin_before_tick: Dictionary = track.call("get_gesture_origin_observation")
+	var consumed := track.advance_construction(0.75)
+	assert_equal(consumed, 0.75, "Active gesture consumes origin-owned construction work")
+	assert_equal(track.recover_behind(5.0), 0, "Recovery remains paused during active construction")
+	assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before, "Active construction preserves geometry")
+	assert_equal(track.get_available_track_cells(), inventory_before, "Active construction preserves inventory")
+	var recovery_after := _recovery_observation_values(track)
+	assert_equal(recovery_after["recovered_cells_by_piece"], recovery_before["recovered_cells_by_piece"], "Active construction preserves recovered cells")
+	assert_equal(recovery_after["recovered_end_distance_cells"], recovery_before["recovered_end_distance_cells"], "Active construction preserves recovery distance")
+	var current_after_tick := _record_values(track.get_cell_records())
+	var origin_after_tick := _record_values(track.call("get_gesture_origin_observation")["route_records"])
+	assert_equal(current_after_tick, origin_after_tick, "Active construction mirrors exact state into origin and candidate")
+	assert_true(current_after_tick != _record_values(origin_before_tick["route_records"]), "Active construction advances the origin frontier")
 	assert_true(track.has_method("gesture_finalize"), "Gesture finalize deferral contract exists")
 	if track.has_method("gesture_finalize"):
 		track.call("gesture_finalize")
+
+
+func _test_active_gesture_advances_only_origin_owned_frontier() -> void:
+	print("Active gesture construction: origin frontier consumes before ghost suffix")
+	var track := GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 8, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(track.append_cells([Vector2i(0, 0), Vector2i(1, 0)]), 2, "Frontier fixture appends origin route")
+	assert_equal(track.advance_construction(1.5), 1.5, "Frontier fixture creates a partial origin")
+	var origin_before := _record_values(track.get_cell_records())
+	assert_equal(origin_before[0]["state"], TrackCellRecordScript.State.BUILT, "First origin serial is built")
+	assert_equal(origin_before[1]["state"], TrackCellRecordScript.State.BUILDING, "Second origin serial is building")
+	assert_equal(origin_before[1]["progress"], 0.5, "Second origin serial retains partial progress")
+	assert_true(track.gesture_begin(track.get_endpoint_cell()) is Dictionary, "Frontier fixture begins a gesture")
+	assert_true(track.gesture_update([Vector2i(2, 0)]), "Frontier fixture publishes a held suffix")
+	var before_tick := _record_values(track.get_cell_records())
+	assert_equal(before_tick.size(), 3, "Frontier fixture has one gesture-added suffix")
+	assert_equal(before_tick[-1]["state"], TrackCellRecordScript.State.RESERVED_GHOST, "Suffix starts as ghost")
+	assert_equal(before_tick[-1]["progress"], 0.0, "Suffix starts with zero progress")
+	var consumed := track.advance_construction(2.0)
+	assert_equal(consumed, 0.5, "Active construction stops at the origin frontier")
+	var after_tick := _record_values(track.get_cell_records())
+	assert_equal(after_tick[1]["state"], TrackCellRecordScript.State.BUILT, "Remaining origin serial completes")
+	assert_equal(after_tick[1]["progress"], 1.0, "Origin serial reaches exact completion")
+	assert_equal(after_tick[-1]["state"], TrackCellRecordScript.State.RESERVED_GHOST, "Leftover budget cannot build suffix")
+	assert_equal(after_tick[-1]["progress"], 0.0, "Ghost suffix remains at zero progress")
+	assert_equal(track.get_built_end_distance_cells(), 2.0, "Built distance stops at origin frontier")
+	assert_equal(track.get_reserved_end_distance_cells(), 3.0, "Reserved distance includes the ghost suffix")
+	var origin_after := _record_values(track.call("get_gesture_origin_observation")["route_records"])
+	assert_equal(origin_after, [after_tick[0], after_tick[1]], "Origin mirrors all shared construction state")
+	assert_equal(track.get_available_track_cells(), 5, "Active construction does not change inventory")
+	assert_equal(track.recover_behind(5.0), 0, "Active gesture keeps recovery paused")
+	assert_true(track.gesture_abort(), "Frontier fixture aborts cleanly")
+	assert_equal(_record_values(track.get_cell_records()), origin_after, "Abort restores the latest mirrored origin")
+
+	var long_track := GridTrackRuntimeScript.new(
+		Vector2i(-1, 1), 10, Vector2.ZERO, Vector2i(10, 8), 40.0
+	)
+	assert_equal(long_track.append_cells([
+		Vector2i(0, 1), Vector2i(1, 1), Vector2i(2, 1), Vector2i(3, 1),
+	]), 4, "Boundary fixture appends a longer origin route")
+	assert_equal(long_track.advance_construction(0.25), 0.25, "Boundary fixture starts partial first serial")
+	assert_true(long_track.gesture_begin(long_track.get_endpoint_cell()) is Dictionary, "Boundary fixture begins a gesture")
+	assert_true(long_track.gesture_update([Vector2i(4, 1)]), "Boundary fixture publishes a ghost suffix")
+	assert_equal(long_track.advance_construction(2.25), 2.25, "Construction crosses multiple origin serial boundaries in order")
+	var boundary_records := _record_values(long_track.get_cell_records())
+	assert_equal(boundary_records[0]["state"], TrackCellRecordScript.State.BUILT, "Boundary fixture completes the first serial before the second")
+	assert_equal(boundary_records[1]["state"], TrackCellRecordScript.State.BUILT, "Boundary fixture completes the second serial before the third")
+	assert_equal(boundary_records[2]["state"], TrackCellRecordScript.State.BUILDING, "Boundary fixture advances the final origin serial")
+	assert_equal(boundary_records[2]["progress"], 0.5, "Boundary fixture preserves remaining progress")
+	assert_equal(boundary_records[-1]["state"], TrackCellRecordScript.State.RESERVED_GHOST, "Boundary suffix remains ghost-only")
+
+	var template_track := _reflow_runtime()
+	assert_equal(template_track.append_cells(_reflow_curve_cells()), 5, "Template fixture appends the editable span")
+	assert_equal(template_track.advance_construction(2.5), 2.5, "Template fixture creates partial editable-template progress")
+	var template_began: Dictionary = template_track.gesture_begin(template_track.get_endpoint_cell())
+	assert_true(not template_began.is_empty(), "Template fixture begins a held reflow")
+	if not template_began.is_empty():
+		var template_target: Vector2i = template_began["targets"]["left"]
+		assert_true(template_track.gesture_update([template_target], template_target), "Template fixture publishes a selected reflow")
+		assert_equal(template_track.advance_construction(0.75), 0.75, "Editable-template serials advance while reflow is held")
+		var template_current := _record_values(template_track.get_cell_records())
+		var template_origin := _record_values(template_track.call("get_gesture_origin_observation")["route_records"])
+		assert_equal(template_current, template_origin, "Editable-template construction mirrors by route serial")
+		assert_equal(template_current[2]["state"], TrackCellRecordScript.State.BUILT, "Editable-template frontier preserves route order")
+		assert_equal(template_current[3]["state"], TrackCellRecordScript.State.BUILDING, "Editable-template frontier advances the next serial")
+		assert_equal(template_current[3]["progress"], 0.25, "Editable-template frontier preserves configured rate")
 
 
 func _test_endpoint_reshape_right_left_straight_back_preserves_fixed_prefix() -> void:

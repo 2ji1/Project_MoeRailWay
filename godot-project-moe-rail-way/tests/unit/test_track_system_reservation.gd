@@ -1,6 +1,7 @@
 extends "res://tests/support/prototype_test.gd"
 
 const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
+const TrackCellRecordScript = preload("res://src/domain/track/track_cell_record.gd")
 const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
 const TrackSystemScript = preload("res://src/domain/track/track_system.gd")
 const GridTrackRuntimeScript = preload("res://src/domain/track/grid_track_runtime.gd")
@@ -13,6 +14,7 @@ func run() -> PackedStringArray:
 	_test_facade_preserves_origin_and_exact_inventory()
 	_test_endpoint_capture_appends_ordered_cells()
 	_test_ordinary_held_path_replaces_visible_candidate()
+	_test_active_gesture_construction_advances_origin_only()
 	_test_invalid_candidates_stop_without_corrupting_ownership()
 	_test_right_edge_consumes_the_frame_and_cancels_a_suffix()
 	_test_right_edge_ends_left_capture_until_a_fresh_press()
@@ -254,6 +256,26 @@ func _test_ordinary_held_path_replaces_visible_candidate() -> void:
 	))
 	assert_equal(release_track.get_cell_records(), [], "Empty authoritative release path finalizes the origin candidate")
 	assert_equal(release_track.get_available_track_cells(), 10, "Empty authoritative release path refunds the candidate")
+
+
+func _test_active_gesture_construction_advances_origin_only() -> void:
+	print("Live gesture path: facade advances shared construction before suffix")
+	var track = TrackSystemScript.new(_config(8))
+	var origin_cells: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0)]
+	track.apply_left_input(_left_frame(origin_cells, true, true, false, Vector2i(0, 0), true, Vector2i(2, 0), true))
+	track.apply_left_input(_left_frame([], false, false, true, Vector2i(0, 0), true, Vector2i(2, 0), true, origin_cells))
+	assert_equal(track.advance_construction(1.5), 1.5, "Facade fixture creates partial origin progress")
+	var endpoint := track.get_endpoint_cell()
+	track.apply_left_input(_left_frame([], true, true, false, endpoint, true, endpoint, true))
+	track.apply_left_input(_left_frame([Vector2i(3, 0)], false, true, false, endpoint, true, Vector2i(3, 0), true, [Vector2i(3, 0)]))
+	var before_tick := track.get_cell_records()
+	assert_equal(before_tick[-1].state, TrackCellRecordScript.State.RESERVED_GHOST, "Facade suffix starts as a ghost")
+	assert_equal(track.advance_construction(2.0), 0.5, "Facade returns only shared origin construction")
+	var after_tick := track.get_cell_records()
+	assert_equal(after_tick[1].state, TrackCellRecordScript.State.BUILT, "Facade completes the origin frontier")
+	assert_equal(after_tick[-1].state, TrackCellRecordScript.State.RESERVED_GHOST, "Facade leaves the gesture suffix unbuilt")
+	assert_equal(after_tick[-1].build_progress, 0.0, "Facade leaves the gesture suffix at zero progress")
+	assert_equal(track.get_available_track_cells(), 5, "Facade construction preserves inventory")
 
 
 func _test_invalid_candidates_stop_without_corrupting_ownership() -> void:

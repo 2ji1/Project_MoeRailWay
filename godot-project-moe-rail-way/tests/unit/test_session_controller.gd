@@ -418,7 +418,7 @@ func _test_completion_terminates_active_gesture_before_terminal_snapshot() -> vo
 
 
 func _test_held_gesture_defers_work_until_train_termination() -> void:
-	print("Endpoint reshape: deferred construction and recovery resume")
+	print("Endpoint reshape: origin construction and recovery lifecycle")
 	var config := _config(5.0, 2, 1, 0.25, 4, 1)
 	var track = TrackSystemScript.new(config)
 	track.apply_left_input(_draw_frame([Vector2i(1, 0), Vector2i(2, 0)]))
@@ -426,15 +426,14 @@ func _test_held_gesture_defers_work_until_train_termination() -> void:
 	var endpoint := track.get_endpoint_cell()
 	track.apply_left_input(_held_endpoint_frame(endpoint))
 	assert_true(track.is_runtime_gesture_active(), "Held-gesture fixture remains active without release")
-	var progress_before: float = track.get_cell_records()[-1].build_progress
-	assert_equal(track.advance_construction(0.5), 0.0, "Construction defers while the gesture is held")
-	assert_equal(track.get_cell_records()[-1].build_progress, progress_before, "Held gesture preserves build progress")
+	assert_equal(track.advance_construction(0.5), 0.5, "Origin-owned construction advances while the gesture is held")
+	assert_equal(track.get_cell_records()[-1].build_progress, 1.0, "Held gesture completes the shared origin serial")
 	assert_equal(track.recover_behind(1.0), 0, "Recovery defers while the gesture is held")
 	var controller = SessionControllerScript.new(config, track, TrainSystemScript.new(config.train_speed_cells_per_second))
 	controller.start()
 	controller.advance_tick()
 	assert_false(track.is_runtime_gesture_active(), "Overlapping train preparation terminates the held gesture")
-	assert_equal(track.advance_construction(0.5), 0.5, "Construction resumes after train termination")
+	assert_equal(track.advance_construction(0.5), 0.0, "No construction budget remains after the origin frontier completes")
 	assert_equal(track.recover_behind(1.0), 1, "Recovery resumes after train termination")
 
 

@@ -4,6 +4,7 @@ const SHELL_SCENE_PATH := "res://src/presentation/session/session_shell.tscn"
 const SessionSnapshotScript = preload("res://src/domain/session/session_snapshot.gd")
 const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
 const SessionControllerScript = preload("res://src/domain/session/session_controller.gd")
+const TrackCellRecordScript = preload("res://src/domain/track/track_cell_record.gd")
 const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
 const TrackGeometryPieceScript = preload("res://src/domain/track/track_geometry_piece.gd")
 const TrackSystemScript = preload("res://src/domain/track/track_system.gd")
@@ -300,6 +301,40 @@ func _run() -> void:
 	await process_frame
 	var view = shell.get_track_field_view()
 	var departure := _logical_to_viewport(view, Vector2(100.0, 100.0))
+
+	var held_construction_track := TrackSystemScript.new(config)
+	_assert_equal(
+		held_construction_track._runtime.append_cells([Vector2i(3, 2), Vector2i(4, 2)]),
+		2,
+		"Held construction integration creates an origin route"
+	)
+	_assert_equal(
+		held_construction_track.advance_construction(1.5),
+		1.5,
+		"Held construction integration creates partial origin progress"
+	)
+	view.present(_track_snapshot(held_construction_track))
+	var held_endpoint := _logical_to_viewport(view, Vector2(180.0, 100.0))
+	var held_suffix := _logical_to_viewport(view, Vector2(220.0, 100.0))
+	await _deliver(_button(held_endpoint, MOUSE_BUTTON_LEFT, true))
+	await _deliver(_motion(held_suffix, MOUSE_BUTTON_MASK_LEFT))
+	var held_construction_frame: TrackInputFrameScript = await _consume_view(shell, held_construction_track)
+	var held_before_tick := _record_facts(held_construction_track.get_cell_records())
+	var held_consumed := held_construction_track.advance_construction(2.0)
+	var held_after_tick := _record_facts(held_construction_track.get_cell_records())
+	var held_origin_records := _record_facts(held_construction_track._runtime._gesture_origin_sequence.get_records())
+	var held_frontier_passed: bool = held_construction_frame.left_held \
+		and held_construction_frame.live_gesture_path == [Vector2i(5, 2)] \
+		and held_consumed == 0.5 \
+		and held_before_tick[-1]["state"] == TrackCellRecordScript.State.RESERVED_GHOST \
+		and held_after_tick[1]["state"] == TrackCellRecordScript.State.BUILT \
+		and held_after_tick[-1]["state"] == TrackCellRecordScript.State.RESERVED_GHOST \
+		and held_after_tick[-1]["progress"] == 0.0 \
+		and held_origin_records[1]["state"] == held_after_tick[1]["state"] \
+		and held_origin_records[1]["progress"] == held_after_tick[1]["progress"]
+	_assert_true(held_frontier_passed, "Held construction advances shared origin serials and leaves suffix ghost-only")
+	await _release_view(shell, held_suffix)
+	await _consume_view(shell, held_construction_track)
 
 	var running_track := TrackSystemScript.new(config)
 	var running_train := TrainSystemScript.new(config.train_speed_cells_per_second)
