@@ -4,7 +4,7 @@
 
 **Goal:** Make an ordinary endpoint drag reversible so its visible ghost shrinks and rebranches with the still-held pointer, while preserving completed-head template reselection and every route invariant.
 
-**Architecture:** `TrackFieldView` owns a loop-erased full-path snapshot for the current physical press and places that detached snapshot in `TrackInputFrame`. `TrackSystem` forwards the snapshot unchanged; `GridTrackRuntime` reconciles record identities against the current path, rebuilds every candidate from the gesture origin, and commits only a completely valid candidate. Completed-head template selection keeps the authoritative current-pointer rule, but its suffix is reconciled against the current full path instead of append-only history.
+**Architecture:** `TrackFieldView` owns a loop-erased full-path snapshot for the current physical press and places that detached snapshot in `TrackInputFrame`; the physical press-origin cell is excluded from the array and is explicitly represented as the authoritative implicit prefix immediately before it. `TrackSystem` forwards the snapshot unchanged; `GridTrackRuntime` reconciles record identities against the current path, rebuilds every candidate from the gesture origin, and commits only a completely valid candidate. Completed-head template selection keeps the authoritative current-pointer rule, but its suffix is reconciled against the current full path and the implicit origin prefix instead of append-only history.
 
 **Tech Stack:** Godot `4.7.1.stable.official.a13da4feb`, typed GDScript, existing prototype test harness, PowerShell, Git worktrees.
 
@@ -17,6 +17,7 @@
 - Do not terminate, reset, or repurpose a user-owned Godot or Steam editor process.
 - Use only `D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe` for automated Godot gates. Steam Godot `4.7.2` is unsupported.
 - Preserve endpoint-only start, gesture-origin abort, atomic last-valid publication, inventory conservation, monotonic serial allocation, immutable locked/train-entered geometry, construction, recovery, cancellation, hover colors, and train sampling.
+- For completed-template suffixes, use the selected target's most recent live-path occurrence; if absent, use index `-1` only when the target exactly equals the authoritative gesture press origin and then reconcile the entire live path; otherwise use an empty suffix. Never infer a suffix from target/pointer absence or use an append-only, synthetic, or pointer-invalid fallback.
 - Add no pathfinding, route graph, freehand spline, undo stack, new visual ghost treatment, generalized input framework, or production abstraction layer.
 - Write agent-facing Markdown in English and user progress reports in Korean.
 - Every task must show the focused RED, minimum GREEN, the full 19-suite and four-integration regression gate, exact-path staging, a focused commit, specification review, and quality review in that order.
@@ -370,7 +371,7 @@ Specification review checks design sections 3.3, 3.5, 4, and the `TrackSystem`/`
 
 **Interfaces:**
 - Consumes: Task 1 full live path, Task 2 `_reconcile_gesture_input_facts`, existing `_template_index_from_pointer`, `_gesture_target_endpoints`, and `_gesture_selected_template_index`.
-- Produces: one current template-owned suffix fact list reconciled against the complete path after the selected target's most recent occurrence.
+- Produces: one current template-owned suffix fact list reconciled against the complete path after the selected target's most recent occurrence, with the physical press origin treated as an implicit index `-1` only when it is exactly the selected target.
 
 - [ ] **Step 1: Add a focused template-suffix RED**
 
@@ -382,6 +383,8 @@ In `test_track_system_reservation.gd`, add a held completed-head scenario that:
 4. remains held and supplies a shorter full path ending at `Vector2i(6, 2)`;
 5. asserts that `Vector2i(7, 2)` disappears and exactly one inventory cell is refunded; and
 6. supplies a rebranched template/suffix path and asserts fresh non-reused serials.
+
+Specify the RUNNING-state recovery case for the actual-event integration in Step 2: start with `18` inventory cells, build `13` straight records, construct/lock/sample the train, recover the rear prefix to `7` records and `11` available cells, press the current endpoint of the resulting three-record straight editable head, and drag to an adjacent valid cell. Before release, require an eighth record/current endpoint and `10` available cells. This case must specifically exercise the selected target equal to the physical press origin, which is implicit rather than present in `live_gesture_path`.
 
 Name the test `_test_completed_template_suffix_backtracks_while_held` and print `Live gesture path: completed template suffix backtracks while held`.
 
@@ -413,6 +416,8 @@ Use cells that form a valid first L path and, after crossing an earlier gesture 
 
 Print exactly `PASS: live ordinary ghost follows held rebranch` when this complete block passes.
 
+The same integration must include the recovery-state event sequence from Step 1, using actual `InputEventMouseButton` and `InputEventMouseMotion` instances while the session is RUNNING. Assert the recovered setup (`7` records, `11` available), the three-record editable head, the endpoint press, the adjacent drag, and the pre-release eighth record/current endpoint with `10` available. A direct `gesture_update` call cannot substitute for this event coverage.
+
 - [ ] **Step 3: Run focused unit and integration commands and verify RED**
 
 ```powershell
@@ -428,7 +433,7 @@ Expected RED: the completed-template suffix retains the longer historical suffix
 
 - [ ] **Step 4: Reconcile only the current selected-target suffix**
 
-In `grid_track_runtime.gd::gesture_update`, find the most recent occurrence of the authoritative selected target in `live_path`. Build `current_suffix_cells` from cells after that index. When the pointer chooses a target that is not present in the current path, use an empty suffix. Replace all append-only `next_suffix_input_facts` branches with `_reconcile_gesture_input_facts(_gesture_suffix_input_facts, current_suffix_cells)`.
+In `grid_track_runtime.gd::gesture_update`, find the most recent occurrence of the authoritative selected target in `live_path`. Build `current_suffix_cells` from cells after that index. If the target is absent from `live_path` but exactly equals the authoritative gesture press origin, treat the origin as the implicit occurrence at index `-1` and reconcile the entire `live_path` as `current_suffix_cells`. For every other absent target, use an empty suffix. Do not add an append-only, synthetic, or pointer-invalid fallback. Replace all append-only `next_suffix_input_facts` branches with `_reconcile_gesture_input_facts(_gesture_suffix_input_facts, current_suffix_cells)`.
 
 When the selected template changes, do not retain facts from the previous template even if cell values share a prefix; start reconciliation from an empty fact list so a superseded template-owned serial is never reassigned under the new template. Preserve exact current-pointer tie behavior and candidate validation.
 
@@ -454,7 +459,7 @@ git commit -m 'fix: reflow held template suffix from current path'
 
 - [ ] **Step 7: Run independent specification review, then quality review**
 
-Specification review checks design section 3.4 and required evidence 8-12, including actual Godot input objects and pre-release observation. Quality review checks most-recent target indexing, template changes with empty reconciliation, serial retirement, pointer-near-target behavior, suffix refund, and exact integration marker cardinality. Resolve any finding within the Task 3 allowlist through RED/GREEN and repeat both reviews.
+Specification review checks design section 3.4 and required evidence 8-13, including actual Godot input objects, the RUNNING-state post-recovery sequence, and pre-release observation. Quality review checks most-recent target indexing, implicit-origin index `-1` handling, template changes with empty reconciliation, serial retirement, pointer-near-target behavior, suffix refund, and exact integration marker cardinality. Resolve any finding within the Task 3 allowlist through RED/GREEN and repeat both reviews.
 
 ---
 
@@ -465,8 +470,8 @@ Specification review checks design section 3.4 and required evidence 8-12, inclu
 - Modify: `docs/superpowers/specs/2026-08-27-live-gesture-path-reflow-design.md`
 
 **Interfaces:**
-- Consumes: reviewed Task 1-3 commits and the exact manual acceptance sequence in design section 7.
-- Produces: English manual evidence tied to the tested feature commit and a design status that names that commit without claiming `main` integration before it occurs.
+- Consumes: reviewed Task 1-3 commits and the exact manual acceptance sequence in design section 7, including the required RUNNING-state recovery case.
+- Produces: English manual evidence tied to the tested feature commit and a design status that names that commit without claiming `main` integration before it occurs. The recovery failure observed before this amendment remains a required fix; this documentation amendment does not mark the design Implemented or accepted.
 
 - [ ] **Step 1: Re-run the clean feature gate before manual playtest**
 
@@ -474,7 +479,7 @@ Require `git status --short` to be empty. Run the complete standard regression g
 
 - [ ] **Step 2: Run the visible Windows acceptance without touching the user editor**
 
-Launch a separate test-owned Godot `4.7.1` playtest from the feature worktree or the repository's approved disposable playtest launcher. Do not attach to, terminate, reset, or reuse the user's existing Godot window. Perform the eight manual steps in design section 7, including the empty-departure reproduction, ordinary backtrack/rebranch before release, completed-head suffix shortening, exact inventory observation, and right-click origin restoration.
+Launch a separate test-owned Godot `4.7.1` playtest from the feature worktree or the repository's approved disposable playtest launcher. Do not attach to, terminate, reset, or reuse the user's existing Godot window. Perform the manual steps in design section 7, including the empty-departure reproduction, ordinary backtrack/rebranch before release, completed-head suffix shortening, exact inventory observation, right-click origin restoration, and the 18-inventory/13-straight/construct-lock-sample/recover-to-7-and-11/three-record-head/adjacent-drag recovery sequence before release.
 
 If a separate safe playtest cannot be launched without interfering with the user-owned editor, stop and request the user to execute the exact acceptance sequence on a reviewed candidate; do not mark manual acceptance passed from automated evidence alone.
 
@@ -488,6 +493,7 @@ Append a dated section to `tests/manual/track_train_windows.md` containing:
 - each acceptance action and its observed result;
 - visible inventory before, during, after rebranch, and after abort;
 - confirmation that the replacement appeared before left release;
+- the RUNNING-state recovery result: eighth record/current endpoint and `10` available before release, or the exact failure without upgrading it to PASS;
 - confirmation that no user-owned editor was terminated or reset; and
 - any limitation or failed observation without upgrading it to PASS.
 

@@ -32,6 +32,8 @@ The failure is caused by the existing split contract:
 
 The completed-head reselection tests pass because they begin with a concrete editable head and use the pointer to choose among three precomputed template targets. They do not exercise an empty-departure or fixed-endpoint ordinary gesture whose path must shrink and rebranch before release.
 
+A separate manual observation exposed a required recovery-state fix. After a running train has recovered rear cells, the current endpoint can remain green and `gesture_has_legal_operation` can remain true while a direct adjacent drag from that endpoint publishes no new record. The failure is deterministic before terminal completion when the completed-template target is the physical press-origin cell: `live_gesture_path` omits that cell, so treating an absent target as an empty suffix drops the entire suffix path. This is a contract defect, not a terminal-input observation, and must be covered by the recovery evidence below.
+
 ## 3. Interaction Contract
 
 ### 3.1 Gesture origin
@@ -47,7 +49,7 @@ The gesture origin remains immutable until one of these terminal events:
 
 ### 3.2 Live normalized path
 
-While the same left press remains held, presentation owns one ordered `live_gesture_path` of grid cells after the press endpoint. It updates that path from every rasterized pointer segment in event order.
+While the same left press remains held, presentation owns one ordered `live_gesture_path` of grid cells after the press endpoint. The physical press-origin cell is not emitted in this array; the authoritative gesture origin is explicitly represented as the implicit prefix immediately before it. The array updates from every rasterized pointer segment in event order.
 
 For each newly observed cell:
 
@@ -78,11 +80,14 @@ This applies both to an empty departure and to ordinary extension from a fixed o
 
 The existing current-pointer rule remains authoritative for choosing the straight, left-curve, or right-curve replacement of a completed editable head. The runtime still rebuilds that replacement from the gesture origin.
 
-The post-template suffix is no longer an append-only history. It is derived from the current complete live path:
+The post-template suffix is no longer an append-only history. It is derived from the current complete live path plus its implicit origin prefix:
 
+- the physical press-origin cell is the authoritative implicit occurrence at index `-1`, immediately before `live_gesture_path`;
 - cells before the selected target are control input and never become route records;
-- when the selected target occurs in the normalized path, only cells after its most recent occurrence form the suffix;
-- selecting a target by current-pointer proximity without crossing the exact target publishes the template with no historical suffix;
+- when the selected target occurs in `live_gesture_path`, only cells after its most recent occurrence form the suffix;
+- when the selected target is absent from `live_gesture_path` but is exactly equal to the authoritative gesture press origin, treat that origin as the implicit occurrence at index `-1` and reconcile the entire `live_gesture_path` as the suffix;
+- any other absent target produces an empty suffix;
+- no append-only, synthetic, or pointer-invalid fallback may supply a suffix; the implicit-origin rule applies only when equality with the authoritative gesture origin is established;
 - re-entering or reselecting a target discards the superseded suffix; and
 - backtracking through the suffix shortens it before any new branch is appended.
 
@@ -114,6 +119,7 @@ Shortening and rebranching are staged transactions. A failed replacement preserv
 
 - Continue mapping and rasterizing real Godot mouse events.
 - Maintain the complete normalized live path for the current capture.
+- Keep the physical press-origin cell out of `live_gesture_path`; the detached gesture-origin fact remains authoritative as its implicit prefix.
 - Clear the live path on release cleanup, abort feedback, train-safety termination, and session completion.
 - Publish a detached full path snapshot on every consumed frame.
 - Do not resolve geometry, mutate inventory, or decide candidate validity.
@@ -156,6 +162,7 @@ The implementation must add focused RED/GREEN evidence for all of the following:
 10. Right-click during either ordinary or template gesture restores the exact pre-gesture route and inventory.
 11. Release finalizes the current candidate, and further held motion remains ignored until a fresh press where required by the existing termination contract.
 12. Train preparation, locked geometry, construction, recovery, hover, cancellation, session completion, and all existing input behavior remain green.
+13. A real RUNNING-state recovery sequence starts with `18` inventory cells, builds and constructs `13` straight records, locks/samples the train, recovers the rear prefix to leave `7` records and `11` available cells, then presses the current endpoint of the resulting three-record straight editable head, drags to an adjacent valid cell, and requires an eighth record/current endpoint with `10` available cells before release. The test must assert the press-origin target is recovered through the implicit-origin suffix rule and must use actual `InputEventMouseButton` and `InputEventMouseMotion` delivery through `TrackFieldView` and `TrackSystem`.
 
 At least one integration must use actual `InputEventMouseButton` and `InputEventMouseMotion` instances in this order:
 
@@ -170,6 +177,8 @@ observe the replacement before release
 
 A domain-only call sequence cannot substitute for this integration.
 
+The recovery sequence in item 13 is an additional actual-event integration requirement; synthetic direct runtime calls alone do not prove that the press-origin representation, endpoint latch, rasterized path, and RUNNING lifecycle compose correctly.
+
 ## 7. Manual Acceptance
 
 On Windows with Godot `4.7.1.stable.official.a13da4feb`:
@@ -182,6 +191,8 @@ On Windows with Godot `4.7.1.stable.official.a13da4feb`:
 6. Repeat from an existing completed editable head and verify straight, left-curve, and right-curve reselection plus suffix shortening.
 7. Verify that inventory follows the currently visible candidate exactly.
 8. During another held edit, right-click and verify exact restoration to the pre-gesture route and inventory.
+
+The discovered recovery failure is a required fix before acceptance: while the session is RUNNING (not `SESSION COMPLETE — TRACK END REACHED`), repeat the 18-cell, 13-straight, construct/lock/sample, rear-recovery-to-7-records/11-available setup, press the three-record straight editable-head endpoint, drag one adjacent cell, and verify the eighth record appears with 10 available cells before release. Do not treat a terminal completed-session click as evidence of this defect, and do not upgrade this amendment to Implemented or accepted until the required fix is implemented and reviewed.
 
 Record the evidence in English in the existing Windows track-train manual record. The primary `main` checkout remains the user playtest workspace and is updated only after reviewed pull-request integration.
 
