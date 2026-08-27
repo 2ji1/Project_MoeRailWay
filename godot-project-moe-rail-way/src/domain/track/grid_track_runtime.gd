@@ -159,11 +159,15 @@ func gesture_abort() -> bool:
     return true
 
 
-func gesture_update(crossed_cells: Array[Vector2i]) -> bool:
+func gesture_update(
+    crossed_cells: Array[Vector2i],
+    current_pointer_cell: Vector2i = Vector2i(-1, -1)
+) -> bool:
     if not _gesture_active or crossed_cells.is_empty():
         return false
     var frame_template_index := -1
     var frame_target_index := -1
+    var frame_target_indices: Array[int] = [-1, -1, -1]
     for cell_index in range(crossed_cells.size()):
         var cell: Vector2i = crossed_cells[cell_index]
         for index in range([&"straight", &"left", &"right"].size()):
@@ -171,11 +175,40 @@ func gesture_update(crossed_cells: Array[Vector2i]) -> bool:
             if _gesture_target_endpoints.get(template_name, Vector2i(-1, -1)) == cell:
                 frame_template_index = index
                 frame_target_index = cell_index
+                frame_target_indices[index] = cell_index
     var templates := _template_cells(_gesture_editable_span)
     var next_template_index := _gesture_selected_template_index
     var next_suffix_input_facts: Array[Dictionary] = _gesture_suffix_input_facts.duplicate(true)
     var next_ordinary_input_facts: Array[Dictionary] = _gesture_ordinary_input_facts.duplicate(true)
-    if frame_template_index >= 0 and frame_template_index < templates.size():
+    var pointer_template_index := _template_index_from_pointer(current_pointer_cell, templates)
+    var pointer_reselected := pointer_template_index >= 0 \
+        and pointer_template_index != _gesture_selected_template_index
+    if pointer_template_index >= 0:
+        next_template_index = pointer_template_index
+        if pointer_reselected:
+            next_suffix_input_facts.clear()
+            next_ordinary_input_facts.clear()
+            if frame_target_indices[pointer_template_index] >= 0:
+                for index in range(frame_target_indices[pointer_template_index] + 1, crossed_cells.size()):
+                    next_suffix_input_facts = _append_new_gesture_input_fact(
+                        next_suffix_input_facts,
+                        crossed_cells[index]
+                    )
+        elif frame_target_indices[pointer_template_index] >= 0:
+            next_suffix_input_facts.clear()
+            for index in range(frame_target_indices[pointer_template_index] + 1, crossed_cells.size()):
+                next_suffix_input_facts = _append_new_gesture_input_fact(
+                    next_suffix_input_facts,
+                    crossed_cells[index]
+                )
+            next_ordinary_input_facts.clear()
+        else:
+            for cell in crossed_cells:
+                next_suffix_input_facts = _append_new_gesture_input_fact(
+                    next_suffix_input_facts,
+                    cell
+                )
+    elif frame_template_index >= 0 and frame_template_index < templates.size():
         next_template_index = frame_template_index
         next_suffix_input_facts.clear()
         for index in range(frame_target_index + 1, crossed_cells.size()):
@@ -242,6 +275,35 @@ func gesture_update(crossed_cells: Array[Vector2i]) -> bool:
     _gesture_ordinary_input_facts = next_ordinary_input_facts
     _contact_observations = candidate_contacts.duplicate(true)
     return true
+
+
+func _template_index_from_pointer(
+    current_pointer_cell: Vector2i,
+    templates: Array[Array]
+) -> int:
+    if current_pointer_cell == Vector2i(-1, -1) or templates.is_empty():
+        return -1
+    var template_names: Array[StringName] = [&"straight", &"left", &"right"]
+    var best_distance := 2147483647
+    var best_indices: Array[int] = []
+    for index in range(template_names.size()):
+        var endpoint: Vector2i = _gesture_target_endpoints.get(
+            template_names[index], Vector2i(-1, -1)
+        )
+        if endpoint == Vector2i(-1, -1):
+            continue
+        var distance := absi(current_pointer_cell.x - endpoint.x) \
+            + absi(current_pointer_cell.y - endpoint.y)
+        if distance < best_distance:
+            best_distance = distance
+            best_indices = [index]
+        elif distance == best_distance:
+            best_indices.append(index)
+    if best_indices.is_empty():
+        return -1
+    if _gesture_selected_template_index in best_indices:
+        return _gesture_selected_template_index
+    return best_indices[0]
 
 
 func get_gesture_origin_observation() -> Dictionary:

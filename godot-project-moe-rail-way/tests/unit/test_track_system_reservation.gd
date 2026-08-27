@@ -22,6 +22,9 @@ func run() -> PackedStringArray:
 	_test_left_release_finalizes_once()
 	_test_same_frame_press_routes_through_gesture_transaction()
 	_test_current_pointer_selects_completed_head_template()
+	_test_current_pointer_reselects_completed_head_template_while_held()
+	_test_authoritative_pointer_wins_over_crossed_target()
+	_test_reselection_keeps_suffix_after_selected_target()
 	_test_left_press_latch_requires_release_after_rejection()
 	_test_prepare_preserves_original_result_and_clears_capture()
 	_test_prepare_termination_waits_for_release()
@@ -401,6 +404,152 @@ func _test_current_pointer_selects_completed_head_template() -> void:
 		[Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2)],
 		"Pointer-only template changes remain atomic across separate gestures"
 	)
+
+
+func _test_current_pointer_reselects_completed_head_template_while_held() -> void:
+	print("Endpoint interaction fix: held pointer reselects completed head template")
+	var config = SessionStartConfigScript.new(
+		1, 20.0, 1,
+		1.0, 8, 2, 2.0, 1.0, 1,
+		Vector2(420.0, 260.0), Vector2i(10, 6), 40.0, Vector2(10.0, 10.0),
+		&"departure", Vector2(30.0, 110.0), Vector2i(0, 2)
+	)
+	var track = TrackSystemScript.new(config)
+	var right_curve: Array[Vector2i] = [
+		Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2),
+		Vector2i(3, 3), Vector2i(3, 4),
+	]
+	track.apply_left_input(_left_frame(right_curve, true, true, false, Vector2i(0, 2)))
+	track.apply_left_input(_left_frame([], false, false, true, Vector2i(3, 4)))
+	var endpoint := track.get_endpoint_cell()
+	var available := track.get_available_track_cells()
+	track.apply_left_input(_left_frame([], true, true, false, endpoint, true, endpoint, true))
+	assert_true(track.is_left_capture_active(), "Held reselection starts with active facade capture")
+	assert_true(track.is_runtime_gesture_active(), "Held reselection starts with active runtime gesture")
+
+	var left_near := Vector2i(3, 1)
+	var left_frame := _left_frame([], false, true, false, endpoint, true, left_near, true)
+	assert_true(left_frame.left_held and not left_frame.left_released, "Left near frame stays held")
+	track.apply_left_input(left_frame)
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		[
+			Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2),
+			Vector2i(3, 1), Vector2i(3, 0),
+		],
+		"Held pointer near the left target selects the left template"
+	)
+	assert_true(track.is_left_capture_active(), "Left reselection keeps facade capture active")
+	assert_true(track.is_runtime_gesture_active(), "Left reselection keeps runtime gesture active")
+	assert_equal(track.get_available_track_cells(), available, "Equal-length left replacement preserves inventory")
+
+	var straight_near := Vector2i(5, 1)
+	var straight_frame := _left_frame([], false, true, false, endpoint, true, straight_near, true)
+	assert_true(straight_frame.left_held and not straight_frame.left_released, "Straight near frame stays held")
+	track.apply_left_input(straight_frame)
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		[
+			Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2),
+			Vector2i(4, 2), Vector2i(5, 2),
+		],
+		"Held pointer near the straight target selects the straight template"
+	)
+	assert_true(track.is_left_capture_active(), "Straight reselection keeps facade capture active")
+	assert_true(track.is_runtime_gesture_active(), "Straight reselection keeps runtime gesture active")
+	assert_equal(track.get_available_track_cells(), available, "Equal-length straight replacement preserves inventory")
+
+	var right_near := Vector2i(3, 3)
+	var right_frame := _left_frame([], false, true, false, endpoint, true, right_near, true)
+	assert_true(right_frame.left_held and not right_frame.left_released, "Right near frame stays held")
+	track.apply_left_input(right_frame)
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		right_curve,
+		"Held pointer near the right target reselects the right template"
+	)
+	assert_true(track.is_left_capture_active(), "Right reselection keeps facade capture active")
+	assert_true(track.is_runtime_gesture_active(), "Right reselection keeps runtime gesture active")
+	assert_equal(track.get_available_track_cells(), available, "Equal-length right replacement preserves inventory")
+
+
+func _test_authoritative_pointer_wins_over_crossed_target() -> void:
+	print("Endpoint interaction fix: authoritative pointer wins over crossed target")
+	var config = SessionStartConfigScript.new(
+		1, 20.0, 1,
+		1.0, 18, 2, 2.0, 1.0, 1,
+		Vector2(420.0, 260.0), Vector2i(10, 6), 40.0, Vector2(10.0, 10.0),
+		&"departure", Vector2(30.0, 110.0), Vector2i(0, 2)
+	)
+	var runtime = GridTrackRuntimeScript.new(
+		config.departure_cell,
+		config.total_track_cells,
+		config.grid_origin_units,
+		config.grid_size,
+		config.grid_cell_size_units
+	)
+	var right_curve: Array[Vector2i] = [
+		Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2),
+		Vector2i(3, 3), Vector2i(3, 4),
+	]
+	assert_equal(runtime.append_cells(right_curve), right_curve.size(), "Right curve fixture is appended")
+	assert_true(runtime.gesture_begin(Vector2i(3, 4)).size() > 0, "Held gesture begins at right endpoint")
+	var selected_right_target := Vector2i(3, 4)
+	var straight_target := Vector2i(5, 2)
+	var right_near := Vector2i(3, 3)
+	var crossed_cells: Array[Vector2i] = [
+		selected_right_target,
+		Vector2i(3, 5), Vector2i(4, 5), Vector2i(5, 5),
+		Vector2i(5, 4), Vector2i(5, 3), straight_target,
+	]
+	runtime.gesture_update(crossed_cells, right_near)
+	assert_true(runtime.gesture_is_active(), "Crossed-target frame keeps the gesture held")
+	var expected_route := right_curve.duplicate()
+	expected_route.append_array(crossed_cells.slice(1))
+	assert_equal(
+		runtime.get_cell_records().map(func(record): return record.cell),
+		expected_route,
+		"Authoritative right target reset is not hidden by a later straight target"
+	)
+
+
+func _test_reselection_keeps_suffix_after_selected_target() -> void:
+	print("Endpoint interaction fix: reselection keeps suffix after selected target")
+	var config = SessionStartConfigScript.new(
+		1, 20.0, 1,
+		1.0, 8, 2, 2.0, 1.0, 1,
+		Vector2(420.0, 260.0), Vector2i(10, 6), 40.0, Vector2(10.0, 10.0),
+		&"departure", Vector2(30.0, 110.0), Vector2i(0, 2)
+	)
+	var track = TrackSystemScript.new(config)
+	var right_curve: Array[Vector2i] = [
+		Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2),
+		Vector2i(3, 3), Vector2i(3, 4),
+	]
+	track.apply_left_input(_left_frame(right_curve, true, true, false, Vector2i(0, 2)))
+	track.apply_left_input(_left_frame([], false, false, true, Vector2i(3, 4)))
+	var endpoint := track.get_endpoint_cell()
+	var available := track.get_available_track_cells()
+	track.apply_left_input(_left_frame([], true, true, false, endpoint, true, endpoint, true))
+	var straight_target := Vector2i(5, 2)
+	var suffix_cell := Vector2i(6, 2)
+	var frame := _left_frame(
+		[straight_target, suffix_cell], false, true, false,
+		endpoint, true, suffix_cell, true
+	)
+	assert_true(frame.left_held and not frame.left_released, "Reselection suffix frame stays held")
+	track.apply_left_input(frame)
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		[
+			Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2),
+			Vector2i(4, 2), straight_target, suffix_cell,
+		],
+		"Reselection keeps valid suffix cells after the selected target"
+	)
+	assert_true(track.is_left_capture_active(), "Reselection suffix frame keeps facade capture active")
+	assert_true(track.is_runtime_gesture_active(), "Reselection suffix frame keeps runtime gesture active")
+	assert_equal(track.get_available_track_cells(), available - 1, "Reselection suffix charges one new record")
 
 
 func _test_left_press_latch_requires_release_after_rejection() -> void:
