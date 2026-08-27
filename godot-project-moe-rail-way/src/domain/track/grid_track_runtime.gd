@@ -109,6 +109,10 @@ func gesture_begin(endpoint: Vector2i) -> Dictionary:
 
 
 func gesture_finalize() -> bool:
+    return _finalize_gesture(true)
+
+
+func _finalize_gesture(restore_origin_on_failure: bool) -> bool:
     if not _gesture_active:
         return false
     var candidate_sequence = _sequence.duplicate_sequence()
@@ -120,7 +124,10 @@ func gesture_finalize() -> bool:
         candidate_anchors
     )
     if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
-        _clear_gesture_state()
+        if restore_origin_on_failure:
+            gesture_abort()
+        else:
+            _clear_gesture_state()
         return false
     _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
     candidate_sequence.apply_resolved_geometry(resolution.pieces)
@@ -131,7 +138,10 @@ func gesture_finalize() -> bool:
         _recovered_cells_by_piece,
         _recovered_end_distance_cells
     ):
-        _clear_gesture_state()
+        if restore_origin_on_failure:
+            gesture_abort()
+        else:
+            _clear_gesture_state()
         return false
     var candidate_contacts := _build_contact_observations(
         resolution.pieces,
@@ -465,7 +475,7 @@ func prepare_for_train_sampling(current_distance: float, through_distance: float
     if _pieces.is_empty():
         return false
     if _train_sampling_intersects_active_gesture(current_distance, through_distance):
-        if not gesture_finalize():
+        if not _finalize_gesture(false):
             return false
     var current = _canonical_distance_and_owner(current_distance)
     var through = _canonical_distance_and_owner(through_distance)

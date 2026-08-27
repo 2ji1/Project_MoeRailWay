@@ -82,6 +82,7 @@ func run() -> PackedStringArray:
 	_test_departure_forward_boundary_and_route_end_ownership()
 	_test_two_sided_outside_epsilon_stitch_continuity()
 	_test_prepared_built_curve_recovers_same_serials_without_ledger_mutation()
+	_test_unstable_tight_turn_release_restores_gesture_origin()
 	return finish()
 
 
@@ -2350,6 +2351,40 @@ func _test_prepared_built_curve_recovers_same_serials_without_ledger_mutation() 
 		assert_equal(records[-1].state, TrackCellRecordScript.State.RESERVED_GHOST, "G remains a genuine provisional ghost suffix")
 		assert_false(records[-1].geometry_locked, "G record remains unlocked")
 		_assert_conservation(track, "Cutoff %d conserves the B through F route inventory" % cutoff)
+
+
+func _test_unstable_tight_turn_release_restores_gesture_origin() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(15, 2), 18, Vector2.ZERO, Vector2i(30, 14), 40.0
+	)
+	var first_gesture: Array[Vector2i] = [
+		Vector2i(15, 3), Vector2i(15, 4), Vector2i(15, 5),
+		Vector2i(15, 6), Vector2i(14, 6), Vector2i(13, 6),
+		Vector2i(13, 5),
+	]
+	var second_gesture: Array[Vector2i] = [
+		Vector2i(13, 4), Vector2i(13, 3),
+		Vector2i(13, 2), Vector2i(12, 2), Vector2i(11, 2),
+		Vector2i(10, 2), Vector2i(9, 2), Vector2i(9, 3),
+		Vector2i(10, 3),
+	]
+	assert_false(track.gesture_begin(Vector2i(15, 2)).is_empty(), "Recovery stall fixture begins at departure")
+	assert_true(track.gesture_update(first_gesture), "Recovery stall fixture publishes the first route section")
+	assert_true(track.gesture_finalize(), "Recovery stall fixture finalizes the first route section")
+	var records_before := _record_values(track.get_cell_records())
+	var inventory_before := track.get_available_track_cells()
+	var pieces_before := _piece_values(track.get_geometry_pieces())
+	var ledger_before := _piece_values(track._locked_ledger)
+	assert_false(track.gesture_begin(Vector2i(13, 5)).is_empty(), "Recovery stall fixture begins at the first endpoint")
+	assert_true(track.gesture_update(second_gesture), "Recovery stall fixture publishes the tight-turn suffix")
+	assert_equal(track.get_cell_records().size(), 16, "Recovery stall candidate exists before release")
+	assert_false(track.gesture_finalize(), "Unstable tight-turn suffix is rejected on release")
+	assert_false(track.gesture_is_active(), "Rejected release closes the gesture transaction")
+	assert_equal(_record_values(track.get_cell_records()), records_before, "Rejected release restores the exact route origin")
+	assert_equal(track.get_available_track_cells(), inventory_before, "Rejected release restores inventory")
+	assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before, "Rejected release restores resolved geometry")
+	assert_equal(_piece_values(track._locked_ledger), ledger_before, "Rejected release restores the locked ledger")
+	_assert_conservation(track, "Rejected release preserves conservation")
 
 
 func _geometry_values(piece: TrackGeometryPieceScript) -> Dictionary:

@@ -100,6 +100,7 @@ func advance_tick(input_frame: TrackInputFrameScript = null) -> void:
 			_track_system.get_built_end_distance_cells()
 		)
 		if not _prepare_or_abort(current_distance, through_distance):
+			_complete(SessionResultScript.Reason.TRACK_END_REACHED)
 			return
 		track_end_requested = _train_system.advance_tick(_track_system, _seconds_per_tick)
 		_cached_tick_pose = _train_system.capture_pose(_track_system)
