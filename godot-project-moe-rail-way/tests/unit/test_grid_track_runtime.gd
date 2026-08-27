@@ -391,6 +391,9 @@ func _test_active_gesture_advances_only_origin_owned_frontier() -> void:
 	assert_equal(before_tick.size(), 3, "Frontier fixture has one gesture-added suffix")
 	assert_equal(before_tick[-1]["state"], TrackCellRecordScript.State.RESERVED_GHOST, "Suffix starts as ghost")
 	assert_equal(before_tick[-1]["progress"], 0.0, "Suffix starts with zero progress")
+	var inventory_before_tick: int = track.get_available_track_cells()
+	var pieces_before_tick := _piece_values(track.get_geometry_pieces())
+	var ledger_before_tick := _piece_values(track._locked_ledger)
 	var consumed := track.advance_construction(2.0)
 	assert_equal(consumed, 0.5, "Active construction stops at the origin frontier")
 	var after_tick := _record_values(track.get_cell_records())
@@ -400,6 +403,9 @@ func _test_active_gesture_advances_only_origin_owned_frontier() -> void:
 	assert_equal(after_tick[-1]["progress"], 0.0, "Ghost suffix remains at zero progress")
 	assert_equal(track.get_built_end_distance_cells(), 2.0, "Built distance stops at origin frontier")
 	assert_equal(track.get_reserved_end_distance_cells(), 3.0, "Reserved distance includes the ghost suffix")
+	assert_equal(track.get_available_track_cells(), inventory_before_tick, "Active construction preserves inventory immediately")
+	assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before_tick, "Active construction preserves geometry immediately")
+	assert_equal(_piece_values(track._locked_ledger), ledger_before_tick, "Active construction preserves ledger and locks immediately")
 	var origin_after := _record_values(track.call("get_gesture_origin_observation")["route_records"])
 	assert_equal(origin_after, [after_tick[0], after_tick[1]], "Origin mirrors all shared construction state")
 	assert_equal(track.get_available_track_cells(), 5, "Active construction does not change inventory")
@@ -2249,17 +2255,48 @@ func _test_endpoint_reshape_extension_overlap_terminates_last_valid() -> void:
 
 func _test_endpoint_reshape_nonoverlap_remains_active() -> void:
 	print("Endpoint reshape: nonoverlap remains active")
-	var track = _boundary_runtime()
+	var track := _reflow_runtime()
+	assert_equal(track.append_cells([
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(2, 1),
+	]), 4, "Nonoverlap fixture appends route")
+	assert_equal(track.advance_construction(3.5), 3.5, "Nonoverlap fixture leaves a partially constructed origin")
 	assert_true(track.call("prepare_for_train_sampling", 0.0, 1.0), "Nonoverlap fixture locks a fixed prefix")
 	var origin = track.call("gesture_begin", track.get_endpoint_cell())
 	assert_true(origin is Dictionary and not origin.is_empty(), "Nonoverlap starts a gesture")
 	if not origin is Dictionary or origin.is_empty():
 		return
 	var was_active := bool(track.call("gesture_is_active"))
+	var endpoint: Vector2i = track.get_endpoint_cell()
+	var suffix: Vector2i = endpoint + Vector2i(0, 1)
+	var suffix_path: Array[Vector2i] = [suffix]
+	assert_true(track.call("gesture_update", suffix_path, suffix), "Nonoverlap fixture publishes a gesture-added suffix")
+	assert_equal(track.advance_construction(0.5), 0.5, "Nonoverlap fixture advances the shared origin frontier")
+	var current_map := _construction_values(track.get_cell_records())
+	var origin_map := _construction_values(track.call("get_gesture_origin_observation")["route_records"])
+	var shared_map := _shared_construction_values(current_map, origin_map)
+	var inventory_before_sampling: int = track.get_available_track_cells()
+	var pieces_before_sampling := _piece_values(track.get_geometry_pieces())
+	var ledger_before_sampling := _piece_values(track._locked_ledger)
 	var result := bool(track.call("prepare_for_train_sampling", 0.0, 0.5))
 	assert_true(result, "Nonoverlap preparation succeeds")
 	assert_true(was_active, "Nonoverlap began active")
 	assert_true(track.call("gesture_is_active"), "Nonoverlap keeps the gesture active")
+	assert_equal(_shared_construction_values(_construction_values(track.get_cell_records()), _construction_values(track.call("get_gesture_origin_observation")["route_records"])), shared_map, "Nonoverlap preserves the mirrored serial map")
+	assert_equal(track.get_available_track_cells(), inventory_before_sampling, "Nonoverlap sampling preserves inventory")
+	assert_equal(_piece_values(track._locked_ledger), ledger_before_sampling, "Nonoverlap sampling preserves the existing ledger")
+	var records_after_sampling := track.get_cell_records()
+	assert_equal(records_after_sampling[-1].state, TrackCellRecordScript.State.RESERVED_GHOST, "Nonoverlap sampling leaves the suffix ghost-only")
+	assert_equal(records_after_sampling[-1].build_progress, 0.0, "Nonoverlap sampling leaves the suffix unbuilt")
+	assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before_sampling, "Nonoverlap sampling does not mutate geometry while held")
+	var construction_after_sampling := _construction_values(records_after_sampling)
+	for piece in track.get_geometry_pieces():
+		if piece.locked:
+			for route_serial in range(piece.first_route_serial, piece.last_route_serial + 1):
+				assert_equal(
+					construction_after_sampling[route_serial]["state"],
+					TrackCellRecordScript.State.BUILT,
+					"Nonoverlap sampling locks only complete pieces while held"
+				)
 
 
 func _test_endpoint_reshape_train_lock_survives_begin_prepare_update_and_abort() -> void:

@@ -502,7 +502,7 @@ func advance_construction(progress_cells: float) -> float:
                 origin_sequence.start_building(origin_target.route_serial)
             var candidate_consumed: float = candidate_sequence.add_build_progress(remaining)
             var origin_consumed: float = origin_sequence.add_build_progress(remaining)
-            if not is_equal_approx(candidate_consumed, origin_consumed):
+            if candidate_consumed != origin_consumed:
                 return 0.0
             if origin_consumed <= 0.0:
                 break
