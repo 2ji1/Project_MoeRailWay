@@ -228,6 +228,8 @@ func gesture_update(crossed_cells: Array[Vector2i]) -> bool:
     candidate_sequence.apply_resolved_geometry(resolution.pieces)
     if not _validate_candidate(candidate_sequence, candidate_ledger, resolution):
         return false
+    if not _gesture_candidate_can_finalize(candidate_sequence, candidate_ledger, candidate_anchors):
+        return false
     var candidate_contacts := _build_contact_observations(
         resolution.pieces,
         candidate_anchors,
@@ -947,6 +949,32 @@ func _exit_support_serial(
             return records[index + 1].route_serial
         return -1
     return -1
+
+
+func _gesture_candidate_can_finalize(
+    sequence: TrackCellSequenceScript,
+    ledger: Array[TrackGeometryPieceScript],
+    anchors: Array[RouteContactAnchorScript]
+) -> bool:
+    var final_sequence = sequence.duplicate_sequence()
+    var final_ledger = _duplicate_pieces(ledger)
+    var final_anchors = _duplicate_anchors(anchors)
+    var final_resolution = _stage_stable_retirement(
+        final_sequence,
+        final_ledger,
+        final_anchors
+    )
+    if not final_resolution.is_valid or not _pieces_are_continuous(final_resolution.pieces):
+        return false
+    _assign_unique_unlocked_group_ids(final_resolution.pieces, final_ledger)
+    final_sequence.apply_resolved_geometry(final_resolution.pieces)
+    return _validate_candidate(
+        final_sequence,
+        final_ledger,
+        final_resolution,
+        _gesture_origin_recovered_cells_by_piece,
+        _gesture_origin_recovered_end_distance_cells
+    )
 
 
 func _stage_stable_retirement(

@@ -82,6 +82,7 @@ func run() -> PackedStringArray:
 	_test_departure_forward_boundary_and_route_end_ownership()
 	_test_two_sided_outside_epsilon_stitch_continuity()
 	_test_prepared_built_curve_recovers_same_serials_without_ledger_mutation()
+	_test_unfinalizable_tight_turn_is_not_published()
 	return finish()
 
 
@@ -2350,6 +2351,46 @@ func _test_prepared_built_curve_recovers_same_serials_without_ledger_mutation() 
 		assert_equal(records[-1].state, TrackCellRecordScript.State.RESERVED_GHOST, "G remains a genuine provisional ghost suffix")
 		assert_false(records[-1].geometry_locked, "G record remains unlocked")
 		_assert_conservation(track, "Cutoff %d conserves the B through F route inventory" % cutoff)
+
+
+func _test_unfinalizable_tight_turn_is_not_published() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(15, 2), 18, Vector2.ZERO, Vector2i(30, 14), 40.0
+	)
+	var first_gesture: Array[Vector2i] = [
+		Vector2i(15, 3), Vector2i(15, 4), Vector2i(15, 5),
+		Vector2i(15, 6), Vector2i(14, 6), Vector2i(13, 6),
+		Vector2i(13, 5),
+	]
+	var second_gesture: Array[Vector2i] = [
+		Vector2i(13, 4), Vector2i(13, 3),
+		Vector2i(13, 2), Vector2i(12, 2), Vector2i(11, 2),
+		Vector2i(10, 2), Vector2i(9, 2), Vector2i(9, 3),
+		Vector2i(10, 3),
+	]
+	assert_false(track.gesture_begin(Vector2i(15, 2)).is_empty(), "Recovery stall fixture begins at departure")
+	assert_true(track.gesture_update(first_gesture), "Recovery stall fixture publishes the first route section")
+	assert_true(track.gesture_finalize(), "Recovery stall fixture finalizes the first route section")
+	var records_before := _record_values(track.get_cell_records())
+	var inventory_before := track.get_available_track_cells()
+	var pieces_before := _piece_values(track.get_geometry_pieces())
+	var ledger_before := _piece_values(track._locked_ledger)
+	assert_false(track.gesture_begin(Vector2i(13, 5)).is_empty(), "Recovery stall fixture begins at the first endpoint")
+	assert_false(track.gesture_update(second_gesture), "Unfinalizable tight-turn suffix is rejected before publication")
+	assert_equal(_record_values(track.get_cell_records()), records_before, "Rejected update retains the last valid route")
+	assert_equal(track.get_available_track_cells(), inventory_before, "Rejected update retains inventory")
+	assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before, "Rejected update retains resolved geometry")
+	assert_equal(_piece_values(track._locked_ledger), ledger_before, "Rejected update retains the locked ledger")
+	assert_true(track.gesture_finalize(), "Release finalizes the unchanged last valid candidate")
+	assert_false(track.gesture_is_active(), "Release clears only transient gesture state")
+	assert_equal(track.advance_construction(7.0), 7.0, "Last valid route remains constructible")
+	var distance := 0.0
+	while distance < 7.0 - 0.0001:
+		var through := minf(distance + 0.025, 7.0)
+		assert_true(track.prepare_for_train_sampling(distance, through), "Last valid route remains train-lockable")
+		track.recover_behind(through - 6.0)
+		distance = through
+	_assert_conservation(track, "Rejected update preserves conservation through train locking and recovery")
 
 
 func _geometry_values(piece: TrackGeometryPieceScript) -> Dictionary:
