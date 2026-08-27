@@ -101,7 +101,7 @@ func gesture_begin(endpoint: Vector2i) -> Dictionary:
     _gesture_origin_contacts = _contact_observations.duplicate(true)
     _gesture_editable_span = _discover_editable_span()
     _gesture_target_endpoints = _calculate_target_endpoints(_gesture_editable_span)
-    _gesture_selected_template_index = -1
+    _gesture_selected_template_index = _matching_template_index(_gesture_editable_span)
     _gesture_suffix_input_facts.clear()
     _gesture_ordinary_input_facts.clear()
     _gesture_active = true
@@ -713,6 +713,31 @@ func _template_cells(span: Dictionary) -> Array[Array]:
     templates.append(left_cells)
     templates.append(right_cells)
     return templates
+
+
+func _matching_template_index(span: Dictionary) -> int:
+    if span.is_empty():
+        return -1
+    var templates := _template_cells(span)
+    if templates.is_empty():
+        return -1
+    var records: Array[TrackCellRecordScript] = _sequence.get_records()
+    var first_index: int = span["first_index"]
+    var record_count: int = span["record_count"]
+    if first_index < 0 or first_index + record_count > records.size():
+        return -1
+    for template_index in range(templates.size()):
+        var template_cells: Array = templates[template_index]
+        if template_cells.size() != record_count:
+            continue
+        var matches := true
+        for index in range(record_count):
+            if records[first_index + index].cell != template_cells[index]:
+                matches = false
+                break
+        if matches:
+            return template_index
+    return -1
 
 
 func _has_legal_template_alternative(span: Dictionary) -> bool:

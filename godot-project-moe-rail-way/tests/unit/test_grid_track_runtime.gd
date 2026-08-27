@@ -19,6 +19,7 @@ func run() -> PackedStringArray:
 	_test_endpoint_reshape_active_gesture_defers_construction_and_recovery()
 	_test_endpoint_reshape_right_left_straight_back_preserves_fixed_prefix()
 	_test_endpoint_reshape_one_gesture_extends_after_selected_target()
+	_test_endpoint_reshape_consecutive_gesture_retains_current_template()
 	_test_endpoint_reshape_control_cells_are_omitted()
 	_test_endpoint_reshape_target_reentry_rebuilds_from_origin()
 	_test_endpoint_reshape_invalid_bounds_preserve_last_valid()
@@ -442,6 +443,90 @@ func _test_endpoint_reshape_one_gesture_extends_after_selected_target() -> void:
 	assert_equal(track.get_endpoint_cell(), Vector2i(5, 4), "One gesture reaches the suffix endpoint")
 	assert_equal(track.get_available_track_cells(), 10, "Suffix charges one inventory cell per record")
 	track.call("gesture_finalize")
+
+
+func _test_endpoint_reshape_consecutive_gesture_retains_current_template() -> void:
+	var straight_track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 2), 12, Vector2.ZERO, Vector2i(12, 8), 40.0
+	)
+	var straight_cells: Array[Vector2i] = [
+		Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2),
+	]
+	assert_true(
+		straight_track.gesture_begin(Vector2i(-1, 2)) is Dictionary,
+		"Consecutive straight fixture begins its first gesture"
+	)
+	assert_true(
+		straight_track.gesture_update(straight_cells),
+		"Consecutive straight fixture publishes three records"
+	)
+	assert_true(
+		straight_track.gesture_finalize(),
+		"Consecutive straight fixture finalizes its first gesture"
+	)
+	assert_equal(straight_track.get_cell_records().size(), 3, "Consecutive straight fixture keeps three records")
+	assert_false(straight_track.get_geometry_pieces()[0].locked, "Consecutive straight endpoint remains unlocked")
+	var straight_endpoint := straight_track.get_endpoint_cell()
+	var straight_available := straight_track.get_available_track_cells()
+	assert_true(
+		straight_track.gesture_begin(straight_endpoint) is Dictionary,
+		"Consecutive straight fixture begins its fresh gesture"
+	)
+	assert_true(
+		straight_track.gesture_update([Vector2i(3, 2)]),
+		"Fresh straight gesture immediately extends beyond its current template"
+	)
+	var straight_records = straight_track.get_cell_records()
+	assert_equal(straight_records.size(), 4, "Fresh straight gesture publishes one new record")
+	if straight_records.size() == 4:
+		assert_equal(straight_records[-1].cell, Vector2i(3, 2), "Fresh straight gesture advances the endpoint")
+	assert_equal(
+		straight_track.get_available_track_cells(), straight_available - 1,
+		"Fresh straight gesture charges exactly one inventory cell"
+	)
+	assert_true(straight_track._sequence.is_conservation_valid(), "Fresh straight gesture preserves conservation")
+	assert_true(straight_track.gesture_finalize(), "Fresh straight gesture finalizes successfully")
+
+	var curve_track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 2), 12, Vector2.ZERO, Vector2i(12, 10), 40.0
+	)
+	var curve_cells: Array[Vector2i] = [
+		Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2),
+		Vector2i(2, 3), Vector2i(2, 4),
+	]
+	assert_true(
+		curve_track.gesture_begin(Vector2i(-1, 2)) is Dictionary,
+		"Consecutive curve fixture begins its first gesture"
+	)
+	assert_true(curve_track.gesture_update(curve_cells), "Consecutive curve fixture publishes five records")
+	assert_true(curve_track.gesture_finalize(), "Consecutive curve fixture finalizes its first gesture")
+	assert_equal(curve_track.get_cell_records().size(), 5, "Consecutive curve fixture keeps five records")
+	assert_equal(
+		curve_track.get_geometry_pieces()[0].kind,
+		TrackGeometryPieceScript.Kind.CURVE_3X3,
+		"Consecutive curve fixture resolves a complete curve"
+	)
+	assert_false(curve_track.get_geometry_pieces()[0].locked, "Consecutive curve endpoint remains unlocked")
+	var curve_endpoint := curve_track.get_endpoint_cell()
+	var curve_available := curve_track.get_available_track_cells()
+	assert_true(
+		curve_track.gesture_begin(curve_endpoint) is Dictionary,
+		"Consecutive curve fixture begins its fresh gesture"
+	)
+	assert_true(
+		curve_track.gesture_update([Vector2i(2, 5)]),
+		"Fresh curve gesture immediately extends beyond its current template"
+	)
+	var curve_records = curve_track.get_cell_records()
+	assert_equal(curve_records.size(), 6, "Fresh curve gesture publishes one new record")
+	if curve_records.size() == 6:
+		assert_equal(curve_records[-1].cell, Vector2i(2, 5), "Fresh curve gesture advances the endpoint")
+	assert_equal(
+		curve_track.get_available_track_cells(), curve_available - 1,
+		"Fresh curve gesture charges exactly one inventory cell"
+	)
+	assert_true(curve_track._sequence.is_conservation_valid(), "Fresh curve gesture preserves conservation")
+	assert_true(curve_track.gesture_finalize(), "Fresh curve gesture finalizes successfully")
 
 
 func _test_endpoint_reshape_control_cells_are_omitted() -> void:
