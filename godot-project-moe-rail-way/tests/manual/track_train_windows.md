@@ -114,7 +114,7 @@ ENDPOINT_RESHAPE_EVIDENCE_BEGIN
 Implementation SHA: b883e454015478b3aeb533e1a7e21a5916f5e660
 Godot: 4.7.1.stable.official.a13da4feb
 Timestamp: 2026-08-27T03:14:19.8434361Z
-Observation: The visible Godot scene rendered a completed five-record CURVE_3X3 at endpoint (8, 5); the harness asserted the head piece was unlocked (`locked == false`) and exposed a legal deterministic endpoint replacement.
+Observation: The visible Godot scene rendered a completed five-record CURVE_3X3 at endpoint (8, 5); the harness asserted the head piece was unlocked (`locked == false`) and TrackSystem endpoint gesture eligibility.
 Result: PASS
 
 ### Run 2: Immediate opposite curve replacement
