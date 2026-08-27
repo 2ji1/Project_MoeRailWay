@@ -203,6 +203,9 @@ func _test_ordinary_held_path_replaces_visible_candidate() -> void:
 	assert_equal(track.get_cell_records()[0].route_serial, first_serials[0], "Common path prefix retains identity")
 	assert_true(track.get_cell_records()[1].route_serial > first_serials[-1], "New branch never reuses a removed serial")
 	assert_true(track.is_left_capture_active() and track.is_runtime_gesture_active(), "Replacement remains held")
+	var replacement_max_serial := 0
+	for record in track.get_cell_records():
+		replacement_max_serial = maxi(replacement_max_serial, record.route_serial)
 	var empty_path: Array[Vector2i] = []
 	track.apply_left_input(TrackInputFrameScript.new(
 		empty_path, Vector2i(0, 0), true, Vector2i(-1, -1), false,
@@ -216,7 +219,19 @@ func _test_ordinary_held_path_replaces_visible_candidate() -> void:
 		false, true, false, false, Vector2i(1, 0), true, new_path
 	))
 	assert_equal(track.get_cell_records().map(func(record): return record.cell), new_path, "Held gesture accepts a new path after clearing")
-	assert_true(track.get_cell_records()[0].route_serial > first_serials[-1], "New path serial remains above every retired candidate")
+	assert_true(track.get_cell_records()[0].route_serial > replacement_max_serial, "New path serial remains above every serial observed before clearing")
+	var release_track = TrackSystemScript.new(_config(10))
+	release_track.apply_left_input(TrackInputFrameScript.new(
+		first_path, Vector2i(0, 0), true, Vector2i(-1, -1), false,
+		true, true, false, false, Vector2i(3, 0), true, first_path
+	))
+	var release_crossings: Array[Vector2i] = [Vector2i(3, 0), Vector2i(2, 0), Vector2i(1, 0), Vector2i(0, 0)]
+	release_track.apply_left_input(TrackInputFrameScript.new(
+		release_crossings, Vector2i(0, 0), true, Vector2i(-1, -1), false,
+		false, false, true, false, Vector2i(0, 0), true, empty_path
+	))
+	assert_equal(release_track.get_cell_records(), [], "Empty authoritative release path finalizes the origin candidate")
+	assert_equal(release_track.get_available_track_cells(), 10, "Empty authoritative release path refunds the candidate")
 
 
 func _test_invalid_candidates_stop_without_corrupting_ownership() -> void:
