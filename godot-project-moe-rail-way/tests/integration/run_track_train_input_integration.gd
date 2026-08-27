@@ -510,7 +510,7 @@ func _run() -> void:
 	_assert_true(straight_ok, "Held pointer near straight target reselects the straight template")
 	held_reselection_passed = held_reselection_passed and straight_ok
 
-	var right_near := Vector2i(3, 4)
+	var right_near := Vector2i(3, 3)
 	var right_near_logical := (Vector2(right_near) + Vector2(0.5, 0.5)) * reshape_config.grid_cell_size_units
 	await _deliver(_motion(_logical_to_viewport(view, right_near_logical), MOUSE_BUTTON_MASK_LEFT))
 	var right_near_frame: TrackInputFrameScript = await _consume_view(shell, reshape_track)

@@ -205,6 +205,7 @@ func gesture_update(
                 current_suffix_cells.append(live_path[index])
         elif (
             _gesture_origin_sequence != null
+            and next_template_index == _gesture_selected_template_index
             and next_template_index < [&"straight", &"left", &"right"].size()
             and _gesture_target_endpoints.get(
                 [&"straight", &"left", &"right"][next_template_index],

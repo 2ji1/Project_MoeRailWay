@@ -25,6 +25,7 @@ func run() -> PackedStringArray:
 	_test_live_template_suffix_reconciles_from_current_path()
 	_test_recovered_running_endpoint_accepts_direct_extension()
 	_test_template_origin_suffix_guards_remain_atomic()
+	_test_template_change_does_not_anchor_control_path_at_origin()
 	_test_live_template_suffix_absent_on_first_update()
 	_test_live_template_suffix_absent_after_rejected_target()
 	_test_endpoint_reshape_invalid_bounds_preserve_last_valid()
@@ -740,6 +741,36 @@ func _test_template_origin_suffix_guards_remain_atomic() -> void:
 	assert_false(
 		track.get_cell_records().any(func(record): return record.cell == Vector2i(5, 0)),
 		"Absent target not equal to the gesture origin clears the suffix"
+	)
+	track.gesture_abort()
+
+
+func _test_template_change_does_not_anchor_control_path_at_origin() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(0, 2), 10, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	var right_curve: Array[Vector2i] = [
+		Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2),
+		Vector2i(3, 3), Vector2i(3, 4),
+	]
+	assert_equal(track.append_cells(right_curve), 5, "Template-change guard fixture appends a right curve")
+	var began = track.gesture_begin(track.get_endpoint_cell())
+	assert_true(began is Dictionary and not began.is_empty(), "Template-change guard fixture begins a gesture")
+	if not began is Dictionary or began.is_empty():
+		return
+	var straight_target: Vector2i = began["targets"]["straight"]
+	assert_true(track.gesture_update([straight_target], straight_target), "Template-change guard selects the straight template")
+	var control_path: Array[Vector2i] = [Vector2i(3, 3)]
+	print("Live gesture path: template change ignores origin control suffix")
+	assert_true(
+		track.gesture_update(control_path, control_path[-1]),
+		"Template change through a non-target right control cell reselects the right template"
+	)
+	assert_equal(track.get_cell_records().size(), 5, "Template-change control cell is not appended as a suffix")
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		right_curve,
+		"Template-change control path publishes the right curve without a synthetic suffix"
 	)
 	track.gesture_abort()
 
