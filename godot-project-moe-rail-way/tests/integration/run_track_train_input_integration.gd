@@ -390,6 +390,86 @@ func _run() -> void:
 	if consecutive_first_persisted and consecutive_second_changed:
 		print("PASS: Endpoint reshape integration consecutive endpoint gestures")
 
+	var reshape_config := SessionStartConfigScript.new(
+		123, 120.0, 60,
+		1.0, 10, 2, 3.0, 60.0, 1,
+		Vector2(800.0, 400.0), Vector2i(20, 10), 40.0, Vector2.ZERO,
+		&"departure_01", Vector2(20.0, 100.0), Vector2i(0, 2)
+	)
+	var reshape_track := TrackSystemScript.new(reshape_config)
+	var reshape_right_curve: Array[Vector2i] = [
+		Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2),
+		Vector2i(3, 3), Vector2i(3, 4),
+	]
+	view.present(_track_snapshot(reshape_track))
+	await _deliver(_button(_logical_to_viewport(view, Vector2(20.0, 100.0)), MOUSE_BUTTON_LEFT, true))
+	for logical in [Vector2(60.0, 100.0), Vector2(100.0, 100.0), Vector2(140.0, 100.0), Vector2(140.0, 140.0), Vector2(140.0, 180.0)]:
+		await _deliver(_motion(_logical_to_viewport(view, logical), MOUSE_BUTTON_MASK_LEFT))
+	var reshape_seed: TrackInputFrameScript = await _consume_view(shell, reshape_track)
+	var reshape_seed_ok: bool = reshape_seed.crossed_cells == reshape_right_curve \
+		and _record_cells(reshape_track.get_cell_records()) == reshape_right_curve
+	_assert_true(reshape_seed_ok, "Held-pointer reselection fixture creates the right curve")
+	await _release_view(shell, _logical_to_viewport(view, Vector2(140.0, 180.0)))
+	var reshape_release: TrackInputFrameScript = await _consume_view(shell, reshape_track)
+	_assert_true(reshape_release.left_released, "Held-pointer reselection fixture finalizes its seed gesture")
+	var reshape_endpoint := reshape_track.get_endpoint_cell()
+	var reshape_available := reshape_track.get_available_track_cells()
+	var reshape_endpoint_logical := (Vector2(reshape_endpoint) + Vector2(0.5, 0.5)) * reshape_config.grid_cell_size_units
+	await _deliver(_button(_logical_to_viewport(view, reshape_endpoint_logical), MOUSE_BUTTON_LEFT, true))
+	await _consume_view(shell, reshape_track)
+
+	var held_reselection_passed := reshape_seed_ok and reshape_release.left_released
+	var left_near := Vector2i(3, 1)
+	var left_near_logical := (Vector2(left_near) + Vector2(0.5, 0.5)) * reshape_config.grid_cell_size_units
+	await _deliver(_motion(_logical_to_viewport(view, left_near_logical), MOUSE_BUTTON_MASK_LEFT))
+	var left_near_frame: TrackInputFrameScript = await _consume_view(shell, reshape_track)
+	var left_expected: Array[Vector2i] = [
+		Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2),
+		Vector2i(3, 1), Vector2i(3, 0),
+	]
+	var left_ok: bool = _record_cells(reshape_track.get_cell_records()) == left_expected \
+		and reshape_track.is_left_capture_active() \
+		and reshape_track.is_runtime_gesture_active() \
+		and reshape_track.get_available_track_cells() == reshape_available \
+		and left_near_frame.left_held \
+		and not left_near_frame.left_released
+	_assert_true(left_ok, "Held pointer near left target reselects the left template")
+	held_reselection_passed = held_reselection_passed and left_ok
+
+	var straight_near := Vector2i(5, 1)
+	var straight_near_logical := (Vector2(straight_near) + Vector2(0.5, 0.5)) * reshape_config.grid_cell_size_units
+	await _deliver(_motion(_logical_to_viewport(view, straight_near_logical), MOUSE_BUTTON_MASK_LEFT))
+	var straight_near_frame: TrackInputFrameScript = await _consume_view(shell, reshape_track)
+	var straight_expected: Array[Vector2i] = [
+		Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2),
+		Vector2i(4, 2), Vector2i(5, 2),
+	]
+	var straight_ok: bool = _record_cells(reshape_track.get_cell_records()) == straight_expected \
+		and reshape_track.is_left_capture_active() \
+		and reshape_track.is_runtime_gesture_active() \
+		and reshape_track.get_available_track_cells() == reshape_available \
+		and straight_near_frame.left_held \
+		and not straight_near_frame.left_released
+	_assert_true(straight_ok, "Held pointer near straight target reselects the straight template")
+	held_reselection_passed = held_reselection_passed and straight_ok
+
+	var right_near := Vector2i(3, 3)
+	var right_near_logical := (Vector2(right_near) + Vector2(0.5, 0.5)) * reshape_config.grid_cell_size_units
+	await _deliver(_motion(_logical_to_viewport(view, right_near_logical), MOUSE_BUTTON_MASK_LEFT))
+	var right_near_frame: TrackInputFrameScript = await _consume_view(shell, reshape_track)
+	var right_ok: bool = _record_cells(reshape_track.get_cell_records()) == reshape_right_curve \
+		and reshape_track.is_left_capture_active() \
+		and reshape_track.is_runtime_gesture_active() \
+		and reshape_track.get_available_track_cells() == reshape_available \
+		and right_near_frame.left_held \
+		and not right_near_frame.left_released
+	_assert_true(right_ok, "Held pointer near right target reselects the right template")
+	held_reselection_passed = held_reselection_passed and right_ok
+	if held_reselection_passed:
+		print("PASS: Endpoint reshape integration held pointer reselects live template")
+	await _release_view(shell, _logical_to_viewport(view, Vector2(140.0, 140.0)))
+	await _consume_view(shell, reshape_track)
+
 	var overlap_track := TrackSystemScript.new(config)
 	var overlap_frame := TrackInputFrameScript.new(
 		[Vector2i(3, 2)], Vector2i(2, 2), true, Vector2i(-1, -1), false,
