@@ -44,6 +44,7 @@ func run() -> PackedStringArray:
 	_test_endpoint_reshape_extension_overlap_terminates_last_valid()
 	_test_endpoint_reshape_nonoverlap_remains_active()
 	_test_endpoint_reshape_train_lock_survives_begin_prepare_update_and_abort()
+	_test_endpoint_reshape_candidate_contact_does_not_contaminate_origin_abort()
 	_test_ordered_append_growth_and_transactional_rollback()
 	_test_built_head_reflows_without_geometry_lock()
 	_test_construction_excess_and_group_assignment()
@@ -1841,6 +1842,105 @@ func _assert_begin_prepare_abort_preserves_train_lock(track: GridTrackRuntimeScr
 	assert_equal(track._sequence._next_route_serial, origin_watermark, "Abort preserves the serial watermark")
 	assert_equal(origin_span["record_count"], 3, "Abort fixture keeps the CURVE_2X2 editable span semantics")
 	assert_true(origin_targets.has("straight"), "Abort fixture retains the original target semantics before restoration")
+
+
+func _test_endpoint_reshape_candidate_contact_does_not_contaminate_origin_abort() -> void:
+	print("Endpoint reshape: candidate contact does not contaminate origin abort snapshot")
+	var track = _boundary_runtime()
+	track.set_contact_anchors([
+		RouteContactAnchorScript.new(&"origin_curve_only", Vector2i(2, 1)),
+	])
+	var expected_origin_cells: Array[Vector2i] = [
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(2, 1),
+	]
+	var expected_origin_contacts: Array[Dictionary] = [{
+		"anchor_id": &"origin_curve_only",
+		"cell": Vector2i(2, 1),
+		"contact_possible": true,
+		"contacted": true,
+	}]
+	var expected_candidate_contacts: Array[Dictionary] = [{
+		"anchor_id": &"origin_curve_only",
+		"cell": Vector2i(2, 1),
+		"contact_possible": false,
+		"contacted": false,
+	}]
+	var expected_origin_anchors: Array[Dictionary] = [{
+		"anchor_id": &"origin_curve_only",
+		"cell": Vector2i(2, 1),
+	}]
+	var origin_records := _route_sampling_values(track.get_cell_records())
+	var origin_recovery := _train_lock_recovery_facts(track)
+	var origin_inventory: int = track.get_available_track_cells()
+	assert_equal(origin_records.size(), 4, "Origin-contact fixture has four route records")
+	for index in range(expected_origin_cells.size()):
+		assert_equal(origin_records[index]["serial"], index + 1, "Origin route serial is hand-derived")
+		assert_equal(origin_records[index]["cell"], expected_origin_cells[index], "Origin route cell is hand-derived")
+	assert_equal(track.get_contact_observations(), expected_origin_contacts, "Origin curve contacts its anchor")
+	assert_equal(_anchor_values(track._anchors), expected_origin_anchors, "Origin anchor is detached and exact")
+	assert_true(track.has_method("gesture_begin"), "Contact divergence fixture exposes gesture begin")
+	if not track.has_method("gesture_begin"):
+		return
+	var origin: Dictionary = track.call("gesture_begin", Vector2i(2, 1))
+	assert_true(origin is Dictionary and not origin.is_empty(), "Contact divergence fixture begins at the endpoint")
+	if not origin is Dictionary or origin.is_empty():
+		return
+	assert_equal(origin["targets"]["straight"], Vector2i(3, 0), "Straight replacement target is hand-derived")
+	assert_true(track.has_method("gesture_update"), "Contact divergence fixture exposes gesture update")
+	if not track.has_method("gesture_update"):
+		return
+	var straight_target: Array[Vector2i] = [Vector2i(3, 0)]
+	assert_true(track.call("gesture_update", straight_target), "Different valid straight candidate publishes")
+	assert_equal(track.get_contact_observations(), expected_candidate_contacts, "Candidate loses the origin-only contact")
+	assert_true(track.has_method("prepare_for_train_sampling"), "Contact divergence fixture exposes preparation")
+	if not track.has_method("prepare_for_train_sampling"):
+		return
+	assert_true(
+		track.call("prepare_for_train_sampling", 0.0, 0.5),
+		"Non-overlap preparation locks the retained predecessor after candidate update"
+	)
+	assert_true(track.call("gesture_is_active"), "Non-overlap preparation keeps the gesture active")
+	var prepared_prefix_record := _record_values(track.get_cell_records())[0]
+	var prepared_prefix_piece := _piece_values(track.get_geometry_pieces())[0]
+	var prepared_ledger := _piece_values(track._locked_ledger)
+	var prepared_recovery := _train_lock_recovery_facts(track)
+	var prepared_pose: Dictionary = track.get_pose_sample_at_distance(0.0)
+	var prepared_serial: int = track._sequence._next_route_serial
+	var staged_origin: Dictionary = track.call("get_gesture_origin_observation")
+	assert_true(staged_origin is Dictionary and not staged_origin.is_empty(), "Preparation refreshes the detached origin")
+	if not staged_origin is Dictionary or staged_origin.is_empty():
+		return
+	var staged_origin_records := _route_sampling_values(staged_origin["route_records"])
+	var staged_origin_pieces := _piece_sampling_values(staged_origin["pieces"])
+	var staged_origin_ledger := _piece_sampling_values(staged_origin["locked_ledger"])
+	var staged_origin_recovery := {
+		"built_end": origin_recovery["built_end"],
+		"recovered_cells_by_piece": staged_origin["recovery"]["recovered_cells_by_piece"].duplicate(true),
+		"recovered_end_distance_cells": staged_origin["recovery"]["recovered_end_distance_cells"],
+	}
+	assert_equal(staged_origin["contact_observations"], expected_origin_contacts, "Staged origin retains origin contact expectation")
+	assert_true(prepared_prefix_record["locked"], "Preparation locks the retained predecessor record")
+	assert_true(prepared_prefix_piece["locked"], "Preparation locks the retained predecessor piece")
+	assert_equal(prepared_ledger.size(), 1, "Preparation creates one retained predecessor ledger entry")
+	assert_equal(track.get_contact_observations(), expected_candidate_contacts, "Preparation retains candidate contact facts before abort")
+	assert_true(track.call("gesture_abort"), "Contact divergence fixture aborts the active gesture")
+	assert_equal(_route_sampling_values(track.get_cell_records()), staged_origin_records, "Abort restores exact origin route records")
+	assert_equal(_piece_sampling_values(track.get_geometry_pieces()), staged_origin_pieces, "Abort restores exact origin geometry pieces")
+	assert_equal(_piece_sampling_values(track._locked_ledger), staged_origin_ledger, "Abort restores exact origin ledger")
+	assert_equal(_anchor_values(track._anchors), expected_origin_anchors, "Abort restores exact origin anchors")
+	assert_equal(_train_lock_recovery_facts(track), staged_origin_recovery, "Abort restores exact origin recovery")
+	assert_equal(track.get_contact_observations(), expected_origin_contacts, "Abort restores origin-only contact observations")
+	assert_equal(track.get_available_track_cells(), origin_inventory, "Abort restores origin inventory")
+	assert_equal(track.get_cell_records()[0].cell, expected_origin_cells[0], "Abort restores the origin prefix cell")
+	assert_equal(track.get_cell_records()[-1].cell, expected_origin_cells[-1], "Abort restores the origin curve endpoint cell")
+	assert_equal(_record_values(track.get_cell_records())[0], prepared_prefix_record, "Abort preserves prepared prefix record lock facts")
+	assert_equal(_piece_values(track.get_geometry_pieces())[0], prepared_prefix_piece, "Abort preserves prepared prefix piece group/support facts")
+	assert_equal(_piece_values(track._locked_ledger), prepared_ledger, "Abort preserves prepared ledger identity and serial span")
+	assert_equal(_train_lock_recovery_facts(track), prepared_recovery, "Abort preserves post-begin train recovery facts")
+	assert_equal(track.get_pose_sample_at_distance(0.0), prepared_pose, "Abort preserves post-begin train pose sample")
+	assert_equal(track._sequence._next_route_serial, prepared_serial, "Abort preserves post-begin serial watermark")
+	assert_equal(track.get_available_track_cells(), origin_inventory, "Abort preserves post-begin inventory conservation")
+	assert_false(track.call("gesture_is_active"), "Abort clears only transient gesture state")
 
 
 func _train_lock_recovery_facts(track: GridTrackRuntimeScript) -> Dictionary:

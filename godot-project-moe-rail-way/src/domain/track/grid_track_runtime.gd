@@ -1090,10 +1090,16 @@ func _stage_active_gesture_train_safety_origin(
         return {}
     _assign_unique_unlocked_group_ids(origin_resolution.pieces, origin_ledger)
     origin_sequence.apply_resolved_geometry(origin_resolution.pieces)
+    var origin_contacts := _build_contact_observations(
+        origin_resolution.pieces,
+        _gesture_origin_anchors,
+        _gesture_origin_recovered_cells_by_piece
+    )
     return {
         "sequence": origin_sequence,
         "ledger": origin_ledger,
         "pieces": _duplicate_pieces(origin_resolution.pieces),
+        "contacts": origin_contacts.duplicate(true),
         "next_route_serial": maxi(
             origin_sequence._next_route_serial,
             candidate_sequence._next_route_serial
@@ -1111,7 +1117,7 @@ func _apply_active_gesture_train_safety_origin(staged_origin: Dictionary) -> voi
         _gesture_origin_sequence._next_route_serial,
         int(staged_origin["next_route_serial"])
     )
-    _gesture_origin_contacts = _contact_observations.duplicate(true)
+    _gesture_origin_contacts = staged_origin["contacts"].duplicate(true)
 
 
 func _advance_gesture_serial_watermark(candidate_sequence: TrackCellSequenceScript) -> void:
