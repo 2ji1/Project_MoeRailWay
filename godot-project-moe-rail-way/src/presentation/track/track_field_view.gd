@@ -554,6 +554,9 @@ func _update_hover_cell(local_position: Vector2) -> void:
 	if not _has_track_train_data:
 		_clear_hover_observations()
 		return
+	if _right_pressed_pending:
+		_clear_hover_observations()
+		return
 	if _presented_gesture_active:
 		_clear_hover_observations()
 		return

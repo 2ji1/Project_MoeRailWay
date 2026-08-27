@@ -383,12 +383,22 @@ func _run() -> void:
 	_assert_true(abort_active_before, "Abort fixture has an active domain gesture before right abort")
 	_assert_true(view._left_capture_active, "Abort fixture has view capture before right abort")
 	_assert_true(abort_track.is_left_capture_active(), "Abort fixture has facade capture before right abort")
+	var abort_view_capture_before_route: bool = view._left_capture_active
+	var abort_facade_capture_before_route: bool = abort_track.is_left_capture_active()
 	await _deliver(_button(_logical_to_viewport(view, Vector2(220.0, 100.0)), MOUSE_BUTTON_RIGHT, true))
 	var abort_right: TrackInputFrameScript = await _consume_view(shell)
-	abort_track.apply_right_input(abort_right)
+	var abort_routed: bool = abort_right.right_pressed and abort_track.apply_right_input(abort_right)
+	var abort_view_capture_after_route: bool = view._left_capture_active
+	var abort_facade_capture_after_route: bool = abort_track.is_left_capture_active()
+	_assert_true(abort_view_capture_before_route, "Abort fixture captures view immediately before public abort routing")
+	_assert_true(abort_facade_capture_before_route, "Abort fixture captures facade immediately before public abort routing")
+	_assert_true(abort_routed, "Abort fixture routes the right edge through the public facade")
 	_assert_true(not abort_track.is_runtime_gesture_active(), "Abort fixture domain gesture is inactive before snapshot presentation")
-	_assert_true(not abort_track.is_left_capture_active(), "Abort fixture facade capture is inactive before snapshot presentation")
+	_assert_true(not abort_facade_capture_after_route, "Abort fixture facade capture clears immediately after public abort routing")
+	_assert_true(abort_view_capture_after_route, "Abort fixture view capture remains until the terminating snapshot is presented")
 	view.present(_track_snapshot(abort_track, abort_controller.get_state()))
+	var abort_view_capture_after_present: bool = view._left_capture_active
+	_assert_true(not abort_view_capture_after_present, "Abort fixture view capture clears immediately after terminating snapshot presentation")
 	_assert_view_termination_clean(view, "Abort")
 	_assert_equal(view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Held abort endpoint does not republish green")
 	var abort_restored: bool = _track_facts(abort_track) == abort_origin
@@ -453,6 +463,10 @@ func _run() -> void:
 	_assert_view_termination_clean(view, "Train preparation")
 	_assert_true(not prep_track.is_left_capture_active(), "Train preparation clears facade capture")
 	var prep_frozen_state := _track_facts(prep_track)
+	var prep_candidate_to_prepare_inventory_stable: bool = prep_frozen_state["available"] == prep_candidate["available"]
+	var prep_candidate_to_prepare_endpoint_stable: bool = prep_frozen_state["endpoint"] == prep_candidate["endpoint"]
+	_assert_true(prep_candidate_to_prepare_inventory_stable, "Public candidate-to-prepare inventory remains stable")
+	_assert_true(prep_candidate_to_prepare_endpoint_stable, "Public candidate-to-prepare endpoint remains stable")
 	var prep_metadata_stable := _preparation_metadata_transition_is_expected(prep_candidate, prep_frozen_state)
 	var prep_frozen_records := _record_content_facts(prep_track.get_cell_records())
 	var prep_frozen_geometry := _track_geometry_facts(prep_track)
