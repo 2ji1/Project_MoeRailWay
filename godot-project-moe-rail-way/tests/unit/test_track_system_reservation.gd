@@ -24,6 +24,7 @@ func run() -> PackedStringArray:
 	_test_current_pointer_selects_completed_head_template()
 	_test_current_pointer_reselects_completed_head_template_while_held()
 	_test_authoritative_pointer_wins_over_crossed_target()
+	_test_reselection_keeps_suffix_after_selected_target()
 	_test_left_press_latch_requires_release_after_rejection()
 	_test_prepare_preserves_original_result_and_clears_capture()
 	_test_prepare_termination_waits_for_release()
@@ -510,6 +511,45 @@ func _test_authoritative_pointer_wins_over_crossed_target() -> void:
 		expected_route,
 		"Authoritative right target reset is not hidden by a later straight target"
 	)
+
+
+func _test_reselection_keeps_suffix_after_selected_target() -> void:
+	print("Endpoint interaction fix: reselection keeps suffix after selected target")
+	var config = SessionStartConfigScript.new(
+		1, 20.0, 1,
+		1.0, 8, 2, 2.0, 1.0, 1,
+		Vector2(420.0, 260.0), Vector2i(10, 6), 40.0, Vector2(10.0, 10.0),
+		&"departure", Vector2(30.0, 110.0), Vector2i(0, 2)
+	)
+	var track = TrackSystemScript.new(config)
+	var right_curve: Array[Vector2i] = [
+		Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2),
+		Vector2i(3, 3), Vector2i(3, 4),
+	]
+	track.apply_left_input(_left_frame(right_curve, true, true, false, Vector2i(0, 2)))
+	track.apply_left_input(_left_frame([], false, false, true, Vector2i(3, 4)))
+	var endpoint := track.get_endpoint_cell()
+	var available := track.get_available_track_cells()
+	track.apply_left_input(_left_frame([], true, true, false, endpoint, true, endpoint, true))
+	var straight_target := Vector2i(5, 2)
+	var suffix_cell := Vector2i(6, 2)
+	var frame := _left_frame(
+		[straight_target, suffix_cell], false, true, false,
+		endpoint, true, suffix_cell, true
+	)
+	assert_true(frame.left_held and not frame.left_released, "Reselection suffix frame stays held")
+	track.apply_left_input(frame)
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		[
+			Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2),
+			Vector2i(4, 2), straight_target, suffix_cell,
+		],
+		"Reselection keeps valid suffix cells after the selected target"
+	)
+	assert_true(track.is_left_capture_active(), "Reselection suffix frame keeps facade capture active")
+	assert_true(track.is_runtime_gesture_active(), "Reselection suffix frame keeps runtime gesture active")
+	assert_equal(track.get_available_track_cells(), available - 1, "Reselection suffix charges one new record")
 
 
 func _test_left_press_latch_requires_release_after_rejection() -> void:

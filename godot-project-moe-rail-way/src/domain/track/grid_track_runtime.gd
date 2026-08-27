@@ -188,6 +188,12 @@ func gesture_update(
         if pointer_reselected:
             next_suffix_input_facts.clear()
             next_ordinary_input_facts.clear()
+            if frame_target_indices[pointer_template_index] >= 0:
+                for index in range(frame_target_indices[pointer_template_index] + 1, crossed_cells.size()):
+                    next_suffix_input_facts = _append_new_gesture_input_fact(
+                        next_suffix_input_facts,
+                        crossed_cells[index]
+                    )
         elif frame_target_indices[pointer_template_index] >= 0:
             next_suffix_input_facts.clear()
             for index in range(frame_target_indices[pointer_template_index] + 1, crossed_cells.size()):
