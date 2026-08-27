@@ -73,7 +73,7 @@ func apply_left_input(input_frame: TrackInputFrameScript) -> void:
 		and input_frame.left_held
 	if had_old_release:
 		if _runtime.gesture_is_active():
-			if input_frame.has_explicit_release_snapshot and not input_frame.release_live_gesture_path.is_empty():
+			if input_frame.has_explicit_release_snapshot:
 				var release_pointer_cell := input_frame.left_release_pointer_cell \
 					if input_frame.left_release_pointer_inside_grid else Vector2i(-1, -1)
 				_runtime.gesture_update(

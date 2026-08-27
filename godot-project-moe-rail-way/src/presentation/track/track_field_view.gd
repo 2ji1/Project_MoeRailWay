@@ -167,6 +167,9 @@ func _rasterize_to(local_position: Vector2) -> void:
 func consume_input_frame():
 	var frame_left_press_cell := _left_press_cell if _left_pressed_pending else INVALID_CELL
 	var frame_left_press_inside_grid := _left_press_inside_grid if _left_pressed_pending else false
+	var frame_release_path: Variant = _release_live_gesture_path if _left_released_pending else null
+	var frame_release_pointer_cell := _left_release_pointer_cell if _left_released_pending else INVALID_CELL
+	var frame_release_pointer_inside_grid := _left_release_pointer_inside_grid if _left_released_pending else false
 	var frame = TrackInputFrameScript.new(
 		_crossed_cells,
 		frame_left_press_cell,
@@ -180,9 +183,9 @@ func consume_input_frame():
 		_current_pointer_cell,
 		_current_pointer_inside_grid,
 		_live_gesture_path,
-		_release_live_gesture_path,
-		_left_release_pointer_cell,
-		_left_release_pointer_inside_grid
+		frame_release_path,
+		frame_release_pointer_cell,
+		frame_release_pointer_inside_grid
 	)
 	if _left_released_pending and not _left_held:
 		_live_gesture_path.clear()

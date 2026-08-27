@@ -150,6 +150,7 @@ func _right_frame(
 
 func _test_input_frame_owns_an_independent_cell_buffer() -> void:
 	var empty_frame = TrackInputFrameScript.empty()
+	assert_false(empty_frame.has_explicit_release_snapshot, "Legacy empty frame has no explicit release snapshot")
 	assert_not_null(empty_frame.get("live_gesture_path"), "Empty frame exposes the live gesture path")
 	if empty_frame.get("live_gesture_path") == null:
 		return
@@ -537,11 +538,11 @@ func _test_explicit_empty_release_outside_pointer_is_authoritative() -> void:
 	print("Live gesture path: explicit empty outside release does not contaminate fresh press")
 	var track = TrackSystemScript.new(_config(10))
 	track.apply_left_input(_left_frame([Vector2i(1, 0)], true, true, false, Vector2i(0, 0), true, Vector2i(1, 0), true))
-	var fresh_path: Array[Vector2i] = [Vector2i(2, 0)]
+	var fresh_path: Array[Vector2i] = [Vector2i(1, 0)]
 	var empty_release: Array[Vector2i] = []
 	var frame := TrackInputFrameScript.new(
-		fresh_path, Vector2i(1, 0), true, Vector2i(-1, -1), false,
-		true, true, true, false, Vector2i(2, 0), true, fresh_path,
+		fresh_path, Vector2i(0, 0), true, Vector2i(-1, -1), false,
+		true, true, true, false, Vector2i(1, 0), true, fresh_path,
 		empty_release, Vector2i(-1, -1), false
 	)
 	assert_true(frame.has_explicit_release_snapshot, "Empty release is explicitly distinguished")
@@ -550,9 +551,11 @@ func _test_explicit_empty_release_outside_pointer_is_authoritative() -> void:
 	track.apply_left_input(frame)
 	assert_equal(
 		track.get_cell_records().map(func(record): return record.cell),
-		[Vector2i(1, 0), Vector2i(2, 0)],
-		"Outside empty release finalizes old last-valid geometry and fresh facts only extend the new gesture"
+		fresh_path,
+		"Empty explicit release removes the old candidate and fresh facts begin from its resulting origin"
 	)
+	assert_true(track.is_left_capture_active(), "Fresh press captures from the resulting origin after empty release")
+	assert_true(track.is_runtime_gesture_active(), "Fresh press remains active after empty release")
 
 
 func _test_pending_release_releases_inactive_rejected_latch() -> void:

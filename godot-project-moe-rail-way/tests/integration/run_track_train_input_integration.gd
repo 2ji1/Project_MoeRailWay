@@ -470,11 +470,23 @@ func _run() -> void:
 		and pending_track.is_runtime_gesture_active()
 	if pending_first_persisted and pending_second_changed:
 		print("PASS: live ordinary ghost survives pending release fresh press")
+	view.call("_gui_input", _motion(pending_next_position, MOUSE_BUTTON_MASK_LEFT))
+	view.call("_gui_input", _button(pending_next_position, MOUSE_BUTTON_LEFT, false))
+	view.call("_gui_input", _button(pending_next_position, MOUSE_BUTTON_LEFT, true))
+	view.call("_gui_input", _motion(pending_followup_position, MOUSE_BUTTON_MASK_LEFT))
+	var empty_coalesced_frame: TrackInputFrameScript = await _consume_view(shell, pending_track)
+	var empty_coalesced_cells := _record_cells(pending_track.get_cell_records())
+	_assert_true(empty_coalesced_frame.has_explicit_release_snapshot, "Active empty release remains explicit in a coalesced frame")
+	_assert_equal(empty_coalesced_frame.release_live_gesture_path, [], "Active empty release remains authoritative")
+	_assert_equal(empty_coalesced_frame.left_release_pointer_cell, Vector2i(4, 2), "Active empty release retains its pointer")
+	_assert_equal(empty_coalesced_cells, [Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2)], "Active empty release finalizes old origin before fresh update")
+	_assert_true(pending_track.is_left_capture_active(), "Fresh press after active empty release remains captured")
+	_assert_true(pending_track.is_runtime_gesture_active(), "Fresh press after active empty release remains active")
 	view.call("_gui_input", _button(pending_followup_position, MOUSE_BUTTON_LEFT, false))
 	var pending_cleanup_frame: TrackInputFrameScript = await _consume_view(shell)
 	pending_controller.advance_tick(pending_cleanup_frame)
-	await _deliver(_button(Vector2(-20.0, -20.0), MOUSE_BUTTON_LEFT, true))
-	await _deliver(_button(Vector2(-20.0, -20.0), MOUSE_BUTTON_LEFT, false))
+	view.call("_gui_input", _button(Vector2(-20.0, -20.0), MOUSE_BUTTON_LEFT, true))
+	view.call("_gui_input", _button(Vector2(-20.0, -20.0), MOUSE_BUTTON_LEFT, false))
 	var outside_release_frame: TrackInputFrameScript = await _consume_view(shell)
 	_assert_true(outside_release_frame.has_explicit_release_snapshot, "Outside release emits an explicit snapshot")
 	_assert_equal(outside_release_frame.release_live_gesture_path, [], "Outside release emits an empty detached path")
@@ -509,6 +521,47 @@ func _run() -> void:
 	await _consume_view(shell, reshape_track)
 
 	var held_reselection_passed := reshape_seed_ok and reshape_release.left_released
+	var replay_away := Vector2i(5, 1)
+	var replay_away_logical := (Vector2(replay_away) + Vector2(0.5, 0.5)) * reshape_config.grid_cell_size_units
+	await _deliver(_motion(_logical_to_viewport(view, replay_away_logical), MOUSE_BUTTON_MASK_LEFT))
+	var replay_away_frame: TrackInputFrameScript = await _consume_view(shell, reshape_track)
+	await _deliver(_motion(_logical_to_viewport(view, reshape_endpoint_logical), MOUSE_BUTTON_MASK_LEFT))
+	var signature_frame: TrackInputFrameScript = await _consume_view(shell, reshape_track)
+	var signature_records := _record_cells(reshape_track.get_cell_records())
+	var signature_inventory: int = reshape_track.get_available_track_cells()
+	var signature_ok: bool = replay_away_frame.left_held \
+		and signature_frame.left_held \
+		and signature_records == reshape_right_curve \
+		and signature_inventory == reshape_available
+	_assert_true(signature_ok, "Actual input selects the origin-equal absent target without a suffix")
+	await _deliver(_motion(_logical_to_viewport(view, reshape_endpoint_logical), MOUSE_BUTTON_MASK_LEFT))
+	var replay_frame: TrackInputFrameScript = await _consume_view(shell, reshape_track)
+	var replay_ok: bool = replay_frame.left_held \
+		and not replay_frame.left_released \
+		and _record_cells(reshape_track.get_cell_records()) == signature_records \
+		and reshape_track.get_available_track_cells() == signature_inventory \
+		and reshape_track.get_endpoint_cell() == reshape_endpoint
+	_assert_true(replay_ok, "Completed-template identical held replay is idempotent")
+	var extension_cell := Vector2i(3, 5)
+	var extension_logical := (Vector2(extension_cell) + Vector2(0.5, 0.5)) * reshape_config.grid_cell_size_units
+	await _deliver(_motion(_logical_to_viewport(view, extension_logical), MOUSE_BUTTON_MASK_LEFT))
+	var extension_frame: TrackInputFrameScript = await _consume_view(shell, reshape_track)
+	var extension_records := _record_cells(reshape_track.get_cell_records())
+	var extension_ok: bool = extension_frame.left_held \
+		and extension_records.has(extension_cell) \
+		and reshape_track.get_endpoint_cell() == extension_cell
+	_assert_true(extension_ok, "Changed real motion extends the same-template implicit suffix")
+	await _deliver(_motion(_logical_to_viewport(view, reshape_endpoint_logical), MOUSE_BUTTON_MASK_LEFT))
+	var return_frame: TrackInputFrameScript = await _consume_view(shell, reshape_track)
+	var return_ok: bool = return_frame.left_held \
+		and _record_cells(reshape_track.get_cell_records()) == signature_records \
+		and not _record_cells(reshape_track.get_cell_records()).has(extension_cell) \
+		and reshape_track.get_available_track_cells() == signature_inventory
+	_assert_true(return_ok, "Returning to the signature removes the implicit suffix")
+	var replay_substantive := signature_ok and replay_ok and extension_ok and return_ok
+	if replay_substantive:
+		print("PASS: completed-template replay is idempotent")
+
 	var left_near := Vector2i(3, 1)
 	var left_near_logical := (Vector2(left_near) + Vector2(0.5, 0.5)) * reshape_config.grid_cell_size_units
 	await _deliver(_motion(_logical_to_viewport(view, left_near_logical), MOUSE_BUTTON_MASK_LEFT))
@@ -524,18 +577,7 @@ func _run() -> void:
 		and left_near_frame.left_held \
 		and not left_near_frame.left_released
 	_assert_true(left_ok, "Held pointer near left target reselects the left template")
-	held_reselection_passed = held_reselection_passed and left_ok
-	var replay_records := _record_cells(reshape_track.get_cell_records())
-	var replay_inventory: int = reshape_track.get_available_track_cells()
-	await _deliver(_motion(_logical_to_viewport(view, left_near_logical), MOUSE_BUTTON_MASK_LEFT))
-	var replay_frame: TrackInputFrameScript = await _consume_view(shell, reshape_track)
-	var replay_ok: bool = replay_frame.left_held \
-		and not replay_frame.left_released \
-		and _record_cells(reshape_track.get_cell_records()) == replay_records \
-		and reshape_track.get_available_track_cells() == replay_inventory
-	_assert_true(replay_ok, "Completed-template identical held replay is idempotent")
-	if replay_ok:
-		print("PASS: completed-template replay is idempotent")
+	held_reselection_passed = held_reselection_passed and left_ok and replay_substantive
 
 	var straight_near := Vector2i(5, 1)
 	var straight_near_logical := (Vector2(straight_near) + Vector2(0.5, 0.5)) * reshape_config.grid_cell_size_units

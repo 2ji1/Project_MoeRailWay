@@ -805,11 +805,17 @@ func _test_template_selection_signature_replay_is_idempotent() -> void:
 	assert_true(track.gesture_update(signature_path, signature_pointer), "Identical replay rebuilds the candidate")
 	assert_equal(track.get_cell_records().map(func(record): return record.cell), first_cells, "Identical replay does not grow suffix")
 	assert_equal(track.get_available_track_cells(), first_inventory, "Identical replay does not consume inventory")
+	track._resolver = _RejectingResolver.new()
+	assert_false(track.gesture_update(signature_path, signature_pointer), "Identical replay revalidates the candidate")
+	assert_equal(track.get_cell_records().map(func(record): return record.cell), first_cells, "Rejected replay preserves last valid records")
+	assert_equal(track.get_available_track_cells(), first_inventory, "Rejected replay preserves inventory")
+	track._resolver = TrackGeometryResolverScript.new()
+	assert_true(track.gesture_update(signature_path, signature_pointer), "Replay succeeds again after validation is restored")
 	var extended_path: Array[Vector2i] = [Vector2i(3, 2)]
 	assert_true(track.gesture_update(extended_path, Vector2i(2, 1)), "Changed same-template pointer can extend")
 	assert_true(track.get_cell_records().any(func(record): return record.cell == Vector2i(3, 2)), "Changed pointer publishes its suffix")
 	assert_true(track.gesture_update(signature_path, signature_pointer), "Returning to signature rebuilds candidate")
-	assert_false(track.get_cell_records().any(func(record): return record.cell == Vector2i(3, 3)), "Returning to signature removes implicit suffix")
+	assert_false(track.get_cell_records().any(func(record): return record.cell == Vector2i(3, 2)), "Returning to signature removes the added implicit suffix")
 	track.gesture_abort()
 
 

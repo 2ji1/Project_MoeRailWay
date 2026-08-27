@@ -244,6 +244,7 @@ func _test_live_gesture_path_backtracks_and_rebranches_while_held() -> void:
 	_deliver(view, _button(origin, MOUSE_BUTTON_LEFT, true))
 	_deliver(view, _motion(_local_for_cell(view, Vector2i(3, 0))))
 	var first = view.consume_input_frame()
+	assert_false(first.has_explicit_release_snapshot, "Held non-release frame has no explicit release snapshot")
 	assert_not_null(first.get("live_gesture_path"), "First held frame exposes the live gesture path")
 	assert_equal(first.live_gesture_path, [Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)], "First held frame publishes the complete path")
 	_deliver(view, _motion(_local_for_cell(view, Vector2i(1, 0))))
