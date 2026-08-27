@@ -185,6 +185,8 @@ func _assert_view_termination_clean(view, prefix: String) -> void:
 	_assert_true(not view._right_press_inside_grid, "%s clears right press inside fact" % prefix)
 	_assert_equal(view._previous_pointer_cell, Vector2i(-1, -1), "%s clears previous pointer" % prefix)
 	_assert_true(not view._release_clears_capture, "%s clears release capture state" % prefix)
+	_assert_equal(view._live_gesture_path, [], "%s clears live gesture path" % prefix)
+	_assert_equal(view._release_live_gesture_path, [], "%s clears release gesture path" % prefix)
 
 
 func _train_cell(config: SessionStartConfigScript, position: Vector2) -> Vector2i:
@@ -427,16 +429,19 @@ func _run() -> void:
 	var pending_endpoint_position: Vector2 = view.get_global_transform_with_canvas().affine_inverse() * pending_endpoint_viewport
 	var pending_next_position: Vector2 = view.get_global_transform_with_canvas().affine_inverse() * pending_next_viewport
 	var pending_followup_position: Vector2 = view.get_global_transform_with_canvas().affine_inverse() * pending_followup_viewport
-	view.call("_gui_input", _button(pending_endpoint_position, MOUSE_BUTTON_LEFT, false))
-	view.call("_gui_input", _button(pending_endpoint_position, MOUSE_BUTTON_LEFT, true))
-	view.call("_gui_input", _motion(pending_next_position, MOUSE_BUTTON_MASK_LEFT))
+	view.call("_gui_input", _button(pending_next_position, MOUSE_BUTTON_LEFT, false))
+	view.call("_gui_input", _button(pending_next_position, MOUSE_BUTTON_LEFT, true))
+	view.call("_gui_input", _motion(pending_followup_position, MOUSE_BUTTON_MASK_LEFT))
 	var pending_second_frame: TrackInputFrameScript = await _consume_view(shell, pending_track)
 	var pending_second_cells := _record_cells(pending_track.get_cell_records())
 	_assert_true(pending_second_frame.left_pressed, "Pending-release integration preserves fresh press edge")
 	_assert_true(pending_second_frame.left_held, "Pending-release integration preserves fresh held state")
 	_assert_true(pending_second_frame.left_released, "Pending-release integration preserves pending release edge")
-	_assert_equal(pending_second_frame.live_gesture_path, [Vector2i(4, 2)], "Pending-release integration preserves fresh live path")
-	_assert_equal(pending_second_cells, pending_first_path + [Vector2i(4, 2)], "Pending-release integration publishes the fresh ghost")
+	_assert_true(pending_second_frame.has_explicit_release_snapshot, "Pending-release integration preserves explicit old release snapshot")
+	_assert_equal(pending_second_frame.release_live_gesture_path, [Vector2i(3, 2), Vector2i(4, 2)], "Pending-release integration preserves moving A-to-B release path")
+	_assert_equal(pending_second_frame.left_release_pointer_cell, Vector2i(4, 2), "Pending-release integration preserves old release pointer")
+	_assert_equal(pending_second_frame.live_gesture_path, [Vector2i(5, 2)], "Pending-release integration preserves fresh live path")
+	_assert_equal(pending_second_cells, [Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2)], "Pending-release integration publishes old then fresh ghost")
 	_assert_true(pending_track.is_left_capture_active(), "Pending-release integration keeps fresh facade capture")
 	_assert_true(pending_track.is_runtime_gesture_active(), "Pending-release integration keeps fresh runtime gesture")
 	view.call("_gui_input", _motion(pending_followup_position, MOUSE_BUTTON_MASK_LEFT))
@@ -444,28 +449,36 @@ func _run() -> void:
 	var pending_followup_cells := _record_cells(pending_track.get_cell_records())
 	_assert_true(pending_followup_frame.left_held, "Pending-release integration follow-up remains held")
 	_assert_true(not pending_followup_frame.left_released, "Pending-release integration follow-up has no new release edge")
-	_assert_equal(pending_followup_frame.live_gesture_path, [Vector2i(4, 2), Vector2i(5, 2)], "Pending-release integration retains the full fresh path")
-	_assert_equal(pending_followup_cells, pending_first_path + [Vector2i(4, 2), Vector2i(5, 2)], "Pending-release integration retains both fresh ghost cells")
+	_assert_equal(pending_followup_frame.live_gesture_path, [Vector2i(5, 2)], "Pending-release integration retains the full fresh path")
+	_assert_equal(pending_followup_cells, [Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2)], "Pending-release integration retains both fresh ghost cells")
 	_assert_equal(pending_track.get_available_track_cells(), config.total_track_cells - 3, "Pending-release integration preserves exact inventory")
 	_assert_true(pending_track.is_left_capture_active(), "Pending-release integration keeps follow-up facade capture")
 	_assert_true(pending_track.is_runtime_gesture_active(), "Pending-release integration keeps follow-up runtime gesture")
 	var pending_second_changed: bool = pending_second_frame.left_pressed \
 		and pending_second_frame.left_held \
 		and pending_second_frame.left_released \
-		and pending_second_frame.live_gesture_path == [Vector2i(4, 2)] \
-		and pending_second_cells == pending_first_path + [Vector2i(4, 2)] \
+		and pending_second_frame.has_explicit_release_snapshot \
+		and pending_second_frame.release_live_gesture_path == [Vector2i(3, 2), Vector2i(4, 2)] \
+		and pending_second_frame.live_gesture_path == [Vector2i(5, 2)] \
+		and pending_second_cells == [Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2)] \
 		and pending_followup_frame.left_held \
 		and not pending_followup_frame.left_released \
-		and pending_followup_frame.live_gesture_path == [Vector2i(4, 2), Vector2i(5, 2)] \
-		and pending_followup_cells == pending_first_path + [Vector2i(4, 2), Vector2i(5, 2)] \
+		and pending_followup_frame.live_gesture_path == [Vector2i(5, 2)] \
+		and pending_followup_cells == [Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2)] \
 		and pending_track.get_available_track_cells() == config.total_track_cells - 3 \
 		and pending_track.is_left_capture_active() \
 		and pending_track.is_runtime_gesture_active()
 	if pending_first_persisted and pending_second_changed:
 		print("PASS: live ordinary ghost survives pending release fresh press")
-	view.call("_gui_input", _button(pending_next_position, MOUSE_BUTTON_LEFT, false))
+	view.call("_gui_input", _button(pending_followup_position, MOUSE_BUTTON_LEFT, false))
 	var pending_cleanup_frame: TrackInputFrameScript = await _consume_view(shell)
 	pending_controller.advance_tick(pending_cleanup_frame)
+	await _deliver(_button(Vector2(-20.0, -20.0), MOUSE_BUTTON_LEFT, true))
+	await _deliver(_button(Vector2(-20.0, -20.0), MOUSE_BUTTON_LEFT, false))
+	var outside_release_frame: TrackInputFrameScript = await _consume_view(shell)
+	_assert_true(outside_release_frame.has_explicit_release_snapshot, "Outside release emits an explicit snapshot")
+	_assert_equal(outside_release_frame.release_live_gesture_path, [], "Outside release emits an empty detached path")
+	_assert_true(not outside_release_frame.left_release_pointer_inside_grid, "Outside release emits an outside pointer fact")
 
 	var reshape_config := SessionStartConfigScript.new(
 		123, 120.0, 60,
@@ -512,6 +525,17 @@ func _run() -> void:
 		and not left_near_frame.left_released
 	_assert_true(left_ok, "Held pointer near left target reselects the left template")
 	held_reselection_passed = held_reselection_passed and left_ok
+	var replay_records := _record_cells(reshape_track.get_cell_records())
+	var replay_inventory: int = reshape_track.get_available_track_cells()
+	await _deliver(_motion(_logical_to_viewport(view, left_near_logical), MOUSE_BUTTON_MASK_LEFT))
+	var replay_frame: TrackInputFrameScript = await _consume_view(shell, reshape_track)
+	var replay_ok: bool = replay_frame.left_held \
+		and not replay_frame.left_released \
+		and _record_cells(reshape_track.get_cell_records()) == replay_records \
+		and reshape_track.get_available_track_cells() == replay_inventory
+	_assert_true(replay_ok, "Completed-template identical held replay is idempotent")
+	if replay_ok:
+		print("PASS: completed-template replay is idempotent")
 
 	var straight_near := Vector2i(5, 1)
 	var straight_near_logical := (Vector2(straight_near) + Vector2(0.5, 0.5)) * reshape_config.grid_cell_size_units

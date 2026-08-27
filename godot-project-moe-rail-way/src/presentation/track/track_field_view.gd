@@ -42,6 +42,7 @@ var _field_draw_order := PackedStringArray(["grid_lines", "valid_start"])
 var _rasterizer = GridPointerRasterizerScript.new()
 var _crossed_cells: Array[Vector2i] = []
 var _live_gesture_path: Array[Vector2i] = []
+var _release_live_gesture_path: Array[Vector2i] = []
 var _left_press_cell := INVALID_CELL
 var _left_press_inside_grid := false
 var _right_press_cell := INVALID_CELL
@@ -49,6 +50,8 @@ var _right_press_inside_grid := false
 var _left_pressed_pending := false
 var _left_held := false
 var _left_released_pending := false
+var _left_release_pointer_cell := INVALID_CELL
+var _left_release_pointer_inside_grid := false
 var _right_pressed_pending := false
 var _left_capture_active := false
 var _release_clears_capture := false
@@ -134,6 +137,9 @@ func _end_left_press(local_position: Vector2) -> void:
 		return
 	if _left_capture_active:
 		_rasterize_to(local_position)
+	_release_live_gesture_path = _live_gesture_path.duplicate()
+	_left_release_pointer_cell = _current_pointer_cell
+	_left_release_pointer_inside_grid = _current_pointer_inside_grid
 	_left_released_pending = true
 	_left_held = false
 	_release_clears_capture = true
@@ -173,11 +179,17 @@ func consume_input_frame():
 		_right_pressed_pending,
 		_current_pointer_cell,
 		_current_pointer_inside_grid,
-		_live_gesture_path
+		_live_gesture_path,
+		_release_live_gesture_path,
+		_left_release_pointer_cell,
+		_left_release_pointer_inside_grid
 	)
 	if _left_released_pending and not _left_held:
 		_live_gesture_path.clear()
 	_crossed_cells.clear()
+	_release_live_gesture_path.clear()
+	_left_release_pointer_cell = INVALID_CELL
+	_left_release_pointer_inside_grid = false
 	_left_pressed_pending = false
 	if not _left_held:
 		_left_press_cell = INVALID_CELL
@@ -668,6 +680,9 @@ func _clear_view_capture_after_termination() -> void:
 	_left_capture_active = false
 	_crossed_cells.clear()
 	_live_gesture_path.clear()
+	_release_live_gesture_path.clear()
+	_left_release_pointer_cell = INVALID_CELL
+	_left_release_pointer_inside_grid = false
 	_left_pressed_pending = false
 	_left_press_cell = INVALID_CELL
 	_left_press_inside_grid = false

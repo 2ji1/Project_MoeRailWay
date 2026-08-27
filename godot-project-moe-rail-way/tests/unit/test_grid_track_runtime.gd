@@ -27,6 +27,7 @@ func run() -> PackedStringArray:
 	_test_template_origin_suffix_guards_remain_atomic()
 	_test_template_change_does_not_anchor_control_path_at_origin()
 	_test_live_template_suffix_absent_on_first_update()
+	_test_template_selection_signature_replay_is_idempotent()
 	_test_live_template_suffix_absent_after_rejected_target()
 	_test_endpoint_reshape_invalid_bounds_preserve_last_valid()
 	_test_endpoint_reshape_invalid_overlap_preserve_last_valid()
@@ -785,6 +786,30 @@ func _test_live_template_suffix_absent_on_first_update() -> void:
 	assert_equal(track.get_cell_records().size(), original_cells.size() + 1, "Origin-equal absent target appends the live suffix")
 	assert_equal(track.get_cell_records()[-1].cell, Vector2i(3, 2), "Origin-equal absent target appends the adjacent cell")
 	assert_equal(track.get_available_track_cells(), 12, "Origin-equal absent target charges one inventory cell")
+	track.gesture_abort()
+
+
+func _test_template_selection_signature_replay_is_idempotent() -> void:
+	print("Live gesture path: completed-template selection replay is idempotent")
+	var track = _make_three_by_three_curve_runtime()
+	assert_true(track.gesture_begin(track.get_endpoint_cell()).size() > 0, "Replay fixture begins gesture")
+	var signature_path: Array[Vector2i] = [Vector2i(3, 2)]
+	var signature_pointer := Vector2i(2, 2)
+	track._gesture_selected_template_index = 2
+	assert_true(track.gesture_update(signature_path, signature_pointer), "Replay fixture selects origin-equal absent target")
+	var first_cells: Array = track.get_cell_records().map(func(record): return record.cell)
+	var first_inventory: int = track.get_available_track_cells()
+	assert_true(track._gesture_template_selection_signature_valid, "Replay fixture records detached selection signature")
+	assert_equal(track._gesture_template_selection_signature_path, signature_path, "Signature stores the held path")
+	assert_equal(track._gesture_template_selection_signature_pointer, signature_pointer, "Signature stores the held pointer")
+	assert_true(track.gesture_update(signature_path, signature_pointer), "Identical replay rebuilds the candidate")
+	assert_equal(track.get_cell_records().map(func(record): return record.cell), first_cells, "Identical replay does not grow suffix")
+	assert_equal(track.get_available_track_cells(), first_inventory, "Identical replay does not consume inventory")
+	var extended_path: Array[Vector2i] = [Vector2i(3, 2)]
+	assert_true(track.gesture_update(extended_path, Vector2i(2, 1)), "Changed same-template pointer can extend")
+	assert_true(track.get_cell_records().any(func(record): return record.cell == Vector2i(3, 2)), "Changed pointer publishes its suffix")
+	assert_true(track.gesture_update(signature_path, signature_pointer), "Returning to signature rebuilds candidate")
+	assert_false(track.get_cell_records().any(func(record): return record.cell == Vector2i(3, 3)), "Returning to signature removes implicit suffix")
 	track.gesture_abort()
 
 

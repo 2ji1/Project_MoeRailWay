@@ -13,6 +13,10 @@ var left_released: bool
 var right_pressed: bool
 var current_pointer_cell: Vector2i
 var current_pointer_inside_grid: bool
+var release_live_gesture_path: Array[Vector2i]
+var left_release_pointer_cell: Vector2i
+var left_release_pointer_inside_grid: bool
+var has_explicit_release_snapshot: bool
 
 
 func _init(
@@ -27,7 +31,10 @@ func _init(
 	right_pressed_value: bool = false,
 	current_pointer_cell_value: Vector2i = Vector2i(-1, -1),
 	current_pointer_inside_grid_value: bool = false,
-	live_gesture_path_value: Variant = null
+	live_gesture_path_value: Variant = null,
+	release_live_gesture_path_value: Variant = null,
+	left_release_pointer_cell_value: Vector2i = Vector2i(-1, -1),
+	left_release_pointer_inside_grid_value: bool = false
 ) -> void:
 	crossed_cells = crossed_cells_value.duplicate()
 	live_gesture_path = []
@@ -44,6 +51,13 @@ func _init(
 	right_pressed = right_pressed_value
 	current_pointer_cell = current_pointer_cell_value
 	current_pointer_inside_grid = current_pointer_inside_grid_value
+	release_live_gesture_path = []
+	if release_live_gesture_path_value != null:
+		for cell in release_live_gesture_path_value:
+			release_live_gesture_path.append(Vector2i(cell))
+	left_release_pointer_cell = left_release_pointer_cell_value
+	left_release_pointer_inside_grid = left_release_pointer_inside_grid_value
+	has_explicit_release_snapshot = release_live_gesture_path_value != null
 
 
 static func empty() -> TrackInputFrame:

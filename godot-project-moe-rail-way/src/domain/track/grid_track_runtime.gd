@@ -35,6 +35,9 @@ var _gesture_target_endpoints: Dictionary = {}
 var _gesture_selected_template_index := -1
 var _gesture_suffix_input_facts: Array[Dictionary] = []
 var _gesture_ordinary_input_facts: Array[Dictionary] = []
+var _gesture_template_selection_signature_valid := false
+var _gesture_template_selection_signature_path: Array[Vector2i] = []
+var _gesture_template_selection_signature_pointer := Vector2i(-1, -1)
 
 
 func _init(
@@ -104,6 +107,9 @@ func gesture_begin(endpoint: Vector2i) -> Dictionary:
     _gesture_selected_template_index = _matching_template_index(_gesture_editable_span)
     _gesture_suffix_input_facts.clear()
     _gesture_ordinary_input_facts.clear()
+    _gesture_template_selection_signature_valid = false
+    _gesture_template_selection_signature_path.clear()
+    _gesture_template_selection_signature_pointer = Vector2i(-1, -1)
     _gesture_active = true
     return _gesture_origin_observation()
 
@@ -175,7 +181,8 @@ func gesture_update(
                 frame_template_index = index
                 frame_target_indices[index] = cell_index
     var templates := _template_cells(_gesture_editable_span)
-    var next_template_index := _gesture_selected_template_index
+    var previous_template_index := _gesture_selected_template_index
+    var next_template_index := previous_template_index
     var next_suffix_input_facts: Array[Dictionary] = _gesture_suffix_input_facts.duplicate(true)
     var next_ordinary_input_facts: Array[Dictionary] = _gesture_ordinary_input_facts.duplicate(true)
     var pointer_template_index := _template_index_from_pointer(current_pointer_cell, templates)
@@ -195,6 +202,7 @@ func gesture_update(
             live_path
         )
 
+    var template_changed := next_template_index != previous_template_index
     if next_template_index >= 0:
         var selected_target_index := -1
         if next_template_index < frame_target_indices.size():
@@ -205,18 +213,24 @@ func gesture_update(
                 current_suffix_cells.append(live_path[index])
         elif (
             _gesture_origin_sequence != null
-            and next_template_index == _gesture_selected_template_index
+            and next_template_index == previous_template_index
             and next_template_index < [&"straight", &"left", &"right"].size()
             and _gesture_target_endpoints.get(
                 [&"straight", &"left", &"right"][next_template_index],
                 Vector2i(-1, -1)
             ) == _gesture_origin_sequence.get_endpoint_cell()
         ):
-            for cell in live_path:
-                current_suffix_cells.append(cell)
+            var is_selection_replay := _gesture_template_selection_signature_valid \
+                and _gesture_template_selection_signature_pointer == current_pointer_cell \
+                and _gesture_template_selection_signature_path == live_path
+            if not is_selection_replay:
+                for cell in live_path:
+                    current_suffix_cells.append(cell)
         var existing_suffix_input_facts: Array[Dictionary] = []
-        if next_template_index == _gesture_selected_template_index:
+        if next_template_index == previous_template_index:
             existing_suffix_input_facts = _gesture_suffix_input_facts
+        if template_changed:
+            existing_suffix_input_facts = []
         next_suffix_input_facts = _reconcile_gesture_input_facts(
             existing_suffix_input_facts,
             current_suffix_cells
@@ -260,6 +274,28 @@ func gesture_update(
     _gesture_selected_template_index = next_template_index
     _gesture_suffix_input_facts = next_suffix_input_facts
     _gesture_ordinary_input_facts = next_ordinary_input_facts
+    if template_changed:
+        _gesture_template_selection_signature_valid = false
+        _gesture_template_selection_signature_path.clear()
+        _gesture_template_selection_signature_pointer = Vector2i(-1, -1)
+        var selected_template_name := StringName()
+        if next_template_index >= 0 and next_template_index < 3:
+            selected_template_name = [&"straight", &"left", &"right"][next_template_index]
+        var selected_target: Vector2i = Vector2i(
+            _gesture_target_endpoints.get(selected_template_name, Vector2i(-1, -1))
+        )
+        var selected_target_in_frame := next_template_index >= 0 \
+            and next_template_index < frame_target_indices.size() \
+            and frame_target_indices[next_template_index] >= 0
+        if (
+            next_template_index >= 0
+            and not selected_target_in_frame
+            and _gesture_origin_sequence != null
+            and selected_target == _gesture_origin_sequence.get_endpoint_cell()
+        ):
+            _gesture_template_selection_signature_valid = true
+            _gesture_template_selection_signature_path = live_path.duplicate()
+            _gesture_template_selection_signature_pointer = current_pointer_cell
     _contact_observations = candidate_contacts.duplicate(true)
     return true
 
@@ -941,6 +977,9 @@ func _clear_gesture_state() -> void:
     _gesture_selected_template_index = -1
     _gesture_suffix_input_facts.clear()
     _gesture_ordinary_input_facts.clear()
+    _gesture_template_selection_signature_valid = false
+    _gesture_template_selection_signature_path.clear()
+    _gesture_template_selection_signature_pointer = Vector2i(-1, -1)
 
 
 func _resolve_records():
