@@ -764,7 +764,7 @@ git commit -m 'fix: continue origin-owned construction during gestures'
 
   Specification review checks design sections 3.4, 3.6, 4, and Section 5's
   `GridTrackRuntime` responsibility, plus required
-  evidence 17. Quality review checks route-serial frontier membership, editable-span
+  evidence 17-19. Quality review checks route-serial frontier membership, editable-span
   reflow, exact origin/current state-progress mirroring, suffix ghost-only behavior,
   abort/finalize timing, paused recovery, and preservation of locks, inventory, and
   train sampling. Any finding must be resolved with a new focused RED/GREEN commit
