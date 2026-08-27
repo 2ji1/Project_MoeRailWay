@@ -288,6 +288,11 @@ func _test_pending_release_and_fresh_press_share_frame_facts() -> void:
 	assert_true(coalesced.left_released, "Prior release remains observable in the coalesced frame")
 	assert_equal(coalesced.left_press_cell, Vector2i(3, 0), "Fresh press cell is preserved")
 	assert_equal(coalesced.live_gesture_path, [Vector2i(4, 0)], "Fresh held path is preserved")
+	_deliver(view, _motion(_local_for_cell(view, Vector2i(5, 0))))
+	var followup = view.consume_input_frame()
+	assert_true(followup.left_held and not followup.left_released, "Follow-up motion remains held")
+	assert_equal(followup.live_gesture_path, [Vector2i(4, 0), Vector2i(5, 0)], "Follow-up frame retains the complete fresh path")
+	assert_equal(coalesced.live_gesture_path, [Vector2i(4, 0)], "Coalesced frame remains detached after follow-up motion")
 	fixture.parent.free()
 
 

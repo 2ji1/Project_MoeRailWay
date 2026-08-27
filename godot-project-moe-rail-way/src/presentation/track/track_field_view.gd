@@ -175,7 +175,7 @@ func consume_input_frame():
 		_current_pointer_inside_grid,
 		_live_gesture_path
 	)
-	if _left_released_pending:
+	if _left_released_pending and not _left_held:
 		_live_gesture_path.clear()
 	_crossed_cells.clear()
 	_left_pressed_pending = false

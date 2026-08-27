@@ -420,8 +420,13 @@ func _run() -> void:
 		view,
 		Vector2(180.0, 100.0)
 	)
+	var pending_followup_viewport := _logical_to_viewport(
+		view,
+		Vector2(220.0, 100.0)
+	)
 	var pending_endpoint_position: Vector2 = view.get_global_transform_with_canvas().affine_inverse() * pending_endpoint_viewport
 	var pending_next_position: Vector2 = view.get_global_transform_with_canvas().affine_inverse() * pending_next_viewport
+	var pending_followup_position: Vector2 = view.get_global_transform_with_canvas().affine_inverse() * pending_followup_viewport
 	view.call("_gui_input", _button(pending_endpoint_position, MOUSE_BUTTON_LEFT, false))
 	view.call("_gui_input", _button(pending_endpoint_position, MOUSE_BUTTON_LEFT, true))
 	view.call("_gui_input", _motion(pending_next_position, MOUSE_BUTTON_MASK_LEFT))
@@ -434,11 +439,25 @@ func _run() -> void:
 	_assert_equal(pending_second_cells, pending_first_path + [Vector2i(4, 2)], "Pending-release integration publishes the fresh ghost")
 	_assert_true(pending_track.is_left_capture_active(), "Pending-release integration keeps fresh facade capture")
 	_assert_true(pending_track.is_runtime_gesture_active(), "Pending-release integration keeps fresh runtime gesture")
+	view.call("_gui_input", _motion(pending_followup_position, MOUSE_BUTTON_MASK_LEFT))
+	var pending_followup_frame: TrackInputFrameScript = await _consume_view(shell, pending_track)
+	var pending_followup_cells := _record_cells(pending_track.get_cell_records())
+	_assert_true(pending_followup_frame.left_held, "Pending-release integration follow-up remains held")
+	_assert_true(not pending_followup_frame.left_released, "Pending-release integration follow-up has no new release edge")
+	_assert_equal(pending_followup_frame.live_gesture_path, [Vector2i(4, 2), Vector2i(5, 2)], "Pending-release integration retains the full fresh path")
+	_assert_equal(pending_followup_cells, pending_first_path + [Vector2i(4, 2), Vector2i(5, 2)], "Pending-release integration retains both fresh ghost cells")
+	_assert_equal(pending_track.get_available_track_cells(), config.total_track_cells - 3, "Pending-release integration preserves exact inventory")
+	_assert_true(pending_track.is_left_capture_active(), "Pending-release integration keeps follow-up facade capture")
+	_assert_true(pending_track.is_runtime_gesture_active(), "Pending-release integration keeps follow-up runtime gesture")
 	var pending_second_changed: bool = pending_second_frame.left_pressed \
 		and pending_second_frame.left_held \
 		and pending_second_frame.left_released \
 		and pending_second_frame.live_gesture_path == [Vector2i(4, 2)] \
 		and pending_second_cells == pending_first_path + [Vector2i(4, 2)] \
+		and pending_followup_frame.left_held \
+		and not pending_followup_frame.left_released \
+		and pending_followup_frame.live_gesture_path == [Vector2i(4, 2), Vector2i(5, 2)] \
+		and pending_followup_cells == pending_first_path + [Vector2i(4, 2), Vector2i(5, 2)] \
 		and pending_track.is_left_capture_active() \
 		and pending_track.is_runtime_gesture_active()
 	if pending_first_persisted and pending_second_changed:

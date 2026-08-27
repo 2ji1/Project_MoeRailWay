@@ -463,6 +463,15 @@ func _test_pending_release_preserves_fresh_press_gesture() -> void:
 	)
 	assert_true(track.is_left_capture_active(), "Coalesced fresh press remains captured")
 	assert_true(track.is_runtime_gesture_active(), "Coalesced fresh press remains active")
+	var continuation_path: Array[Vector2i] = [Vector2i(2, 0), Vector2i(3, 0)]
+	track.apply_left_input(_left_frame(continuation_path, false, true, false, Vector2i(2, 0)))
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		first_path + continuation_path,
+		"Active prior coalesced gesture retains its full fresh path on follow-up motion"
+	)
+	assert_true(track.is_left_capture_active(), "Active prior follow-up keeps facade capture")
+	assert_true(track.is_runtime_gesture_active(), "Active prior follow-up keeps runtime gesture")
 
 
 func _test_pending_release_releases_inactive_rejected_latch() -> void:
@@ -480,6 +489,15 @@ func _test_pending_release_releases_inactive_rejected_latch() -> void:
 	)
 	assert_true(track.is_left_capture_active(), "Fresh eligible press restores facade capture")
 	assert_true(track.is_runtime_gesture_active(), "Fresh eligible press restores runtime gesture")
+	var continuation_path: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0)]
+	track.apply_left_input(_left_frame(continuation_path, false, true, false, Vector2i(1, 0)))
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		continuation_path,
+		"Inactive rejected prior follow-up retains its full fresh path"
+	)
+	assert_true(track.is_left_capture_active(), "Inactive rejected prior follow-up keeps facade capture")
+	assert_true(track.is_runtime_gesture_active(), "Inactive rejected prior follow-up keeps runtime gesture")
 
 
 func _test_pending_release_reopens_after_train_preparation_termination() -> void:
@@ -499,6 +517,15 @@ func _test_pending_release_reopens_after_train_preparation_termination() -> void
 	)
 	assert_true(track.is_left_capture_active(), "Preparation-terminated latch accepts fresh facade capture")
 	assert_true(track.is_runtime_gesture_active(), "Preparation-terminated latch accepts fresh runtime gesture")
+	var continuation_path: Array[Vector2i] = [Vector2i(2, 0), Vector2i(3, 0)]
+	track.apply_left_input(_left_frame(continuation_path, false, true, false, Vector2i(2, 0)))
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		[Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)],
+		"Preparation-terminated prior follow-up retains its full fresh path"
+	)
+	assert_true(track.is_left_capture_active(), "Preparation-terminated follow-up keeps facade capture")
+	assert_true(track.is_runtime_gesture_active(), "Preparation-terminated follow-up keeps runtime gesture")
 
 
 func _test_ineligible_coalesced_press_keeps_existing_rejection_latch_only() -> void:
@@ -522,6 +549,15 @@ func _test_ineligible_coalesced_press_keeps_existing_rejection_latch_only() -> v
 	)
 	assert_true(track.is_left_capture_active(), "Later eligible press restores facade capture")
 	assert_true(track.is_runtime_gesture_active(), "Later eligible press restores runtime gesture")
+	var continuation_path: Array[Vector2i] = [Vector2i(2, 0), Vector2i(3, 0)]
+	track.apply_left_input(_left_frame(continuation_path, false, true, false, Vector2i(2, 0)))
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		[Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)],
+		"Ineligible coalesced press recovery retains its full fresh path"
+	)
+	assert_true(track.is_left_capture_active(), "Ineligible recovery follow-up keeps facade capture")
+	assert_true(track.is_runtime_gesture_active(), "Ineligible recovery follow-up keeps runtime gesture")
 
 
 func _test_current_pointer_selects_completed_head_template() -> void:
