@@ -24,6 +24,7 @@ func run() -> PackedStringArray:
 	_test_same_frame_press_routes_through_gesture_transaction()
 	_test_current_pointer_selects_completed_head_template()
 	_test_current_pointer_reselects_completed_head_template_while_held()
+	_test_completed_template_suffix_backtracks_while_held()
 	_test_authoritative_pointer_wins_over_crossed_target()
 	_test_reselection_keeps_suffix_after_selected_target()
 	_test_left_press_latch_requires_release_after_rejection()
@@ -541,6 +542,52 @@ func _test_current_pointer_reselects_completed_head_template_while_held() -> voi
 	assert_true(track.is_left_capture_active(), "Right reselection keeps facade capture active")
 	assert_true(track.is_runtime_gesture_active(), "Right reselection keeps runtime gesture active")
 	assert_equal(track.get_available_track_cells(), available, "Equal-length right replacement preserves inventory")
+
+
+func _test_completed_template_suffix_backtracks_while_held() -> void:
+	print("Live gesture path: completed template suffix backtracks while held")
+	var config = SessionStartConfigScript.new(
+		1, 20.0, 1,
+		1.0, 10, 2, 2.0, 1.0, 1,
+		Vector2(420.0, 260.0), Vector2i(10, 6), 40.0, Vector2(10.0, 10.0),
+		&"departure", Vector2(30.0, 110.0), Vector2i(0, 2)
+	)
+	var track = TrackSystemScript.new(config)
+	var right_curve: Array[Vector2i] = [
+		Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2),
+		Vector2i(3, 3), Vector2i(3, 4),
+	]
+	track.apply_left_input(_left_frame(right_curve, true, true, false, Vector2i(0, 2), true, Vector2i(3, 4), true))
+	track.apply_left_input(_left_frame(right_curve, false, false, true, Vector2i(0, 2), true, Vector2i(3, 4), true))
+	var endpoint := track.get_endpoint_cell()
+	track.apply_left_input(_left_frame([], true, true, false, endpoint, true, endpoint, true))
+	var straight_target := Vector2i(5, 2)
+	var first_path: Array[Vector2i] = [straight_target, Vector2i(6, 2), Vector2i(7, 2)]
+	var first_frame := _left_frame(first_path, false, true, false, endpoint, true, Vector2i(7, 2), true)
+	track.apply_left_input(first_frame)
+	var first_serials := track.get_cell_records().map(func(record): return record.route_serial)
+	assert_equal(track.get_cell_records().map(func(record): return record.cell), [
+		Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2),
+		Vector2i(4, 2), straight_target, Vector2i(6, 2), Vector2i(7, 2),
+	], "Completed template publishes the full held suffix")
+	var available_before_shorter := track.get_available_track_cells()
+	var shorter_path: Array[Vector2i] = [straight_target, Vector2i(6, 2)]
+	track.apply_left_input(_left_frame(shorter_path, false, true, false, endpoint, true, Vector2i(6, 2), true))
+	assert_equal(track.get_cell_records().map(func(record): return record.cell), [
+		Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2), Vector2i(4, 2),
+		straight_target, Vector2i(6, 2),
+	], "Held completed-template suffix backtracks from the current path")
+	assert_equal(track.get_available_track_cells(), available_before_shorter + 1, "Held suffix backtrack refunds exactly one cell")
+	assert_true(track.is_left_capture_active() and track.is_runtime_gesture_active(), "Held suffix backtrack keeps captures active")
+	var first_suffix_serial: int = first_serials[-2]
+	var first_removed_serial: int = first_serials[-1]
+	var rebranch_path: Array[Vector2i] = [straight_target, Vector2i(6, 2), Vector2i(6, 3)]
+	track.apply_left_input(_left_frame(rebranch_path, false, true, false, endpoint, true, Vector2i(6, 3), true))
+	var rebranch_records = track.get_cell_records()
+	assert_equal(rebranch_records[-2].route_serial, first_suffix_serial, "Rebranch preserves the surviving suffix serial")
+	assert_true(rebranch_records[-1].route_serial > first_removed_serial, "Rebranch allocates a fresh serial")
+	assert_equal(rebranch_records[-1].cell, Vector2i(6, 3), "Rebranch publishes the replacement suffix cell")
+	track.apply_left_input(_left_frame([], false, false, true, endpoint, true, Vector2i(6, 3), true))
 
 
 func _test_authoritative_pointer_wins_over_crossed_target() -> void:

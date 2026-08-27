@@ -22,6 +22,7 @@ func run() -> PackedStringArray:
 	_test_endpoint_reshape_consecutive_gesture_retains_current_template()
 	_test_endpoint_reshape_control_cells_are_omitted()
 	_test_endpoint_reshape_target_reentry_rebuilds_from_origin()
+	_test_live_template_suffix_reconciles_from_current_path()
 	_test_endpoint_reshape_invalid_bounds_preserve_last_valid()
 	_test_endpoint_reshape_invalid_overlap_preserve_last_valid()
 	_test_endpoint_reshape_anchor_compatible_downgrade_preserves_observations()
@@ -636,6 +637,34 @@ func _test_endpoint_reshape_target_reentry_rebuilds_from_origin() -> void:
 	track.call("gesture_finalize")
 
 
+func _test_live_template_suffix_reconciles_from_current_path() -> void:
+	var track = _make_three_by_three_curve_runtime()
+	assert_true(track.gesture_begin(track.get_endpoint_cell()).size() > 0, "Live suffix fixture begins initial gesture")
+	assert_true(track.gesture_finalize(), "Live suffix fixture finalizes right curve")
+	var endpoint: Vector2i = track.get_endpoint_cell()
+	var began = track.gesture_begin(endpoint)
+	assert_true(began is Dictionary and not began.is_empty(), "Live suffix fixture begins held replacement")
+	if not began is Dictionary or began.is_empty():
+		return
+	var straight_target: Vector2i = began["targets"]["straight"]
+	var first_path: Array[Vector2i] = [straight_target, Vector2i(5, 0), Vector2i(6, 0)]
+	var shorter_path: Array[Vector2i] = [straight_target, Vector2i(5, 0)]
+	print("Live gesture path: completed template suffix backtracks while held")
+	assert_true(track.gesture_update(first_path, first_path[-1]), "Live suffix fixture publishes template and suffix")
+	var first_records = track.get_cell_records()
+	assert_equal(first_records[-2].cell, Vector2i(5, 0), "Live suffix fixture retains first suffix cell")
+	assert_equal(first_records[-1].cell, Vector2i(6, 0), "Live suffix fixture retains second suffix cell")
+	var surviving_serial: int = first_records[-2].route_serial
+	var available_before_shorter: int = track.get_available_track_cells()
+	assert_true(track.gesture_update(shorter_path, shorter_path[-1]), "Live suffix fixture backtracks while held")
+	var shorter_records = track.get_cell_records()
+	assert_false(shorter_records.any(func(record): return record.cell == Vector2i(6, 0)), "Backtracking removes the superseded suffix cell")
+	assert_equal(track.get_available_track_cells(), available_before_shorter + 1, "Backtracking refunds one inventory cell")
+	assert_equal(shorter_records[-1].route_serial, surviving_serial, "Backtracking preserves surviving suffix identity")
+	assert_true(track.gesture_is_active(), "Backtracking keeps capture active")
+	track.gesture_abort()
+
+
 func _test_endpoint_reshape_invalid_bounds_preserve_last_valid() -> void:
 	var track = GridTrackRuntimeScript.new(
 		Vector2i(-1, 2), 18, Vector2.ZERO, Vector2i(6, 8), 40.0
@@ -1205,7 +1234,7 @@ func _test_endpoint_reshape_finalize_applies_retirement() -> void:
 		return
 	var finalize_target_cells: Array[Vector2i] = [began["targets"]["left"]]
 	assert_true(track.call("gesture_update", finalize_target_cells), "Finalize fixture publishes the selected template")
-	var extension_cells: Array[Vector2i] = [Vector2i(3, 3)]
+	var extension_cells: Array[Vector2i] = [finalize_target_cells[0], Vector2i(3, 3)]
 	assert_true(track.call("gesture_update", extension_cells), "Finalize fixture publishes a suffix candidate")
 	assert_equal(track.get_cell_records().size(), 7, "Finalize fixture retains the complete suffix candidate")
 	assert_equal(track._locked_ledger.size(), 1, "Finalize defers new retirement while the gesture is active")

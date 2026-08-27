@@ -470,6 +470,36 @@ func _run() -> void:
 	await _release_view(shell, _logical_to_viewport(view, Vector2(140.0, 140.0)))
 	await _consume_view(shell, reshape_track)
 
+	var live_reflow_track := TrackSystemScript.new(config)
+	view.present(_track_snapshot(live_reflow_track))
+	var origin_position := _logical_to_viewport(view, Vector2(100.0, 100.0))
+	var first_endpoint_position := _logical_to_viewport(view, Vector2(180.0, 140.0))
+	var backtrack_position := _logical_to_viewport(view, Vector2(140.0, 100.0))
+	var opposite_endpoint_position := _logical_to_viewport(view, Vector2(140.0, 60.0))
+	await _deliver(_button(origin_position, MOUSE_BUTTON_LEFT, true))
+	await _deliver(_motion(first_endpoint_position, MOUSE_BUTTON_MASK_LEFT))
+	var first_frame: TrackInputFrameScript = await _consume_view(shell)
+	live_reflow_track.apply_left_input(first_frame)
+	await _deliver(_motion(backtrack_position, MOUSE_BUTTON_MASK_LEFT))
+	await _deliver(_motion(opposite_endpoint_position, MOUSE_BUTTON_MASK_LEFT))
+	var replacement_frame: TrackInputFrameScript = await _consume_view(shell)
+	live_reflow_track.apply_left_input(replacement_frame)
+	var first_live_path: Array[Vector2i] = [Vector2i(3, 2), Vector2i(3, 3), Vector2i(4, 3)]
+	var replacement_path: Array[Vector2i] = [Vector2i(3, 2), Vector2i(3, 1)]
+	var live_reflow_ok: bool = first_frame.left_held and not first_frame.left_released \
+		and replacement_frame.left_held and not replacement_frame.left_released \
+		and first_frame.live_gesture_path == first_live_path \
+		and replacement_frame.live_gesture_path == replacement_path \
+		and _record_cells(live_reflow_track.get_cell_records()) == replacement_path \
+		and live_reflow_track.get_available_track_cells() == live_reflow_track.get_total_track_cells() - replacement_path.size() \
+		and live_reflow_track.is_left_capture_active() \
+		and live_reflow_track.is_runtime_gesture_active()
+	_assert_true(live_reflow_ok, "Live ordinary ghost follows held rebranch before release")
+	if live_reflow_ok:
+		print("PASS: live ordinary ghost follows held rebranch")
+	await _release_view(shell, opposite_endpoint_position)
+	await _consume_view(shell, live_reflow_track)
+
 	var overlap_track := TrackSystemScript.new(config)
 	var overlap_frame := TrackInputFrameScript.new(
 		[Vector2i(3, 2)], Vector2i(2, 2), true, Vector2i(-1, -1), false,

@@ -166,7 +166,6 @@ func gesture_update(
     if not _gesture_active:
         return false
     var frame_template_index := -1
-    var frame_target_index := -1
     var frame_target_indices: Array[int] = [-1, -1, -1]
     for cell_index in range(live_path.size()):
         var cell: Vector2i = live_path[cell_index]
@@ -174,50 +173,21 @@ func gesture_update(
             var template_name: StringName = [&"straight", &"left", &"right"][index]
             if _gesture_target_endpoints.get(template_name, Vector2i(-1, -1)) == cell:
                 frame_template_index = index
-                frame_target_index = cell_index
                 frame_target_indices[index] = cell_index
     var templates := _template_cells(_gesture_editable_span)
     var next_template_index := _gesture_selected_template_index
     var next_suffix_input_facts: Array[Dictionary] = _gesture_suffix_input_facts.duplicate(true)
     var next_ordinary_input_facts: Array[Dictionary] = _gesture_ordinary_input_facts.duplicate(true)
+    var reconcile_template_suffix := true
     var pointer_template_index := _template_index_from_pointer(current_pointer_cell, templates)
-    var pointer_reselected := pointer_template_index >= 0 \
-        and pointer_template_index != _gesture_selected_template_index
     if pointer_template_index >= 0:
         next_template_index = pointer_template_index
-        if pointer_reselected:
-            next_suffix_input_facts.clear()
-            next_ordinary_input_facts.clear()
-            if frame_target_indices[pointer_template_index] >= 0:
-                for index in range(frame_target_indices[pointer_template_index] + 1, live_path.size()):
-                    next_suffix_input_facts = _append_new_gesture_input_fact(
-                        next_suffix_input_facts,
-                        live_path[index]
-                    )
-        elif frame_target_indices[pointer_template_index] >= 0:
-            next_suffix_input_facts.clear()
-            for index in range(frame_target_indices[pointer_template_index] + 1, live_path.size()):
-                next_suffix_input_facts = _append_new_gesture_input_fact(
-                    next_suffix_input_facts,
-                    live_path[index]
-                )
-            next_ordinary_input_facts.clear()
-        else:
-            for cell in live_path:
-                next_suffix_input_facts = _append_new_gesture_input_fact(
-                    next_suffix_input_facts,
-                    cell
-                )
+        next_ordinary_input_facts.clear()
     elif frame_template_index >= 0 and frame_template_index < templates.size():
         next_template_index = frame_template_index
-        next_suffix_input_facts.clear()
-        for index in range(frame_target_index + 1, live_path.size()):
-            next_suffix_input_facts = _append_new_gesture_input_fact(
-                next_suffix_input_facts,
-                live_path[index]
-            )
         next_ordinary_input_facts.clear()
     elif _gesture_selected_template_index >= 0:
+        reconcile_template_suffix = false
         for cell in live_path:
             next_suffix_input_facts = _append_new_gesture_input_fact(
                 next_suffix_input_facts,
@@ -230,6 +200,24 @@ func gesture_update(
             _gesture_ordinary_input_facts,
             live_path
         )
+
+    if next_template_index >= 0 and reconcile_template_suffix:
+        var selected_target_index := -1
+        if next_template_index < frame_target_indices.size():
+            selected_target_index = frame_target_indices[next_template_index]
+        var current_suffix_cells: Array[Vector2i] = []
+        if selected_target_index >= 0:
+            for index in range(selected_target_index + 1, live_path.size()):
+                current_suffix_cells.append(live_path[index])
+        var existing_suffix_input_facts: Array[Dictionary] = []
+        if next_template_index == _gesture_selected_template_index:
+            existing_suffix_input_facts = _gesture_suffix_input_facts
+        next_suffix_input_facts = _reconcile_gesture_input_facts(
+            existing_suffix_input_facts,
+            current_suffix_cells
+        )
+    if next_template_index >= 0:
+        _reserve_gesture_input_fact_serials(next_suffix_input_facts)
 
     var candidate_sequence = _gesture_origin_sequence.duplicate_sequence()
     if next_template_index >= 0:
@@ -289,6 +277,15 @@ func _reconcile_gesture_input_facts(
     for index in range(common_count, cells.size()):
         reconciled = _append_new_gesture_input_fact(reconciled, cells[index])
     return reconciled
+
+
+func _reserve_gesture_input_fact_serials(facts: Array[Dictionary]) -> void:
+    if _gesture_origin_sequence == null or facts.is_empty():
+        return
+    var next_serial := _gesture_origin_sequence._next_route_serial
+    for fact in facts:
+        next_serial = maxi(next_serial, int(fact["serial"]) + 1)
+    _gesture_origin_sequence._next_route_serial = next_serial
 
 
 func _template_index_from_pointer(
