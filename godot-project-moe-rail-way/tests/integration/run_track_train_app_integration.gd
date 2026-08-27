@@ -164,6 +164,61 @@ func assert_centered_preset_end_to_end(preset: int, expected_origin: Vector2) ->
 	await process_frame
 
 
+func assert_running_curve_endpoint_hover_survives_live_snapshots() -> void:
+	print("Endpoint interaction fix: live RUNNING curve endpoint hover persists")
+	var fixture = await compose_preset_fixture(
+		LogicalTrackFieldScript.SizePreset.EXPANSIVE,
+		Vector2i(2, 2)
+	)
+	if fixture == null:
+		return
+	var curve_cells: Array[Vector2i] = [
+		Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2),
+		Vector2i(5, 3), Vector2i(5, 4),
+	]
+	var centers: Array[Vector2] = []
+	for cell in curve_cells:
+		centers.append(fixture.field.grid_cell_center(cell))
+	fixture.drag_through_logical_centers(centers)
+	var input_frame = fixture.view.consume_input_frame()
+	fixture.controller.advance_tick(input_frame)
+	var running_snapshot = fixture.controller.get_snapshot()
+	_assert_equal(
+		running_snapshot.get_state(),
+		SessionControllerScript.State.RUNNING,
+		"Live curve fixture enters RUNNING"
+	)
+	_assert_true(running_snapshot.is_train_active(), "Live curve fixture publishes an active train")
+	_assert_true(
+		running_snapshot.is_endpoint_gesture_eligible(),
+		"Live curve fixture keeps its locked endpoint extendable"
+	)
+	var endpoint := curve_cells[-1]
+	var endpoint_motion := InputEventMouseMotion.new()
+	endpoint_motion.position = fixture._logical_to_local(fixture.field.grid_cell_center(endpoint))
+	fixture.view.call("_gui_input", endpoint_motion)
+	_assert_equal(
+		fixture.view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)),
+		endpoint,
+		"RUNNING curve endpoint is green before later snapshots"
+	)
+	for tick in range(8):
+		fixture.controller.advance_tick(TrackInputFrameScript.empty())
+		var snapshot = fixture.controller.get_snapshot()
+		_assert_true(snapshot.is_train_active(), "Train remains active on hover tick %d" % tick)
+		_assert_true(snapshot.is_endpoint_gesture_eligible(), "Endpoint remains eligible on hover tick %d" % tick)
+		_assert_equal(
+			fixture.view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)),
+			endpoint,
+			"Live snapshot refresh preserves endpoint hover on tick %d" % tick
+		)
+	fixture.controller.snapshot_published.disconnect(fixture.snapshot_observer)
+	fixture.app.session_result_presented.disconnect(fixture.result_observer)
+	fixture.app.session_result_presented.disconnect(fixture.event_result_observer)
+	fixture.app.queue_free()
+	await process_frame
+
+
 func _verify_nondefault_copy_contract() -> void:
 	var packed = load(NONDEFAULT_SCENE_PATH) as PackedScene
 	_assert_true(packed != null, "Nondefault app scene loads")
@@ -245,6 +300,7 @@ func _run_reconfiguration_probe() -> void:
 func _run() -> void:
 	await assert_centered_preset_end_to_end(LogicalTrackFieldScript.SizePreset.COMPACT, Vector2(10.0, 10.0))
 	await assert_centered_preset_end_to_end(LogicalTrackFieldScript.SizePreset.EXPANSIVE, Vector2(30.0, 30.0))
+	await assert_running_curve_endpoint_hover_survives_live_snapshots()
 	_verify_nondefault_copy_contract()
 	_verify_startup_validation()
 	_verify_deterministic_composition()

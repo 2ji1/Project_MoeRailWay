@@ -29,6 +29,7 @@ func run() -> PackedStringArray:
 	_test_endpoint_reshape_insufficient_inventory_preserves_last_valid()
 	_test_endpoint_reshape_empty_departure_and_straight_accept_ordinary_extension()
 	_test_endpoint_reshape_locked_endpoint_accepts_only_extension()
+	_test_running_locked_curve_endpoint_remains_extendable()
 	_test_endpoint_reshape_gesture_rejects_illegal_starts()
 	_test_endpoint_reshape_finalize_applies_retirement()
 	_test_endpoint_reshape_full_curve_does_not_retain_unrelated_predecessor()
@@ -1048,6 +1049,35 @@ func _test_endpoint_reshape_locked_endpoint_accepts_only_extension() -> void:
 	assert_equal(track.get_available_track_cells(), 2, "Locked endpoint charges only the extension cell")
 	assert_true(track._sequence.is_conservation_valid(), "Locked endpoint preserves conservation")
 	track.call("gesture_finalize")
+
+
+func _test_running_locked_curve_endpoint_remains_extendable() -> void:
+	print("Endpoint interaction fix: running locked curve endpoint remains extendable")
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 2), 8, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	var curve_cells: Array[Vector2i] = [
+		Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2),
+		Vector2i(2, 3), Vector2i(2, 4),
+	]
+	assert_equal(track.append_cells(curve_cells), 5, "Running curve fixture appends a complete curve")
+	assert_equal(track.advance_construction(5.0), 5.0, "Running curve fixture completes construction")
+	assert_true(
+		track.prepare_for_train_sampling(0.0, 0.5),
+		"Running curve fixture locks the train-occupied curve piece"
+	)
+	var endpoint := track.get_endpoint_cell()
+	assert_equal(endpoint, Vector2i(2, 4), "Running curve fixture keeps its endpoint")
+	assert_true(
+		track.gesture_has_legal_operation(endpoint),
+		"A locked curve endpoint remains actionable when an adjacent extension is legal"
+	)
+	var origin = track.gesture_begin(endpoint)
+	assert_false(origin.is_empty(), "Running locked curve endpoint begins an extension gesture")
+	assert_true(
+		track.gesture_update([Vector2i(2, 5)]),
+		"Running locked curve endpoint accepts its legal adjacent extension"
+	)
 
 
 func _test_endpoint_reshape_gesture_rejects_illegal_starts() -> void:
