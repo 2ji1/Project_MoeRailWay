@@ -546,14 +546,17 @@ func _polyline_prefix(points: PackedVector2Array, progress: float) -> PackedVect
 
 
 func _update_hover_cell(local_position: Vector2) -> void:
+	var mapping := _map_local_to_grid(local_position)
+	_set_current_pointer(mapping)
 	if _presented_state == SessionControllerScript.State.COMPLETED:
+		_clear_hover_observations()
+		return
+	if not _has_track_train_data:
 		_clear_hover_observations()
 		return
 	if _presented_gesture_active:
 		_clear_hover_observations()
 		return
-	var mapping := _map_local_to_grid(local_position)
-	_set_current_pointer(mapping)
 	if not mapping.inside_grid:
 		_clear_hover_observations()
 		return
@@ -579,6 +582,7 @@ func _is_extendable_endpoint(cell: Vector2i) -> bool:
 	if (
 		_presented_state == SessionControllerScript.State.COMPLETED
 		or not _session_configured
+		or _left_held
 		or not _current_pointer_inside_grid
 		or _current_pointer_cell != cell
 		or not _presented_gesture_eligible()

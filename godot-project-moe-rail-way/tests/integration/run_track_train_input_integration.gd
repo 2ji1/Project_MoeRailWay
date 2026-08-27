@@ -203,8 +203,12 @@ func _preparation_metadata_transition_is_expected(before: Dictionary, after: Dic
 		for key in ["serial", "cell", "distance", "state", "progress"]:
 			if before_record[key] != after_record[key]:
 				return false
-		if before_record["locked"] != after_record["locked"] and not after_record["locked"]:
-			return false
+		if before_record["locked"]:
+			if not after_record["locked"] or before_record["group"] != after_record["group"]:
+				return false
+		elif not after_record["locked"]:
+			if before_record["group"] != after_record["group"]:
+				return false
 	var before_pieces: Array = before["pieces"]
 	var after_pieces: Array = after["pieces"]
 	if before_pieces.size() != after_pieces.size():
@@ -227,10 +231,18 @@ func _preparation_metadata_transition_is_expected(before: Dictionary, after: Dic
 				return false
 			if int(after_piece["group"]) < 0:
 				return false
-			var expected_exit_support := -1
-			if int(after_piece["exit_support"]) >= 0:
-				expected_exit_support = int(after_piece["last_serial"]) + 1
-			if int(after_piece["exit_support"]) != expected_exit_support:
+			var last_record_index := -1
+			for record_index in range(after_records.size()):
+				if int(after_records[record_index]["serial"]) == int(after_piece["last_serial"]):
+					last_record_index = record_index
+					break
+			if last_record_index < 0:
+				return false
+			if last_record_index == after_records.size() - 1:
+				if int(after_piece["exit_support"]) != -1:
+					return false
+			elif int(after_piece["exit_support"]) >= 0 \
+				and int(after_piece["exit_support"]) != int(after_records[last_record_index + 1]["serial"]):
 				return false
 		else:
 			if before_piece["group"] != after_piece["group"] \
@@ -259,6 +271,10 @@ func _preparation_metadata_transition_is_expected(before: Dictionary, after: Dic
 				if before_record["group"] != after_record["group"] \
 					or before_record["locked"] != after_record["locked"]:
 					return false
+		else:
+			if before_record["group"] != after_record["group"] \
+				or before_record["locked"] != after_record["locked"]:
+				return false
 	return true
 
 
@@ -364,11 +380,17 @@ func _run() -> void:
 		and abort_candidate["endpoint"] == abort_origin_endpoint + Vector2i(1, 0) \
 		and abort_candidate["available"] == abort_origin["available"] - 1
 	view.present(_track_snapshot(abort_track, abort_controller.get_state()))
+	_assert_true(abort_active_before, "Abort fixture has an active domain gesture before right abort")
+	_assert_true(view._left_capture_active, "Abort fixture has view capture before right abort")
+	_assert_true(abort_track.is_left_capture_active(), "Abort fixture has facade capture before right abort")
 	await _deliver(_button(_logical_to_viewport(view, Vector2(220.0, 100.0)), MOUSE_BUTTON_RIGHT, true))
 	var abort_right: TrackInputFrameScript = await _consume_view(shell)
 	abort_track.apply_right_input(abort_right)
+	_assert_true(not abort_track.is_runtime_gesture_active(), "Abort fixture domain gesture is inactive before snapshot presentation")
+	_assert_true(not abort_track.is_left_capture_active(), "Abort fixture facade capture is inactive before snapshot presentation")
 	view.present(_track_snapshot(abort_track, abort_controller.get_state()))
 	_assert_view_termination_clean(view, "Abort")
+	_assert_equal(view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Held abort endpoint does not republish green")
 	var abort_restored: bool = _track_facts(abort_track) == abort_origin
 	var abort_cleared: bool = abort_active_before and abort_candidate_changed \
 		and abort_restored and not abort_track.is_runtime_gesture_active() \
@@ -382,6 +404,7 @@ func _run() -> void:
 	var abort_release: TrackInputFrameScript = await _consume_view(shell, abort_track)
 	var abort_post_release := _track_facts(abort_track)
 	_assert_true(abort_release.left_released, "Abort release frame routes through the same TrackSystem")
+	_assert_equal(view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)), abort_origin_endpoint, "Released abort endpoint may republish green")
 	_assert_true(not abort_track.is_left_capture_active() and not abort_track.is_runtime_gesture_active(), "Abort release clears same-system latches")
 	var abort_fresh_baseline_cells: Array = _record_cells(abort_post_release["records"])
 	var abort_fresh_endpoint: Vector2i = abort_track.get_endpoint_cell()
@@ -433,23 +456,34 @@ func _run() -> void:
 	var prep_metadata_stable := _preparation_metadata_transition_is_expected(prep_candidate, prep_frozen_state)
 	var prep_frozen_records := _record_content_facts(prep_track.get_cell_records())
 	var prep_frozen_geometry := _track_geometry_facts(prep_track)
+	var prep_endpoint_after_prepare: Vector2i = prep_track.get_endpoint_cell()
+	var prep_public_state_stable: bool = prep_frozen_state["available"] == prep_candidate["available"] \
+		and prep_frozen_state["endpoint"] == prep_candidate["endpoint"] \
+		and prep_frozen_state["contacts"] == prep_candidate["contacts"]
+	var prep_endpoint_position := _logical_to_viewport(view, Vector2(prep_endpoint_after_prepare) * config.grid_cell_size_units + Vector2(config.grid_cell_size_units * 0.5, config.grid_cell_size_units * 0.5))
+	await _deliver(_motion(prep_endpoint_position, MOUSE_BUTTON_MASK_LEFT))
+	_assert_equal(view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Held preparation endpoint does not republish green")
 	await _deliver(_motion(_logical_to_viewport(view, Vector2(180.0, 100.0)), MOUSE_BUTTON_MASK_LEFT))
 	var frozen_frame: TrackInputFrameScript = await _consume_view(shell, prep_track)
 	var held_motion_state := _track_facts(prep_track)
 	var train_frozen: bool = prep_candidate_changed and prep_inactive \
 		and prep_metadata_stable \
+		and prep_public_state_stable \
 		and prep_frozen_records == prep_candidate_records \
 		and prep_frozen_geometry == prep_candidate_geometry \
 		and prep_frozen_state["contacts"] == prep_candidate["contacts"] \
 		and held_motion_state == prep_frozen_state \
-		and frozen_frame.crossed_cells.is_empty() and not view._left_capture_active
+		and frozen_frame.crossed_cells.is_empty() and not view._left_capture_active \
+		and not prep_track.is_left_capture_active() \
+		and view._previous_pointer_cell == Vector2i(-1, -1)
 	_assert_true(train_frozen, "Endpoint reshape integration assertion failed train preparation freezes overlap")
 	if train_frozen:
 		print("PASS: Endpoint reshape integration train preparation freezes overlap")
-	await _release_view(shell, _logical_to_viewport(view, Vector2(180.0, 100.0)))
+	await _release_view(shell, prep_endpoint_position)
 	var prep_release: TrackInputFrameScript = await _consume_view(shell, prep_track)
 	var prep_post_release := _track_facts(prep_track)
 	_assert_true(prep_release.left_released, "Preparation release frame routes through the same TrackSystem")
+	_assert_equal(view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)), prep_endpoint_after_prepare, "Released preparation endpoint may republish green")
 	_assert_true(not prep_track.is_left_capture_active() and not prep_track.is_runtime_gesture_active(), "Preparation release clears same-system latches")
 	var prep_fresh_baseline_cells: Array = _record_cells(prep_post_release["records"])
 	var prep_fresh_endpoint: Vector2i = prep_track.get_endpoint_cell()

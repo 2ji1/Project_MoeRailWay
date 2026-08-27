@@ -166,10 +166,11 @@ func _view_snapshot(
 	endpoint_eligible := false,
 	gesture_active := false,
 	train_active := false,
-	train_position := Vector2.ZERO
+	train_position := Vector2.ZERO,
+	has_track_train_data := true
 ) -> SessionSnapshotScript:
 	return SessionSnapshotScript.new(
-		1, 0, 1, 60, true, state,
+		1, 0, 1, 60, has_track_train_data, state,
 		records, pieces, [], 0.0, 0, 0, Vector2.ZERO, 0, 0, 0.0,
 		train_active, 0.0, train_position, Vector2.RIGHT, 0.0, false, &"view",
 		Vector2i(-1, -1), endpoint_eligible, gesture_active
@@ -199,9 +200,10 @@ func _present_endpoint(
 	active := false,
 	state: int = SessionControllerScript.State.PREPARING_DEPARTURE,
 	train_active := false,
-	train_position := Vector2.ZERO
+	train_position := Vector2.ZERO,
+	has_track_train_data := true
 ) -> void:
-	view.present(_view_snapshot(records, pieces, state, eligible, active, train_active, train_position))
+	view.present(_view_snapshot(records, pieces, state, eligible, active, train_active, train_position, has_track_train_data))
 
 
 func _snapshot_for_track(
@@ -251,6 +253,34 @@ func _test_endpoint_reshape_green_over_gold_retains_cancellation() -> void:
 	var observation: Dictionary = fixture.view.get_render_observation()
 	assert_equal(observation.get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(2, 2), "Endpoint remains green when it is actionable")
 	assert_equal(observation.get("hover_cancel_cell", Vector2i(-1, -1)), Vector2i(2, 2), "Endpoint retains gold cancellation eligibility")
+	var different_cell_position := _local_for_logical(fixture.view, Vector2(140.0, 100.0))
+	_deliver(fixture.view, _button(different_cell_position, MOUSE_BUTTON_RIGHT, true))
+	var right_press_observation: Dictionary = fixture.view.get_render_observation()
+	assert_equal(right_press_observation.get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Right press clears green after recomputing its position")
+	assert_equal(right_press_observation.get("hover_cancel_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Right press clears gold for its pending action")
+	var right_frame = fixture.view.consume_input_frame()
+	assert_true(right_frame.right_pressed, "Right press emits one pending right edge")
+	assert_equal(right_frame.right_press_cell, Vector2i(3, 2), "Right press retains its inside cell")
+	assert_true(right_frame.right_press_inside_grid, "Right press retains its inside-grid fact")
+	assert_equal(right_frame.current_pointer_cell, Vector2i(3, 2), "Right press updates current pointer cell")
+	assert_true(right_frame.current_pointer_inside_grid, "Right press updates current pointer inside-grid fact")
+	assert_false(fixture.view.consume_input_frame().right_pressed, "Consuming right edge does not duplicate it")
+	_deliver(fixture.view, _button(_local_for_logical(fixture.view, Vector2(100.0, 100.0)), MOUSE_BUTTON_RIGHT, false))
+	var right_release_observation: Dictionary = fixture.view.get_render_observation()
+	assert_equal(right_release_observation.get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(2, 2), "Right release recomputes green at the endpoint")
+	assert_equal(right_release_observation.get("hover_cancel_cell", Vector2i(-1, -1)), Vector2i(2, 2), "Right release recomputes gold at the endpoint")
+	var right_release_frame = fixture.view.consume_input_frame()
+	assert_false(right_release_frame.right_pressed, "Right release does not create a duplicate right edge")
+	assert_equal(right_release_frame.current_pointer_cell, Vector2i(2, 2), "Right release updates current pointer cell")
+	assert_true(right_release_frame.current_pointer_inside_grid, "Right release updates current pointer inside-grid fact")
+	_deliver(fixture.view, _button(Vector2(-20.0, -20.0), MOUSE_BUTTON_RIGHT, false))
+	var outside_right_observation: Dictionary = fixture.view.get_render_observation()
+	assert_equal(outside_right_observation.get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Outside right release clears green")
+	assert_equal(outside_right_observation.get("hover_cancel_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Outside right release clears gold")
+	var outside_right_frame = fixture.view.consume_input_frame()
+	assert_false(outside_right_frame.right_pressed, "Outside right release emits no right edge")
+	assert_equal(outside_right_frame.current_pointer_cell, Vector2i(-1, -1), "Outside right release emits invalid pointer cell")
+	assert_false(outside_right_frame.current_pointer_inside_grid, "Outside right release emits false inside-grid fact")
 	_present_endpoint(fixture.view, [ghost], [_view_straight_piece(1, ghost.cell)], true, true)
 	_deliver(fixture.view, _motion(_local_for_logical(fixture.view, Vector2(100.0, 100.0))))
 	var active_observation: Dictionary = fixture.view.get_render_observation()
@@ -269,6 +299,9 @@ func _test_endpoint_reshape_outside_completion_and_inactive_clear_hover() -> voi
 	var outside: Dictionary = fixture.view.get_render_observation()
 	assert_equal(outside.get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Outside pointer clears green hover")
 	assert_equal(outside.get("hover_cancel_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Outside pointer clears gold hover")
+	var outside_frame = fixture.view.consume_input_frame()
+	assert_equal(outside_frame.current_pointer_cell, Vector2i(-1, -1), "Outside motion frame carries invalid pointer cell")
+	assert_false(outside_frame.current_pointer_inside_grid, "Outside motion frame carries false inside-grid fact")
 	_present_endpoint(fixture.view, [record], [], true)
 	_deliver(fixture.view, _motion(_local_for_logical(fixture.view, Vector2(100.0, 100.0))))
 	assert_equal(fixture.view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(2, 2), "Button-hover fixture starts with endpoint green")
@@ -347,7 +380,39 @@ func _test_endpoint_reshape_no_green_negatives() -> void:
 	assert_equal(fixture.view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Ineligible endpoint is not green")
 	_deliver(fixture.view, _motion(_local_for_logical(fixture.view, Vector2(140.0, 100.0))))
 	assert_equal(fixture.view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Arbitrary nonendpoint is not green")
+	var built_nonendpoint := _endpoint_record(Vector2i(3, 2), TrackCellRecordScript.State.BUILT, 2, 1.0)
+	_present_endpoint(fixture.view, [built_nonendpoint], [_view_straight_piece(2, built_nonendpoint.cell, 1.0)], true)
+	_deliver(fixture.view, _motion(_local_for_logical(fixture.view, Vector2(100.0, 100.0))))
+	assert_equal(fixture.view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Built nonendpoint is not green")
+	var locked_nonendpoint := _endpoint_record(Vector2i(3, 2), TrackCellRecordScript.State.RESERVED_GHOST, 3, 1.0)
+	locked_nonendpoint.geometry_locked = true
+	var locked_nonendpoint_piece := _view_straight_piece(3, locked_nonendpoint.cell, 1.0)
+	locked_nonendpoint_piece.locked = true
+	_present_endpoint(fixture.view, [locked_nonendpoint], [locked_nonendpoint_piece], true)
+	_deliver(fixture.view, _motion(_local_for_logical(fixture.view, Vector2(100.0, 100.0))))
+	assert_equal(fixture.view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Locked nonendpoint is not green")
+	var inactive_endpoint := _endpoint_record(Vector2i(2, 2), TrackCellRecordScript.State.RESERVED_GHOST)
+	var inactive_piece := _view_straight_piece(1, inactive_endpoint.cell)
+	_present_endpoint(fixture.view, [inactive_endpoint], [inactive_piece], true, false, SessionControllerScript.State.PREPARING_DEPARTURE, false, Vector2.ZERO, false)
+	_deliver(fixture.view, _motion(_local_for_logical(fixture.view, Vector2(100.0, 100.0))))
+	var inactive_observation: Dictionary = fixture.view.get_render_observation()
+	assert_equal(inactive_observation.get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Inactive snapshot does not publish green hover")
+	assert_equal(inactive_observation.get("hover_cancel_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Inactive snapshot does not publish gold hover")
+	_deliver(fixture.view, _button(_local_for_logical(fixture.view, Vector2(100.0, 100.0)), MOUSE_BUTTON_LEFT, true))
+	var inactive_button_observation: Dictionary = fixture.view.get_render_observation()
+	assert_equal(inactive_button_observation.get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Inactive button position keeps green cleared")
 	fixture.parent.free()
+	var held_fixture := _fixture()
+	var held_view = held_fixture.view
+	var held_endpoint_position := _local_for_logical(held_view, Vector2(100.0, 100.0))
+	_present_endpoint(held_view, [_endpoint_record(Vector2i(2, 2))], [], true)
+	_deliver(held_view, _motion(held_endpoint_position))
+	_deliver(held_view, _button(_local_for_logical(held_view, Vector2(140.0, 100.0)), MOUSE_BUTTON_LEFT, true))
+	_deliver(held_view, _motion(held_endpoint_position))
+	assert_equal(held_view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Held rejected nonendpoint press cannot publish endpoint green")
+	_deliver(held_view, _button(held_endpoint_position, MOUSE_BUTTON_LEFT, false))
+	assert_equal(held_view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(2, 2), "Released rejected press may publish endpoint green again")
+	held_fixture.parent.free()
 
 
 func _test_endpoint_reshape_locked_extendable_endpoint_is_green() -> void:
@@ -399,11 +464,12 @@ func _test_endpoint_reshape_whole_suffix_dependency_is_negative() -> void:
 		"Locked owner suffix blocks clicked-to-end gold cancellation"
 	)
 	var exit_support_record := _endpoint_record(Vector2i(3, 2), TrackCellRecordScript.State.RESERVED_GHOST, 41, 1.0)
+	var predecessor_piece := _view_straight_piece(9, Vector2i(1, 2), -1.0)
+	predecessor_piece.exit_support_route_serial = exit_support_record.route_serial
 	var exit_support_piece := _view_straight_piece(41, exit_support_record.cell, exit_support_record.route_distance_start_cells)
-	exit_support_piece.exit_support_route_serial = exit_support_record.route_serial
 	_assert_suffix_cancel_blocked(
 		fixture.view, clicked, exit_support_record, clicked_piece, exit_support_piece,
-		"Exit-support dependency blocks whole suffix cancellation"
+		"Exit-support dependency blocks whole suffix cancellation", [predecessor_piece]
 	)
 	fixture.parent.free()
 
@@ -414,9 +480,13 @@ func _assert_suffix_cancel_blocked(
 	suffix: TrackCellRecordScript,
 	clicked_piece: TrackGeometryPieceScript,
 	suffix_piece: TrackGeometryPieceScript,
-	message: String
+	message: String,
+	extra_pieces: Array[TrackGeometryPieceScript] = []
 ) -> void:
-	_present_endpoint(view, [clicked, suffix], [clicked_piece, suffix_piece], true)
+	var pieces: Array[TrackGeometryPieceScript] = extra_pieces.duplicate()
+	pieces.append(clicked_piece)
+	pieces.append(suffix_piece)
+	_present_endpoint(view, [clicked, suffix], pieces, true)
 	_deliver(view, _motion(_local_for_logical(view, Vector2(100.0, 100.0))))
 	assert_equal(view.get_render_observation().get("hover_cancel_cell", Vector2i(-1, -1)), Vector2i(-1, -1), message)
 
@@ -455,11 +525,14 @@ func _test_endpoint_reshape_actual_abort_clears_and_allows_fresh_press() -> void
 	var system = TrackSystemScript.new(_config())
 	system.apply_left_input(held_frame)
 	assert_true(system.is_runtime_gesture_active(), "Abort fixture starts a real domain gesture")
+	assert_true(system.is_left_capture_active(), "Abort fixture has facade capture before right abort")
+	assert_true(view._left_capture_active, "Abort fixture has view capture before right abort")
 	view.present(_snapshot_for_track(system))
 	_deliver(view, _button(endpoint, MOUSE_BUTTON_RIGHT, true))
 	var right_frame = view.consume_input_frame()
 	assert_true(system.apply_right_input(right_frame), "Abort fixture routes the real right edge")
 	assert_false(system.is_runtime_gesture_active(), "Abort fixture terminates the real domain gesture")
+	assert_false(system.is_left_capture_active(), "Abort fixture clears facade capture before physical release")
 	view.present(_snapshot_for_track(system))
 	assert_false(view._left_capture_active, "Actual abort clears view capture")
 	assert_equal(view._crossed_cells, [], "Actual abort clears view buffer")
@@ -468,10 +541,13 @@ func _test_endpoint_reshape_actual_abort_clears_and_allows_fresh_press() -> void
 	assert_false(view._right_pressed_pending, "Actual abort clears pending right press")
 	assert_equal(view._left_press_cell, Vector2i(-1, -1), "Actual abort clears left press cell")
 	assert_equal(view._right_press_cell, Vector2i(-1, -1), "Actual abort clears right press cell")
-	_deliver(view, _motion(_local_for_logical(view, Vector2(140.0, 20.0))))
+	assert_equal(view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Held abort pointer does not republish green")
+	var aborted_endpoint := system.get_endpoint_cell()
+	_deliver(view, _motion(_local_for_cell(view, aborted_endpoint)))
 	assert_equal(view.consume_input_frame().crossed_cells, [], "Held motion after actual abort is ignored")
-	var release_position := _local_for_logical(view, Vector2(140.0, 20.0))
+	var release_position := _local_for_cell(view, aborted_endpoint)
 	_deliver(view, _button(release_position, MOUSE_BUTTON_LEFT, false))
+	assert_equal(view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)), aborted_endpoint, "Released abort pointer may republish endpoint green")
 	var release_frame = view.consume_input_frame()
 	system.apply_left_input(release_frame)
 	assert_false(view._left_held, "Physical release clears the view held latch after abort")
@@ -506,9 +582,12 @@ func _test_endpoint_reshape_actual_train_preparation_clears_and_allows_fresh_pre
 	var held_frame = view.consume_input_frame()
 	system.apply_left_input(held_frame)
 	assert_true(system.is_runtime_gesture_active(), "Preparation fixture starts a real domain gesture")
+	assert_true(system.is_left_capture_active(), "Preparation fixture has facade capture before train preparation")
+	assert_true(view._left_capture_active, "Preparation fixture has view capture before train preparation")
 	view.present(_snapshot_for_track(system))
 	assert_true(system.prepare_for_train_sampling(0.0, 1.0), "Preparation fixture performs real overlapping preparation")
 	assert_false(system.is_runtime_gesture_active(), "Preparation fixture terminates the real domain gesture")
+	assert_false(system.is_left_capture_active(), "Preparation fixture clears facade capture before physical release")
 	view.present(_snapshot_for_track(system))
 	assert_false(view._left_capture_active, "Actual preparation clears view capture")
 	assert_equal(view._crossed_cells, [], "Actual preparation clears view buffer")
@@ -517,10 +596,13 @@ func _test_endpoint_reshape_actual_train_preparation_clears_and_allows_fresh_pre
 	assert_false(view._right_pressed_pending, "Actual preparation clears pending right press")
 	assert_equal(view._left_press_cell, Vector2i(-1, -1), "Actual preparation clears left press cell")
 	assert_equal(view._right_press_cell, Vector2i(-1, -1), "Actual preparation clears right press cell")
-	_deliver(view, _motion(_local_for_logical(view, Vector2(100.0, 20.0))))
+	var prepared_endpoint := system.get_endpoint_cell()
+	_deliver(view, _motion(_local_for_cell(view, prepared_endpoint)))
+	assert_equal(view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)), Vector2i(-1, -1), "Held preparation pointer does not republish green")
 	assert_equal(view.consume_input_frame().crossed_cells, [], "Held motion after preparation is ignored")
-	var release_position := _local_for_logical(view, Vector2(100.0, 20.0))
+	var release_position := _local_for_cell(view, prepared_endpoint)
 	_deliver(view, _button(release_position, MOUSE_BUTTON_LEFT, false))
+	assert_equal(view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)), prepared_endpoint, "Released preparation pointer may republish endpoint green")
 	var release_frame = view.consume_input_frame()
 	system.apply_left_input(release_frame)
 	assert_false(view._left_held, "Physical release clears the view held latch after preparation")
