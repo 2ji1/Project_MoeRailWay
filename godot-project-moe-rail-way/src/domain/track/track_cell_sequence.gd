@@ -69,6 +69,51 @@ func append_candidates(cells: Array[Vector2i]) -> int:
     return accepted_count
 
 
+func replace_span_in_place(
+    first_serial: int,
+    last_serial: int,
+    new_cells: Array[Vector2i]
+) -> bool:
+    if first_serial > last_serial:
+        return false
+    var first_index := -1
+    var last_index := -1
+    for index in range(_records.size()):
+        if _records[index].route_serial == first_serial:
+            first_index = index
+        if _records[index].route_serial == last_serial:
+            last_index = index
+    if (
+        first_index < 0
+        or last_index < first_index
+        or last_index - first_index + 1 != new_cells.size()
+    ):
+        return false
+    var occupied: Dictionary = {}
+    for index in range(_records.size()):
+        if index < first_index or index > last_index:
+            occupied[_records[index].cell] = true
+    var predecessor: Vector2i = _departure_cell if first_index == 0 else _records[first_index - 1].cell
+    for index in range(new_cells.size()):
+        var cell: Vector2i = new_cells[index]
+        if cell == _departure_cell or occupied.has(cell):
+            return false
+        if absi(cell.x - predecessor.x) + absi(cell.y - predecessor.y) != 1:
+            return false
+        occupied[cell] = true
+        predecessor = cell
+    if last_index + 1 < _records.size():
+        var successor: Vector2i = _records[last_index + 1].cell
+        if absi(successor.x - predecessor.x) + absi(successor.y - predecessor.y) != 1:
+            return false
+    for index in range(new_cells.size()):
+        _records[first_index + index].cell = new_cells[index]
+    _active_cells.clear()
+    for record in _records:
+        _active_cells[record.cell] = true
+    return true
+
+
 func cancel_ghost_suffix(cell: Vector2i) -> int:
     var target_index := -1
     for index in range(_records.size()):

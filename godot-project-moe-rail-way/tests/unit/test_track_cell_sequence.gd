@@ -18,6 +18,7 @@ func run() -> PackedStringArray:
 	_test_invalid_buffer_stops_immediately()
 	_test_departure_anchor_cannot_be_reserved_again()
 	_test_start_building_does_not_lock_geometry()
+	_test_endpoint_reshape_replacement_preserves_identity()
 	return finish()
 
 
@@ -187,3 +188,83 @@ func _test_start_building_does_not_lock_geometry() -> void:
 	var record = sequence.get_records()[0]
 	assert_equal(record.state, TrackCellRecordScript.State.BUILDING, "Construction starts")
 	assert_false(record.geometry_locked, "Construction state does not lock geometry")
+
+
+func _test_endpoint_reshape_replacement_preserves_identity() -> void:
+	var route = TrackCellSequenceScript.new(Vector2i(-1, 0), 5)
+	route.append_candidates([
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0),
+	])
+	route._records[1].state = TrackCellRecordScript.State.BUILDING
+	route._records[1].build_progress = 0.25
+	route._records[1].geometry_group_id = 9
+	var before = route.get_records()
+	var inventory_before: int = route.get_available_track_cells()
+	print("Endpoint reshape: replacement preserves identity")
+	assert_true(route.has_method("replace_span_in_place"), "Span replacement contract exists")
+	if not route.has_method("replace_span_in_place"):
+		return
+	var replacement_cells: Array[Vector2i] = [
+		Vector2i(1, 0), Vector2i(1, 1), Vector2i(2, 1),
+	]
+	var replaced = route.call(
+		"replace_span_in_place",
+		2,
+		4,
+		replacement_cells
+	)
+	assert_true(replaced, "Equal-length span replacement succeeds")
+	if not replaced:
+		return
+	var after = route.get_records()
+	assert_equal(after.size(), before.size(), "Replacement preserves record count")
+	assert_equal(route.get_available_track_cells(), inventory_before, "Replacement does not charge inventory")
+	for index in range(before.size()):
+		assert_equal(after[index].route_serial, before[index].route_serial, "Replacement preserves route serial")
+		assert_equal(after[index].route_distance_start_cells, before[index].route_distance_start_cells, "Replacement preserves nominal distance")
+		assert_equal(after[index].state, before[index].state, "Replacement preserves construction state")
+		assert_equal(after[index].build_progress, before[index].build_progress, "Replacement preserves build progress")
+		assert_equal(after[index].geometry_group_id, before[index].geometry_group_id, "Replacement preserves geometry identity")
+	assert_equal(after[0].cell, before[0].cell, "Replacement leaves prefix cell unchanged")
+	assert_equal(after[1].cell, Vector2i(1, 0), "Replacement applies first span cell")
+	assert_equal(after[2].cell, Vector2i(1, 1), "Replacement applies second span cell")
+	assert_equal(after[3].cell, Vector2i(2, 1), "Replacement applies third span cell")
+	assert_true(route.is_conservation_valid(), "Replacement preserves conservation")
+
+	var gap_route = TrackCellSequenceScript.new(Vector2i(-1, 0), 6)
+	gap_route.append_candidates([
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+	])
+	assert_equal(gap_route.cancel_ghost_suffix(Vector2i(1, 0)), 2, "Consumed suffix creates an active serial gap")
+	gap_route._records[0].state = TrackCellRecordScript.State.BUILT
+	gap_route._records[0].build_progress = 1.0
+	gap_route._records[0].geometry_group_id = 7
+	assert_equal(gap_route.append_candidates([Vector2i(1, 0)]), 1, "Fresh later record fills the active route")
+	var first_gap_record = gap_route._records[0]
+	var second_gap_record = gap_route._records[1]
+	second_gap_record.state = TrackCellRecordScript.State.BUILDING
+	second_gap_record.build_progress = 0.25
+	second_gap_record.geometry_group_id = 9
+	var first_gap_ref = first_gap_record
+	var second_gap_ref = second_gap_record
+	var gap_inventory_before: int = gap_route.get_available_track_cells()
+	var gap_replacement: Array[Vector2i] = [Vector2i(0, 0), Vector2i(0, 1)]
+	assert_true(gap_route.call("replace_span_in_place", 1, 4, gap_replacement), "Serial-gap span replacement locates records by identity")
+	var gap_records = gap_route.get_records()
+	assert_equal(gap_records.size(), 2, "Serial-gap replacement preserves active record count")
+	if gap_records.size() == 2:
+		assert_equal(gap_records[0].route_serial, 1, "Serial-gap replacement preserves first serial")
+		assert_equal(gap_records[1].route_serial, 4, "Serial-gap replacement preserves fresh later serial")
+		assert_equal(gap_route._records[0], first_gap_ref, "Serial-gap replacement preserves first record identity")
+		assert_equal(gap_route._records[1], second_gap_ref, "Serial-gap replacement preserves second record identity")
+		assert_equal(gap_records[0].state, TrackCellRecordScript.State.BUILT, "Serial-gap replacement preserves first build state")
+		assert_equal(gap_records[0].build_progress, 1.0, "Serial-gap replacement preserves first build progress")
+		assert_equal(gap_records[0].geometry_group_id, 7, "Serial-gap replacement preserves first geometry identity")
+		assert_equal(gap_records[1].state, TrackCellRecordScript.State.BUILDING, "Serial-gap replacement preserves second build state")
+		assert_equal(gap_records[1].build_progress, 0.25, "Serial-gap replacement preserves second build progress")
+		assert_equal(gap_records[1].geometry_group_id, 9, "Serial-gap replacement preserves second geometry identity")
+		assert_equal(gap_records[0].cell, Vector2i(0, 0), "Serial-gap replacement applies first cell")
+		assert_equal(gap_records[1].cell, Vector2i(0, 1), "Serial-gap replacement applies second cell")
+	assert_equal(gap_route.get_available_track_cells(), gap_inventory_before, "Serial-gap replacement does not charge inventory")
+	assert_equal(gap_route._active_cells.size(), gap_route.get_records().size(), "Serial-gap replacement preserves uniqueness")
+	assert_true(gap_route.is_conservation_valid(), "Serial-gap replacement preserves conservation")

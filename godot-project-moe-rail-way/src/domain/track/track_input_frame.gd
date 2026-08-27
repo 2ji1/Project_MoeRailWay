@@ -10,6 +10,8 @@ var left_pressed: bool
 var left_held: bool
 var left_released: bool
 var right_pressed: bool
+var current_pointer_cell: Vector2i
+var current_pointer_inside_grid: bool
 
 
 func _init(
@@ -21,7 +23,9 @@ func _init(
 	left_pressed_value: bool = false,
 	left_held_value: bool = false,
 	left_released_value: bool = false,
-	right_pressed_value: bool = false
+	right_pressed_value: bool = false,
+	current_pointer_cell_value: Vector2i = Vector2i(-1, -1),
+	current_pointer_inside_grid_value: bool = false
 ) -> void:
 	crossed_cells = crossed_cells_value.duplicate()
 	left_press_cell = left_press_cell_value
@@ -32,6 +36,8 @@ func _init(
 	left_held = left_held_value
 	left_released = left_released_value
 	right_pressed = right_pressed_value
+	current_pointer_cell = current_pointer_cell_value
+	current_pointer_inside_grid = current_pointer_inside_grid_value
 
 
 static func empty() -> TrackInputFrame:

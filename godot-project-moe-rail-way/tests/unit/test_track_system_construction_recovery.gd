@@ -34,7 +34,11 @@ func _curve_track() -> TrackSystemScript:
 	]
 	track.apply_left_input(TrackInputFrameScript.new(
 		cells, Vector2i(0, 0), true, Vector2i(-1, -1), false,
-		true, true, false, false
+		true, true, false, false, Vector2i(3, 2), true
+	))
+	track.apply_left_input(TrackInputFrameScript.new(
+		[], Vector2i(-1, -1), false, Vector2i(-1, -1), false,
+		false, false, true, false, Vector2i(3, 2), true
 	))
 	assert_equal(track.get_cell_records().size(), 5, "Curve fixture accepts five cells")
 	assert_equal(track.get_geometry_pieces().size(), 1, "Five cells resolve as one piece")
@@ -47,9 +51,18 @@ func _curve_track() -> TrackSystemScript:
 
 
 func _append_curve_support(track: TrackSystemScript) -> void:
+	var endpoint := track.get_endpoint_cell()
 	track.apply_left_input(TrackInputFrameScript.new(
-		[Vector2i(3, 3)], Vector2i(3, 2), true, Vector2i(-1, -1), false,
-		true, true, false, false
+		[], endpoint, true, Vector2i(-1, -1), false,
+		true, true, false, false, endpoint, true
+	))
+	track.apply_left_input(TrackInputFrameScript.new(
+		[endpoint, Vector2i(3, 3)], endpoint, true, Vector2i(-1, -1), false,
+		false, true, false, false, Vector2i(3, 3), true
+	))
+	track.apply_left_input(TrackInputFrameScript.new(
+		[], Vector2i(-1, -1), false, Vector2i(-1, -1), false,
+		false, false, true, false, Vector2i(3, 3), true
 	))
 	assert_equal(track.get_cell_records().size(), 6, "G appends after the provisional B through F curve")
 	var pieces = track.get_geometry_pieces()

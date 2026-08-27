@@ -17,6 +17,7 @@ func run() -> PackedStringArray:
 	_test_recovery_refund_is_not_spendable_until_next_tick()
 	_test_regular_expiry_wins_a_same_tick_track_end_tie()
 	_test_snapshot_recursively_detaches_grid_observations()
+	_test_held_gesture_defers_work_until_train_termination()
 	return finish()
 
 
@@ -37,7 +38,30 @@ func _config(
 func _left(cells: Array[Vector2i], press_cell: Vector2i) -> TrackInputFrameScript:
 	return TrackInputFrameScript.new(
 		cells, press_cell, true, Vector2i(-1, -1), false,
-		true, true, false, false
+		true, false, true, false, cells[-1], true
+	)
+
+
+func _held_endpoint(endpoint: Vector2i) -> TrackInputFrameScript:
+	var empty: Array[Vector2i] = []
+	return TrackInputFrameScript.new(
+		empty, endpoint, true, Vector2i(-1, -1), false,
+		true, true, false, false, endpoint, true
+	)
+
+
+func _held_route(cells: Array[Vector2i], press_cell: Vector2i) -> TrackInputFrameScript:
+	return TrackInputFrameScript.new(
+		cells, press_cell, true, Vector2i(-1, -1), false,
+		true, true, false, false, cells[-1], true
+	)
+
+
+func _release_endpoint(endpoint: Vector2i) -> TrackInputFrameScript:
+	var empty: Array[Vector2i] = []
+	return TrackInputFrameScript.new(
+		empty, endpoint, true, Vector2i(-1, -1), false,
+		false, false, true, false, endpoint, true
 	)
 
 
@@ -71,7 +95,7 @@ func _test_right_cancellation_wins_before_buffered_left_cells() -> void:
 	var buffered: Array[Vector2i] = [Vector2i(3, 1)]
 	controller.advance_tick(TrackInputFrameScript.new(
 		buffered, Vector2i(3, 0), true, Vector2i(2, 0), true,
-		true, true, false, true
+		true, false, true, true, Vector2i(3, 1), true
 	))
 	assert_equal(track.get_endpoint_cell(), Vector2i(1, 0), "Right cancellation wins before left buffer")
 	assert_equal(track.get_cell_records().size(), 1, "Same-tick left cell was not accepted")
@@ -108,6 +132,7 @@ func _test_regular_expiry_wins_a_same_tick_track_end_tie() -> void:
 
 
 func _test_snapshot_recursively_detaches_grid_observations() -> void:
+	print("Endpoint reshape: train session snapshot detaches endpoint gesture facts")
 	var record = TrackCellRecordScript.new(1, Vector2i(1, 0), 0.0)
 	var piece = TrackGeometryPieceScript.new()
 	piece.group_id = 4
@@ -120,12 +145,16 @@ func _test_snapshot_recursively_detaches_grid_observations() -> void:
 	var records: Array[TrackCellRecordScript] = [record]
 	var pieces: Array[TrackGeometryPieceScript] = [piece]
 	var contacts: Array[Dictionary] = [{"anchor_id": &"d", "nested": [[Vector2i(1, 0)]]}]
+	var eligible_source := true
+	var active_source := true
 	var snapshot = SessionSnapshotScript.new(
 		10, 2, 8, 1, true, int(SessionControllerScript.State.RUNNING),
 		records, pieces, contacts, 1.0, 3, 4, Vector2(10.0, 10.0),
 		1, 1, 0.5, true, 0.5, Vector2(50.0, 30.0), Vector2.RIGHT,
-		0.5, true, &"d", Vector2i(0, 0)
+		0.5, true, &"d", Vector2i(0, 0), eligible_source, active_source
 	)
+	eligible_source = false
+	active_source = false
 	record.cell = Vector2i(9, 9)
 	piece.footprint_cells[0] = Vector2i(9, 9)
 	piece.centerline[0] = Vector2(999.0, 999.0)
@@ -147,3 +176,31 @@ func _test_snapshot_recursively_detaches_grid_observations() -> void:
 	assert_equal(snapshot.get_departure_cell(), Vector2i(0, 0), "Departure cell exposed")
 	assert_equal(snapshot.get_available_track_cells(), 3, "Integer inventory exposed")
 	assert_equal(snapshot.get_train_route_distance_cells(), 0.5, "Nominal distance exposed")
+	assert_true(snapshot.has_method("is_endpoint_gesture_eligible"), "Train snapshot exposes endpoint eligibility getter")
+	assert_true(snapshot.has_method("is_endpoint_gesture_active"), "Train snapshot exposes endpoint active getter")
+	if snapshot.has_method("is_endpoint_gesture_eligible"):
+		assert_true(snapshot.call("is_endpoint_gesture_eligible"), "Train snapshot detaches endpoint eligibility")
+	if snapshot.has_method("is_endpoint_gesture_active"):
+		assert_true(snapshot.call("is_endpoint_gesture_active"), "Train snapshot detaches endpoint active state")
+
+
+func _test_held_gesture_defers_work_until_train_termination() -> void:
+	print("Endpoint reshape: deferred construction and recovery resume")
+	var config := _config(5.0, 4, 1, 1.0)
+	var track = TrackSystemScript.new(config)
+	track.apply_left_input(_held_route([Vector2i(1, 0), Vector2i(2, 0)], Vector2i(0, 0)))
+	track.apply_left_input(_release_endpoint(Vector2i(2, 0)))
+	assert_equal(track.advance_construction(1.5), 1.5, "Held-gesture fixture leaves a recoverable unfinished route")
+	var endpoint := track.get_endpoint_cell()
+	track.apply_left_input(_held_endpoint(endpoint))
+	assert_true(track.is_runtime_gesture_active(), "Held-gesture fixture remains active without release")
+	var progress_before: float = track.get_cell_records()[-1].build_progress
+	assert_equal(track.advance_construction(0.5), 0.0, "Construction defers while the gesture is held")
+	assert_equal(track.get_cell_records()[-1].build_progress, progress_before, "Held gesture preserves build progress")
+	assert_equal(track.recover_behind(1.0), 0, "Recovery defers while the gesture is held")
+	var controller = SessionControllerScript.new(config, track, TrainSystemScript.new(config.train_speed_cells_per_second))
+	controller.start()
+	controller.advance_tick()
+	assert_false(track.is_runtime_gesture_active(), "Overlapping train preparation terminates the held gesture")
+	assert_equal(track.advance_construction(0.5), 0.5, "Construction resumes after train termination")
+	assert_equal(track.recover_behind(1.0), 1, "Recovery resumes after train termination")

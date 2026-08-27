@@ -138,6 +138,7 @@ func _prepare_or_abort(current_distance: float, through_distance: float) -> bool
 func _complete(reason: SessionResultScript.Reason) -> void:
 	if _state == State.COMPLETED:
 		return
+	_track_system.terminate_for_session_completion()
 	_state = State.COMPLETED
 	_publish_snapshot()
 	session_completed.emit(SessionResultScript.new(
@@ -198,5 +199,7 @@ func _create_snapshot() -> SessionSnapshotScript:
 		estimated_track_end_seconds,
 		warning_urgent,
 		_start_config.departure_candidate_id,
-		_start_config.departure_cell
+		_start_config.departure_cell,
+		_track_system.is_endpoint_gesture_eligible(),
+		_track_system.is_runtime_gesture_active()
 	)

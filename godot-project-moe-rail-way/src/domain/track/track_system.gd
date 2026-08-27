@@ -10,6 +10,7 @@ const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.
 
 var _runtime: GridTrackRuntimeScript
 var _left_capture_active := false
+var _left_press_latched := false
 
 
 func _init(start_config: SessionStartConfigScript) -> void:
@@ -48,7 +49,15 @@ func apply_right_input(input_frame: TrackInputFrameScript) -> bool:
 	assert(input_frame != null, "Track input frame is required")
 	if not input_frame.right_pressed:
 		return false
+	if _left_capture_active and _runtime.gesture_is_active():
+		_runtime.gesture_abort()
+		_left_capture_active = false
+		if input_frame.left_released:
+			_left_press_latched = false
+		return true
 	_left_capture_active = false
+	if input_frame.left_released:
+		_left_press_latched = false
 	if input_frame.right_press_inside_grid:
 		_runtime.cancel_ghost_suffix(input_frame.right_press_cell)
 	return true
@@ -56,15 +65,47 @@ func apply_right_input(input_frame: TrackInputFrameScript) -> bool:
 
 func apply_left_input(input_frame: TrackInputFrameScript) -> void:
 	assert(input_frame != null, "Track input frame is required")
-	if input_frame.left_pressed:
-		_left_capture_active = (
+	if _left_capture_active and not _runtime.gesture_is_active():
+		_left_capture_active = false
+	if input_frame.left_pressed and not _left_press_latched:
+		_left_press_latched = true
+		var endpoint := _runtime.get_endpoint_cell()
+		if (
 			input_frame.left_press_inside_grid
-			and input_frame.left_press_cell == _runtime.get_endpoint_cell()
-		)
-	if _left_capture_active:
-		_runtime.append_cells(input_frame.crossed_cells)
+			and input_frame.left_press_cell == endpoint
+			and _runtime.gesture_has_legal_operation(endpoint)
+		):
+			_left_capture_active = not _runtime.gesture_begin(endpoint).is_empty()
+	if _left_capture_active and _runtime.gesture_is_active():
+		if not input_frame.crossed_cells.is_empty():
+			_runtime.gesture_update(input_frame.crossed_cells)
+		if input_frame.left_released:
+			_runtime.gesture_finalize()
+			_left_capture_active = false
 	if input_frame.left_released:
 		_left_capture_active = false
+		_left_press_latched = false
+
+
+func is_left_capture_active() -> bool:
+	return _left_capture_active
+
+
+func is_runtime_gesture_active() -> bool:
+	return _runtime.gesture_is_active()
+
+
+func is_endpoint_gesture_eligible() -> bool:
+	return _runtime.gesture_has_legal_operation(_runtime.get_endpoint_cell())
+
+
+func terminate_for_session_completion() -> bool:
+	var was_active := _left_capture_active or _runtime.gesture_is_active()
+	if _runtime.gesture_is_active():
+		_runtime.gesture_finalize()
+	_left_capture_active = false
+	_left_press_latched = false
+	return was_active
 
 
 func set_contact_anchors(anchors: Array[RouteContactAnchorScript]) -> void:
@@ -112,7 +153,12 @@ func get_grid_origin_units() -> Vector2:
 
 
 func prepare_for_train_sampling(current_distance: float, through_distance: float) -> bool:
-	return _runtime.prepare_for_train_sampling(current_distance, through_distance)
+	var was_active := _left_capture_active
+	var result := _runtime.prepare_for_train_sampling(current_distance, through_distance)
+	var active_after := _runtime.gesture_is_active()
+	if was_active and not active_after:
+		_left_capture_active = false
+	return result
 
 
 func get_pose_sample_at_distance(route_distance: float) -> Dictionary:

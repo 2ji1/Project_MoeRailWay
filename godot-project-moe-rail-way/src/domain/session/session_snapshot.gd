@@ -28,6 +28,8 @@ var _estimated_track_end_seconds: float
 var _track_end_warning_urgent: bool
 var _selected_departure_candidate_id: StringName
 var _departure_cell: Vector2i
+var _endpoint_gesture_eligible: bool
+var _endpoint_gesture_active: bool
 
 
 func _init(
@@ -54,7 +56,9 @@ func _init(
 	estimated_track_end_seconds_value: float = 0.0,
 	track_end_warning_urgent_value: bool = false,
 	selected_departure_candidate_id_value: StringName = StringName(),
-	departure_cell_value: Vector2i = Vector2i(-1, -1)
+	departure_cell_value: Vector2i = Vector2i(-1, -1),
+	endpoint_gesture_eligible_value: bool = false,
+	endpoint_gesture_active_value: bool = false
 ) -> void:
 	_total_ticks = total_ticks_value
 	_elapsed_ticks = elapsed_ticks_value
@@ -80,6 +84,8 @@ func _init(
 	_track_end_warning_urgent = track_end_warning_urgent_value
 	_selected_departure_candidate_id = StringName(selected_departure_candidate_id_value)
 	_departure_cell = Vector2i(departure_cell_value)
+	_endpoint_gesture_eligible = endpoint_gesture_eligible_value
+	_endpoint_gesture_active = endpoint_gesture_active_value
 
 
 func get_total_ticks() -> int:
@@ -182,6 +188,14 @@ func get_selected_departure_candidate_id() -> StringName:
 
 func get_departure_cell() -> Vector2i:
 	return _departure_cell
+
+
+func is_endpoint_gesture_eligible() -> bool:
+	return _endpoint_gesture_eligible
+
+
+func is_endpoint_gesture_active() -> bool:
+	return _endpoint_gesture_active
 
 
 func _duplicate_records(source: Array[TrackCellRecordScript]) -> Array[TrackCellRecordScript]:

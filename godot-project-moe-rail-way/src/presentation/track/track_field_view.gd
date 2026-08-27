@@ -17,6 +17,7 @@ const DEPARTURE_COLOR := Color(0.22, 0.55, 0.38, 1.0)
 const TRAIN_COLOR := Color(0.82, 0.26, 0.20, 1.0)
 const HOVER_COLOR := Color(0.91, 0.73, 0.29, 0.72)
 const VALID_START_COLOR := Color(0.78, 0.88, 0.90, 0.16)
+const EXTEND_HOVER_COLOR := Color(0.29, 0.92, 0.45, 0.82)
 const BUILT_WIDTH := 7.0
 const RESERVED_WIDTH := 4.0
 const DEPARTURE_RADIUS := 9.0
@@ -65,6 +66,11 @@ var _train_active := false
 var _train_position := Vector2.ZERO
 var _train_heading := Vector2.RIGHT
 var _hover_cancel_cell := INVALID_CELL
+var _hover_extend_cell := INVALID_CELL
+var _current_pointer_cell := INVALID_CELL
+var _current_pointer_inside_grid := false
+var _presented_gesture_active := false
+var _presented_snapshot_has_endpoint_eligibility := false
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -80,11 +86,14 @@ func _gui_input(event: InputEvent) -> void:
 
 	_latest_cursor_local = event.position
 	_cursor_observed = true
+	var button_mapping := _map_local_to_grid(event.position)
+	_set_current_pointer(button_mapping)
 	if event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			_begin_left_press(event.position)
 		else:
 			_end_left_press(event.position)
+		_update_hover_cell(event.position)
 		accept_event()
 		return
 	if event.button_index == MOUSE_BUTTON_RIGHT:
@@ -93,6 +102,8 @@ func _gui_input(event: InputEvent) -> void:
 			_right_pressed_pending = true
 			_right_press_inside_grid = mapping.inside_grid
 			_right_press_cell = mapping.cell
+		_update_hover_cell(event.position)
+		if event.pressed:
 			_clear_hover_cell()
 		accept_event()
 
@@ -101,6 +112,7 @@ func _begin_left_press(local_position: Vector2) -> void:
 	if _left_held:
 		return
 	var mapping := _map_local_to_grid(local_position)
+	_set_current_pointer(mapping)
 	_left_pressed_pending = true
 	_left_press_inside_grid = mapping.inside_grid
 	_left_press_cell = mapping.cell
@@ -127,6 +139,7 @@ func _end_left_press(local_position: Vector2) -> void:
 
 func _rasterize_to(local_position: Vector2) -> void:
 	var mapping := _map_local_to_grid(local_position, true)
+	_set_current_pointer(mapping)
 	var segment_cells: Array[Vector2i] = _rasterizer.rasterize_motion(
 		_last_pointer_logical,
 		mapping.logical,
@@ -152,7 +165,9 @@ func consume_input_frame():
 		_left_pressed_pending,
 		_left_held,
 		_left_released_pending,
-		_right_pressed_pending
+		_right_pressed_pending,
+		_current_pointer_cell,
+		_current_pointer_inside_grid
 	)
 	_crossed_cells.clear()
 	_left_pressed_pending = false
@@ -199,6 +214,8 @@ func _notification(what: int) -> void:
 		queue_redraw()
 	elif what == NOTIFICATION_MOUSE_EXIT:
 		_cursor_observed = false
+		_current_pointer_cell = INVALID_CELL
+		_current_pointer_inside_grid = false
 		_clear_hover_cell()
 
 
@@ -308,8 +325,14 @@ func present(snapshot: SessionSnapshotScript) -> void:
 	_train_active = snapshot.is_train_active()
 	_train_position = snapshot.get_train_position()
 	_train_heading = snapshot.get_train_heading()
+	_presented_snapshot_has_endpoint_eligibility = snapshot.is_endpoint_gesture_eligible()
+	var snapshot_gesture_active := snapshot.is_endpoint_gesture_active()
+	if _presented_gesture_active and not snapshot_gesture_active:
+		_clear_view_capture_after_termination()
+	_presented_gesture_active = snapshot_gesture_active
 	if _presented_state == SessionControllerScript.State.COMPLETED:
-		_clear_hover_cell()
+		_clear_hover_observations()
+		_clear_view_capture_after_termination()
 	elif _cursor_observed:
 		_update_hover_cell(_latest_cursor_local)
 	else:
@@ -350,7 +373,7 @@ func _build_intervals(records: Array, pieces: Array) -> Array[Dictionary]:
 
 func get_render_observation() -> Dictionary:
 	var field_render_facts := _get_field_render_facts()
-	return {
+	var observation := {
 		"logical_size": Vector2(_get_mapping_logical_size()),
 		"grid_rect": field_render_facts.grid_rect,
 		"grid_size": field_render_facts.grid_size,
@@ -370,6 +393,9 @@ func get_render_observation() -> Dictionary:
 		"train_heading": Vector2(_train_heading),
 		"hover_cancel_cell": Vector2i(_hover_cancel_cell),
 	}
+	if _hover_extend_cell != INVALID_CELL:
+		observation["hover_extend_cell"] = Vector2i(_hover_extend_cell)
+	return observation
 
 
 func _get_valid_start_cell() -> Vector2i:
@@ -482,6 +508,13 @@ func _draw() -> void:
 		)
 		var hover_rect := Rect2(_grid_rect.position + Vector2(_hover_cancel_cell) * cell_size, cell_size)
 		draw_rect(hover_rect, HOVER_COLOR, false, 3.0, true)
+	if _hover_extend_cell != INVALID_CELL and _grid_size.x > 0 and _grid_size.y > 0:
+		var cell_size := Vector2(
+			_grid_rect.size.x / float(_grid_size.x),
+			_grid_rect.size.y / float(_grid_size.y)
+		)
+		var extend_rect := Rect2(_grid_rect.position + Vector2(_hover_extend_cell) * cell_size, cell_size)
+		draw_rect(extend_rect, EXTEND_HOVER_COLOR, false, 4.0, true)
 	if _session_configured:
 		draw_circle(_selected_departure_position, DEPARTURE_RADIUS, DEPARTURE_COLOR, true)
 	if _train_active:
@@ -513,34 +546,113 @@ func _polyline_prefix(points: PackedVector2Array, progress: float) -> PackedVect
 
 
 func _update_hover_cell(local_position: Vector2) -> void:
-	if _presented_state == SessionControllerScript.State.COMPLETED:
-		_clear_hover_cell()
-		return
 	var mapping := _map_local_to_grid(local_position)
-	if not mapping.inside_grid or not _is_cancelable_cell(mapping.cell):
-		_clear_hover_cell()
+	_set_current_pointer(mapping)
+	if _presented_state == SessionControllerScript.State.COMPLETED:
+		_clear_hover_observations()
 		return
-	if _hover_cancel_cell != mapping.cell:
-		_hover_cancel_cell = mapping.cell
+	if not _has_track_train_data:
+		_clear_hover_observations()
+		return
+	if _right_pressed_pending:
+		_clear_hover_observations()
+		return
+	if _presented_gesture_active:
+		_clear_hover_observations()
+		return
+	if not mapping.inside_grid:
+		_clear_hover_observations()
+		return
+	var changed := false
+	var next_cancel: Vector2i = mapping.cell if _is_cancelable_cell(mapping.cell) else INVALID_CELL
+	var next_extend: Vector2i = _current_pointer_cell if _is_extendable_endpoint(_current_pointer_cell) else INVALID_CELL
+	if _hover_cancel_cell != next_cancel:
+		_hover_cancel_cell = next_cancel
+		changed = true
+	if _hover_extend_cell != next_extend:
+		_hover_extend_cell = next_extend
+		changed = true
+	if changed:
 		queue_redraw()
 
 
+func _set_current_pointer(mapping: Dictionary) -> void:
+	_current_pointer_cell = mapping.cell if mapping.inside_grid else INVALID_CELL
+	_current_pointer_inside_grid = mapping.inside_grid
+
+
+func _is_extendable_endpoint(cell: Vector2i) -> bool:
+	if (
+		_presented_state == SessionControllerScript.State.COMPLETED
+		or not _session_configured
+		or _left_held
+		or not _current_pointer_inside_grid
+		or _current_pointer_cell != cell
+		or not _presented_gesture_eligible()
+	):
+		return false
+	var endpoint := _get_valid_start_cell()
+	if _train_occupies_cell(endpoint):
+		return false
+	return endpoint != INVALID_CELL and cell == endpoint
+
+
+func _presented_gesture_eligible() -> bool:
+	return _presented_snapshot_has_endpoint_eligibility
+
+
 func _is_cancelable_cell(cell: Vector2i) -> bool:
-	for record in _presented_cells:
-		if record.cell == cell:
-			if record.state != TrackCellRecordScript.State.RESERVED_GHOST:
+	var clicked_index := -1
+	for index in range(_presented_cells.size()):
+		if _presented_cells[index].cell == cell:
+			clicked_index = index
+			break
+	if clicked_index < 0:
+		return false
+	for index in range(clicked_index, _presented_cells.size()):
+		var record = _presented_cells[index]
+		if record.state != TrackCellRecordScript.State.RESERVED_GHOST or record.geometry_locked:
+			return false
+		for piece in _presented_pieces:
+			if piece.contains_serial(record.route_serial) and piece.locked:
 				return false
-			for piece in _presented_pieces:
-				if piece.contains_serial(record.route_serial) and (piece.locked or record.geometry_locked):
-					return false
-				if piece.exit_support_route_serial == record.route_serial:
-					return false
-			return true
-	return false
+			if piece.exit_support_route_serial == record.route_serial:
+				return false
+	return true
+
+
+func _train_occupies_cell(cell: Vector2i) -> bool:
+	if not _train_active or cell == INVALID_CELL or _grid_size.x <= 0 or _grid_size.y <= 0:
+		return false
+	var cell_size := Vector2(
+		_grid_rect.size.x / float(_grid_size.x),
+		_grid_rect.size.y / float(_grid_size.y)
+	)
+	var train_cell := Vector2i(floor((_train_position - _grid_rect.position) / cell_size))
+	return train_cell == cell
 
 
 func _clear_hover_cell() -> void:
-	if _hover_cancel_cell == INVALID_CELL:
+	_clear_hover_observations()
+
+
+func _clear_hover_observations() -> void:
+	if _hover_cancel_cell == INVALID_CELL and _hover_extend_cell == INVALID_CELL:
 		return
 	_hover_cancel_cell = INVALID_CELL
+	_hover_extend_cell = INVALID_CELL
 	queue_redraw()
+
+
+func _clear_view_capture_after_termination() -> void:
+	_left_capture_active = false
+	_crossed_cells.clear()
+	_left_pressed_pending = false
+	_left_press_cell = INVALID_CELL
+	_left_press_inside_grid = false
+	_left_released_pending = false
+	_right_pressed_pending = false
+	_right_press_cell = INVALID_CELL
+	_right_press_inside_grid = false
+	_previous_pointer_cell = INVALID_CELL
+	_release_clears_capture = false
