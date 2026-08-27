@@ -4,7 +4,7 @@
 
 **Goal:** Make an ordinary endpoint drag reversible so its visible ghost shrinks and rebranches with the still-held pointer, while preserving completed-head template reselection and every route invariant.
 
-**Architecture:** `TrackFieldView` owns a loop-erased full-path snapshot for the current physical press and places that detached snapshot in `TrackInputFrame`; the physical press-origin cell is excluded from the array and is explicitly represented as the authoritative implicit prefix immediately before it. `TrackSystem` forwards the snapshot unchanged; `GridTrackRuntime` reconciles record identities against the current path, rebuilds every candidate from the gesture origin, and commits only a completely valid candidate. Completed-head template selection keeps the authoritative current-pointer rule, but its suffix is reconciled against the current full path and the implicit origin prefix instead of append-only history. Coalesced old-release/fresh-press frames carry detached old-release facts separately from fresh facts and finalize the old runtime before beginning the fresh gesture.
+**Architecture:** `TrackFieldView` owns a loop-erased full-path snapshot for the current physical press and places that detached snapshot in `TrackInputFrame`; the physical press-origin cell is excluded from the array and is explicitly represented as the authoritative implicit prefix immediately before it. `TrackSystem` forwards the snapshot unchanged; `GridTrackRuntime` reconciles record identities against the current path, rebuilds every candidate from the gesture origin, and commits only a completely valid candidate. Completed-head template selection keeps the authoritative current-pointer rule, but its suffix is reconciled against the current full path and the implicit origin prefix instead of append-only history. While capture is active, construction advances only the shared route-serial frontier present in both the gesture origin and current candidate, including editable-template serials, and mirrors their state/progress into both origin and candidate; gesture-added suffix serials remain ghost-only until finalization. Coalesced old-release/fresh-press frames carry detached old-release facts separately from fresh facts and finalize the old runtime before beginning/updating the fresh gesture.
 
 **Current canonical status:** Implementation corrections in progress; pending manual re-acceptance and main integration. The prior manually tested candidate remains historical evidence until the correction task and affected manual rerun pass.
 
@@ -18,7 +18,7 @@
 - Keep `D:\godot\MoeRailWay` as a clean user playtest checkout of `main`; do not stage, format, reset, stash, copy, absorb, or otherwise alter primary-worktree changes.
 - Do not terminate, reset, or repurpose a user-owned Godot or Steam editor process.
 - Use only `D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe` for automated Godot gates. Steam Godot `4.7.2` is unsupported.
-- Preserve endpoint-only start, gesture-origin abort, atomic last-valid publication, inventory conservation, monotonic serial allocation, immutable locked/train-entered geometry, construction, recovery, cancellation, hover colors, and train sampling.
+- Preserve endpoint-only start, gesture-origin abort, atomic last-valid publication, inventory conservation, monotonic serial allocation, immutable locked/train-entered geometry, construction rate and ordering, recovery, cancellation, hover colors, and train sampling. During an active endpoint gesture, construction may advance only route serials present in both the gesture origin and current candidate, including editable-template serials; mirror each state/progress change by serial into the current candidate and gesture origin, keep gesture-added suffix serials `RESERVED_GHOST` until finalize, and keep recovery paused.
 - For completed-template suffixes, use the selected target's most recent live-path occurrence; if absent, use index `-1` only when the target exactly equals the authoritative gesture press origin and the selected template remains the gesture-origin/current selected template (same-template continuation), then reconcile the entire live path; when the template changes, reconciliation starts empty even if the newly selected target equals the origin; otherwise use an empty suffix. Never infer a suffix from target/pointer absence or use an append-only, synthetic, or pointer-invalid fallback.
 - Add no pathfinding, route graph, freehand spline, undo stack, new visual ghost treatment, generalized input framework, or production abstraction layer.
 - Write agent-facing Markdown in English and user progress reports in Korean.
@@ -33,6 +33,8 @@
 - `godot-project-moe-rail-way/tests/unit/test_track_field_view_input.gd`: real view-event path normalization tests.
 - `godot-project-moe-rail-way/tests/unit/test_track_system_reservation.gd`: input-frame ownership and facade/runtime ordinary reflow tests.
 - `godot-project-moe-rail-way/tests/unit/test_grid_track_runtime.gd`: domain transaction, inventory, identity, invalid-candidate, abort, and completed-template suffix tests.
+- `godot-project-moe-rail-way/tests/unit/test_session_controller.gd`: causal PREPARING/RUNNING construction and recovery lifecycle tests.
+- `godot-project-moe-rail-way/tests/unit/test_track_train_session_controller.gd`: train/session lifecycle regression tests.
 - `godot-project-moe-rail-way/tests/integration/run_track_train_input_integration.gd`: real `InputEventMouseButton`/`InputEventMouseMotion` held-gesture acceptance.
 - `godot-project-moe-rail-way/tests/manual/track_train_windows.md`: English Windows manual evidence only after the implementation and automated gates pass.
 
@@ -374,7 +376,7 @@ git commit -m 'fix: rebuild ordinary ghost from held path'
 
 - [ ] **Step 9: Run independent specification review, then quality review**
 
-Specification review checks design sections 3.3, 3.5, 4, and the `TrackSystem`/`GridTrackRuntime` responsibilities. It must reject delta accumulation, failure to publish an empty path, serial reuse, fixed-origin identity drift, non-atomic mutation, or changes to resolver/train/hover behavior. Quality review then checks the reconciliation common-prefix boundary, deep copies, empty arrays, watermark advancement, invalid-candidate rollback, stale state after abort/finalize, and all direct-test migrations. Resolve findings with a fresh focused RED where behavior changes, commit only Task 2 paths, and repeat both reviews.
+Specification review checks design sections 3.3, 3.6, 4, and the `TrackSystem`/`GridTrackRuntime` responsibilities. It must reject delta accumulation, failure to publish an empty path, serial reuse, fixed-origin identity drift, non-atomic mutation, or changes to resolver/train/hover behavior. Quality review then checks the reconciliation common-prefix boundary, deep copies, empty arrays, watermark advancement, invalid-candidate rollback, stale state after abort/finalize, and all direct-test migrations. Resolve findings with a fresh focused RED where behavior changes, commit only Task 2 paths, and repeat both reviews.
 
 ---
 
@@ -476,7 +478,7 @@ git commit -m 'fix: reflow held template suffix from current path'
 
 - [ ] **Step 7: Run independent specification review, then quality review**
 
-Specification review checks design section 3.4 and required evidence 8-13, including actual Godot input objects, the RUNNING-state post-recovery sequence, and pre-release observation. Quality review checks most-recent target indexing, implicit-origin index `-1` handling, template changes with empty reconciliation, serial retirement, pointer-near-target behavior, suffix refund, and exact integration marker cardinality. Resolve any finding within the Task 3 allowlist through RED/GREEN and repeat both reviews.
+Specification review checks design section 3.5 and required evidence 8-13, including actual Godot input objects, the RUNNING-state post-recovery sequence, and pre-release observation. Quality review checks most-recent target indexing, implicit-origin index `-1` handling, template changes with empty reconciliation, serial retirement, pointer-near-target behavior, suffix refund, and exact integration marker cardinality. Resolve any finding within the Task 3 allowlist through RED/GREEN and repeat both reviews.
 
 ---
 
@@ -625,3 +627,113 @@ git commit -m 'fix: order coalesced release and fresh press'
 - [ ] **Step 8: Repeat scoped reviews and affected manual evidence**
 
 Specification review checks the coalesced release contract, explicit empty/outside facts, active/inactive/train-terminated ordering, constructor compatibility, and template replay rules. Quality review checks detached ownership, stale-buffer cleanup, legacy synthetic compatibility, signature equality, no early-return cache, exact validation on replay, and exact allowlist scope. Resolve findings with new RED/GREEN correction commits, rerun the full gate and affected manual sequence, then update the status and canonical/manual evidence only after both reviews pass.
+
+---
+
+### Task 6: Continue Origin-Owned Construction During a Held Gesture
+
+**Files:**
+- Modify: `godot-project-moe-rail-way/src/domain/track/grid_track_runtime.gd`
+- Test: `godot-project-moe-rail-way/tests/unit/test_grid_track_runtime.gd`
+- Test: `godot-project-moe-rail-way/tests/unit/test_track_system_reservation.gd`
+- Test: `godot-project-moe-rail-way/tests/unit/test_session_controller.gd`
+- Test: `godot-project-moe-rail-way/tests/unit/test_track_train_session_controller.gd`
+- Test: `godot-project-moe-rail-way/tests/integration/run_track_train_input_integration.gd`
+
+**Purpose:** Correct the construction lifecycle exposed by the live gesture manual
+failure. An active endpoint edit must not freeze the already-reserved route. The
+construction frontier is defined by route identity, not by whether a record lies in
+the editable template span: every serial present in the gesture origin may continue
+at the existing rate and order. Only serials introduced by the held candidate and
+absent from the origin remain ghost-only until finalization.
+
+**Interfaces:**
+- Consumes `_gesture_active`, `_gesture_origin_sequence`, the current candidate
+  sequence, route serial/state/build-progress fields, `advance_construction`,
+  `recover_behind`, and existing train-preparation sampling/lock state.
+- Produces origin-owned construction progress mirrored by route serial into both the
+  current candidate and gesture origin, ghost-only gesture-added suffixes, paused
+  recovery, and unchanged inventory, lock, train-sampling, and construction timing
+  contracts.
+
+- [ ] **Step 1: Write the focused RED tests before changing production code**
+
+  Add the smallest deterministic route fixture that leaves a previously finalized
+  route partially constructed, begins an endpoint gesture, updates a valid candidate,
+  and advances construction while the gesture remains held. Assert the following
+  exact expectations:
+
+  - A two-cell origin route is advanced by `1.5`: the first serial is `BUILT`, the
+    second is `BUILDING` at `0.5`, and the built/reserved distances are `1.0`/`2.0`.
+  - After a held endpoint update adds a new candidate suffix, an active
+    `advance_construction(0.5)` consumes `0.5`; the next origin serial becomes
+    `BUILT`, built/reserved distances become `2.0`/`3.0`, and the gesture-added serial
+    remains `RESERVED_GHOST`. The current implementation returns `0.0` and leaves
+    the old built/progress frontier unchanged, so this assertion must fail RED.
+  - Reflow an existing five-record editable template after partial construction.
+    Serials from the gesture origin, including those inside the editable span, keep
+    advancing, and every changed state/progress value is equal by serial in the
+    current candidate and gesture origin. A suffix serial absent from the origin
+    remains `RESERVED_GHOST`.
+  - After abort, the route restores the latest mirrored origin progress rather than
+    the stale pre-tick progress. After finalize, the new suffix remains ghost-only
+    during the held edit and may begin construction on the next post-release tick.
+  - `recover_behind` continues to return `0` while the gesture is active, including
+    while origin-owned construction advances.
+
+- [ ] **Step 2: Run the focused RED gate**
+
+  Run the four affected unit suites and the real-input integration script before
+  modifying production code. The new construction-frontier assertions must fail
+  because the current runtime's active-gesture early return consumes no progress;
+  unrelated existing assertions must remain green. Record the failure marker and
+  the unchanged built/reserved measurements in the task evidence.
+
+- [ ] **Step 3: Implement the minimum runtime correction**
+
+  Keep the configured construction rate, sequential route order, and existing
+  inventory accounting. Replace only the active-gesture construction decision:
+  derive the frontier from route serials present in `_gesture_origin_sequence`,
+  advance the first eligible unbuilt origin serial in the current candidate, and
+  never transition a serial absent from the origin out of `RESERVED_GHOST`.
+  Mirror each changed origin serial's exact state and build progress by serial into
+  both the current candidate and `_gesture_origin_sequence` before the next held
+  update. Leave piece ownership, inventory, geometry locks, ledger semantics, train
+  preparation, and sampling order unchanged. Keep `recover_behind` paused while
+  active, and ensure later update/abort starts from the mirrored origin state.
+
+- [ ] **Step 4: Run minimum GREEN, full regression, and lifecycle evidence**
+
+  Rerun the focused four unit suites and integration until the new assertions pass,
+  then run the complete `PASS: 19 prototype test suite(s)` gate and all four
+  standalone integrations. Require evidence that construction continues during a
+  held gesture, editable-template serials retain progress through reflow, suffix
+  serials remain ghost-only until release, abort preserves mirrored progress,
+  recovery remains paused, and locks, inventory, and train sampling are unchanged.
+
+- [ ] **Step 5: Stage and commit only the correction allowlist**
+
+```powershell
+$Task6Paths = @(
+    'godot-project-moe-rail-way/src/domain/track/grid_track_runtime.gd',
+    'godot-project-moe-rail-way/tests/unit/test_grid_track_runtime.gd',
+    'godot-project-moe-rail-way/tests/unit/test_track_system_reservation.gd',
+    'godot-project-moe-rail-way/tests/unit/test_session_controller.gd',
+    'godot-project-moe-rail-way/tests/unit/test_track_train_session_controller.gd',
+    'godot-project-moe-rail-way/tests/integration/run_track_train_input_integration.gd'
+)
+git add -- $Task6Paths
+git diff --cached --check
+$Task6Actual = @(git diff --cached --name-only)
+if (Compare-Object $Task6Paths $Task6Actual) { throw 'Task 6 staged path set mismatch' }
+git commit -m 'fix: continue origin-owned construction during gestures'
+```
+
+- [ ] **Step 6: Run independent specification and quality reviews**
+
+  Specification review checks design sections 3.4, 3.6, 4, 5.4, and required
+  evidence 17. Quality review checks route-serial frontier membership, editable-span
+  reflow, exact origin/current state-progress mirroring, suffix ghost-only behavior,
+  abort/finalize timing, paused recovery, and preservation of locks, inventory, and
+  train sampling. Any finding must be resolved with a new focused RED/GREEN commit
+  inside the six-path allowlist, followed by the full regression gate.

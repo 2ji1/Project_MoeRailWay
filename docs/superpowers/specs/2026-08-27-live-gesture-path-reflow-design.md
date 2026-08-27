@@ -42,7 +42,12 @@ A separate manual observation exposed a required recovery-state fix. After a run
 
 A gesture still begins only on the current active endpoint and captures the existing detached gesture-origin snapshot. The press cell is the path origin and is not charged as a new route record.
 
-The gesture origin remains immutable until one of these terminal events:
+The gesture origin's route identity, geometry ownership, recovery facts, and contacts
+remain immutable until one of these terminal events. Existing train-preparation lock
+and ledger synchronization remains the sole non-construction origin update. Construction
+state and build progress are the explicit exception: progress for origin-owned route
+serials is mirrored into the origin as it advances, so the origin remains an exact
+abortable construction state rather than a stale pre-progress snapshot.
 
 - left release finalizes the last valid candidate;
 - right press aborts and restores the exact origin;
@@ -78,7 +83,32 @@ The runtime does not append this frame to a historical ordinary-input list. It r
 
 This applies both to an empty departure and to ordinary extension from a fixed or locked endpoint. The origin endpoint remains fixed; only records created by the active gesture are reversible.
 
-### 3.4 Completed-head template selection and suffix
+### 3.4 Active-gesture construction frontier
+
+Progressive construction continues while an endpoint gesture is active, but only for
+route serials present in both the current candidate and the detached gesture-origin
+sequence. Origin membership authorizes the serial; the shared current/origin identity
+is the safe construction frontier. This frontier includes serials inside an editable
+completed-head template: a template replacement changes their cells or geometry while
+retaining their route serials, nominal positions, construction states, and build
+progress. Each progress change is mirrored by route serial into both the current
+candidate and the gesture origin before the next held-pointer update can rebuild from
+that origin.
+
+Gesture-added suffix serials, which are absent from the gesture-origin sequence,
+remain `RESERVED_GHOST` until the gesture finalizes. They must not enter
+`BUILDING` or `BUILT` while the gesture remains active. A candidate reflow may
+shorten or rebranch that suffix under the existing atomic inventory and serial rules,
+but it must never roll back construction progress on an origin-owned serial.
+
+The session tick keeps the existing construction rate, ordering, and placement in
+the input-to-train causal sequence. Construction itself does not create geometry
+locks, change inventory, or move the train. `recover_behind` remains paused during
+an active gesture. Train preparation remains the only operation that may lock
+complete geometry pieces; if sampling overlaps active gesture-owned geometry, the
+gesture is finalized before immutable sampling as already specified.
+
+### 3.5 Completed-head template selection and suffix
 
 The existing current-pointer rule remains authoritative for choosing the straight, left-curve, or right-curve replacement of a completed editable head. The runtime still rebuilds that replacement from the gesture origin.
 
@@ -96,13 +126,13 @@ The post-template suffix is no longer an append-only history. It is derived from
 
 The existing deterministic pointer tie order and current-selection tie retention remain unchanged.
 
-### 3.5 Atomic last-valid behavior
+### 3.6 Atomic last-valid behavior
 
 Every update validates one detached candidate before publication. Bounds, adjacency, duplicate, overlap, inventory, geometry resolution, immutable ledger, anchor, continuity, construction, recovery, train-preparation, and finalization failures retain the complete last valid candidate.
 
 Last-valid retention is an error boundary, not path ownership. A failed update must not contaminate the current normalized input snapshot or make a later valid backtrack/rebranch impossible.
 
-### 3.6 Coalesced release and fresh press ordering
+### 3.7 Coalesced release and fresh press ordering
 
 Godot may coalesce an old left-button release and a new left-button press into one consumed `TrackInputFrame`. The frame carries optional final release facts for the completed old gesture:
 
@@ -117,7 +147,7 @@ Godot may coalesce an old left-button release and a new left-button press into o
 
 After finalization or termination cleanup, a fresh held follow-up is processed only by the fresh capture. Release cleanup clears both live and release buffers at the appropriate lifecycle boundary without allowing stale old facts to leak into a later press. The optional final constructor facts remain backward-compatible for existing synthetic producers.
 
-### 3.7 Completed-template replay idempotence
+### 3.8 Completed-template replay idempotence
 
 When a template-change frame selects a target equal to the gesture origin but that target is absent from `live_gesture_path`, the runtime starts with an empty suffix and records the successful template-selection input signature: the detached live path plus pointer cell. Repeated identical held snapshots rebuild and revalidate the same candidate without adding a suffix and without bypassing current lock, recovery, geometry, or other validation rules.
 
@@ -125,7 +155,12 @@ A genuinely changed later path or pointer may use the implicit-origin whole-live
 
 ## 4. Identity and Inventory
 
-The fixed pre-gesture route retains exact record serials, nominal distances, construction state, build progress, piece ownership, ledger entries, support metadata, recovery facts, and contact observations.
+The fixed pre-gesture route retains exact record serials, nominal distances, piece
+ownership, ledger entries, support metadata, recovery facts, and contact observations.
+For every route serial retained by the active candidate, construction state and build
+progress remain synchronized between the current candidate and the gesture origin;
+apart from existing train-preparation lock/ledger synchronization, this construction
+synchronization is the only origin-state evolution allowed during a held edit.
 
 Gesture-created records use monotonically increasing route serials. A serial published by an earlier live candidate is never reassigned to a different cell after that candidate is shortened or rebranched. The gesture origin therefore retains a serial watermark separate from its exact route snapshot.
 
@@ -169,9 +204,16 @@ Shortening and rebranching are staged transactions. A failed replacement preserv
 - Derive a selected template's current suffix from that same snapshot.
 - Remove append-only ordinary and suffix path ownership once no caller depends on it.
 - Preserve the monotonic gesture serial watermark independently of the reversible candidate.
+- Advance construction only through route serials already present in the gesture origin,
+  including editable-template serials, mirror each state/progress change into the origin,
+  and keep gesture-added suffix serials ghost-only until finalization.
+- Keep recovery paused while the gesture is active; preserve existing construction rate,
+  inventory accounting, geometry-lock authority, train preparation, and sampling order.
 - Publish only valid candidates atomically and keep the origin independently abortable.
 
-No resolver, train, construction, recovery, hover-color, route-graph, pathfinding, spline, or production abstraction is added.
+No resolver, train, construction subsystem, recovery, hover-color, route-graph,
+pathfinding, spline, or production abstraction is added. The correction changes only
+which existing construction records may advance during a held gesture.
 
 ## 6. Required Automated Evidence
 
@@ -193,6 +235,7 @@ The implementation must add focused RED/GREEN evidence for all of the following:
 14. A coalesced old-release/fresh-press event preserves the old release path and pointer independently from fresh facts, including an explicit empty release path and a release outside the grid.
 15. Coalesced ordering covers active, inactive/rejected, and train-terminated old states; legacy synthetic combined frames preserve last-valid finalize compatibility; ordinary release, empty return-to-origin, fresh held follow-up, and termination cleanup clear the correct live/release buffers.
 16. A completed-template origin-equal absent-target selection records its detached path/pointer signature; identical held replay revalidates without a suffix or validation bypass, changed later motion can extend through same-template implicit origin, and returning to the signature removes that suffix. Template changes reconcile from empty, while most-recent in-array target precedence remains authoritative.
+17. While a gesture is held over a partially constructed route, construction advances origin-owned serials, including editable-template serials, at the configured per-tick rate; the exact state/progress is mirrored into the current candidate and gesture origin, gesture-added suffix serials remain `RESERVED_GHOST`, recovery remains paused, and inventory, locks, train sampling, and serial identity remain unchanged.
 
 At least one integration must use actual `InputEventMouseButton` and `InputEventMouseMotion` instances in this order:
 
@@ -221,6 +264,10 @@ On Windows with Godot `4.7.1.stable.official.a13da4feb`:
 6. Repeat from an existing completed editable head and verify straight, left-curve, and right-curve reselection plus suffix shortening.
 7. Verify that inventory follows the currently visible candidate exactly.
 8. During another held edit, right-click and verify exact restoration to the pre-gesture route and inventory.
+9. Begin a fresh endpoint gesture over a partially constructed route and verify that
+   already-reserved origin serials continue solidifying, while any newly added suffix
+   remains ghost-only until release. Verify the visible result before release and
+   confirm recovery remains paused while the gesture is held.
 
 The discovered recovery failure is a required fix before acceptance: while the session is RUNNING (not `SESSION COMPLETE — TRACK END REACHED`), repeat the 18-cell, 13-straight, construct/lock/sample, rear-recovery-to-7-records/11-available setup, press the three-record straight editable-head endpoint, drag one adjacent cell, and verify the eighth record appears with 10 available cells before release. Do not treat a terminal completed-session click as evidence of this defect. The later coalesced-release and template-replay corrections are also required before the status can return to an implemented, manually accepted state.
 
@@ -233,7 +280,9 @@ Record the evidence in English in the existing Windows track-train manual record
 - No branchable route or general route editor.
 - No undo stack beyond the active gesture origin and current normalized path.
 - No new ghost styling, animation, color, or opacity.
-- No change to curve template geometry, grid dimensions, train motion, construction timing, recovery, or right-click suffix eligibility.
+- No change to curve template geometry, grid dimensions, train motion, construction
+  rate, recovery policy, or right-click suffix eligibility. Active-gesture construction
+  follows the route-identity frontier in section 3.4; recovery remains paused.
 
 ## 9. Delivery Gates
 
