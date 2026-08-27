@@ -2,9 +2,11 @@
 
 **Date:** 2026-08-27
 
-**Status:** Draft for written-spec review
+**Status:** Implemented on feature branch; pending main integration
 
 **Implementation branch:** `feature/live-gesture-path-reflow`
+
+**Manually accepted implementation commit:** `ecbcb191cd959d9ed24870a241d400b6cbf5d6c4`
 
 **Verified base:** `1a0cd466287f81c3a413c773fd8974d5dbb72f08` (`main`, `origin/main`)
 
