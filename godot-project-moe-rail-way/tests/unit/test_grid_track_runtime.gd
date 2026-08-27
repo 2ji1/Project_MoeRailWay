@@ -23,6 +23,8 @@ func run() -> PackedStringArray:
 	_test_endpoint_reshape_control_cells_are_omitted()
 	_test_endpoint_reshape_target_reentry_rebuilds_from_origin()
 	_test_live_template_suffix_reconciles_from_current_path()
+	_test_recovered_running_endpoint_accepts_direct_extension()
+	_test_template_origin_suffix_guards_remain_atomic()
 	_test_live_template_suffix_absent_on_first_update()
 	_test_live_template_suffix_absent_after_rejected_target()
 	_test_endpoint_reshape_invalid_bounds_preserve_last_valid()
@@ -565,7 +567,7 @@ func _test_endpoint_reshape_control_cells_are_omitted() -> void:
 	assert_true(track.has_method("gesture_update"), "Gesture update control-cell contract exists")
 	if not track.has_method("gesture_update"):
 		return
-	assert_true(track.call("gesture_update", control_only), "Control-only motion resolves the current template with an empty suffix")
+	assert_false(track.call("gesture_update", control_only), "Control-only motion without the origin target rejects its full suffix candidate")
 	assert_equal(_record_values(track.get_cell_records()), records_before, "Control-only motion preserves last-valid records")
 	assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before, "Control-only motion preserves last-valid pieces")
 	assert_equal(track.get_available_track_cells(), inventory_before, "Control-only motion preserves last-valid inventory")
@@ -677,15 +679,81 @@ func _test_live_template_suffix_reconciles_from_current_path() -> void:
 	track.gesture_abort()
 
 
+func _test_recovered_running_endpoint_accepts_direct_extension() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(0, 0), 18, Vector2.ZERO, Vector2i(14, 8), 40.0
+	)
+	var cells: Array[Vector2i] = []
+	for x in range(1, 14):
+		cells.append(Vector2i(x, 0))
+	assert_equal(track.append_cells(cells), 13, "Recovery extension fixture appends thirteen straight cells")
+	assert_equal(track.advance_construction(13.0), 13.0, "Recovery extension fixture completes construction")
+	assert_true(
+		track.prepare_for_train_sampling(0.0, 1.0),
+		"Recovery extension fixture prepares train sampling"
+	)
+	assert_equal(track.recover_behind(6.0), 6, "Recovery extension fixture recovers six rear cells")
+	assert_equal(track.get_cell_records().size(), 7, "Recovery extension leaves seven active records")
+	assert_equal(track.get_available_track_cells(), 11, "Recovery extension refunds six inventory cells")
+	assert_equal(track.get_endpoint_cell(), Vector2i(13, 0), "Recovery extension keeps the expected endpoint")
+	var began = track.gesture_begin(Vector2i(13, 0))
+	assert_true(began is Dictionary and not began.is_empty(), "Recovery extension begins at the green endpoint")
+	if not began is Dictionary or began.is_empty():
+		return
+	var span: Dictionary = began["editable_span"]
+	assert_equal(span["record_count"], 3, "Recovery extension exposes a three-record editable head")
+	var adjacent_path: Array[Vector2i] = [Vector2i(13, 1)]
+	print("Live gesture path: recovered running endpoint direct extension")
+	assert_true(
+		track.gesture_update(adjacent_path, Vector2i(13, 1)),
+		"Recovery extension publishes the direct adjacent path from the implicit origin"
+	)
+	assert_equal(track.get_cell_records().size(), 8, "Recovery extension publishes an eighth record")
+	assert_equal(track.get_available_track_cells(), 10, "Recovery extension charges one inventory cell")
+	assert_equal(track.get_endpoint_cell(), Vector2i(13, 1), "Recovery extension advances the endpoint")
+	assert_true(track.gesture_is_active(), "Recovery extension remains held before release")
+	track.gesture_abort()
+
+
+func _test_template_origin_suffix_guards_remain_atomic() -> void:
+	var track = _make_three_by_three_curve_runtime()
+	var began = track.gesture_begin(track.get_endpoint_cell())
+	assert_true(began is Dictionary and not began.is_empty(), "Template guard fixture begins a gesture")
+	if not began is Dictionary or began.is_empty():
+		return
+	var straight_target: Vector2i = began["targets"]["straight"]
+	var valid_path: Array[Vector2i] = [straight_target, Vector2i(5, 0)]
+	assert_true(track.gesture_update(valid_path, valid_path[-1]), "Template guard fixture publishes a suffix")
+	var before_invalid_records := _record_values(track.get_cell_records())
+	var before_invalid_pieces := _piece_values(track.get_geometry_pieces())
+	var before_invalid_inventory: int = track.get_available_track_cells()
+	var invalid_path: Array[Vector2i] = [straight_target, Vector2i(5, 0), Vector2i(5, 0)]
+	assert_false(track.gesture_update(invalid_path, Vector2i(-1, -1)), "Invalid duplicate candidate is rejected")
+	assert_equal(_record_values(track.get_cell_records()), before_invalid_records, "Rejected candidate preserves records")
+	assert_equal(_piece_values(track.get_geometry_pieces()), before_invalid_pieces, "Rejected candidate preserves geometry")
+	assert_equal(track.get_available_track_cells(), before_invalid_inventory, "Rejected candidate preserves inventory")
+	var absent_non_origin_path: Array[Vector2i] = [Vector2i(6, 0)]
+	assert_true(
+		track.gesture_update(absent_non_origin_path, Vector2i(-1, -1)),
+		"Absent non-origin target publishes an empty suffix"
+	)
+	assert_false(
+		track.get_cell_records().any(func(record): return record.cell == Vector2i(5, 0)),
+		"Absent target not equal to the gesture origin clears the suffix"
+	)
+	track.gesture_abort()
+
+
 func _test_live_template_suffix_absent_on_first_update() -> void:
 	var track = _make_three_by_three_curve_runtime()
 	assert_true(track.gesture_begin(track.get_endpoint_cell()).size() > 0, "Absent-first-target fixture begins gesture")
 	var original_cells: Array = track.get_cell_records().map(func(record): return record.cell)
 	var absent_target_path: Array[Vector2i] = [Vector2i(3, 2)]
-	print("Live gesture path: absent target is empty on first authoritative update")
-	assert_true(track.gesture_update(absent_target_path, Vector2i(-1, -1)), "Absent-first-target update remains a valid empty-suffix candidate")
-	assert_equal(track.get_cell_records().map(func(record): return record.cell), original_cells, "Absent first target does not append a suffix")
-	assert_equal(track.get_available_track_cells(), 13, "Absent first target preserves inventory")
+	print("Live gesture path: origin-equal absent target uses the implicit suffix anchor")
+	assert_true(track.gesture_update(absent_target_path, Vector2i(-1, -1)), "Origin-equal absent target publishes the live suffix")
+	assert_equal(track.get_cell_records().size(), original_cells.size() + 1, "Origin-equal absent target appends the live suffix")
+	assert_equal(track.get_cell_records()[-1].cell, Vector2i(3, 2), "Origin-equal absent target appends the adjacent cell")
+	assert_equal(track.get_available_track_cells(), 12, "Origin-equal absent target charges one inventory cell")
 	track.gesture_abort()
 
 
@@ -699,10 +767,10 @@ func _test_live_template_suffix_absent_after_rejected_target() -> void:
 	var rejected_path: Array[Vector2i] = [straight_target, Vector2i(7, 0)]
 	assert_false(track.gesture_update(rejected_path, Vector2i(-1, -1)), "Rejected first target does not publish")
 	var absent_target_path: Array[Vector2i] = [Vector2i(3, 2)]
-	print("Live gesture path: absent target stays empty after rejected observation")
-	assert_true(track.gesture_update(absent_target_path, Vector2i(-1, -1)), "Absent target after rejection remains a valid empty-suffix candidate")
-	assert_false(track.get_cell_records().any(func(record): return record.cell == Vector2i(3, 2)), "Rejected target does not unlock append-only suffix ownership")
-	assert_equal(track.get_available_track_cells(), 13, "Rejected target absent path preserves inventory")
+	print("Live gesture path: origin-equal target recovers after rejected observation")
+	assert_true(track.gesture_update(absent_target_path, Vector2i(-1, -1)), "Origin-equal target after rejection publishes the live suffix")
+	assert_true(track.get_cell_records().any(func(record): return record.cell == Vector2i(3, 2)), "Origin-equal target recovers the adjacent suffix")
+	assert_equal(track.get_available_track_cells(), 12, "Origin-equal target after rejection charges one inventory cell")
 	track.gesture_abort()
 
 

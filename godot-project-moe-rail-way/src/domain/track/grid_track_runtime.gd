@@ -203,6 +203,16 @@ func gesture_update(
         if selected_target_index >= 0:
             for index in range(selected_target_index + 1, live_path.size()):
                 current_suffix_cells.append(live_path[index])
+        elif (
+            _gesture_origin_sequence != null
+            and next_template_index < [&"straight", &"left", &"right"].size()
+            and _gesture_target_endpoints.get(
+                [&"straight", &"left", &"right"][next_template_index],
+                Vector2i(-1, -1)
+            ) == _gesture_origin_sequence.get_endpoint_cell()
+        ):
+            for cell in live_path:
+                current_suffix_cells.append(cell)
         var existing_suffix_input_facts: Array[Dictionary] = []
         if next_template_index == _gesture_selected_template_index:
             existing_suffix_input_facts = _gesture_suffix_input_facts

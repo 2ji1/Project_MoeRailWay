@@ -330,6 +330,8 @@ func _run() -> void:
 	if running_green:
 		print("PASS: Endpoint reshape integration running endpoint green")
 
+	await _test_recovered_running_endpoint_accepts_direct_drag(shell, view, config)
+
 	var consecutive_track := TrackSystemScript.new(config)
 	var consecutive_controller := SessionControllerScript.new(
 		config,
@@ -508,7 +510,7 @@ func _run() -> void:
 	_assert_true(straight_ok, "Held pointer near straight target reselects the straight template")
 	held_reselection_passed = held_reselection_passed and straight_ok
 
-	var right_near := Vector2i(3, 3)
+	var right_near := Vector2i(3, 4)
 	var right_near_logical := (Vector2(right_near) + Vector2(0.5, 0.5)) * reshape_config.grid_cell_size_units
 	await _deliver(_motion(_logical_to_viewport(view, right_near_logical), MOUSE_BUTTON_MASK_LEFT))
 	var right_near_frame: TrackInputFrameScript = await _consume_view(shell, reshape_track)
@@ -845,6 +847,96 @@ func _run() -> void:
 	await process_frame
 	_assert_equal(horizontal_track.get_cell_records().size(), domain_before_resize.size(), "Resize does not change domain cells")
 	await _finish(shell)
+
+
+func _test_recovered_running_endpoint_accepts_direct_drag(shell, view, config) -> void:
+	var recovery_config := SessionStartConfigScript.new(
+		123, 120.0, 60,
+		1.0, 18, 2, 3.0, 60.0, 1,
+		Vector2(800.0, 400.0), Vector2i(20, 10), 40.0, Vector2.ZERO,
+		&"departure_01", Vector2(100.0, 100.0), Vector2i(2, 2)
+	)
+	var recovery_track := TrackSystemScript.new(recovery_config)
+	var recovery_controller := SessionControllerScript.new(
+		recovery_config,
+		recovery_track,
+		TrainSystemScript.new(recovery_config.train_speed_cells_per_second)
+	)
+	var recovery_cells: Array[Vector2i] = []
+	for x in range(recovery_config.departure_cell.x + 1, recovery_config.departure_cell.x + 14):
+		recovery_cells.append(Vector2i(x, recovery_config.departure_cell.y))
+	_assert_equal(
+		recovery_track._runtime.append_cells(recovery_cells),
+		13,
+		"Recovery integration appends the direct construction fixture"
+	)
+	_assert_equal(recovery_track.get_cell_records().size(), 13, "Recovery integration builds thirteen straight records")
+	_assert_equal(recovery_track.advance_construction(13.0), 13.0, "Recovery integration completes construction")
+	_assert_true(
+		recovery_track.prepare_for_train_sampling(0.0, 1.0),
+		"Recovery integration prepares train sampling"
+	)
+	recovery_controller.start()
+	recovery_controller.advance_tick()
+	_assert_equal(
+		recovery_controller.get_state(),
+		SessionControllerScript.State.RUNNING,
+		"Recovery integration enters RUNNING before the recovered edit"
+	)
+	_assert_equal(recovery_track.recover_behind(6.0), 6, "Recovery integration recovers six rear cells")
+	_assert_equal(recovery_track.get_cell_records().size(), 7, "Recovery integration leaves seven active records")
+	_assert_equal(recovery_track.get_available_track_cells(), 11, "Recovery integration leaves eleven available cells")
+	_assert_equal(recovery_track.get_endpoint_cell(), Vector2i(15, 2), "Recovery integration keeps the recovered endpoint")
+	var began = recovery_track._runtime.gesture_begin(recovery_track.get_endpoint_cell())
+	_assert_true(began is Dictionary and not began.is_empty(), "Recovery integration exposes the recovered endpoint gesture")
+	if began is Dictionary and not began.is_empty():
+		_assert_equal(recovery_track._runtime.get_editable_span()["record_count"], 3, "Recovery integration exposes a three-record editable head")
+		recovery_track._runtime.gesture_abort()
+	recovery_controller.advance_tick()
+	view.present(recovery_controller.get_snapshot())
+	var endpoint := recovery_track.get_endpoint_cell()
+	var next_cell := endpoint + Vector2i.RIGHT
+	var endpoint_position := _logical_to_viewport(
+		view,
+		Vector2(endpoint) * recovery_config.grid_cell_size_units
+			+ Vector2(recovery_config.grid_cell_size_units * 0.5, recovery_config.grid_cell_size_units * 0.5)
+	)
+	var next_position := _logical_to_viewport(
+		view,
+		Vector2(next_cell) * recovery_config.grid_cell_size_units
+			+ Vector2(recovery_config.grid_cell_size_units * 0.5, recovery_config.grid_cell_size_units * 0.5)
+	)
+	await _deliver(_motion(endpoint_position))
+	_assert_equal(
+		view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)),
+		endpoint,
+		"Recovered RUNNING endpoint renders green before the direct drag"
+	)
+	await _deliver(_button(endpoint_position, MOUSE_BUTTON_LEFT, true))
+	await _deliver(_motion(next_position, MOUSE_BUTTON_MASK_LEFT))
+	var recovery_frame: TrackInputFrameScript = await _consume_view(shell)
+	recovery_controller.advance_tick(recovery_frame)
+	var recovery_cells_after := _record_cells(recovery_track.get_cell_records())
+	var recovery_drag_passed: bool = recovery_frame.left_pressed \
+		and recovery_frame.left_held \
+		and not recovery_frame.left_released \
+		and recovery_cells_after.size() == 8 \
+		and recovery_cells_after[-1] == next_cell \
+		and recovery_track.get_endpoint_cell() == next_cell \
+		and recovery_track.get_available_track_cells() == 10 \
+		and recovery_track.is_left_capture_active() \
+		and recovery_track.is_runtime_gesture_active() \
+		and recovery_controller.get_state() == SessionControllerScript.State.RUNNING
+	_assert_true(recovery_drag_passed, "Recovered RUNNING endpoint accepts the actual adjacent drag before release")
+	await _deliver(_button(next_position, MOUSE_BUTTON_LEFT, false))
+	var recovery_release: TrackInputFrameScript = await _consume_view(shell)
+	recovery_controller.advance_tick(recovery_release)
+	var recovery_release_passed: bool = recovery_release.left_released \
+		and not recovery_track.is_left_capture_active() \
+		and not recovery_track.is_runtime_gesture_active()
+	_assert_true(recovery_release_passed, "Recovered RUNNING endpoint direct drag releases cleanly")
+	if recovery_drag_passed and recovery_release_passed:
+		print("PASS: recovered running endpoint accepts direct drag")
 
 
 func _finish(shell) -> void:
