@@ -105,3 +105,72 @@ The user independently confirmed the combined provisional-hover, right-click can
 The same-candidate provisional-to-lock-to-sequential-recovery serial proof is intentionally not a manual evidence claim: mutually exclusive lifecycle states cannot be established in one manual frame. Coverage-only automated correction `9109dca4e9a9d1008940b44425c7d1c60871a683` supplies that same-serial lifecycle evidence instead.
 
 **Corrected PASS.** This supersedes the preceding broad Task 3 PASS summary only for final evidence attribution. The final manual evidence correction passes only for the exact G/H observations and the separately attributed user confirmations recorded in this section, together with the earlier direct train-entry and terminal-order replay. It does not claim that one screenshot sequence, one run, or one observer proved every hover, cancellation, refund, and running-turn fact.
+ENDPOINT_RESHAPE_EVIDENCE_BEGIN
+
+## Endpoint Reshaping Tool-Assisted Manual Evidence
+
+### Run 1: Completed unlocked curve
+
+Implementation SHA: b883e454015478b3aeb533e1a7e21a5916f5e660
+Godot: 4.7.1.stable.official.a13da4feb
+Timestamp: 2026-08-27T02:50:05.804Z
+Observation: The visible Godot scene rendered a completed unlocked five-record CURVE_3X3 at endpoint (8, 5), with green endpoint hover.
+Result: PASS
+
+### Run 2: Immediate opposite curve replacement
+
+Implementation SHA: b883e454015478b3aeb533e1a7e21a5916f5e660
+Godot: 4.7.1.stable.official.a13da4feb
+Timestamp: 2026-08-27T02:48:15.895Z
+Observation: The visible scene rendered the held gesture's immediate opposite CURVE_3X3 replacement at endpoint (8, 1) with five built records.
+Result: PASS
+
+### Run 3: Straight replacement and extension
+
+Implementation SHA: b883e454015478b3aeb533e1a7e21a5916f5e660
+Godot: 4.7.1.stable.official.a13da4feb
+Timestamp: 2026-08-27T02:48:39.647Z
+Observation: The visible scene rendered straight target (10, 3) selection followed by held continuous extension to endpoint (12, 3), with seven records.
+Result: PASS
+
+### Run 4: Gesture abort restoration
+
+Implementation SHA: b883e454015478b3aeb533e1a7e21a5916f5e660
+Godot: 4.7.1.stable.official.a13da4feb
+Timestamp: 2026-08-27T02:49:01.948Z
+Observation: A right press while left was held visibly restored the exact pre-gesture route and inventory, returning to endpoint (8, 5); green endpoint hover republished after release.
+Result: PASS
+
+### Run 5: Running endpoint hover
+
+Implementation SHA: b883e454015478b3aeb533e1a7e21a5916f5e660
+Godot: 4.7.1.stable.official.a13da4feb
+Timestamp: 2026-08-27T02:42:07.840Z
+Observation: The visible RUNNING scene rendered an active train with an actionable endpoint at (15, 3) retaining green hover.
+Result: PASS
+
+### Run 6: Ordinary gold cancellation hover
+
+Implementation SHA: b883e454015478b3aeb533e1a7e21a5916f5e660
+Godot: 4.7.1.stable.official.a13da4feb
+Timestamp: 2026-08-27T02:49:25.693Z
+Observation: The visible scene rendered ordinary reserved non-endpoint ghost (8, 3) with gold cancellation hover and no green hover.
+Result: PASS
+
+### Run 7: Green priority with right-click eligibility
+
+Implementation SHA: b883e454015478b3aeb533e1a7e21a5916f5e660
+Godot: 4.7.1.stable.official.a13da4feb
+Timestamp: 2026-08-27T02:46:35.797Z
+Observation: The screenshot visibly shows green priority at endpoint (8, 5) while the run report records simultaneous extend and cancel eligibility; right-click reduced the eligible ghost suffix from five to four records.
+Result: PASS
+
+### Run 8: Train-preparation freeze
+
+Implementation SHA: b883e454015478b3aeb533e1a7e21a5916f5e660
+Godot: 4.7.1.stable.official.a13da4feb
+Timestamp: 2026-08-27T02:47:49.689Z
+Observation: The visible train-active scene rendered built geometry at endpoint (10, 3); train preparation froze the edited span before sampling and held motion left route cells unchanged.
+Result: PASS
+
+ENDPOINT_RESHAPE_EVIDENCE_END
