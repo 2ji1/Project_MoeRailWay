@@ -130,6 +130,19 @@ The same-candidate provisional-to-lock-to-sequential-recovery serial proof is in
 - The terminal `SESSION COMPLETE — TRACK END REACHED` state remained input-locked as expected.
 - The earlier post-finalize fresh-press failure and recovered-endpoint direct-extension failure were re-observed as passing after the reviewed fixes `a49a926` / `e1ebe8f` and `4f231ce` / `ecbcb19`, respectively. These are recorded as reviewed fix references, not as separate manual implementation candidates.
 - No user-owned editor termination or reset occurred.
+
+## Final specification-review affected manual rerun — 2026-08-28
+
+**Tested implementation SHA:** `6b1cfc9c1bc88a18bbc811de9059da5beb6ced41`
+**Godot:** `4.7.1.stable.official.a13da4feb`
+**Observation provenance:** User-observed in a controller-launched, separate test-agent-owned Godot 4.7.1 game window. No user-owned editor was terminated, reset, or interacted with.
+**Result:** PASS for the affected manual rerun.
+
+- After the first placement, an immediate fresh endpoint press followed by held motion across at least two added cells retained the earlier new ghost prefix through follow-up motion before release.
+- A fresh session built exactly 13 straight cells from 18 total; the train launched. After six rear cells recovered, 7 visible active cells remained with `TRACK 11/18`. Before `SESSION COMPLETE`, a direct one-cell drag from the endpoint showed 8 visible active cells with `TRACK 10/18` before left-button release.
+- `SESSION COMPLETE` remained input-locked.
+- The earlier ordinary figures remain literal and unchanged: `18/18 -> 3/18 -> 18/18` at the press origin, equal-length rebranch `14/18 -> 14/18`, and right-click abort `18/18`.
+- The earlier post-finalize fresh-press and recovered-endpoint direct-extension findings were re-observed after reviewed fix rounds `ad13092` and `6b1cfc9`; no user-owned editor termination, reset, or interaction occurred.
 ENDPOINT_RESHAPE_EVIDENCE_BEGIN
 
 ## Endpoint Reshaping Tool-Assisted Manual Evidence

@@ -6,7 +6,7 @@
 
 **Implementation branch:** `feature/live-gesture-path-reflow`
 
-**Manually accepted implementation commit:** `ecbcb191cd959d9ed24870a241d400b6cbf5d6c4`
+**Manually accepted implementation commit:** `6b1cfc9c1bc88a18bbc811de9059da5beb6ced41`
 
 **Verified base:** `1a0cd466287f81c3a413c773fd8974d5dbb72f08` (`main`, `origin/main`)
 
@@ -88,6 +88,7 @@ The post-template suffix is no longer an append-only history. It is derived from
 - cells before the selected target are control input and never become route records;
 - when the selected target occurs in `live_gesture_path`, only cells after its most recent occurrence form the suffix;
 - when the selected target is absent from `live_gesture_path` but is exactly equal to the authoritative gesture press origin, treat that origin as the implicit occurrence at index `-1` and reconcile the entire `live_gesture_path` as the suffix;
+- the implicit-origin whole-live-path suffix is allowed only when the selected template remains the gesture-origin/current selected template (same-template continuation); when the template changes, reconciliation starts from an empty fact list even if the newly selected target equals the gesture origin;
 - any other absent target produces an empty suffix;
 - no append-only, synthetic, or pointer-invalid fallback may supply a suffix; the implicit-origin rule applies only when equality with the authoritative gesture origin is established;
 - re-entering or reselecting a target discards the superseded suffix; and
