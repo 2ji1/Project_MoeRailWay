@@ -109,67 +109,69 @@ ENDPOINT_RESHAPE_EVIDENCE_BEGIN
 
 ## Endpoint Reshaping Tool-Assisted Manual Evidence
 
+Each session used the real visible Godot project and production scripts. Every session exited `0`, emitted one run-specific PASS result, produced a nonzero screenshot and observation, and had empty stderr with zero anchored `ERROR:` lines.
+
 ### Run 1: Completed unlocked curve
 
-Implementation SHA: c65e87044bcbfd79339e14fb4745686c98bd945b
+Implementation SHA: c0747a68a0a09d9aa9a35fb42dd1d1e4eea78b4f
 Godot: 4.7.1.stable.official.a13da4feb
-Timestamp: 2026-08-27T04:21:59.594Z
-Observation: The visible Godot scene rendered a completed five-record CURVE_3X3 at endpoint (8, 5); the harness asserted the head piece was unlocked (`locked == false`) and TrackSystem endpoint gesture eligibility; replacement behavior is covered separately by Run 2.
+Timestamp: 2026-08-27T05:04:12.6236310Z
+Observation: The visible Godot scene rendered a completed five-record CURVE_3X3 at endpoint (8, 5); the harness asserted the head piece was unlocked (`locked == false`) and TrackSystem endpoint gesture eligibility.
 Result: PASS
 
 ### Run 2: Immediate opposite curve replacement
 
-Implementation SHA: c65e87044bcbfd79339e14fb4745686c98bd945b
+Implementation SHA: c0747a68a0a09d9aa9a35fb42dd1d1e4eea78b4f
 Godot: 4.7.1.stable.official.a13da4feb
-Timestamp: 2026-08-27T04:22:01.169Z
+Timestamp: 2026-08-27T05:04:14.2330282Z
 Observation: The visible scene rendered the held gesture's immediate opposite CURVE_3X3 replacement at endpoint (8, 1) with five built records.
 Result: PASS
 
 ### Run 3: Straight replacement and extension
 
-Implementation SHA: c65e87044bcbfd79339e14fb4745686c98bd945b
+Implementation SHA: c0747a68a0a09d9aa9a35fb42dd1d1e4eea78b4f
 Godot: 4.7.1.stable.official.a13da4feb
-Timestamp: 2026-08-27T04:22:02.722Z
+Timestamp: 2026-08-27T05:04:15.7767116Z
 Observation: The visible scene rendered straight target (10, 3) selection followed by held continuous extension to endpoint (12, 3), with seven records.
 Result: PASS
 
 ### Run 4: Gesture abort restoration
 
-Implementation SHA: c65e87044bcbfd79339e14fb4745686c98bd945b
+Implementation SHA: c0747a68a0a09d9aa9a35fb42dd1d1e4eea78b4f
 Godot: 4.7.1.stable.official.a13da4feb
-Timestamp: 2026-08-27T04:22:04.297Z
+Timestamp: 2026-08-27T05:04:17.4928464Z
 Observation: A held gesture selected valid target (10, 3), appended through endpoint (12, 3) from 5 to 7 records with inventory delta -2, then right-click visibly restored the origin route, endpoint (8, 5), inventory, and capture state.
 Result: PASS
 
 ### Run 5: Running endpoint hover
 
-Implementation SHA: c65e87044bcbfd79339e14fb4745686c98bd945b
+Implementation SHA: c0747a68a0a09d9aa9a35fb42dd1d1e4eea78b4f
 Godot: 4.7.1.stable.official.a13da4feb
-Timestamp: 2026-08-27T04:22:06.327Z
+Timestamp: 2026-08-27T05:04:19.3398196Z
 Observation: The visible RUNNING scene rendered an active train with an actionable endpoint at (15, 3) retaining green hover.
 Result: PASS
 
 ### Run 6: Ordinary gold cancellation hover
 
-Implementation SHA: c65e87044bcbfd79339e14fb4745686c98bd945b
+Implementation SHA: c0747a68a0a09d9aa9a35fb42dd1d1e4eea78b4f
 Godot: 4.7.1.stable.official.a13da4feb
-Timestamp: 2026-08-27T04:22:07.825Z
+Timestamp: 2026-08-27T05:04:20.8440612Z
 Observation: The visible scene rendered ordinary reserved non-endpoint ghost (8, 3) with gold cancellation hover and no green hover.
 Result: PASS
 
 ### Run 7: Green priority with right-click eligibility
 
-Implementation SHA: c65e87044bcbfd79339e14fb4745686c98bd945b
+Implementation SHA: c0747a68a0a09d9aa9a35fb42dd1d1e4eea78b4f
 Godot: 4.7.1.stable.official.a13da4feb
-Timestamp: 2026-08-27T04:22:09.314Z
+Timestamp: 2026-08-27T05:04:22.3609449Z
 Observation: The screenshot visibly shows green priority at endpoint (8, 5) while the run report records simultaneous extend and cancel eligibility; right-click reduced the eligible ghost suffix from five to four records.
 Result: PASS
 
 ### Run 8: Train-preparation freeze
 
-Implementation SHA: c65e87044bcbfd79339e14fb4745686c98bd945b
+Implementation SHA: c0747a68a0a09d9aa9a35fb42dd1d1e4eea78b4f
 Godot: 4.7.1.stable.official.a13da4feb
-Timestamp: 2026-08-27T04:22:11.080Z
+Timestamp: 2026-08-27T05:04:24.1662421Z
 Observation: Production SessionController and TrainSystem advanced an actual RUNNING train to the held edited span; its actual snapshot showed the mutable 13-record candidate terminate and freeze to a 6-record suffix before sampling, and continued held motion left the suffix and endpoint unchanged.
 Result: PASS
 
