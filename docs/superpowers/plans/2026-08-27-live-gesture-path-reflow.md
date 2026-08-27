@@ -665,21 +665,45 @@ absent from the origin remain ghost-only until finalization.
 
   - A two-cell origin route is advanced by `1.5`: the first serial is `BUILT`, the
     second is `BUILDING` at `0.5`, and the built/reserved distances are `1.0`/`2.0`.
-  - After a held endpoint update adds a new candidate suffix, an active
-    `advance_construction(0.5)` consumes `0.5`; the next origin serial becomes
-    `BUILT`, built/reserved distances become `2.0`/`3.0`, and the gesture-added serial
-    remains `RESERVED_GHOST`. The current implementation returns `0.0` and leaves
-    the old built/progress frontier unchanged, so this assertion must fail RED.
+  - After a held endpoint update adds a new candidate suffix, call active
+    `advance_construction(2.0)` when only `0.5` remains on the origin route. The
+    method must return exactly `0.5`, the next origin serial must become `BUILT`,
+    built/reserved distances must become `2.0`/`3.0`, and the leftover `1.5` budget
+    must not transition the gesture-added serial: it remains `RESERVED_GHOST` with
+    build progress `0.0`. The current implementation returns `0.0` and leaves the
+    old built/progress frontier unchanged, so this assertion must fail RED.
+  - Use a longer origin sequence with a partially built first serial and enough
+    budget to cross at least two origin-serial boundaries. Assert that consumption
+    follows route order and the configured per-tick rate: each earlier serial reaches
+    `BUILT` before the next serial advances, the final origin serial receives only
+    the remaining budget, and the returned consumed amount equals the budget used
+    through the origin frontier rather than any suffix work.
   - Reflow an existing five-record editable template after partial construction.
     Serials from the gesture origin, including those inside the editable span, keep
-    advancing, and every changed state/progress value is equal by serial in the
-    current candidate and gesture origin. A suffix serial absent from the origin
-    remains `RESERVED_GHOST`.
-  - After abort, the route restores the latest mirrored origin progress rather than
-    the stale pre-tick progress. After finalize, the new suffix remains ghost-only
-    during the held edit and may begin construction on the next post-release tick.
+    advancing. Build an exact `{route_serial: {state, build_progress}}` map and
+    assert equality for every shared origin serial in the current candidate and
+    gesture origin after each held reflow. A suffix serial absent from the origin
+    remains `RESERVED_GHOST` with progress `0.0`.
+  - After abort, assert that the restored route's serial map equals the latest
+    mirrored origin map, not the stale pre-tick map. After finalize, assert that the
+    origin-owned serial map is retained and the new suffix remains ghost-only during
+    the held edit; only a subsequent post-release tick may advance that suffix.
+  - Submit a rejected held update and assert that the last-valid candidate, the
+    gesture-origin serial map, the current shared serial map, inventory, and
+    lock/ledger observations are unchanged from the immediately preceding valid
+    tick.
   - `recover_behind` continues to return `0` while the gesture is active, including
     while origin-owned construction advances.
+  - Capture inventory and lock/ledger snapshots before the active construction tick
+    and assert they are byte-for-byte unchanged afterward. In the session-controller
+    fixture, record the causal calls and assert the order is input application,
+    construction advance, then train preparation/sampling; no train sample may
+    observe a candidate before the construction step has completed.
+  - In the active-gesture train-sampling fixture, assert that overlapping sampling
+    terminates the gesture before immutable sampling, while non-overlapping sampling
+    preserves the active capture and locks only complete geometry pieces. Both paths
+    must retain the origin/current shared serial map and leave gesture-added suffixes
+    unbuilt.
 
 - [ ] **Step 2: Run the focused RED gate**
 
@@ -693,9 +717,12 @@ absent from the origin remain ghost-only until finalization.
 
   Keep the configured construction rate, sequential route order, and existing
   inventory accounting. Replace only the active-gesture construction decision:
-  derive the frontier from route serials present in `_gesture_origin_sequence`,
-  advance the first eligible unbuilt origin serial in the current candidate, and
-  never transition a serial absent from the origin out of `RESERVED_GHOST`.
+  derive the frontier from route serials present in both `_gesture_origin_sequence`
+  and the current candidate, advance the first eligible unbuilt origin serial in
+  the current candidate, and never transition a serial absent from the origin out
+  of `RESERVED_GHOST`. Return only the amount consumed by shared origin work; any
+  input budget left after that frontier is exhausted is discarded for this active
+  tick and must not be applied to a suffix.
   Mirror each changed origin serial's exact state and build progress by serial into
   both the current candidate and `_gesture_origin_sequence` before the next held
   update. Leave piece ownership, inventory, geometry locks, ledger semantics, train
@@ -707,9 +734,13 @@ absent from the origin remain ghost-only until finalization.
   Rerun the focused four unit suites and integration until the new assertions pass,
   then run the complete `PASS: 19 prototype test suite(s)` gate and all four
   standalone integrations. Require evidence that construction continues during a
-  held gesture, editable-template serials retain progress through reflow, suffix
-  serials remain ghost-only until release, abort preserves mirrored progress,
-  recovery remains paused, and locks, inventory, and train sampling are unchanged.
+  held gesture, returned consumption stops at the origin frontier even when input
+  budget is larger than the remaining origin work, multiple serial boundaries retain
+  order/rate, editable-template serials retain progress through reflow, and exact
+  serial maps survive valid reflow, abort, finalize, and rejected updates. Also
+  require unchanged inventory and lock/ledger snapshots, the causal
+  input-to-construction-to-train order, active-gesture overlap/non-overlap sampling
+  behavior, suffix serials remaining ghost-only until release, and paused recovery.
 
 - [ ] **Step 5: Stage and commit only the correction allowlist**
 
@@ -731,7 +762,8 @@ git commit -m 'fix: continue origin-owned construction during gestures'
 
 - [ ] **Step 6: Run independent specification and quality reviews**
 
-  Specification review checks design sections 3.4, 3.6, 4, 5.4, and required
+  Specification review checks design sections 3.4, 3.6, 4, and Section 5's
+  `GridTrackRuntime` responsibility, plus required
   evidence 17. Quality review checks route-serial frontier membership, editable-span
   reflow, exact origin/current state-progress mirroring, suffix ghost-only behavior,
   abort/finalize timing, paused recovery, and preservation of locks, inventory, and
