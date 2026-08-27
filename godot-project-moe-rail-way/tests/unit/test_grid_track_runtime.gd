@@ -430,10 +430,12 @@ func _test_endpoint_reshape_one_gesture_extends_after_selected_target() -> void:
 	var target_frame_records := _record_values(track.get_cell_records())
 	var target_frame_pieces := _piece_values(track.get_geometry_pieces())
 	var target_frame_inventory: int = track.get_available_track_cells()
+	var origin_watermark_before_invalid: int = track._gesture_origin_sequence._next_route_serial
 	assert_false(track.call("gesture_update", invalid_suffix), "Invalid later suffix frame is rejected")
 	assert_equal(_record_values(track.get_cell_records()), target_frame_records, "Invalid later frame preserves last-valid records")
 	assert_equal(_piece_values(track.get_geometry_pieces()), target_frame_pieces, "Invalid later frame preserves last-valid pieces")
 	assert_equal(track.get_available_track_cells(), target_frame_inventory, "Invalid later frame preserves last-valid inventory")
+	assert_equal(track._gesture_origin_sequence._next_route_serial, origin_watermark_before_invalid, "Rejected suffix does not advance the serial watermark")
 	assert_true(track.call("gesture_update", first_suffix_frame), "First suffix frame uses the persisted target")
 	assert_true(track.call("gesture_update", second_suffix_frame), "Second suffix frame uses accumulated input facts")
 	var records = track.get_cell_records()
@@ -443,8 +445,8 @@ func _test_endpoint_reshape_one_gesture_extends_after_selected_target() -> void:
 	assert_equal(records[5].cell, targets["left"], "Selected template endpoint is retained")
 	assert_equal(records[6].cell, Vector2i(4, 4), "First post-target cell is appended")
 	assert_equal(records[7].cell, Vector2i(5, 4), "Second post-target cell is appended")
-	assert_equal(records[6].route_serial, 8, "First suffix receives a fresh serial above the rejected suffix")
-	assert_equal(records[7].route_serial, 9, "Second suffix receives a fresh serial above the rejected suffix")
+	assert_equal(records[6].route_serial, 7, "First suffix uses the transactional serial watermark")
+	assert_equal(records[7].route_serial, 8, "Second suffix follows the transactional serial watermark")
 	assert_equal(track.get_endpoint_cell(), Vector2i(5, 4), "One gesture reaches the suffix endpoint")
 	assert_equal(track.get_available_track_cells(), 10, "Suffix charges one inventory cell per record")
 	track.call("gesture_finalize")
@@ -656,6 +658,14 @@ func _test_live_template_suffix_reconciles_from_current_path() -> void:
 	assert_equal(first_records[-1].cell, Vector2i(6, 0), "Live suffix fixture retains second suffix cell")
 	var surviving_serial: int = first_records[-2].route_serial
 	var available_before_shorter: int = track.get_available_track_cells()
+	var absent_path: Array[Vector2i] = []
+	assert_true(track.gesture_update(absent_path, Vector2i(-1, -1)), "Live suffix fixture accepts an absent-target path")
+	var absent_target_records = track.get_cell_records()
+	assert_false(absent_target_records.any(func(record): return record.cell == Vector2i(5, 0) or record.cell == Vector2i(6, 0)), "Absent target clears the completed-template suffix")
+	assert_equal(track.get_available_track_cells(), available_before_shorter + 2, "Absent target refunds the complete suffix")
+	assert_true(track.gesture_update(first_path, first_path[-1]), "Live suffix fixture rebuilds the suffix after clearing")
+	surviving_serial = track.get_cell_records()[-2].route_serial
+	available_before_shorter = track.get_available_track_cells()
 	assert_true(track.gesture_update(shorter_path, shorter_path[-1]), "Live suffix fixture backtracks while held")
 	var shorter_records = track.get_cell_records()
 	assert_false(shorter_records.any(func(record): return record.cell == Vector2i(6, 0)), "Backtracking removes the superseded suffix cell")
@@ -733,7 +743,10 @@ func _test_endpoint_reshape_invalid_overlap_preserve_last_valid() -> void:
 	var origin_records_before := _record_values(origin_before["route_records"])
 	var origin_pieces_before := _piece_values(origin_before["pieces"])
 	assert_true(track._gesture_origin_locked_ledger.size() > 0, "Overlap fixture carries a real locked footprint")
-	var invalid_cells: Array[Vector2i] = [Vector2i(4, 5), Vector2i(5, 5), Vector2i(5, 4)]
+	var invalid_cells: Array[Vector2i] = [
+		began["targets"]["left"], Vector2i(4, 4), Vector2i(4, 5),
+		Vector2i(5, 5), Vector2i(5, 4),
+	]
 	print("Endpoint reshape: invalid overlap preserve last valid")
 	assert_true(track.has_method("gesture_update"), "Gesture update overlap contract exists")
 	if not track.has_method("gesture_update"):
