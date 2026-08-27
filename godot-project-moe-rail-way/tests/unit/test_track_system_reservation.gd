@@ -21,6 +21,7 @@ func run() -> PackedStringArray:
 	_test_held_input_waits_for_release_and_fresh_press()
 	_test_left_release_finalizes_once()
 	_test_same_frame_press_routes_through_gesture_transaction()
+	_test_current_pointer_selects_completed_head_template()
 	_test_left_press_latch_requires_release_after_rejection()
 	_test_prepare_preserves_original_result_and_clears_capture()
 	_test_prepare_termination_waits_for_release()
@@ -355,6 +356,51 @@ func _test_same_frame_press_routes_through_gesture_transaction() -> void:
 	track.apply_left_input(_left_frame([], false, false, true, endpoint))
 	track.apply_left_input(_left_frame([], true, true, false, endpoint))
 	assert_true(track.is_left_capture_active(), "Fresh press after release starts a new gesture")
+
+
+func _test_current_pointer_selects_completed_head_template() -> void:
+	print("Endpoint interaction fix: current pointer selects completed head template")
+	var config = SessionStartConfigScript.new(
+		1, 20.0, 1,
+		1.0, 8, 2, 2.0, 1.0, 1,
+		Vector2(420.0, 260.0), Vector2i(10, 6), 40.0, Vector2(10.0, 10.0),
+		&"departure", Vector2(30.0, 110.0), Vector2i(0, 2)
+	)
+	var track = TrackSystemScript.new(config)
+	var right_curve: Array[Vector2i] = [
+		Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2),
+		Vector2i(3, 3), Vector2i(3, 4),
+	]
+	track.apply_left_input(_left_frame(right_curve, true, true, false, Vector2i(0, 2)))
+	track.apply_left_input(_left_frame([], false, false, true, Vector2i(3, 4)))
+	var curve_endpoint := track.get_endpoint_cell()
+	var left_target := Vector2i(3, 0)
+	var straight_target := Vector2i(5, 2)
+	track.apply_left_input(
+		_left_frame([], true, true, false, curve_endpoint, true, curve_endpoint, true)
+	)
+	track.apply_left_input(
+		_left_frame([], false, true, false, curve_endpoint, true, left_target, true)
+	)
+	assert_equal(
+		track.get_endpoint_cell(),
+		left_target,
+		"The authoritative current pointer selects the opposite curve without a new crossed cell"
+	)
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		[Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2), Vector2i(3, 1), Vector2i(3, 0)],
+		"Current-pointer selection atomically replaces the completed curve direction"
+	)
+	track.apply_left_input(_left_frame([], false, false, true, left_target, true, left_target, true))
+	track.apply_left_input(_left_frame([], true, true, false, left_target, true, left_target, true))
+	track.apply_left_input(_left_frame([], false, true, false, left_target, true, straight_target, true))
+	assert_equal(track.get_endpoint_cell(), straight_target, "A later pointer-only gesture selects straight")
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		[Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2)],
+		"Pointer-only template changes remain atomic across separate gestures"
+	)
 
 
 func _test_left_press_latch_requires_release_after_rejection() -> void:
