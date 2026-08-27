@@ -167,6 +167,7 @@ func gesture_update(
         return false
     var frame_template_index := -1
     var frame_target_index := -1
+    var frame_target_indices: Array[int] = [-1, -1, -1]
     for cell_index in range(crossed_cells.size()):
         var cell: Vector2i = crossed_cells[cell_index]
         for index in range([&"straight", &"left", &"right"].size()):
@@ -174,6 +175,7 @@ func gesture_update(
             if _gesture_target_endpoints.get(template_name, Vector2i(-1, -1)) == cell:
                 frame_template_index = index
                 frame_target_index = cell_index
+                frame_target_indices[index] = cell_index
     var templates := _template_cells(_gesture_editable_span)
     var next_template_index := _gesture_selected_template_index
     var next_suffix_input_facts: Array[Dictionary] = _gesture_suffix_input_facts.duplicate(true)
@@ -186,9 +188,9 @@ func gesture_update(
         if pointer_reselected:
             next_suffix_input_facts.clear()
             next_ordinary_input_facts.clear()
-        elif frame_template_index == pointer_template_index:
+        elif frame_target_indices[pointer_template_index] >= 0:
             next_suffix_input_facts.clear()
-            for index in range(frame_target_index + 1, crossed_cells.size()):
+            for index in range(frame_target_indices[pointer_template_index] + 1, crossed_cells.size()):
                 next_suffix_input_facts = _append_new_gesture_input_fact(
                     next_suffix_input_facts,
                     crossed_cells[index]

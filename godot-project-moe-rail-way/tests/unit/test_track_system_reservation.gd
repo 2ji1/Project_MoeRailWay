@@ -476,7 +476,7 @@ func _test_authoritative_pointer_wins_over_crossed_target() -> void:
 	print("Endpoint interaction fix: authoritative pointer wins over crossed target")
 	var config = SessionStartConfigScript.new(
 		1, 20.0, 1,
-		1.0, 8, 2, 2.0, 1.0, 1,
+		1.0, 18, 2, 2.0, 1.0, 1,
 		Vector2(420.0, 260.0), Vector2i(10, 6), 40.0, Vector2(10.0, 10.0),
 		&"departure", Vector2(30.0, 110.0), Vector2i(0, 2)
 	)
@@ -493,14 +493,22 @@ func _test_authoritative_pointer_wins_over_crossed_target() -> void:
 	]
 	assert_equal(runtime.append_cells(right_curve), right_curve.size(), "Right curve fixture is appended")
 	assert_true(runtime.gesture_begin(Vector2i(3, 4)).size() > 0, "Held gesture begins at right endpoint")
-	var left_target := Vector2i(3, 0)
+	var selected_right_target := Vector2i(3, 4)
+	var straight_target := Vector2i(5, 2)
 	var right_near := Vector2i(3, 3)
-	runtime.gesture_update([left_target], right_near)
+	var crossed_cells: Array[Vector2i] = [
+		selected_right_target,
+		Vector2i(3, 5), Vector2i(4, 5), Vector2i(5, 5),
+		Vector2i(5, 4), Vector2i(5, 3), straight_target,
+	]
+	runtime.gesture_update(crossed_cells, right_near)
 	assert_true(runtime.gesture_is_active(), "Crossed-target frame keeps the gesture held")
+	var expected_route := right_curve.duplicate()
+	expected_route.append_array(crossed_cells.slice(1))
 	assert_equal(
 		runtime.get_cell_records().map(func(record): return record.cell),
-		right_curve,
-		"Authoritative right pointer wins over crossed left target"
+		expected_route,
+		"Authoritative right target reset is not hidden by a later straight target"
 	)
 
 
