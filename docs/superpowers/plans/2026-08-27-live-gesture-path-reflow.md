@@ -27,8 +27,7 @@
 ## File Structure and Ownership
 
 - `godot-project-moe-rail-way/src/presentation/track/track_field_view.gd`: physical mouse capture, grid rasterization, and current full loop-erased gesture path.
-- `godot-project-moe-rail-way/src/domain/track/track_input_frame.gd`: detached per-frame facts, including `live_gesture_path`.
-- `godot-project-moe-rail-way/src/domain/track/track_input_frame.gd`: detached per-frame facts, including optional old-release path/pointer facts and explicit-release-snapshot discrimination.
+- `godot-project-moe-rail-way/src/domain/track/track_input_frame.gd`: detached per-frame facts, including `live_gesture_path`, optional old-release path/pointer facts, and explicit-release-snapshot discrimination.
 - `godot-project-moe-rail-way/src/domain/track/track_system.gd`: endpoint capture facade and forwarding of the authoritative path snapshot.
 - `godot-project-moe-rail-way/src/domain/track/grid_track_runtime.gd`: origin-based candidate reconstruction, path-fact reconciliation, serial watermarking, validation, and atomic publication.
 - `godot-project-moe-rail-way/tests/unit/test_track_field_view_input.gd`: real view-event path normalization tests.
@@ -579,10 +578,13 @@ Add tests for every required boundary:
 6. Replay the identical held path/pointer; prove the same candidate is rebuilt and revalidated without suffix growth or lock/recovery/validation bypass.
 7. Change the later path or pointer under the same template; prove implicit-origin continuation can extend, then return to the selection signature and prove the implicit suffix is removed.
 8. Re-enter an in-array target and change templates; prove most-recent in-array occurrence wins and template changes reconcile from empty.
+9. Construct a legacy `TrackInputFrame` without release facts and combine an old release with a fresh held press; prove the legacy constructor remains valid, the explicit-release-snapshot discriminator is false, fresh live path/pointer facts are never applied to the old runtime, the old last-valid candidate finalizes compatibly, the old latch/capture clears, and the fresh eligible press begins and updates normally. This test must fail causally before the correction because the missing discriminator/order allows either old-state contamination or an incomplete old finalization.
 
 - [ ] **Step 2: Run the focused suites and verify RED**
 
 Run the affected unit suites and real-event integration with the exact Godot variables from the standard commands. Each new case must fail for the intended missing ordering or replay behavior, not malformed fixtures. The integration must use actual `InputEventMouseButton` and `InputEventMouseMotion` delivery for release A, fresh press B, explicit empty/outside release, and the completed-template replay sequence.
+
+Focused GREEN expectation: after the correction, the legacy combined-frame case passes all seven assertions in item 9—constructor compatibility, discriminator false, no fresh-fact application to old runtime, compatible old last-valid finalization, old latch/capture clearing, and fresh eligible begin/update—while the explicit-snapshot path continues to finalize the old runtime before fresh begin/update.
 
 - [ ] **Step 3: Implement detached release facts and constructor compatibility**
 
