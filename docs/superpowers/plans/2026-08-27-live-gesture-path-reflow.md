@@ -4,7 +4,9 @@
 
 **Goal:** Make an ordinary endpoint drag reversible so its visible ghost shrinks and rebranches with the still-held pointer, while preserving completed-head template reselection and every route invariant.
 
-**Architecture:** `TrackFieldView` owns a loop-erased full-path snapshot for the current physical press and places that detached snapshot in `TrackInputFrame`; the physical press-origin cell is excluded from the array and is explicitly represented as the authoritative implicit prefix immediately before it. `TrackSystem` forwards the snapshot unchanged; `GridTrackRuntime` reconciles record identities against the current path, rebuilds every candidate from the gesture origin, and commits only a completely valid candidate. Completed-head template selection keeps the authoritative current-pointer rule, but its suffix is reconciled against the current full path and the implicit origin prefix instead of append-only history.
+**Architecture:** `TrackFieldView` owns a loop-erased full-path snapshot for the current physical press and places that detached snapshot in `TrackInputFrame`; the physical press-origin cell is excluded from the array and is explicitly represented as the authoritative implicit prefix immediately before it. `TrackSystem` forwards the snapshot unchanged; `GridTrackRuntime` reconciles record identities against the current path, rebuilds every candidate from the gesture origin, and commits only a completely valid candidate. Completed-head template selection keeps the authoritative current-pointer rule, but its suffix is reconciled against the current full path and the implicit origin prefix instead of append-only history. Coalesced old-release/fresh-press frames carry detached old-release facts separately from fresh facts and finalize the old runtime before beginning the fresh gesture.
+
+**Current canonical status:** Implementation corrections in progress; pending manual re-acceptance and main integration. The prior manually tested candidate remains historical evidence until the correction task and affected manual rerun pass.
 
 **Tech Stack:** Godot `4.7.1.stable.official.a13da4feb`, typed GDScript, existing prototype test harness, PowerShell, Git worktrees.
 
@@ -26,6 +28,7 @@
 
 - `godot-project-moe-rail-way/src/presentation/track/track_field_view.gd`: physical mouse capture, grid rasterization, and current full loop-erased gesture path.
 - `godot-project-moe-rail-way/src/domain/track/track_input_frame.gd`: detached per-frame facts, including `live_gesture_path`.
+- `godot-project-moe-rail-way/src/domain/track/track_input_frame.gd`: detached per-frame facts, including optional old-release path/pointer facts and explicit-release-snapshot discrimination.
 - `godot-project-moe-rail-way/src/domain/track/track_system.gd`: endpoint capture facade and forwarding of the authoritative path snapshot.
 - `godot-project-moe-rail-way/src/domain/track/grid_track_runtime.gd`: origin-based candidate reconstruction, path-fact reconciliation, serial watermarking, validation, and atomic publication.
 - `godot-project-moe-rail-way/tests/unit/test_track_field_view_input.gd`: real view-event path normalization tests.
@@ -33,6 +36,21 @@
 - `godot-project-moe-rail-way/tests/unit/test_grid_track_runtime.gd`: domain transaction, inventory, identity, invalid-candidate, abort, and completed-template suffix tests.
 - `godot-project-moe-rail-way/tests/integration/run_track_train_input_integration.gd`: real `InputEventMouseButton`/`InputEventMouseMotion` held-gesture acceptance.
 - `godot-project-moe-rail-way/tests/manual/track_train_windows.md`: English Windows manual evidence only after the implementation and automated gates pass.
+
+### Final quality-correction contract
+
+The final quality correction is limited to this exact code/test allowlist:
+
+- `godot-project-moe-rail-way/src/domain/track/track_input_frame.gd`
+- `godot-project-moe-rail-way/src/presentation/track/track_field_view.gd`
+- `godot-project-moe-rail-way/src/domain/track/track_system.gd`
+- `godot-project-moe-rail-way/src/domain/track/grid_track_runtime.gd`
+- `godot-project-moe-rail-way/tests/unit/test_track_field_view_input.gd`
+- `godot-project-moe-rail-way/tests/unit/test_track_system_reservation.gd`
+- `godot-project-moe-rail-way/tests/unit/test_grid_track_runtime.gd`
+- `godot-project-moe-rail-way/tests/integration/run_track_train_input_integration.gd`
+
+No production or test path outside this list may be modified for the correction.
 
 ## Standard Commands
 
@@ -522,3 +540,86 @@ Final specification review reads the approved design, this plan, every feature c
 - [ ] **Step 6: Report the clean reviewed feature HEAD and apply the main-first publication policy**
 
 Require clean feature and primary worktrees, verified `main == origin/main`, and the reviewed full `FEATURE_SHA`. Under the repository's active main-first policy, push `feature/live-gesture-path-reflow`, open a pull request targeting `main`, merge with a merge commit, fast-forward the primary `main`, rerun the complete standard regression gate in `D:\godot\MoeRailWay`, and only then remove the feature worktree and local/remote feature branches. Stop and report evidence on any dirty, divergent, review, CI, merge, or primary-retest mismatch; never clear the mismatch automatically.
+
+---
+
+### Task 5: Correct coalesced release ordering and template replay idempotence
+
+**Status:** Required before the design can return to an implemented, manually accepted state.
+
+**Exact code/test allowlist:**
+
+- `godot-project-moe-rail-way/src/domain/track/track_input_frame.gd`
+- `godot-project-moe-rail-way/src/presentation/track/track_field_view.gd`
+- `godot-project-moe-rail-way/src/domain/track/track_system.gd`
+- `godot-project-moe-rail-way/src/domain/track/grid_track_runtime.gd`
+- `godot-project-moe-rail-way/tests/unit/test_track_field_view_input.gd`
+- `godot-project-moe-rail-way/tests/unit/test_track_system_reservation.gd`
+- `godot-project-moe-rail-way/tests/unit/test_grid_track_runtime.gd`
+- `godot-project-moe-rail-way/tests/integration/run_track_train_input_integration.gd`
+
+No production or test path outside this list may be modified for this correction. Do not add a generalized input queue or framework, pathfinding, route graph, spline, or unrelated behavior.
+
+**Required contracts:**
+
+- `TrackInputFrame` adds optional `release_live_gesture_path`, `left_release_pointer_cell`, and `left_release_pointer_inside_grid` constructor facts plus an observable/derived explicit-release-snapshot flag. Legacy constructors and synthetic combined frames remain compatible.
+- `TrackFieldView` captures detached old-release full-path and pointer facts immediately after release rasterization, before fresh-press cleanup. Fresh live path/pointer facts remain separate and authoritative for the new press; release, outside-grid, empty-origin, abort, train termination, and session completion cleanup clear the correct buffers.
+- `TrackSystem` handles only combined old-release/fresh-held-press frames as two ordered phases: explicit old release updates/finalizes an active old runtime before fresh begin/update; inactive, rejected, or train-terminated old state ignores old geometry facts but clears its latch; synthetic combined frames without an explicit snapshot preserve last-valid finalize compatibility and never apply fresh facts to the old runtime.
+- `GridTrackRuntime` records the successful origin-equal absent-target template-selection signature, revalidates identical held snapshots without suffix or validation bypass, permits changed later same-template implicit-origin continuation, and removes that implicit suffix when returning to the signature. In-array most-recent target precedence remains authoritative; template changes reconcile from empty.
+
+- [ ] **Step 1: Add the focused RED matrix before production changes**
+
+Add tests for every required boundary:
+
+1. Move release A to B, then issue a fresh press at B in one coalesced frame; prove old finalization consumes A's detached facts and fresh capture starts from B without cross-contamination.
+2. Supply an explicit empty release path and an explicit outside-grid release pointer; prove empty is authoritative, outside does not invent path cells, and fresh facts are not applied to the old runtime.
+3. Cover active old runtime, inactive/rejected old state, and train-terminated old state; prove only active explicit old release mutates/finalizes geometry and all old latches clear.
+4. Cover ordinary release, empty return-to-origin, fresh held follow-up, and release/abort/train/session termination cleanup for both live and release buffers.
+5. Select an origin-equal absent target on a template-change frame; prove empty suffix plus a detached selection signature.
+6. Replay the identical held path/pointer; prove the same candidate is rebuilt and revalidated without suffix growth or lock/recovery/validation bypass.
+7. Change the later path or pointer under the same template; prove implicit-origin continuation can extend, then return to the selection signature and prove the implicit suffix is removed.
+8. Re-enter an in-array target and change templates; prove most-recent in-array occurrence wins and template changes reconcile from empty.
+
+- [ ] **Step 2: Run the focused suites and verify RED**
+
+Run the affected unit suites and real-event integration with the exact Godot variables from the standard commands. Each new case must fail for the intended missing ordering or replay behavior, not malformed fixtures. The integration must use actual `InputEventMouseButton` and `InputEventMouseMotion` delivery for release A, fresh press B, explicit empty/outside release, and the completed-template replay sequence.
+
+- [ ] **Step 3: Implement detached release facts and constructor compatibility**
+
+Add the optional `TrackInputFrame` facts and explicit-release-snapshot discrimination. Update `TrackFieldView` to snapshot old release path/pointer immediately after rasterization and before fresh press buffers clear. Preserve detached array ownership and all ordinary, outside-grid, origin-return, abort, train-termination, and session-completion cleanup.
+
+- [ ] **Step 4: Implement ordered facade processing**
+
+In `TrackSystem`, detect only the combined old-release/fresh-held-press case. For an active old runtime with an explicit snapshot, call old `gesture_update` with old facts, finalize the last valid candidate, and clear old latch/capture before fresh begin/update. For inactive, rejected, or train-terminated old state, ignore old geometry facts but clear its latch. For legacy synthetic combined frames without an explicit snapshot, retain compatibility finalization and never route fresh facts to the old runtime.
+
+- [ ] **Step 5: Implement template replay signature reconciliation**
+
+In `GridTrackRuntime`, store the detached successful template-selection signature only for the origin-equal absent-target template-change case. Identical held snapshots must rebuild and validate normally without adding suffix facts. A changed later path/pointer may enter the same-template implicit-origin rule; returning to the signature removes that suffix. Keep in-array most-recent precedence, empty reconciliation on template changes, and all existing locks, recovery, atomic publication, and validation.
+
+- [ ] **Step 6: Run focused GREEN and the complete regression gate**
+
+Run every RED matrix unit suite and the real-event integration, then the full `PASS: 19 prototype test suite(s)` plus all four standalone integrations. Require the coalesced release and replay markers exactly once. Run the affected Windows manual sequence again in a separate test-owned Godot 4.7.1 process, including the ordinary figures, RUNNING recovery before terminal completion, and terminal input lock. Do not restore the implemented status until the manual rerun passes.
+
+- [ ] **Step 7: Stage and commit only the correction allowlist**
+
+```powershell
+$Task5Paths = @(
+    'godot-project-moe-rail-way/src/domain/track/track_input_frame.gd',
+    'godot-project-moe-rail-way/src/presentation/track/track_field_view.gd',
+    'godot-project-moe-rail-way/src/domain/track/track_system.gd',
+    'godot-project-moe-rail-way/src/domain/track/grid_track_runtime.gd',
+    'godot-project-moe-rail-way/tests/unit/test_track_field_view_input.gd',
+    'godot-project-moe-rail-way/tests/unit/test_track_system_reservation.gd',
+    'godot-project-moe-rail-way/tests/unit/test_grid_track_runtime.gd',
+    'godot-project-moe-rail-way/tests/integration/run_track_train_input_integration.gd'
+)
+git add -- $Task5Paths
+git diff --cached --check
+$Task5Actual = @(git diff --cached --name-only)
+if (Compare-Object $Task5Paths $Task5Actual) { throw 'Task 5 staged path set mismatch' }
+git commit -m 'fix: order coalesced release and fresh press'
+```
+
+- [ ] **Step 8: Repeat scoped reviews and affected manual evidence**
+
+Specification review checks the coalesced release contract, explicit empty/outside facts, active/inactive/train-terminated ordering, constructor compatibility, and template replay rules. Quality review checks detached ownership, stale-buffer cleanup, legacy synthetic compatibility, signature equality, no early-return cache, exact validation on replay, and exact allowlist scope. Resolve findings with new RED/GREEN correction commits, rerun the full gate and affected manual sequence, then update the status and canonical/manual evidence only after both reviews pass.

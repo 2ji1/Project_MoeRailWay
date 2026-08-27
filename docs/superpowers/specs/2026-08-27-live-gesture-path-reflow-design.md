@@ -2,11 +2,11 @@
 
 **Date:** 2026-08-27
 
-**Status:** Implemented on feature branch; pending main integration
+**Status:** Implementation corrections in progress; pending manual re-acceptance and main integration
 
 **Implementation branch:** `feature/live-gesture-path-reflow`
 
-**Manually accepted implementation commit:** `6b1cfc9c1bc88a18bbc811de9059da5beb6ced41`
+**Prior manually tested implementation commit (historical; pending re-acceptance):** `6b1cfc9c1bc88a18bbc811de9059da5beb6ced41`
 
 **Verified base:** `1a0cd466287f81c3a413c773fd8974d5dbb72f08` (`main`, `origin/main`)
 
@@ -102,6 +102,27 @@ Every update validates one detached candidate before publication. Bounds, adjace
 
 Last-valid retention is an error boundary, not path ownership. A failed update must not contaminate the current normalized input snapshot or make a later valid backtrack/rebranch impossible.
 
+### 3.6 Coalesced release and fresh press ordering
+
+Godot may coalesce an old left-button release and a new left-button press into one consumed `TrackInputFrame`. The frame carries optional final release facts for the completed old gesture:
+
+- `release_live_gesture_path`, a detached full path snapshot captured at the old release;
+- `left_release_pointer_cell`, the old release pointer cell;
+- `left_release_pointer_inside_grid`, whether that pointer was inside the grid; and
+- an observable or derived explicit-release-snapshot flag that distinguishes these real final facts from legacy synthetic combined frames.
+
+`TrackFieldView` captures the old release path and pointer immediately after rasterizing the release, before any fresh press clears the current buffers. The current `live_gesture_path` and current pointer facts remain owned by the fresh press. Ordinary release, release outside the grid, and an empty return to the press origin are all representable: an explicitly empty `release_live_gesture_path` is authoritative and must not be replaced by the fresh path.
+
+`TrackSystem` applies the two phases only for a combined old-release/fresh-held-press frame. If the old runtime gesture is active and the release snapshot is explicit, it updates that runtime with the detached old release path and pointer facts, finalizes its last valid candidate, and clears the old latch and capture. It then begins and updates the fresh press from the fresh facts. If the old state is inactive, rejected, or train-terminated, old geometry facts are ignored while the old latch is cleared. A legacy synthetic combined frame without an explicit old release snapshot preserves last-valid finalize compatibility and must never apply fresh facts to the old runtime.
+
+After finalization or termination cleanup, a fresh held follow-up is processed only by the fresh capture. Release cleanup clears both live and release buffers at the appropriate lifecycle boundary without allowing stale old facts to leak into a later press. The optional final constructor facts remain backward-compatible for existing synthetic producers.
+
+### 3.7 Completed-template replay idempotence
+
+When a template-change frame selects a target equal to the gesture origin but that target is absent from `live_gesture_path`, the runtime starts with an empty suffix and records the successful template-selection input signature: the detached live path plus pointer cell. Repeated identical held snapshots rebuild and revalidate the same candidate without adding a suffix and without bypassing current lock, recovery, geometry, or other validation rules.
+
+A genuinely changed later path or pointer may use the implicit-origin whole-live-path suffix for same-template continuation. Returning to the recorded selection signature removes that implicit suffix again. An in-array target occurrence, with most-recent occurrence precedence, remains authoritative. A template change always reconciles from an empty fact list, even when its newly selected target equals the origin. No early-return cache, synthetic suffix, or pointer-invalid fallback may bypass candidate validation.
+
 ## 4. Identity and Inventory
 
 The fixed pre-gesture route retains exact record serials, nominal distances, construction state, build progress, piece ownership, ledger entries, support metadata, recovery facts, and contact observations.
@@ -124,12 +145,14 @@ Shortening and rebranching are staged transactions. A failed replacement preserv
 - Maintain the complete normalized live path for the current capture.
 - Keep the physical press-origin cell out of `live_gesture_path`; the detached gesture-origin fact remains authoritative as its implicit prefix.
 - Clear the live path on release cleanup, abort feedback, train-safety termination, and session completion.
+- Capture detached old-release path and pointer facts immediately after release rasterization, before a fresh press clears current buffers; clear release facts during termination cleanup.
 - Publish a detached full path snapshot on every consumed frame.
 - Do not resolve geometry, mutate inventory, or decide candidate validity.
 
 ### `TrackInputFrame`
 
 - Carry the full normalized live path in addition to the existing edge, held, release, current-pointer, and right-click facts.
+- Carry optional `release_live_gesture_path`, `left_release_pointer_cell`, `left_release_pointer_inside_grid`, and an observable/derived explicit-release-snapshot flag while preserving constructor compatibility.
 - Preserve the existing per-frame crossed-cell field only where required by compatibility tests during migration; it is not authoritative ordinary-gesture history after this amendment.
 - Remain a concrete prototype record rather than a generalized command system.
 
@@ -138,6 +161,7 @@ Shortening and rebranching are staged transactions. A failed replacement preserv
 - Preserve endpoint-only start and fresh-press latching.
 - Pass the full live path and current pointer to the runtime while capture remains active.
 - Preserve right-click abort priority and capture termination rules.
+- On an explicit coalesced old-release/fresh-held-press frame, finalize the old runtime from old release facts before beginning/updating the fresh gesture; ignore old geometry facts for inactive, rejected, or train-terminated old state while clearing its latch.
 
 ### `GridTrackRuntime`
 
@@ -166,6 +190,9 @@ The implementation must add focused RED/GREEN evidence for all of the following:
 11. Release finalizes the current candidate, and further held motion remains ignored until a fresh press where required by the existing termination contract.
 12. Train preparation, locked geometry, construction, recovery, hover, cancellation, session completion, and all existing input behavior remain green.
 13. A real RUNNING-state recovery sequence starts with `18` inventory cells, builds and constructs `13` straight records, locks/samples the train, recovers the rear prefix to leave `7` records and `11` available cells, then presses the current endpoint of the resulting three-record straight editable head, drags to an adjacent valid cell, and requires an eighth record/current endpoint with `10` available cells before release. The test must assert the press-origin target is recovered through the implicit-origin suffix rule and must use actual `InputEventMouseButton` and `InputEventMouseMotion` delivery through `TrackFieldView` and `TrackSystem`.
+14. A coalesced old-release/fresh-press event preserves the old release path and pointer independently from fresh facts, including an explicit empty release path and a release outside the grid.
+15. Coalesced ordering covers active, inactive/rejected, and train-terminated old states; legacy synthetic combined frames preserve last-valid finalize compatibility; ordinary release, empty return-to-origin, fresh held follow-up, and termination cleanup clear the correct live/release buffers.
+16. A completed-template origin-equal absent-target selection records its detached path/pointer signature; identical held replay revalidates without a suffix or validation bypass, changed later motion can extend through same-template implicit origin, and returning to the signature removes that suffix. Template changes reconcile from empty, while most-recent in-array target precedence remains authoritative.
 
 At least one integration must use actual `InputEventMouseButton` and `InputEventMouseMotion` instances in this order:
 
@@ -195,7 +222,7 @@ On Windows with Godot `4.7.1.stable.official.a13da4feb`:
 7. Verify that inventory follows the currently visible candidate exactly.
 8. During another held edit, right-click and verify exact restoration to the pre-gesture route and inventory.
 
-The discovered recovery failure is a required fix before acceptance: while the session is RUNNING (not `SESSION COMPLETE — TRACK END REACHED`), repeat the 18-cell, 13-straight, construct/lock/sample, rear-recovery-to-7-records/11-available setup, press the three-record straight editable-head endpoint, drag one adjacent cell, and verify the eighth record appears with 10 available cells before release. Do not treat a terminal completed-session click as evidence of this defect, and do not upgrade this amendment to Implemented or accepted until the required fix is implemented and reviewed.
+The discovered recovery failure is a required fix before acceptance: while the session is RUNNING (not `SESSION COMPLETE — TRACK END REACHED`), repeat the 18-cell, 13-straight, construct/lock/sample, rear-recovery-to-7-records/11-available setup, press the three-record straight editable-head endpoint, drag one adjacent cell, and verify the eighth record appears with 10 available cells before release. Do not treat a terminal completed-session click as evidence of this defect. The later coalesced-release and template-replay corrections are also required before the status can return to an implemented, manually accepted state.
 
 Record the evidence in English in the existing Windows track-train manual record. The primary `main` checkout remains the user playtest workspace and is updated only after reviewed pull-request integration.
 
