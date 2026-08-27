@@ -390,6 +390,61 @@ func _run() -> void:
 	if consecutive_first_persisted and consecutive_second_changed:
 		print("PASS: Endpoint reshape integration consecutive endpoint gestures")
 
+	var pending_track := TrackSystemScript.new(config)
+	var pending_controller := SessionControllerScript.new(
+		config,
+		pending_track,
+		TrainSystemScript.new(config.train_speed_cells_per_second)
+	)
+	pending_controller.start()
+	view.present(pending_controller.get_snapshot())
+	await _deliver(_button(departure, MOUSE_BUTTON_LEFT, true))
+	await _deliver(_motion(_logical_to_viewport(view, Vector2(140.0, 100.0)), MOUSE_BUTTON_MASK_LEFT))
+	var pending_first_frame: TrackInputFrameScript = await _consume_view(shell, pending_track)
+	var pending_first_cells := _record_cells(pending_track.get_cell_records())
+	var pending_first_path: Array[Vector2i] = [
+		Vector2i(3, 2),
+	]
+	var pending_first_persisted: bool = pending_first_frame.left_pressed \
+		and pending_first_frame.left_held \
+		and not pending_first_frame.left_released \
+		and pending_first_cells == pending_first_path
+	_assert_true(pending_first_persisted, "Pending-release integration first drag publishes its ghost")
+	var pending_endpoint_viewport := _logical_to_viewport(
+		view,
+		Vector2(140.0, 100.0)
+	)
+	var pending_next_viewport := _logical_to_viewport(
+		view,
+		Vector2(180.0, 100.0)
+	)
+	var pending_endpoint_position: Vector2 = view.get_global_transform_with_canvas().affine_inverse() * pending_endpoint_viewport
+	var pending_next_position: Vector2 = view.get_global_transform_with_canvas().affine_inverse() * pending_next_viewport
+	view.call("_gui_input", _button(pending_endpoint_position, MOUSE_BUTTON_LEFT, false))
+	view.call("_gui_input", _button(pending_endpoint_position, MOUSE_BUTTON_LEFT, true))
+	view.call("_gui_input", _motion(pending_next_position, MOUSE_BUTTON_MASK_LEFT))
+	var pending_second_frame: TrackInputFrameScript = await _consume_view(shell, pending_track)
+	var pending_second_cells := _record_cells(pending_track.get_cell_records())
+	_assert_true(pending_second_frame.left_pressed, "Pending-release integration preserves fresh press edge")
+	_assert_true(pending_second_frame.left_held, "Pending-release integration preserves fresh held state")
+	_assert_true(pending_second_frame.left_released, "Pending-release integration preserves pending release edge")
+	_assert_equal(pending_second_frame.live_gesture_path, [Vector2i(4, 2)], "Pending-release integration preserves fresh live path")
+	_assert_equal(pending_second_cells, pending_first_path + [Vector2i(4, 2)], "Pending-release integration publishes the fresh ghost")
+	_assert_true(pending_track.is_left_capture_active(), "Pending-release integration keeps fresh facade capture")
+	_assert_true(pending_track.is_runtime_gesture_active(), "Pending-release integration keeps fresh runtime gesture")
+	var pending_second_changed: bool = pending_second_frame.left_pressed \
+		and pending_second_frame.left_held \
+		and pending_second_frame.left_released \
+		and pending_second_frame.live_gesture_path == [Vector2i(4, 2)] \
+		and pending_second_cells == pending_first_path + [Vector2i(4, 2)] \
+		and pending_track.is_left_capture_active() \
+		and pending_track.is_runtime_gesture_active()
+	if pending_first_persisted and pending_second_changed:
+		print("PASS: live ordinary ghost survives pending release fresh press")
+	view.call("_gui_input", _button(pending_next_position, MOUSE_BUTTON_LEFT, false))
+	var pending_cleanup_frame: TrackInputFrameScript = await _consume_view(shell)
+	pending_controller.advance_tick(pending_cleanup_frame)
+
 	var reshape_config := SessionStartConfigScript.new(
 		123, 120.0, 60,
 		1.0, 10, 2, 3.0, 60.0, 1,

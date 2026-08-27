@@ -22,6 +22,7 @@ func run() -> PackedStringArray:
 	_test_held_input_waits_for_release_and_fresh_press()
 	_test_left_release_finalizes_once()
 	_test_same_frame_press_routes_through_gesture_transaction()
+	_test_pending_release_preserves_fresh_press_gesture()
 	_test_current_pointer_selects_completed_head_template()
 	_test_current_pointer_reselects_completed_head_template_while_held()
 	_test_completed_template_suffix_backtracks_while_held()
@@ -430,6 +431,35 @@ func _test_same_frame_press_routes_through_gesture_transaction() -> void:
 	track.apply_left_input(_left_frame([], false, false, true, endpoint))
 	track.apply_left_input(_left_frame([], true, true, false, endpoint))
 	assert_true(track.is_left_capture_active(), "Fresh press after release starts a new gesture")
+
+
+func _test_pending_release_preserves_fresh_press_gesture() -> void:
+	print("Live gesture path: pending release preserves fresh press gesture")
+	var track = TrackSystemScript.new(_config(10))
+	var first_path: Array[Vector2i] = [Vector2i(1, 0)]
+	track.apply_left_input(TrackInputFrameScript.new(
+		first_path, Vector2i(0, 0), true, Vector2i(-1, -1), false,
+		true, true, false, false, Vector2i(1, 0), true, first_path
+	))
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		first_path,
+		"First gesture publishes before its release is consumed"
+	)
+	var second_path: Array[Vector2i] = [Vector2i(2, 0)]
+	track.apply_left_input(TrackInputFrameScript.new(
+		second_path, Vector2i(1, 0), true, Vector2i(-1, -1), false,
+		true, true, true, false, Vector2i(2, 0), true, second_path
+	))
+	assert_true(track.is_runtime_gesture_active(), "Combined frame starts the fresh runtime gesture")
+	assert_true(track.is_left_capture_active(), "Combined frame starts the fresh facade capture")
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		first_path + second_path,
+		"A fresh press coalesced with the prior release publishes its own ghost"
+	)
+	assert_true(track.is_left_capture_active(), "Coalesced fresh press remains captured")
+	assert_true(track.is_runtime_gesture_active(), "Coalesced fresh press remains active")
 
 
 func _test_current_pointer_selects_completed_head_template() -> void:

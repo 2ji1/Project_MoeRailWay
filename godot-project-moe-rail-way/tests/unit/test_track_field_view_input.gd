@@ -26,6 +26,7 @@ func run() -> PackedStringArray:
 	_test_endpoint_reshape_consume_frame_carries_current_pointer_facts()
 	_test_live_gesture_path_backtracks_and_rebranches_while_held()
 	_test_live_gesture_path_returns_to_press_origin()
+	_test_pending_release_and_fresh_press_share_frame_facts()
 	_test_endpoint_reshape_actionable_endpoint_is_green()
 	_test_endpoint_reshape_green_over_gold_retains_cancellation()
 	_test_endpoint_reshape_pending_right_suppresses_present_hover()
@@ -266,6 +267,27 @@ func _test_live_gesture_path_returns_to_press_origin() -> void:
 	assert_true(cleared.left_held and not cleared.left_released, "Origin return remains held")
 	assert_not_null(cleared.get("live_gesture_path"), "Origin return exposes the live gesture path")
 	assert_equal(cleared.live_gesture_path, [], "Origin return publishes an explicitly empty path")
+	fixture.parent.free()
+
+
+func _test_pending_release_and_fresh_press_share_frame_facts() -> void:
+	print("Live gesture path: pending release and fresh press share frame facts")
+	var fixture := _fixture()
+	var view = fixture.view
+	var origin := _local_for_cell(view, Vector2i(0, 0))
+	_deliver(view, _button(origin, MOUSE_BUTTON_LEFT, true))
+	_deliver(view, _motion(_local_for_cell(view, Vector2i(3, 0))))
+	var first = view.consume_input_frame()
+	assert_true(first.left_pressed and first.left_held and not first.left_released, "First gesture is held before release")
+	_deliver(view, _button(_local_for_cell(view, Vector2i(3, 0)), MOUSE_BUTTON_LEFT, false))
+	_deliver(view, _button(_local_for_cell(view, Vector2i(3, 0)), MOUSE_BUTTON_LEFT, true))
+	_deliver(view, _motion(_local_for_cell(view, Vector2i(4, 0))))
+	var coalesced = view.consume_input_frame()
+	assert_true(coalesced.left_pressed, "Fresh press edge survives in the coalesced frame")
+	assert_true(coalesced.left_held, "Fresh press remains held in the coalesced frame")
+	assert_true(coalesced.left_released, "Prior release remains observable in the coalesced frame")
+	assert_equal(coalesced.left_press_cell, Vector2i(3, 0), "Fresh press cell is preserved")
+	assert_equal(coalesced.live_gesture_path, [Vector2i(4, 0)], "Fresh held path is preserved")
 	fixture.parent.free()
 
 

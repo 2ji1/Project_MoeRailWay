@@ -67,6 +67,14 @@ func apply_left_input(input_frame: TrackInputFrameScript) -> void:
 	assert(input_frame != null, "Track input frame is required")
 	if _left_capture_active and not _runtime.gesture_is_active():
 		_left_capture_active = false
+	var pending_release_before_press := input_frame.left_pressed \
+		and input_frame.left_released \
+		and input_frame.left_held \
+		and _left_press_latched
+	if pending_release_before_press and _left_capture_active and _runtime.gesture_is_active():
+		_runtime.gesture_finalize()
+		_left_capture_active = false
+		_left_press_latched = false
 	if input_frame.left_pressed and not _left_press_latched:
 		_left_press_latched = true
 		var endpoint := _runtime.get_endpoint_cell()
@@ -85,10 +93,10 @@ func apply_left_input(input_frame: TrackInputFrameScript) -> void:
 			and input_frame.crossed_cells.is_empty()
 		):
 			_runtime.gesture_update(input_frame.live_gesture_path, pointer_cell)
-		if input_frame.left_released:
+		if input_frame.left_released and not pending_release_before_press:
 			_runtime.gesture_finalize()
 			_left_capture_active = false
-	if input_frame.left_released:
+	if input_frame.left_released and not pending_release_before_press:
 		_left_capture_active = false
 		_left_press_latched = false
 
