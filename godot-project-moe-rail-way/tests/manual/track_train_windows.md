@@ -113,8 +113,8 @@ ENDPOINT_RESHAPE_EVIDENCE_BEGIN
 
 Implementation SHA: b883e454015478b3aeb533e1a7e21a5916f5e660
 Godot: 4.7.1.stable.official.a13da4feb
-Timestamp: 2026-08-27T02:50:05.804Z
-Observation: The visible Godot scene rendered a completed unlocked five-record CURVE_3X3 at endpoint (8, 5), with green endpoint hover.
+Timestamp: 2026-08-27T03:14:19.8434361Z
+Observation: The visible Godot scene rendered a completed five-record CURVE_3X3 at endpoint (8, 5); the harness asserted the head piece was unlocked (`locked == false`) and exposed a legal deterministic endpoint replacement.
 Result: PASS
 
 ### Run 2: Immediate opposite curve replacement
@@ -137,8 +137,8 @@ Result: PASS
 
 Implementation SHA: b883e454015478b3aeb533e1a7e21a5916f5e660
 Godot: 4.7.1.stable.official.a13da4feb
-Timestamp: 2026-08-27T02:49:01.948Z
-Observation: A right press while left was held visibly restored the exact pre-gesture route and inventory, returning to endpoint (8, 5); green endpoint hover republished after release.
+Timestamp: 2026-08-27T03:20:48.9273343Z
+Observation: A held gesture selected valid target (10, 3), appended through endpoint (12, 3) from 5 to 7 records with inventory delta -2, then right-click visibly restored the origin route, endpoint (8, 5), inventory, and capture state.
 Result: PASS
 
 ### Run 5: Running endpoint hover
@@ -169,8 +169,8 @@ Result: PASS
 
 Implementation SHA: b883e454015478b3aeb533e1a7e21a5916f5e660
 Godot: 4.7.1.stable.official.a13da4feb
-Timestamp: 2026-08-27T02:47:49.689Z
-Observation: The visible train-active scene rendered built geometry at endpoint (10, 3); train preparation froze the edited span before sampling and held motion left route cells unchanged.
+Timestamp: 2026-08-27T03:21:02.1725534Z
+Observation: Production SessionController and TrainSystem advanced an actual RUNNING train to the held edited span; its actual snapshot showed the mutable 13-record candidate terminate and freeze to a 6-record suffix before sampling, and continued held motion left the suffix and endpoint unchanged.
 Result: PASS
 
 ENDPOINT_RESHAPE_EVIDENCE_END
