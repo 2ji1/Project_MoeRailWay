@@ -43,6 +43,11 @@ class PresetFixture extends RefCounted:
 			motion.position = _logical_to_local(center)
 			motion.button_mask = MOUSE_BUTTON_MASK_LEFT
 			view.call("_gui_input", motion)
+		var release := InputEventMouseButton.new()
+		release.position = _logical_to_local(centers[-1])
+		release.button_index = MOUSE_BUTTON_LEFT
+		release.pressed = false
+		view.call("_gui_input", release)
 
 	func advance_with_input_until_train_distance(input_frame, target_distance: float) -> void:
 		controller.advance_tick(input_frame)

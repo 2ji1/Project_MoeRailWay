@@ -411,9 +411,11 @@ func _verify_app_lifecycle() -> void:
         Vector2i(-1, -1),
         false,
         true,
+        false,
         true,
         false,
-        false
+        target_cell,
+        true
     )
     controller.advance_tick(draw_frame)
     var preparation_safety: int = start_config.simulation_ticks_per_second + 2

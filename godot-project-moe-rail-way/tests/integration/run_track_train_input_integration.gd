@@ -330,6 +330,66 @@ func _run() -> void:
 	if running_green:
 		print("PASS: Endpoint reshape integration running endpoint green")
 
+	var consecutive_track := TrackSystemScript.new(config)
+	var consecutive_controller := SessionControllerScript.new(
+		config,
+		consecutive_track,
+		TrainSystemScript.new(config.train_speed_cells_per_second)
+	)
+	consecutive_controller.start()
+	view.present(consecutive_controller.get_snapshot())
+	await _deliver(_button(departure, MOUSE_BUTTON_LEFT, true))
+	await _deliver(_motion(_logical_to_viewport(view, Vector2(220.0, 100.0)), MOUSE_BUTTON_MASK_LEFT))
+	var consecutive_first_frame: TrackInputFrameScript = await _consume_view(shell)
+	consecutive_controller.advance_tick(consecutive_first_frame)
+	var consecutive_first_cells := _record_cells(consecutive_track.get_cell_records())
+	var consecutive_first_persisted: bool = consecutive_first_frame.left_pressed \
+		and consecutive_first_frame.crossed_cells == [Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2)] \
+		and consecutive_first_cells == [Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2)] \
+		and consecutive_track.get_endpoint_cell() == Vector2i(5, 2)
+	_assert_true(consecutive_first_persisted, "Consecutive integration first drag creates three straight cells")
+	await _release_view(shell, _logical_to_viewport(view, Vector2(220.0, 100.0)))
+	var consecutive_release_frame: TrackInputFrameScript = await _consume_view(shell)
+	consecutive_controller.advance_tick(consecutive_release_frame)
+	var consecutive_baseline := _track_facts(consecutive_track)
+	var consecutive_endpoint: Vector2i = consecutive_track.get_endpoint_cell()
+	var consecutive_available: int = consecutive_track.get_available_track_cells()
+	var consecutive_next := consecutive_endpoint + Vector2i(1, 0)
+	var consecutive_endpoint_position := _logical_to_viewport(
+		view,
+		Vector2(consecutive_endpoint) * config.grid_cell_size_units
+			+ Vector2(config.grid_cell_size_units * 0.5, config.grid_cell_size_units * 0.5)
+	)
+	var consecutive_next_position := _logical_to_viewport(
+		view,
+		Vector2(consecutive_next) * config.grid_cell_size_units
+			+ Vector2(config.grid_cell_size_units * 0.5, config.grid_cell_size_units * 0.5)
+	)
+	await _deliver(_button(consecutive_endpoint_position, MOUSE_BUTTON_LEFT, true))
+	await _deliver(_motion(consecutive_next_position, MOUSE_BUTTON_MASK_LEFT))
+	var consecutive_second_frame: TrackInputFrameScript = await _consume_view(shell)
+	consecutive_controller.advance_tick(consecutive_second_frame)
+	var consecutive_second := _track_facts(consecutive_track)
+	var consecutive_second_cells := _record_cells(consecutive_second["records"])
+	var consecutive_second_changed: bool = consecutive_second_frame.left_pressed \
+		and consecutive_second_frame.crossed_cells == [consecutive_next] \
+		and consecutive_second["records"].size() == consecutive_baseline["records"].size() + 1 \
+		and consecutive_second_cells == _record_cells(consecutive_baseline["records"]) + [consecutive_next] \
+		and consecutive_second["endpoint"] == consecutive_next \
+		and consecutive_second["available"] == consecutive_available - 1
+	_assert_true(consecutive_second_changed, "Consecutive integration fresh drag extends one adjacent cell")
+	await _release_view(shell, consecutive_next_position)
+	var consecutive_second_release: TrackInputFrameScript = await _consume_view(shell)
+	consecutive_controller.advance_tick(consecutive_second_release)
+	_assert_true(
+		not consecutive_track.is_runtime_gesture_active()
+			and _record_cells(consecutive_track.get_cell_records()) == consecutive_second_cells
+			and consecutive_track.get_endpoint_cell() == consecutive_next,
+		"Consecutive integration second drag finalizes the extension"
+	)
+	if consecutive_first_persisted and consecutive_second_changed:
+		print("PASS: Endpoint reshape integration consecutive endpoint gestures")
+
 	var overlap_track := TrackSystemScript.new(config)
 	var overlap_frame := TrackInputFrameScript.new(
 		[Vector2i(3, 2)], Vector2i(2, 2), true, Vector2i(-1, -1), false,
