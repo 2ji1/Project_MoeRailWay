@@ -23,6 +23,7 @@ func run() -> PackedStringArray:
 	_test_same_frame_press_routes_through_gesture_transaction()
 	_test_current_pointer_selects_completed_head_template()
 	_test_current_pointer_reselects_completed_head_template_while_held()
+	_test_authoritative_pointer_wins_over_crossed_target()
 	_test_left_press_latch_requires_release_after_rejection()
 	_test_prepare_preserves_original_result_and_clears_capture()
 	_test_prepare_termination_waits_for_release()
@@ -469,6 +470,38 @@ func _test_current_pointer_reselects_completed_head_template_while_held() -> voi
 	assert_true(track.is_left_capture_active(), "Right reselection keeps facade capture active")
 	assert_true(track.is_runtime_gesture_active(), "Right reselection keeps runtime gesture active")
 	assert_equal(track.get_available_track_cells(), available, "Equal-length right replacement preserves inventory")
+
+
+func _test_authoritative_pointer_wins_over_crossed_target() -> void:
+	print("Endpoint interaction fix: authoritative pointer wins over crossed target")
+	var config = SessionStartConfigScript.new(
+		1, 20.0, 1,
+		1.0, 8, 2, 2.0, 1.0, 1,
+		Vector2(420.0, 260.0), Vector2i(10, 6), 40.0, Vector2(10.0, 10.0),
+		&"departure", Vector2(30.0, 110.0), Vector2i(0, 2)
+	)
+	var runtime = GridTrackRuntimeScript.new(
+		config.departure_cell,
+		config.total_track_cells,
+		config.grid_origin_units,
+		config.grid_size,
+		config.grid_cell_size_units
+	)
+	var right_curve: Array[Vector2i] = [
+		Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2),
+		Vector2i(3, 3), Vector2i(3, 4),
+	]
+	assert_equal(runtime.append_cells(right_curve), right_curve.size(), "Right curve fixture is appended")
+	assert_true(runtime.gesture_begin(Vector2i(3, 4)).size() > 0, "Held gesture begins at right endpoint")
+	var left_target := Vector2i(3, 0)
+	var right_near := Vector2i(3, 3)
+	runtime.gesture_update([left_target], right_near)
+	assert_true(runtime.gesture_is_active(), "Crossed-target frame keeps the gesture held")
+	assert_equal(
+		runtime.get_cell_records().map(func(record): return record.cell),
+		right_curve,
+		"Authoritative right pointer wins over crossed left target"
+	)
 
 
 func _test_left_press_latch_requires_release_after_rejection() -> void:

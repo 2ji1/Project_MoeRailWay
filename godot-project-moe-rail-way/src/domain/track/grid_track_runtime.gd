@@ -181,10 +181,25 @@ func gesture_update(
     var pointer_template_index := _template_index_from_pointer(current_pointer_cell, templates)
     var pointer_reselected := pointer_template_index >= 0 \
         and pointer_template_index != _gesture_selected_template_index
-    if pointer_reselected:
+    if pointer_template_index >= 0:
         next_template_index = pointer_template_index
-        next_suffix_input_facts.clear()
-        next_ordinary_input_facts.clear()
+        if pointer_reselected:
+            next_suffix_input_facts.clear()
+            next_ordinary_input_facts.clear()
+        elif frame_template_index == pointer_template_index:
+            next_suffix_input_facts.clear()
+            for index in range(frame_target_index + 1, crossed_cells.size()):
+                next_suffix_input_facts = _append_new_gesture_input_fact(
+                    next_suffix_input_facts,
+                    crossed_cells[index]
+                )
+            next_ordinary_input_facts.clear()
+        else:
+            for cell in crossed_cells:
+                next_suffix_input_facts = _append_new_gesture_input_fact(
+                    next_suffix_input_facts,
+                    cell
+                )
     elif frame_template_index >= 0 and frame_template_index < templates.size():
         next_template_index = frame_template_index
         next_suffix_input_facts.clear()
