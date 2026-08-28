@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-27
 
-**Status:** Scoped implementation and manual acceptance are complete; clean-gated code/test candidate `e285c9fc9db0a591beac93c169e198c8f80afa89` has the leak diagnostic resolved, with only final review and main integration pending
+**Status:** Scoped implementation, manual acceptance, final review, and main integration are complete on `main` via PR #15 merge commit `92d0823090851aa8608b1a7d7d2e046d4ec6a667`. The clean-gated code/test candidate is `e285c9fc9db0a591beac93c169e198c8f80afa89`; the primary `main` retest passed 19 prototype suites plus all four integrations with no `WARNING:` or `ERROR:` output. Feature-worktree cleanup remains pending.
 
 **Implementation branch:** `feature/live-gesture-path-reflow`
 
@@ -273,7 +273,7 @@ On Windows with Godot `4.7.1.stable.official.a13da4feb`:
    remains ghost-only until release. Verify the visible result before release and
    confirm recovery remains paused while the gesture is held.
 
-The discovered recovery failure was a required fix before acceptance: while the session is RUNNING (not `SESSION COMPLETE — TRACK END REACHED`), repeat the 18-cell, 13-straight, construct/lock/sample, rear-recovery-to-7-records/11-available setup, press the three-record straight editable-head endpoint, drag one adjacent cell, and verify the eighth record appears with 10 available cells before release. Do not treat a terminal completed-session click as evidence of this defect. The coalesced-release, template-replay, ordinary-RUNNING, and terminal manual evidence is attributed to tested HEAD `6eee5f2f15d586806c3d68d99fd2e0cc87d4c239`; active-gesture construction and recovery pause/resume evidence is attributed to tested HEAD `be18f1fc84b96ce1f1361cb6b9878c1ed8aeda7f`; main integration remains pending.
+The discovered recovery failure was a required fix before acceptance: while the session is RUNNING (not `SESSION COMPLETE — TRACK END REACHED`), repeat the 18-cell, 13-straight, construct/lock/sample, rear-recovery-to-7-records/11-available setup, press the three-record straight editable-head endpoint, drag one adjacent cell, and verify the eighth record appears with 10 available cells before release. Do not treat a terminal completed-session click as evidence of this defect. The coalesced-release, template-replay, ordinary-RUNNING, and terminal manual evidence is attributed to tested HEAD `6eee5f2f15d586806c3d68d99fd2e0cc87d4c239`; active-gesture construction and recovery pause/resume evidence is attributed to tested HEAD `be18f1fc84b96ce1f1361cb6b9878c1ed8aeda7f`; these reviewed results are integrated on `main` via PR #15 merge commit `92d0823090851aa8608b1a7d7d2e046d4ec6a667`.
 
 Record the evidence in English in the existing Windows track-train manual record. The primary `main` checkout remains the user playtest workspace and is updated only after reviewed pull-request integration.
 
@@ -293,3 +293,16 @@ Record the evidence in English in the existing Windows track-train manual record
 Implementation remains isolated in `feature/live-gesture-path-reflow`. Each implementation task requires a focused failing test, observed RED, minimum GREEN, the complete 19-suite and four-integration regression gate, an explicit exact-file allowlist, exact-path staging, a focused commit, independent specification review, and independent quality review.
 
 After automated evidence, manual verification, and final reviews pass, follow the active main-first branch policy: push the feature branch, open a pull request targeting `main`, merge with a merge commit, fast-forward and retest the primary `main`, then clean the feature worktree and branches. Do not terminate, reset, or repurpose a user-owned Godot editor process.
+
+## 10. Integration Record
+
+The live gesture path reflow slice is integrated on `main` via PR #15 merge commit
+`92d0823090851aa8608b1a7d7d2e046d4ec6a667`. The primary `main` retest passed with
+Godot `4.7.1.stable.official.a13da4feb`, `PASS: 19 prototype test suite(s)`, and
+all four standalone integrations, with no `WARNING:` or `ERROR:` output. The
+integrated behavior covers live held endpoint reflow, completed-head reselection,
+hover/cancel, origin-owned construction continuity during a held gesture, and
+recovery pause/resume. The historical manual evidence remains attributed to Task 5
+tested HEAD `6eee5f2f15d586806c3d68d99fd2e0cc87d4c239` and Task 6 tested HEAD
+`be18f1fc84b96ce1f1361cb6b9878c1ed8aeda7f`; cleanup of the feature worktree and
+branches remains pending.

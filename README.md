@@ -4,7 +4,7 @@ This repository contains the design documents and Godot prototype foundation for
 
 The project is in early prototype development. The immediate goal is to validate whether the core route-drawing loop remains readable, tense, and strategically interesting before committing to campaign content or production-scale architecture.
 
-> **Current status:** Milestone M4 is integrated on `main`. The playable prototype includes the deterministic session shell, a centered logical-cell grid, mouse-driven endpoint track extension, curve fitting with overlap downgrade, per-cell track inventory, construction and recovery, and continuous movement for one train. Cargo, contracts, hazards, debt, and company economy remain planned work.
+> **Current status:** Milestone M4 and live gesture path reflow are integrated on `main` via PR #15. The playable prototype includes the deterministic session shell, a centered logical-cell grid, mouse-driven endpoint track extension with live held reflow, completed-head template reselection, hover/cancel feedback, per-cell track inventory, construction continuity during an active endpoint gesture, paused and resumed recovery, and continuous movement for one train. Cargo, contracts, hazards, debt, and company economy remain planned work.
 
 ## Game Concept
 
@@ -125,4 +125,4 @@ pwsh -NoProfile -File .\godot-project-moe-rail-way\tools\playtest\launch_editor_
 
 ## Current Scope
 
-The integrated M4 scope is a deterministic session shell with one continuously moving train and a playable logical-cell track loop: endpoint-only mouse input, centered grid mapping, curve fitting and overlap downgrade, per-cell reservation and inventory, progressive construction, atomic completion, and ordered recovery. The next prototype slices add warp cargo, risk and investment, contracts and economy, credit survival, and playtest-ready polish. Campaign structure, narrative progression, and production architecture remain outside the current prototype.
+The integrated M4 scope is a deterministic session shell with one continuously moving train and a playable logical-cell track loop: endpoint-only mouse input, centered grid mapping, live held endpoint reflow, completed-head template reselection, hover/cancel feedback, curve fitting and overlap downgrade, per-cell reservation and inventory, construction continuity through the shared origin frontier while a gesture is held, atomic completion, and paused/resumed ordered recovery. The next prototype slices add warp cargo, risk and investment, contracts and economy, credit survival, and playtest-ready polish. Campaign structure, narrative progression, and production architecture remain outside the current prototype.

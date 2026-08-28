@@ -35,5 +35,10 @@ Task 3: initial Sol review found an absent-target append-only fallback and non-t
 Task 3: Luna fix round 2 removed the ambiguous fallback and updated synthetic fixtures to provide full authoritative paths; scoped Sol re-review approved specification and quality with no Critical, Important, or Minor findings.
 Task 3: complete (commits 8cf591b..22895b3, review clean)
 Task 4: complete (manual acceptance and design status evidence recorded; historical Task 4 commit/report chain retained)
-Task 5: complete (commits 85e579c..6eee5f2, full automated gate, Sol specification/quality approvals, and explicit user manual PASS recorded; evidence carried into clean-gated code/test candidate e285c9fc9db0a591beac93c169e198c8f80afa89; leak diagnostic resolved, only final review and main integration pending)
-Task 6: complete (commits 87f63e0..be18f1f, full automated gate, Sol specification/quality approvals, user manual PASS including recovery pause/resume; evidence carried into clean-gated code/test candidate e285c9fc9db0a591beac93c169e198c8f80afa89; leak diagnostic resolved, only final review and main integration pending)
+Task 5: complete and integrated (commits 85e579c..6eee5f2, full automated gate, Sol specification/quality approvals, and explicit user manual PASS recorded; evidence carried into clean-gated code/test candidate e285c9fc9db0a591beac93c169e198c8f80afa89; leak diagnostic resolved; integrated on `main` by PR #15 merge commit `92d0823090851aa8608b1a7d7d2e046d4ec6a667`; primary retest passed 19 suites plus four integrations with no `WARNING:` or `ERROR:` output)
+Task 6: complete and integrated (commits 87f63e0..be18f1f, full automated gate, Sol specification/quality approvals, user manual PASS including recovery pause/resume; evidence carried into clean-gated code/test candidate e285c9fc9db0a591beac93c169e198c8f80afa89; leak diagnostic resolved; integrated on `main` by PR #15 merge commit `92d0823090851aa8608b1a7d7d2e046d4ec6a667`; primary retest passed 19 suites plus four integrations with no `WARNING:` or `ERROR:` output)
+
+Final review: complete; the reviewed Task 5 and Task 6 evidence and quality/specification approvals were accepted before integration.
+PR #15: merged into `main` with merge commit `92d0823090851aa8608b1a7d7d2e046d4ec6a667`.
+Primary main retest: PASS — 19 prototype suites and all four standalone integrations, with no `WARNING:` or `ERROR:` output.
+Cleanup: pending — feature worktree and local/remote feature branches remain until the separate cleanup gate is approved.

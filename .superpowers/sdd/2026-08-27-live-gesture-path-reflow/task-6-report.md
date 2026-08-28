@@ -137,3 +137,15 @@ The implementation correction was limited to the planned runtime and five test p
 This report, the progress ledger, the canonical design, and the manual record are
 evidence/status artifacts only. Main integration and publication remain separate
 approval gates.
+
+## Final integration record — 2026-08-28
+
+The pending gate statement above is historical checkpoint status. The reviewed Task
+6 slice is integrated on `main` through PR #15 merge commit
+`92d0823090851aa8608b1a7d7d2e046d4ec6a667`. The primary `main` retest passed with
+Godot `4.7.1.stable.official.a13da4feb`, `PASS: 19 prototype test suite(s)`, and
+all four standalone integrations, with no `WARNING:` or `ERROR:` output. Task 6's
+active-gesture construction continuity and recovery pause/resume manual evidence
+remains correctly attributed to tested HEAD
+`be18f1fc84b96ce1f1361cb6b9878c1ed8aeda7f`; the merged-main retest is integration
+evidence, not a new Task 6 manual run. Feature-worktree cleanup remains pending.
