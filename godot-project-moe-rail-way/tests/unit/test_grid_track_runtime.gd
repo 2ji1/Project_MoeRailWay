@@ -73,6 +73,7 @@ func run() -> PackedStringArray:
 	_test_recovered_interval_is_not_reported_as_contacted()
 	_test_recovered_cell_can_be_contacted_by_new_geometry()
 	_test_swept_contacts_follow_active_centerlines()
+	_test_exact_center_observation_and_hit_distance()
 	_test_swept_contact_order_boundaries_and_detachment()
 	_test_swept_contacts_respect_recovery_and_invalid_ranges()
 	_test_detached_observations_and_conservation()
@@ -100,6 +101,44 @@ func run() -> PackedStringArray:
 	_test_prepared_built_curve_recovers_same_serials_without_ledger_mutation()
 	_test_unfinalizable_tight_turn_is_not_published()
 	return finish()
+
+
+func _test_exact_center_observation_and_hit_distance() -> void:
+	var anchor = RouteContactAnchorScript.new(&"warp_exact", Vector2i(2, 0))
+	var has_mode := _object_has_property(anchor, &"contact_mode")
+	assert_true(has_mode, "Runtime anchors expose a concrete contact mode")
+	if not has_mode:
+		return
+	anchor.set(&"contact_mode", 1)
+	var track := _make_contact_runtime(
+		Vector2i(-1, 0),
+		[Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)]
+	)
+	track.set_contact_anchors([anchor])
+	var observations: Array[Dictionary] = track.get_contact_observations()
+	assert_equal(observations.size(), 1, "Exact anchor publishes one detached observation")
+	if observations.size() == 1:
+		assert_equal(observations[0].get("contact_mode", -1), 1, "Observation retains exact mode")
+		assert_equal(
+			observations[0].get("contact_distance_cells", -1.0), 2.5,
+			"Observation publishes the literal route-record midpoint"
+		)
+	assert_true(
+		track.prepare_for_train_sampling(0.0, track.get_built_end_distance_cells()),
+		"Exact straight fixture prepares its route"
+	)
+	assert_equal(track.get_contact_hits_between(0.0, 2.49), [], "Exact hit does not fire before the knot")
+	var hits: Array[Dictionary] = track.get_contact_hits_between(2.49, 2.5)
+	assert_equal(hits.size(), 1, "Exact hit fires once at the knot")
+	if hits.size() == 1:
+		assert_equal(hits[0]["contact_distance_cells"], 2.5, "Exact hit reports the knot distance")
+
+
+func _object_has_property(object: Object, property_name: StringName) -> bool:
+	for property in object.get_property_list():
+		if property.get("name", StringName()) == property_name:
+			return true
+	return false
 
 
 func _test_swept_contact_api_exists() -> void:
@@ -2432,12 +2471,16 @@ func _test_endpoint_reshape_candidate_contact_does_not_contaminate_origin_abort(
 		"cell": Vector2i(2, 1),
 		"contact_possible": true,
 		"contacted": true,
+		"contact_mode": 0,
+		"contact_distance_cells": -1.0,
 	}]
 	var expected_candidate_contacts: Array[Dictionary] = [{
 		"anchor_id": &"origin_curve_only",
 		"cell": Vector2i(2, 1),
 		"contact_possible": false,
 		"contacted": false,
+		"contact_mode": 0,
+		"contact_distance_cells": -1.0,
 	}]
 	var expected_origin_anchors: Array[Dictionary] = [{
 		"anchor_id": &"origin_curve_only",

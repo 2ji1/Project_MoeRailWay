@@ -20,6 +20,7 @@ func run() -> PackedStringArray:
 	_test_curve_growth_reclassifies_without_changing_cell_count()
 	_test_overlapping_curves_downgrade_both()
 	_test_anchor_forces_centerline_contact()
+	_test_exact_anchor_knots_preserve_template_contracts()
 	_test_nonzero_grid_origin_translates_every_centerline()
 	_test_nominal_lengths_sampling_and_grid_bounds()
 	_test_non_final_curve_continuity_and_one_cell_tangents()
@@ -29,6 +30,81 @@ func run() -> PackedStringArray:
 	_test_detached_duplicates()
 	_test_exit_support_metadata_copies_with_active_slices()
 	return finish()
+
+
+func _test_exact_anchor_knots_preserve_template_contracts() -> void:
+	var exact_anchor = RouteContactAnchorScript.new(&"warp_exact", Vector2i(0, 0))
+	var has_mode := _object_has_property(exact_anchor, &"contact_mode")
+	assert_true(has_mode, "Route anchors expose a concrete contact mode")
+	if not has_mode:
+		return
+	exact_anchor.set(&"contact_mode", 1)
+	var straight_records := _records_for([Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0)])
+	exact_anchor.cell = Vector2i(1, 0)
+	var straight_result = _resolver.resolve(
+		DEPARTURE, straight_records, [], [exact_anchor],
+		Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_true(straight_result.is_valid, "Exact anchored straight resolves")
+	if straight_result.is_valid:
+		var straight = _piece_covering_serial(straight_result.pieces, straight_records[1].route_serial)
+		assert_equal(straight.centerline.size(), 2, "Exact anchored straight preserves two-point geometry")
+		assert_true(
+			straight.sample_nominal(0.5).position.distance_to(Vector2(60.0, 20.0)) <= 0.0001,
+			"Exact anchored straight passes its literal cell center at nominal midpoint"
+		)
+
+	_assert_exact_curve_fixture(
+		[Vector2i(0, 0), Vector2i(0, 1)], 0, CURVE_1X1, "1x1"
+	)
+	_assert_exact_curve_fixture(
+		[Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1)], 1, CURVE_2X2, "2x2"
+	)
+	_assert_exact_curve_fixture(
+		[Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2)],
+		2, CURVE_3X3, "3x3"
+	)
+
+
+func _assert_exact_curve_fixture(
+	cells: Array,
+	anchor_offset: int,
+	expected_kind: int,
+	label: String
+) -> void:
+	var records := _records_for(cells)
+	var anchor_cell: Vector2i = records[anchor_offset].cell
+	var anchor = RouteContactAnchorScript.new(&"warp_exact", anchor_cell)
+	anchor.set(&"contact_mode", 1)
+	var result = _resolver.resolve(
+		DEPARTURE, records, [], [anchor], Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_true(result.is_valid, "%s exact anchored curve resolves" % label)
+	if not result.is_valid:
+		return
+	var piece = _piece_covering_serial(result.pieces, records[anchor_offset].route_serial)
+	assert_not_null(piece, "%s exact anchor has one owning piece" % label)
+	if piece == null:
+		return
+	assert_equal(piece.kind, expected_kind, "%s retains its accepted template kind" % label)
+	assert_equal(
+		piece.centerline.size(), piece.nominal_length_cells * 16 + 1,
+		"%s anchored curve uses fixed nominal sampling" % label
+	)
+	var expected_center := (Vector2(anchor_cell) + Vector2(0.5, 0.5)) * 40.0
+	var local_offset: float = float(records[anchor_offset].route_distance_start_cells) \
+		- piece.absolute_start_distance_cells + 0.5
+	assert_true(
+		piece.sample_nominal(local_offset).position.distance_to(expected_center) <= 0.0001,
+		"%s passes the literal cell center at its nominal knot" % label
+	)
+
+
+func _object_has_property(object: Object, property_name: StringName) -> bool:
+	for property in object.get_property_list():
+		if property.get("name", StringName()) == property_name:
+			return true
+	return false
 
 
 func _test_route_zero_starts_at_departure_center() -> void:

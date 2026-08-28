@@ -176,20 +176,23 @@ func get_route_contact_anchors() -> Array[RouteContactAnchorScript]:
             anchors.append(
                 RouteContactAnchorScript.new(
                     StringName("%s/origin" % record.pair_id),
-                    record.origin_cell
+                    record.origin_cell,
+                    RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
                 )
             )
             anchors.append(
                 RouteContactAnchorScript.new(
                     StringName("%s/destination" % record.pair_id),
-                    record.destination_cell
+                    record.destination_cell,
+                    RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
                 )
             )
         elif record.state == WarpPairRecordScript.State.IN_TRANSIT:
             anchors.append(
                 RouteContactAnchorScript.new(
                     StringName("%s/destination" % record.pair_id),
-                    record.destination_cell
+                    record.destination_cell,
+                    RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
                 )
             )
     return anchors

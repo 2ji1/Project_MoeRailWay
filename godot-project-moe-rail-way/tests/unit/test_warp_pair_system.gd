@@ -15,11 +15,35 @@ func run() -> PackedStringArray:
     _test_row_major_mapping()
     _test_equal_cell_generation_and_draw_order()
     _test_forecast_activation_and_anchors()
+    _test_active_warp_anchors_use_exact_center_mode()
     _test_capacity_gating_and_delayed_cadence()
     _test_expiry_void_and_idempotence()
     _test_contact_loading_delivery_and_removal()
     _test_fixed_seed_replay_and_detached_observations()
     return finish()
+
+
+func _test_active_warp_anchors_use_exact_center_mode() -> void:
+    var balance := _make_warp_balance(0.0, 10.0, 5.0, 5.0, 2)
+    var config = _complete_config(balance, 91, Vector2i(2, 2))
+    var system := WarpPairSystemScript.new(config, SessionRngScript.new(91))
+    system.begin_running_tick(1)
+    var anchors: Array = system.get_route_contact_anchors()
+    assert_equal(anchors.size(), 2, "Zero-forecast Warp publishes origin and destination anchors")
+    for anchor in anchors:
+        var has_mode := _object_has_property(anchor, &"contact_mode")
+        assert_true(has_mode, "Active Warp anchor publishes a concrete contact mode")
+        if has_mode:
+            assert_equal(anchor.get(&"contact_mode"), 1, "Active Warp anchor uses exact cell-center mode")
+            var copy = anchor.duplicate_anchor()
+            assert_equal(copy.get(&"contact_mode"), 1, "Detached Warp anchor preserves exact mode")
+
+
+func _object_has_property(object: Object, property_name: StringName) -> bool:
+    for property in object.get_property_list():
+        if property.get("name", StringName()) == property_name:
+            return true
+    return false
 
 
 func _verify_invalid_contact_probes() -> void:

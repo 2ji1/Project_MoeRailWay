@@ -143,7 +143,8 @@ func gesture_finalize() -> bool:
     var candidate_contacts := _build_contact_observations(
         resolution.pieces,
         candidate_anchors,
-        _recovered_cells_by_piece
+        _recovered_cells_by_piece,
+        candidate_sequence.get_records()
     )
     _commit_candidate(candidate_sequence, candidate_ledger, resolution)
     _contact_observations = candidate_contacts.duplicate(true)
@@ -268,7 +269,8 @@ func gesture_update(
     var candidate_contacts := _build_contact_observations(
         resolution.pieces,
         candidate_anchors,
-        _gesture_origin_recovered_cells_by_piece
+        _gesture_origin_recovered_cells_by_piece,
+        candidate_sequence.get_records()
     )
     _commit_candidate(candidate_sequence, candidate_ledger, resolution)
     _advance_gesture_serial_watermark(candidate_sequence)
@@ -430,26 +432,70 @@ func set_contact_anchors(anchors: Array[RouteContactAnchorScript]) -> void:
     var candidate_anchors: Array[RouteContactAnchorScript] = []
     for anchor in anchors:
         candidate_anchors.append(anchor.duplicate_anchor())
-    var candidate_sequence = _sequence.duplicate_sequence()
-    var candidate_ledger = _duplicate_pieces(_locked_ledger)
-    var resolution = _stage_stable_retirement(
-        candidate_sequence,
-        candidate_ledger,
-        candidate_anchors
+    var current_stage := _stage_anchor_update(
+        _sequence,
+        _locked_ledger,
+        candidate_anchors,
+        _recovered_cells_by_piece,
+        _recovered_end_distance_cells
     )
-    if resolution.is_valid:
-        _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
-        candidate_sequence.apply_resolved_geometry(resolution.pieces)
-        if _validate_candidate(
-            candidate_sequence,
-            candidate_ledger,
-            resolution,
-            _recovered_cells_by_piece,
-            _recovered_end_distance_cells
-        ):
-            _commit_candidate(candidate_sequence, candidate_ledger, resolution)
+    if current_stage.get("valid", false):
+        _commit_candidate(
+            current_stage["sequence"],
+            current_stage["ledger"],
+            current_stage["resolution"]
+        )
     _anchors = candidate_anchors
     _refresh_contact_observations()
+    if _gesture_active and _gesture_origin_sequence != null:
+        var origin_stage := _stage_anchor_update(
+            _gesture_origin_sequence,
+            _gesture_origin_locked_ledger,
+            candidate_anchors,
+            _gesture_origin_recovered_cells_by_piece,
+            _gesture_origin_recovered_end_distance_cells
+        )
+        if origin_stage.get("valid", false):
+            _gesture_origin_sequence = origin_stage["sequence"]
+            _gesture_origin_locked_ledger = origin_stage["ledger"]
+            _gesture_origin_pieces = _duplicate_pieces(origin_stage["resolution"].pieces)
+        _gesture_origin_anchors = _duplicate_anchors(candidate_anchors)
+        _gesture_origin_contacts = _build_contact_observations(
+            _gesture_origin_pieces,
+            _gesture_origin_anchors,
+            _gesture_origin_recovered_cells_by_piece,
+            _gesture_origin_sequence.get_records()
+        )
+
+
+func _stage_anchor_update(
+    source_sequence: TrackCellSequenceScript,
+    source_ledger: Array[TrackGeometryPieceScript],
+    anchors: Array[RouteContactAnchorScript],
+    recovered_cells_by_piece: Dictionary,
+    recovered_end_distance_cells: float
+) -> Dictionary:
+    var candidate_sequence = source_sequence.duplicate_sequence()
+    var candidate_ledger = _duplicate_pieces(source_ledger)
+    var resolution = _stage_stable_retirement(candidate_sequence, candidate_ledger, anchors)
+    if not resolution.is_valid:
+        return {"valid": false}
+    _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
+    candidate_sequence.apply_resolved_geometry(resolution.pieces)
+    if not _validate_candidate(
+        candidate_sequence,
+        candidate_ledger,
+        resolution,
+        recovered_cells_by_piece,
+        recovered_end_distance_cells
+    ):
+        return {"valid": false}
+    return {
+        "valid": true,
+        "sequence": candidate_sequence,
+        "ledger": candidate_ledger,
+        "resolution": resolution,
+    }
 
 
 func advance_construction(progress_cells: float) -> float:
@@ -583,7 +629,8 @@ func recover_behind(cutoff_distance_cells: float) -> int:
     var candidate_contacts = _build_contact_observations(
         resolution.pieces,
         candidate_anchors,
-        candidate_recovered_cells_by_piece
+        candidate_recovered_cells_by_piece,
+        candidate_sequence.get_records()
     )
     _commit_candidate(candidate_sequence, candidate_ledger, resolution)
     _recovered_cells_by_piece = candidate_recovered_cells_by_piece.duplicate(true)
@@ -797,9 +844,40 @@ func get_contact_hits_between(
 
     var anchors_by_id: Dictionary = {}
     for anchor in _anchors:
-        if not anchors_by_id.has(anchor.anchor_id):
+        if (
+            anchor.contact_mode == RouteContactAnchorScript.ContactMode.CELL_ENTRY
+            and not anchors_by_id.has(anchor.anchor_id)
+        ):
             anchors_by_id[anchor.anchor_id] = anchor
+
+    var observations_by_id: Dictionary = {}
+    for observation in _contact_observations:
+        observations_by_id[observation["anchor_id"]] = observation
+    for anchor in _anchors:
+        if anchor.contact_mode != RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER:
+            continue
+        var observation: Dictionary = observations_by_id.get(anchor.anchor_id, {})
+        if not observation.get("contact_possible", false):
+            continue
+        var contact_distance: float = observation.get("contact_distance_cells", -1.0)
+        var departure_hit := (
+            is_zero_approx(contact_distance)
+            and is_zero_approx(previous_distance_cells)
+            and through_distance_cells > 0.0
+        )
+        if not departure_hit and (
+            contact_distance <= previous_distance_cells + NOMINAL_BOUNDARY_EPSILON
+            or contact_distance > through_distance_cells + NOMINAL_BOUNDARY_EPSILON
+        ):
+            continue
+        hits.append({
+            "anchor_id": anchor.anchor_id,
+            "cell": anchor.cell,
+            "contact_distance_cells": contact_distance,
+        })
+
     if anchors_by_id.is_empty():
+        hits.sort_custom(_contact_hit_less)
         return hits
 
     var emitted_anchor_ids: Dictionary = {}
@@ -1391,7 +1469,8 @@ func _stage_active_gesture_train_safety_origin(
     var origin_contacts := _build_contact_observations(
         origin_resolution.pieces,
         _gesture_origin_anchors,
-        _gesture_origin_recovered_cells_by_piece
+        _gesture_origin_recovered_cells_by_piece,
+        origin_sequence.get_records()
     )
     return {
         "sequence": origin_sequence,
@@ -1527,29 +1606,92 @@ func _refresh_contact_observations() -> void:
     _contact_observations = _build_contact_observations(
         _pieces,
         _anchors,
-        _recovered_cells_by_piece
+        _recovered_cells_by_piece,
+        _sequence.get_records()
     )
 
 
 func _build_contact_observations(
     pieces: Array[TrackGeometryPieceScript],
     anchors: Array[RouteContactAnchorScript],
-    recovered_cells_by_piece: Dictionary
+    recovered_cells_by_piece: Dictionary,
+    route_records: Array = []
 ) -> Array[Dictionary]:
     var observations: Array[Dictionary] = []
+    var records := route_records
     for anchor in anchors:
         var contacted := false
-        for piece in pieces:
-            if _active_piece_contacts_cell(piece, anchor.cell, recovered_cells_by_piece):
-                contacted = true
-                break
+        var contact_distance := -1.0
+        if anchor.contact_mode == RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER:
+            var exact_fact := _exact_anchor_contact_fact(
+                pieces, records, anchor.cell, recovered_cells_by_piece
+            )
+            contacted = exact_fact.get("contact_possible", false)
+            contact_distance = exact_fact.get("contact_distance_cells", -1.0)
+        else:
+            for piece in pieces:
+                if _active_piece_contacts_cell(piece, anchor.cell, recovered_cells_by_piece):
+                    contacted = true
+                    break
         observations.append({
             "anchor_id": anchor.anchor_id,
             "cell": anchor.cell,
             "contact_possible": contacted,
             "contacted": contacted,
+            "contact_mode": anchor.contact_mode,
+            "contact_distance_cells": contact_distance,
         })
     return observations
+
+
+func _exact_anchor_contact_fact(
+    pieces: Array[TrackGeometryPieceScript],
+    records: Array,
+    cell: Vector2i,
+    recovered_cells_by_piece: Dictionary
+) -> Dictionary:
+    var required_serial := -1
+    if cell != _departure_cell:
+        for record in records:
+            if record.cell == cell:
+                required_serial = record.route_serial
+                break
+        if required_serial < 0:
+            return {"contact_possible": false, "contact_distance_cells": -1.0}
+    var target := _grid_origin_units + (Vector2(cell) + Vector2(0.5, 0.5)) * _cell_size_units
+    for piece in pieces:
+        if required_serial >= 0 and not piece.contains_serial(required_serial):
+            continue
+        var recovered_cells: Dictionary = recovered_cells_by_piece.get(_piece_key(piece), {})
+        if recovered_cells.has(cell) or piece.centerline.size() < 2:
+            continue
+        var segment_count := piece.centerline.size() - 1
+        for segment_index in range(segment_count):
+            var start: Vector2 = piece.centerline[segment_index]
+            var finish: Vector2 = piece.centerline[segment_index + 1]
+            var delta := finish - start
+            var length_squared := delta.length_squared()
+            var weight := 0.0
+            if length_squared > 0.0:
+                weight = clampf((target - start).dot(delta) / length_squared, 0.0, 1.0)
+            var projection := start + delta * weight
+            if projection.distance_to(target) > NOMINAL_BOUNDARY_EPSILON:
+                continue
+            var local_distance := (
+                (float(segment_index) + weight)
+                / float(segment_count)
+                * float(piece.nominal_length_cells)
+            )
+            if (
+                local_distance < piece.active_local_start_cells - NOMINAL_BOUNDARY_EPSILON
+                or local_distance > piece.active_local_end_cells + NOMINAL_BOUNDARY_EPSILON
+            ):
+                continue
+            return {
+                "contact_possible": true,
+                "contact_distance_cells": piece.absolute_start_distance_cells + local_distance,
+            }
+    return {"contact_possible": false, "contact_distance_cells": -1.0}
 
 
 func _active_piece_contacts_cell(
