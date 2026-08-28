@@ -80,6 +80,7 @@ func run() -> PackedStringArray:
 	_test_recovered_interval_is_not_reported_as_contacted()
 	_test_recovered_cell_can_be_contacted_by_new_geometry()
 	_test_swept_contacts_follow_active_centerlines()
+	_test_cell_entry_observations_match_full_sweeps()
 	_test_exact_center_observation_and_hit_distance()
 	_test_swept_contact_order_boundaries_and_detachment()
 	_test_swept_contacts_respect_recovery_and_invalid_ranges()
@@ -3226,6 +3227,56 @@ func _test_swept_contacts_follow_active_centerlines() -> void:
 	_assert_fixture_swept_contact(
 		shifted, TrackGeometryPieceScript.Kind.STRAIGHT, Vector2i(2, 0), "Shifted straight"
 	)
+
+
+func _test_cell_entry_observations_match_full_sweeps() -> void:
+	var fixtures := [
+		_make_contact_runtime(
+			Vector2i(-1, 0),
+			[Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0)]
+		),
+		_make_contact_runtime(
+			Vector2i(-1, 0),
+			[Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2)]
+		),
+		_make_contact_runtime(
+			Vector2i(-1, 0),
+			[Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1), Vector2i(1, 2)]
+		),
+		_make_contact_runtime(
+			Vector2i(-1, 0),
+			[
+				Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+				Vector2i(2, 1), Vector2i(2, 2), Vector2i(2, 3),
+			]
+		),
+	]
+	for fixture_index in range(fixtures.size()):
+		var track: GridTrackRuntimeScript = fixtures[fixture_index]
+		assert_true(
+			track.prepare_for_train_sampling(0.0, track.get_built_end_distance_cells()),
+			"CELL_ENTRY parity fixture %d locks its accepted centerline" % fixture_index
+		)
+		var anchors: Array[RouteContactAnchorScript] = []
+		for record in track.get_cell_records():
+			anchors.append(RouteContactAnchorScript.new(
+				StringName("cell_%d" % record.route_serial), record.cell
+			))
+		track.set_contact_anchors(anchors)
+		var possible_ids: Array[StringName] = []
+		for observation in track.get_contact_observations():
+			if observation.contact_possible:
+				possible_ids.append(observation.anchor_id)
+		var hit_ids: Array[StringName] = []
+		for hit in track.get_contact_hits_between(0.0, track.get_built_end_distance_cells()):
+			hit_ids.append(hit.anchor_id)
+		possible_ids.sort()
+		hit_ids.sort()
+		assert_equal(
+			hit_ids,
+			possible_ids,
+			"CELL_ENTRY observations and full one-eighth sweep agree for fixture %d" % fixture_index
+		)
 
 
 func _test_swept_contact_order_boundaries_and_detachment() -> void:

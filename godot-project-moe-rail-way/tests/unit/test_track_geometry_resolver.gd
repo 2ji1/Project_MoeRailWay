@@ -16,6 +16,7 @@ var _resolver = TrackGeometryResolverScript.new()
 
 
 func run() -> PackedStringArray:
+	_test_track_geometry_piece_owns_centerline_queries()
 	_test_route_zero_starts_at_departure_center()
 	_test_curve_growth_reclassifies_without_changing_cell_count()
 	_test_overlapping_curves_downgrade_both()
@@ -31,6 +32,56 @@ func run() -> PackedStringArray:
 	_test_detached_duplicates()
 	_test_exit_support_metadata_copies_with_active_slices()
 	return finish()
+
+
+func _test_track_geometry_piece_owns_centerline_queries() -> void:
+	var piece = TrackGeometryPieceScript.new()
+	piece.nominal_length_cells = 2
+	piece.centerline = PackedVector2Array([
+		Vector2(20.0, 20.0),
+		Vector2(60.0, 20.0),
+		Vector2(60.0, 20.0),
+		Vector2(100.0, 20.0),
+	])
+	var has_projection_query := piece.has_method("find_nominal_distance_at_position")
+	var has_nominal_cell_query := piece.has_method("contacts_cell_in_nominal_range")
+	assert_true(
+		has_projection_query,
+		"TrackGeometryPiece owns continuous point-to-nominal projection"
+	)
+	assert_true(
+		has_nominal_cell_query,
+		"TrackGeometryPiece owns nominal-range cell coverage"
+	)
+	if not has_projection_query or not has_nominal_cell_query:
+		return
+	assert_true(
+		absf(piece.find_nominal_distance_at_position(Vector2(40.0, 20.0), 0.0001) - 1.0 / 3.0)
+			<= 0.0001,
+		"Interior segment projection uses uniform stored-index nominal distance"
+	)
+	assert_true(
+		absf(piece.find_nominal_distance_at_position(Vector2(60.0, 20.0), 0.0001) - 2.0 / 3.0)
+			<= 0.0001,
+		"Repeated points preserve the earliest matching projection"
+	)
+	assert_equal(
+		piece.find_nominal_distance_at_position(Vector2(40.0, 21.0), 0.0001),
+		-1.0,
+		"A target outside the logical-unit epsilon has no nominal projection"
+	)
+	assert_false(
+		piece.contacts_cell_in_nominal_range(
+			Vector2i(2, 0), Vector2.ZERO, 40.0, 0.0, 0.75, 8
+		),
+		"An inactive nominal prefix cannot report a later cell"
+	)
+	assert_true(
+		piece.contacts_cell_in_nominal_range(
+			Vector2i(2, 0), Vector2.ZERO, 40.0, 1.0, 2.0, 8
+		),
+		"The active nominal suffix reports its sampled cell"
+	)
 
 
 func _test_exact_anchor_knots_preserve_template_contracts() -> void:

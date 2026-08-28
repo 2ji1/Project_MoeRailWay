@@ -528,10 +528,7 @@ func _piece_contains_exact_center(
     cell_size: float
 ) -> bool:
     var target := _cell_center(cell, origin, cell_size)
-    for point in piece.centerline:
-        if point.distance_to(target) <= DISTANCE_EPSILON:
-            return true
-    return false
+    return piece.find_nominal_distance_at_position(target, DISTANCE_EPSILON) >= 0.0
 
 
 func _anchored_curve_samples_fit_footprint(
