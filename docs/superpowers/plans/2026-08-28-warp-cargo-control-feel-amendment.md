@@ -205,8 +205,11 @@ The cadence fixtures must declare the expected real-tick/simulation-tick sequenc
 
 - `godot-project-moe-rail-way/src/presentation/track/track_field_view.gd`
 - `godot-project-moe-rail-way/tests/run_all.gd`
+- `godot-project-moe-rail-way/tests/smoke/test_track_train_app_composition.gd`
 - `godot-project-moe-rail-way/tests/integration/run_warp_cargo_integration.gd`
 - `godot-project-moe-rail-way/tests/manual/warp_cargo_windows.md`
+
+`test_track_train_app_composition.gd` is authorized only to add the two intended public render-observation keys to its exact schema assertion. It authorizes no production behavior or broader assertion changes.
 
 **RED:** Register the new suite and require:
 
