@@ -423,6 +423,26 @@ func _test_locked_predecessor_stitches_anchored_turn_by_declared_heading() -> vo
 		_resolver._centerline_gap_is_forward(predecessor, sideways),
 		"A sideways declared entry remains ineligible for locked-boundary stitching"
 	)
+	var nonforward_locked = locked.duplicate_piece()
+	nonforward_locked.centerline[-1] = Vector2(340.0, 140.0)
+	var nonforward_before: PackedVector2Array = nonforward_locked.centerline.duplicate()
+	var nonforward_result = _resolver.resolve(
+		departure, records, [nonforward_locked], [anchor],
+		Vector2.ZERO, Vector2i(16, 10), 40.0
+	)
+	assert_true(nonforward_result.is_valid, "Resolver leaves final continuity ownership to the runtime")
+	if nonforward_result.is_valid and nonforward_result.pieces.size() >= 2:
+		assert_false(
+			nonforward_result.pieces[0].centerline[-1].is_equal_approx(
+				nonforward_result.pieces[1].centerline[0]
+			),
+			"Non-forward locked boundary remains unstitched"
+		)
+	assert_equal(
+		nonforward_locked.centerline,
+		nonforward_before,
+		"Rejected stitch attempt never mutates its locked source"
+	)
 
 
 func _test_empty_acceptance_and_final_conflict_rejection() -> void:

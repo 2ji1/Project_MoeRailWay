@@ -1258,6 +1258,44 @@ func _test_locked_endpoint_exact_warp_turn_retains_same_gesture_suffix() -> void
 			"Final anchored turn retains the exact Warp center"
 		)
 
+	var nonforward_sequence = TrackCellSequenceScript.new(Vector2i(7, 4), 3)
+	assert_equal(
+		nonforward_sequence.append_candidates([
+			Vector2i(7, 3), Vector2i(7, 2), Vector2i(6, 2),
+		]),
+		3,
+		"Non-forward continuity fixture appends its literal route"
+	)
+	var nonforward_locked = TrackGeometryPieceScript.new()
+	nonforward_locked.group_id = 90
+	nonforward_locked.kind = TrackGeometryPieceScript.Kind.STRAIGHT
+	nonforward_locked.first_route_serial = 1
+	nonforward_locked.last_route_serial = 1
+	nonforward_locked.nominal_length_cells = 1
+	nonforward_locked.absolute_start_distance_cells = 0.0
+	var nonforward_footprint: Array[Vector2i] = [Vector2i(7, 3)]
+	nonforward_locked.footprint_cells = nonforward_footprint
+	nonforward_locked.centerline = PackedVector2Array([
+		Vector2(300.0, 180.0), Vector2(340.0, 140.0),
+	])
+	nonforward_locked.locked = true
+	nonforward_locked.active_local_end_cells = 1.0
+	var nonforward_resolution = track._resolver.resolve(
+		Vector2i(7, 4),
+		nonforward_sequence.get_records(),
+		[nonforward_locked],
+		[anchor],
+		Vector2.ZERO,
+		Vector2i(16, 10),
+		40.0
+	)
+	assert_true(nonforward_resolution.is_valid, "Resolver returns the deliberately unstitched boundary for runtime validation")
+	if nonforward_resolution.is_valid:
+		assert_false(
+			track._pieces_are_continuous(nonforward_resolution.pieces),
+			"Runtime continuity owner rejects the non-forward locked boundary"
+		)
+
 
 func _test_template_origin_suffix_guards_remain_atomic() -> void:
 	var track = _make_three_by_three_curve_runtime()
