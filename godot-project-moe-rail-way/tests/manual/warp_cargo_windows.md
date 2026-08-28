@@ -52,7 +52,7 @@ After the deterministic run at each size, launch the real scene without the driv
 & $Godot --path $Project --resolution <width>x<height> --script 'res://tests/integration/run_warp_cargo_integration.gd' -- --mouse-manual
 ```
 
-This mouse-only mode leaves the canonical fixed-seed fixture unchanged and applies three runtime-only usability values: a `90` second session, train speed `1.5` cells per second, and recovery lag `2` cells. Starting at departure cell `(5, 2)`, use only the left mouse button to draw an orthogonally connected route. While Warp endpoints and countdowns are visible, extend from the active endpoint, move backward and rebranch during one held gesture, release to finalize, then begin another held edit and right-click to restore its gesture origin. Clicking or dragging across Warp shapes and the cargo strip must behave exactly like the underlying track field; the Warp presentation must not capture or consume input.
+This mouse-only mode leaves the canonical fixed-seed fixture unchanged and applies runtime-only usability values: a `90` second session, train speed `1.5` cells per second, recovery lag `2` cells, and a doubled Warp lifetime range of `3.0..33.0` seconds. Starting at departure cell `(5, 2)`, use only the left mouse button to draw an orthogonally connected route. While Warp endpoints and countdowns are visible, extend from the active endpoint, move backward and rebranch during one held gesture, release to finalize, then begin another held edit and right-click to restore its gesture origin. Clicking or dragging across Warp shapes and the cargo strip must behave exactly like the underlying track field; the Warp presentation must not capture or consume input.
 
 ## Evidence header
 

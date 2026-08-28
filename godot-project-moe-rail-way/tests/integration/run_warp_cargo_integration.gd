@@ -104,13 +104,15 @@ func _run() -> void:
         _assert_equal(app.session_start_config.session_duration_seconds, 90.0, "Mouse manual session lasts 90 seconds")
         _assert_equal(app.session_start_config.train_speed_cells_per_second, 1.5, "Mouse manual train speed is reduced")
         _assert_equal(app.session_start_config.recovery_lag_cells, 2, "Mouse manual recovery begins two cells behind")
+        _assert_equal(app.session_start_config.warp_lifetime_min_ticks, 30, "Mouse manual minimum Warp lifetime is doubled")
+        _assert_equal(app.session_start_config.warp_lifetime_max_ticks, 330, "Mouse manual maximum Warp lifetime is doubled")
         if not _failures.is_empty() or _mouse_manual_auto:
             app.queue_free()
             await process_frame
             _finish()
         else:
-            DisplayServer.window_set_title("Warp Cargo Mouse Test | train 1.5 cells/s | recovery lag 2 | 90s")
-            print("MOUSE MANUAL READY | duration=90 speed=1.5 recovery_lag=2")
+            DisplayServer.window_set_title("Warp Cargo Mouse Test | train 1.5 | recovery 2 | lifetime 3-33s | 90s")
+            print("MOUSE MANUAL READY | duration=90 speed=1.5 recovery_lag=2 warp_lifetime=3.0..33.0")
         return
     app.set_physics_process(false)
     await process_frame
@@ -241,6 +243,8 @@ func _configure_mouse_manual_balance(app) -> void:
     manual_balance.session_balance.session_duration_seconds = 90.0
     manual_balance.train_balance.speed_cells_per_second = 1.5
     manual_balance.track_inventory_balance.recovery_lag_cells = 2
+    manual_balance.warp_lifecycle_balance.lifetime_min_seconds = 3.0
+    manual_balance.warp_lifecycle_balance.lifetime_max_seconds = 33.0
     app.balance = manual_balance
 
 
