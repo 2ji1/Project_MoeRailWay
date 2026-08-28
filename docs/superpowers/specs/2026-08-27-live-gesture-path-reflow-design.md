@@ -2,11 +2,13 @@
 
 **Date:** 2026-08-27
 
-**Status:** Implementation and manual acceptance complete on feature branch; final clean automated/review gate pending while the leak diagnostic is open; main integration pending
+**Status:** Scoped implementation and manual acceptance are complete; current final feature HEAD `e285c9fc9db0a591beac93c169e198c8f80afa89` is clean-gated, with final review pending while the leak diagnostic is open and main integration pending
 
 **Implementation branch:** `feature/live-gesture-path-reflow`
 
-**Manually accepted implementation commit:** `be18f1fc84b96ce1f1361cb6b9878c1ed8aeda7f`
+**Task 5 scoped manual acceptance:** `6eee5f2f15d586806c3d68d99fd2e0cc87d4c239` (coalesced release/fresh press, replay, ordinary/RUNNING recovery, and terminal input-lock evidence)
+
+**Task 6 scoped manual acceptance:** `be18f1fc84b96ce1f1361cb6b9878c1ed8aeda7f` (origin-owned construction continuity and recovery pause/resume evidence)
 
 **Verified base:** `1a0cd466287f81c3a413c773fd8974d5dbb72f08` (`main`, `origin/main`)
 

@@ -2,7 +2,7 @@
 
 ## Result
 
-Current feature HEAD is `6eee5f2f15d586806c3d68d99fd2e0cc87d4c239`, with the initial correction and both review rounds complete. The current final automated gate at this HEAD passed Godot `4.7.1.stable.official.a13da4feb`, all 19 prototype suites, all four standalone integrations, and the three current input-integration markers exactly once.
+The Task 5 tested candidate was `6eee5f2f15d586806c3d68d99fd2e0cc87d4c239`, with the initial correction and both review rounds complete. The final automated gate recorded for that tested candidate passed Godot `4.7.1.stable.official.a13da4feb`, all 19 prototype suites, all four standalone integrations, and the three current input-integration markers exactly once. It is historical Task 5 evidence, not the current feature HEAD.
 
 The initial automated Task 5 correction was committed on historical pre-review HEAD `85e579c2a64d05147d262f6ae320461259c11009` with commit subject:
 
@@ -10,9 +10,10 @@ The initial automated Task 5 correction was committed on historical pre-review H
 fix: order coalesced release and fresh press
 ```
 
-No manual acceptance, status restoration, canonical design document, ledger, or primary-worktree change was performed.
+At that historical pre-review checkpoint, no manual acceptance, status restoration,
+canonical design document, ledger, or primary-worktree change was performed.
 
-## Current final automated gate (HEAD `6eee5f2f15d586806c3d68d99fd2e0cc87d4c239`)
+## Task 5 tested automated gate (tested HEAD `6eee5f2f15d586806c3d68d99fd2e0cc87d4c239`)
 
 - Godot `4.7.1.stable.official.a13da4feb`.
 - Full `res://tests/run_all.gd`: exit `0`, `PASS: 19 prototype test suite(s)`.
