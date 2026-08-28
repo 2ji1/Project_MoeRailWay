@@ -7,6 +7,8 @@ const STYLE_COLORS := [
 ]
 const STYLE_SHAPES := [&"circle", &"diamond", &"square", &"circle", &"diamond", &"square"]
 const EMPTY_COLOR := Color(0.62, 0.68, 0.70, 0.7)
+const BASE_MINIMUM_SIZE := Vector2(52.0, 20.0)
+const MINIMUM_SLOT_WIDTH := 10.0
 
 var _slots: Array = []
 var _occupied := 0
@@ -15,7 +17,7 @@ var _total := 0
 
 func _init() -> void:
     mouse_filter = Control.MOUSE_FILTER_IGNORE
-    custom_minimum_size = Vector2(52.0, 20.0)
+    custom_minimum_size = BASE_MINIMUM_SIZE
 
 
 func present(snapshot) -> void:
@@ -24,6 +26,7 @@ func present(snapshot) -> void:
     _slots = snapshot.get_cargo_slot_records()
     _occupied = snapshot.get_occupied_cargo_slots()
     _total = snapshot.get_total_cargo_slots()
+    custom_minimum_size.x = maxf(BASE_MINIMUM_SIZE.x, float(_total) * MINIMUM_SLOT_WIDTH)
     queue_redraw()
 
 

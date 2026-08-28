@@ -168,6 +168,11 @@ func _test_cargo_slot_observations() -> void:
     assert_false(observation.slots[1].filled, "Empty slot is outlined")
     strip.present(_snapshot([], [_slot(0), _slot(1)], [], 0, 2))
     assert_equal(strip.get_render_observation().occupied, 0, "Cleared snapshot empties cargo strip")
+    var maximum_slots: Array[CargoSlotRecordScript] = []
+    for index in range(8):
+        maximum_slots.append(_slot(index))
+    strip.present(_snapshot([], maximum_slots, [], 0, 8))
+    assert_true(strip.custom_minimum_size.x >= 80.0, "Maximum capacity reserves nonoverlapping slot width")
     strip.free()
 
 

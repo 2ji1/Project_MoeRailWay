@@ -52,10 +52,34 @@ const EXPECTED_STATE_TRACE := [
     {"tick": 139, "state": "COMPLETED", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:DELIVERED:1:F0:L1", "warp_pair_3:VOIDED:2:F0:L26", "warp_pair_4:VOIDED:0:F0:L142"], "occupied": 0, "delivered": 1, "reward": 37},
 ]
 
+const MANUAL_CHECKPOINT_TICKS: Array[int] = [1, 3, 4, 10, 13, 64, 120, 121, 124, 138, 139]
+const MANUAL_EXPECTATIONS := {
+    1: "Empty cargo; pair 1 forecast with low-alpha endpoints and F 1s.",
+    3: "Pair 1 active: filled origin, outlined destination, 12s lifetime.",
+    4: "Pair 1 loaded into slot 0; origin becomes outline-only.",
+    10: "Pair 2 loaded into slot 1; cargo is full at 2 / 2.",
+    13: "Pair 3 is active and remains at its seeded cells without correction.",
+    64: "The train crosses pair 3 origin while full; pair 3 remains unloaded.",
+    120: "Pair 1 expires; slot 0 clears and cargo becomes mixed at 1 / 2.",
+    121: "Pair 4 forecast appears at its seeded cells without route correction.",
+    124: "Pair 4 loads into the lowest empty slot 0; cargo returns to 2 / 2.",
+    138: "Pair 2 remains in transit with 1s; destination delivery is next tick.",
+    139: "Pair 2 delivers, reward becomes 37, cargo clears, and only its brief destination remains.",
+}
+
 var _failures := PackedStringArray()
+var _manual_mode := false
+var _manual_auto_advance := false
+var _manual_checkpoint_ids: Array[String] = []
+var _manual_layer: CanvasLayer
+var _manual_label: Label
+var _manual_button: Button
 
 
 func _initialize() -> void:
+    var user_arguments := OS.get_cmdline_user_args()
+    _manual_mode = user_arguments.has("--manual") or user_arguments.has("--manual-auto")
+    _manual_auto_advance = user_arguments.has("--manual-auto")
     call_deferred("_run")
 
 
@@ -79,6 +103,8 @@ func _run() -> void:
     var controller = app.session_controller
     var shell = app.get_node("SessionShell")
     var view = shell.get_track_field_view()
+    if _manual_mode:
+        _create_manual_overlay(app)
     var actual_events_by_tick: Array = []
     var actual_state_trace: Array[Dictionary] = []
     var trace_ticks := {1: true, 3: true, 4: true, 8: true, 10: true, 13: true, 64: true, 119: true, 120: true, 121: true, 123: true, 124: true, 138: true, 139: true}
@@ -124,6 +150,20 @@ func _run() -> void:
         if tick == 139:
             _assert_equal(_reward_text(shell), "37", "Final-life delivery updates base reward immediately")
 
+        if _manual_mode and tick in MANUAL_CHECKPOINT_TICKS:
+            var result_overlay = shell.get_node("ResultOverlay")
+            if tick == 139:
+                result_overlay.hide()
+            await _show_manual_checkpoint(str(tick), tick, snapshot)
+            if tick == 139:
+                result_overlay.show()
+                await _show_manual_checkpoint(
+                    "result",
+                    tick,
+                    snapshot,
+                    "Regular end result retains reward 37 and contains no penalty or settlement action."
+                )
+
     _assert_equal(actual_events_by_tick, _expected_events_by_tick(), "Every fixed-seed tick produces the approved event trace")
     _assert_equal(actual_state_trace, EXPECTED_STATE_TRACE, "Fixed seed produces the approved state and lifetime trace")
     _assert_equal(results.size(), 1, "Regular completion presents one result")
@@ -146,6 +186,12 @@ func _run() -> void:
             _assert_equal(terminal_field.warp_endpoints[0].pair_id, &"warp_pair_2", "Terminal delivery brief belongs to the delivered pair")
             _assert_equal(terminal_field.warp_endpoints[0].role, &"destination", "Terminal delivery brief marks the destination")
             _assert_true(terminal_field.warp_endpoints[0].filled, "Terminal delivery brief is filled")
+    if _manual_auto_advance:
+        var expected_manual_ids: Array[String] = []
+        for checkpoint_tick in MANUAL_CHECKPOINT_TICKS:
+            expected_manual_ids.append(str(checkpoint_tick))
+        expected_manual_ids.append("result")
+        _assert_equal(_manual_checkpoint_ids, expected_manual_ids, "Manual driver visits every approved checkpoint")
 
     app.session_result_presented.disconnect(result_observer)
     app.queue_free()
@@ -216,6 +262,84 @@ func _cargo_text(shell) -> String:
 
 func _reward_text(shell) -> String:
     return shell.get_node("OuterMargin/MainColumn/TopHud/TopContent/TopItems/CashItem/CashText/CashValue").text
+
+
+func _create_manual_overlay(app) -> void:
+    _manual_layer = CanvasLayer.new()
+    _manual_layer.layer = 100
+    _manual_layer.process_mode = Node.PROCESS_MODE_ALWAYS
+    app.add_child(_manual_layer)
+
+    var panel := PanelContainer.new()
+    panel.anchor_left = 1.0
+    panel.anchor_top = 1.0
+    panel.anchor_right = 1.0
+    panel.anchor_bottom = 1.0
+    panel.offset_left = -472.0
+    panel.offset_top = -176.0
+    panel.offset_right = -12.0
+    panel.offset_bottom = -12.0
+    panel.mouse_filter = Control.MOUSE_FILTER_STOP
+    _manual_layer.add_child(panel)
+
+    var margin := MarginContainer.new()
+    margin.add_theme_constant_override("margin_left", 12)
+    margin.add_theme_constant_override("margin_top", 10)
+    margin.add_theme_constant_override("margin_right", 12)
+    margin.add_theme_constant_override("margin_bottom", 10)
+    panel.add_child(margin)
+
+    var column := VBoxContainer.new()
+    column.add_theme_constant_override("separation", 8)
+    margin.add_child(column)
+    _manual_label = Label.new()
+    _manual_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    _manual_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    column.add_child(_manual_label)
+    _manual_button = Button.new()
+    _manual_button.text = "Capture evidence, then continue"
+    column.add_child(_manual_button)
+    _manual_layer.visible = false
+
+
+func _show_manual_checkpoint(
+    checkpoint_id: String,
+    tick: int,
+    snapshot,
+    expectation: String = ""
+) -> void:
+    _manual_checkpoint_ids.append(checkpoint_id)
+    var expected_text: String = expectation if not expectation.is_empty() else MANUAL_EXPECTATIONS[tick]
+    _manual_label.text = "WARP CARGO CHECKPOINT %s\n%s\n%s\nCargo %d / %d | Base reward %d" % [
+        checkpoint_id,
+        expected_text,
+        _manual_pair_summary(snapshot),
+        snapshot.get_occupied_cargo_slots(),
+        snapshot.get_total_cargo_slots(),
+        snapshot.get_base_delivery_reward_total(),
+    ]
+    _manual_layer.visible = true
+    print("MANUAL CHECKPOINT %s | %s" % [checkpoint_id, expected_text])
+    await process_frame
+    if not _manual_auto_advance:
+        paused = true
+        await _manual_button.pressed
+        paused = false
+    _manual_layer.visible = false
+    await process_frame
+
+
+func _manual_pair_summary(snapshot) -> String:
+    var pair_summaries: Array[String] = []
+    for pair in snapshot.get_warp_pair_records():
+        pair_summaries.append("%s %s O%s D%s L%d" % [
+            pair.pair_id,
+            WarpPairRecordScript.State.keys()[pair.state],
+            pair.origin_cell,
+            pair.destination_cell,
+            pair.lifetime_remaining_ticks,
+        ])
+    return " | ".join(pair_summaries)
 
 
 func _assert_true(condition: bool, message: String) -> void:
