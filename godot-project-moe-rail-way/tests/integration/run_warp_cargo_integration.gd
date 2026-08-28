@@ -223,17 +223,39 @@ func _assert_real_scene_planning_cadence(packed: PackedScene) -> void:
     _assert_true(is_equal_approx(press.get_train_route_distance_cells(), 0.6474820144), "Real scene press advances literal train distance")
     _assert_equal(press_presentation.planning_indicator, {"visible": true, "text": "PLANNING 25%"}, "Real scene shows planning feedback")
     _assert_equal(press_presentation.departure_marker, {"visible": true, "alpha": 1.0}, "Real scene starts departure dissolve at alpha one")
+    var gesture_origin: Dictionary = cadence_app.track_system._runtime.get_gesture_origin_observation()
+    var alternate_target := endpoint
+    for target in gesture_origin.get("targets", {}).values():
+        var candidate := Vector2i(target)
+        if (
+            candidate != endpoint
+            and candidate.x >= 0 and candidate.y >= 0
+            and candidate.x < 12 and candidate.y < 12
+        ):
+            alternate_target = candidate
+            break
+    _assert_true(alternate_target != endpoint, "Real scene exposes one in-bounds alternate preview target")
+    var planning_targets := [alternate_target, endpoint, alternate_target, endpoint]
+    var pairs_before_planning := _pair_lifecycle_signatures(press)
+    var construction_before_planning := _construction_signatures(press)
     var expected_did_advance := [false, false, false, true]
     var expected_elapsed := [2, 2, 2, 3]
     var expected_distances := [0.6474820144, 0.6474820144, 0.6474820144, 0.9712230216]
     for index in range(4):
-        controller.advance_tick(_held_endpoint_frame(endpoint))
+        var preview_path: Array[Vector2i] = [planning_targets[index]]
+        controller.advance_tick(_held_live_frame(endpoint, preview_path))
         var snapshot = controller.get_snapshot()
         _assert_equal(snapshot.did_advance_simulation_tick(), expected_did_advance[index], "Real scene literal planning cadence step %d" % (index + 1))
         _assert_equal(snapshot.get_elapsed_ticks(), expected_elapsed[index], "Real scene literal elapsed cadence step %d" % (index + 1))
         _assert_true(is_equal_approx(snapshot.get_train_route_distance_cells(), expected_distances[index]), "Real scene literal train cadence step %d" % (index + 1))
+        _assert_equal(cadence_app.track_system.get_endpoint_cell(), planning_targets[index], "Real scene preview updates on planning real tick %d" % (index + 1))
         if not expected_did_advance[index]:
             _assert_equal(snapshot.get_warp_cargo_events(), [], "Real scene skipped tick %d has no repeated Warp events" % (index + 1))
+            _assert_equal(_pair_lifecycle_signatures(snapshot), pairs_before_planning, "Real scene skipped tick %d freezes Warp lifecycle" % (index + 1))
+            _assert_equal(_construction_signatures(snapshot), construction_before_planning, "Real scene skipped tick %d freezes construction" % (index + 1))
+        else:
+            _assert_true(_pair_lifecycle_signatures(snapshot) != pairs_before_planning, "Real scene due planning tick advances Warp lifecycle")
+            _assert_equal(_construction_signatures(snapshot), construction_before_planning, "Real scene fully-built fixture adds no synthetic construction work")
         if index == 0:
             track_field_view.call("_process", 0.375)
             var half_dissolved: Dictionary = track_field_view.get_render_observation()
@@ -281,6 +303,13 @@ func _held_endpoint_frame(endpoint: Vector2i) -> TrackInputFrameScript:
     )
 
 
+func _held_live_frame(endpoint: Vector2i, live_path: Array[Vector2i]) -> TrackInputFrameScript:
+    return TrackInputFrameScript.new(
+        live_path, endpoint, true, Vector2i(-1, -1), false,
+        true, true, false, false, live_path[-1], true, live_path
+    )
+
+
 func _release_endpoint_frame(endpoint: Vector2i) -> TrackInputFrameScript:
     var empty: Array[Vector2i] = []
     return TrackInputFrameScript.new(
@@ -304,6 +333,25 @@ func _event_signatures(snapshot) -> Array[String]:
     for event in snapshot.get_warp_cargo_events():
         events.append("%s:%s:%d:%d" % [event.type, event.pair_id, event.slot_index, event.amount])
     return events
+
+
+func _pair_lifecycle_signatures(snapshot) -> Array[String]:
+    var signatures: Array[String] = []
+    for pair in snapshot.get_warp_pair_records():
+        signatures.append("%s:%d:%d:%d" % [
+            pair.pair_id, pair.state,
+            pair.forecast_remaining_ticks, pair.lifetime_remaining_ticks,
+        ])
+    return signatures
+
+
+func _construction_signatures(snapshot) -> Array[String]:
+    var signatures: Array[String] = []
+    for record in snapshot.get_cell_records():
+        signatures.append("%d:%d:%.6f" % [
+            record.route_serial, record.state, record.build_progress,
+        ])
+    return signatures
 
 
 func _hit_anchor_ids(hits: Array[Dictionary]) -> Array[StringName]:

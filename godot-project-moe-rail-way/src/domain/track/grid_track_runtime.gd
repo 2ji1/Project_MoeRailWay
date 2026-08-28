@@ -650,17 +650,7 @@ func _stage_recovery_for_route(
     var candidate_sequence = source_sequence.duplicate_sequence()
     var recovered: Array = candidate_sequence.recover_eligible_cells(cutoff_distance_cells)
     if recovered.is_empty():
-        return {
-            "sequence": candidate_sequence,
-            "ledger": _duplicate_pieces(source_ledger),
-            "resolution": TrackGeometryResolutionScript.accepted(_duplicate_pieces(
-                _gesture_origin_pieces if source_sequence == _gesture_origin_sequence else _pieces
-            )),
-            "recovered_cells_by_piece": source_recovered_cells_by_piece.duplicate(true),
-            "recovered_end_distance_cells": source_recovered_end_distance_cells,
-            "contacts": [],
-            "recovered": recovered,
-        }
+        return {"recovered": recovered}
     var candidate_ledger = _duplicate_pieces(source_ledger)
     var candidate_recovered_cells_by_piece: Dictionary = source_recovered_cells_by_piece.duplicate(true)
     var candidate_recovered_end_distance_cells := source_recovered_end_distance_cells

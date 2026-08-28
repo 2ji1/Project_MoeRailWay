@@ -126,14 +126,42 @@ func _test_skipped_planning_snapshot_never_repeats_warp_events() -> void:
     var pairs_before_skip := _pair_signatures(due_snapshot.get_warp_pair_records())
     var elapsed_before_skip := due_snapshot.get_elapsed_ticks()
     var distance_before_skip := due_snapshot.get_train_route_distance_cells()
-    controller.advance_tick(_held_endpoint(track.get_endpoint_cell()))
-    var skipped: SessionSnapshotScript = controller.get_snapshot()
-    assert_true(skipped.is_planning_slowdown_active(), "Held skipped tick remains planning-active")
-    assert_false(skipped.did_advance_simulation_tick(), "First held planning tick is skipped at 25 percent")
-    assert_equal(skipped.get_warp_cargo_events(), [], "Skipped snapshot never repeats prior Warp events")
-    assert_equal(_pair_signatures(skipped.get_warp_pair_records()), pairs_before_skip, "Skipped snapshot freezes Warp lifecycle")
-    assert_equal(skipped.get_elapsed_ticks(), elapsed_before_skip, "Skipped snapshot freezes session elapsed ticks")
-    assert_equal(skipped.get_train_route_distance_cells(), distance_before_skip, "Skipped snapshot freezes train distance")
+    var anchor_batches_before := track.anchor_batches.size()
+    var expected_did_advance := [false, false, false, true]
+    var expected_elapsed := [elapsed_before_skip, elapsed_before_skip, elapsed_before_skip, elapsed_before_skip + 1]
+    var expected_distance := [distance_before_skip, distance_before_skip, distance_before_skip, distance_before_skip + 0.1]
+    var due: SessionSnapshotScript
+    for index in range(4):
+        var event_start := track.event_log.size()
+        controller.advance_tick(_held_endpoint(track.get_endpoint_cell()))
+        var snapshot: SessionSnapshotScript = controller.get_snapshot()
+        var tick_events := track.event_log.slice(event_start)
+        assert_true(snapshot.is_planning_slowdown_active(), "Held cadence tick %d remains planning-active" % (index + 1))
+        assert_equal(snapshot.did_advance_simulation_tick(), expected_did_advance[index], "Warp literal planning cadence step %d" % (index + 1))
+        assert_equal(snapshot.get_elapsed_ticks(), expected_elapsed[index], "Warp elapsed cadence step %d" % (index + 1))
+        assert_true(is_equal_approx(snapshot.get_train_route_distance_cells(), expected_distance[index]), "Warp train cadence step %d" % (index + 1))
+        if not expected_did_advance[index]:
+            assert_equal(snapshot.get_warp_cargo_events(), [], "Skipped snapshot %d never repeats prior Warp events" % (index + 1))
+            assert_equal(_pair_signatures(snapshot.get_warp_pair_records()), pairs_before_skip, "Skipped snapshot %d freezes Warp lifecycle" % (index + 1))
+            assert_equal(track.anchor_batches.size(), anchor_batches_before, "Skipped snapshot %d freezes authoritative anchors" % (index + 1))
+            assert_false(tick_events.has("construction"), "Skipped snapshot %d freezes construction" % (index + 1))
+            assert_false(tick_events.has("recovery"), "Skipped snapshot %d freezes recovery" % (index + 1))
+        else:
+            due = snapshot
+            assert_true(_pair_signatures(snapshot.get_warp_pair_records()) != pairs_before_skip, "Due planning tick advances Warp lifecycle once")
+            assert_true(track.anchor_batches.size() > anchor_batches_before, "Due planning tick advances authoritative anchors")
+            assert_true(tick_events.has("construction"), "Due planning tick advances construction")
+            assert_true(tick_events.has("recovery"), "Due planning tick advances recovery")
+    assert_not_null(due, "Literal cadence publishes one due Warp snapshot")
+    var origin: Dictionary = track._runtime.get_gesture_origin_observation()
+    assert_false(origin.is_empty(), "Due Warp anchor lifecycle retains the active gesture")
+    if not origin.is_empty():
+        assert_equal(_anchor_ids(origin["anchors"]), _anchor_ids(track._runtime._anchors), "Due Warp anchors evolve both origin and live candidate")
+    var authoritative_ids := _anchor_ids(track._runtime._anchors)
+    controller.advance_tick(_right_abort(track.get_endpoint_cell()))
+    var aborted: SessionSnapshotScript = controller.get_snapshot()
+    assert_false(aborted.did_advance_simulation_tick(), "Warp right abort creates no catch-up tick")
+    assert_equal(_anchor_ids(track._runtime._anchors), authoritative_ids, "Abort retains due-tick authoritative Warp anchors")
 
 
 func _verify_partial_dependency_probe() -> void:
@@ -483,6 +511,21 @@ func _held_endpoint(endpoint: Vector2i) -> TrackInputFrameScript:
         empty, endpoint, true, Vector2i(-1, -1), false,
         true, true, false, false, endpoint, true
     )
+
+
+func _right_abort(cell: Vector2i) -> TrackInputFrameScript:
+    var empty: Array[Vector2i] = []
+    return TrackInputFrameScript.new(
+        empty, Vector2i(-1, -1), false, cell, true,
+        false, true, false, true, cell, true
+    )
+
+
+func _anchor_ids(anchors: Array) -> Array[StringName]:
+    var ids: Array[StringName] = []
+    for anchor in anchors:
+        ids.append(StringName(anchor.anchor_id))
+    return ids
 
 
 func _assert_event_types(events: Array[Dictionary], expected: Array, message: String) -> void:
