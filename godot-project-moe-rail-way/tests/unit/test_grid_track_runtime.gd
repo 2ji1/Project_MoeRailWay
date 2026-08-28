@@ -1122,6 +1122,19 @@ func _test_recovered_departure_endpoint_gesture_installs_and_owns_exact_anchor()
 		locked_before.active_local_start_cells,
 		locked_before.active_local_end_cells,
 	]
+	var resolved_before = _piece_containing(track.get_geometry_pieces(), locked_before.first_route_serial)
+	assert_not_null(resolved_before, "Partial locked source has an active resolved slice")
+	var resolved_footprint_before: Array[Vector2i] = []
+	var resolved_centerline_before := PackedVector2Array()
+	var resolved_interval_before: Array = []
+	if resolved_before != null:
+		resolved_footprint_before = resolved_before.footprint_cells.duplicate()
+		resolved_centerline_before = resolved_before.centerline.duplicate()
+		resolved_interval_before = [
+			resolved_before.active_local_start_cells,
+			resolved_before.active_local_end_cells,
+		]
+		assert_equal(resolved_footprint_before, locked_footprint_before, "Resolved slice restores the complete source footprint after filtering")
 	var unrecovered_sequence = TrackCellSequenceScript.new(Vector2i(4, 2), 1)
 	unrecovered_sequence._next_route_serial = 20
 	unrecovered_sequence._next_nominal_start_cells = 19.0
@@ -1134,7 +1147,8 @@ func _test_recovered_departure_endpoint_gesture_installs_and_owns_exact_anchor()
 	var unrecovered_overlap = track._resolve_candidate(
 		unrecovered_sequence,
 		unrecovered_ledger,
-		no_anchors
+		no_anchors,
+		track._recovered_cells_by_piece
 	)
 	assert_false(unrecovered_overlap.is_valid, "Unrecovered cell of the partial locked piece remains blocked")
 	assert_equal(unrecovered_overlap.reason, &"locked_overlap", "Unrecovered ownership rejects with locked_overlap")
@@ -1185,6 +1199,15 @@ func _test_recovered_departure_endpoint_gesture_installs_and_owns_exact_anchor()
 			locked_after.active_local_end_cells,
 		], locked_interval_before, "Recovered-cell reuse preserves the locked sampling interval")
 		assert_true(locked_after.footprint_cells.has(Vector2i(3, 2)), "Recovered-cell reuse preserves unrecovered footprint ownership")
+	var resolved_after = _piece_containing(track.get_geometry_pieces(), locked_before.first_route_serial)
+	assert_not_null(resolved_after, "Recovered-cell reuse keeps the active resolved slice")
+	if resolved_after != null:
+		assert_equal(resolved_after.footprint_cells, resolved_footprint_before, "Recovered-cell reuse preserves the resolved source footprint")
+		assert_equal(resolved_after.centerline, resolved_centerline_before, "Recovered-cell reuse preserves the resolved full centerline")
+		assert_equal([
+			resolved_after.active_local_start_cells,
+			resolved_after.active_local_end_cells,
+		], resolved_interval_before, "Recovered-cell reuse preserves the resolved active interval")
 
 
 func _test_template_origin_suffix_guards_remain_atomic() -> void:

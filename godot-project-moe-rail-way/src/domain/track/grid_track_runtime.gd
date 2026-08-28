@@ -82,7 +82,8 @@ func gesture_has_legal_operation(endpoint: Vector2i = Vector2i(-1, -1)) -> bool:
         var resolution = _stage_stable_retirement(
             candidate_sequence,
             candidate_ledger,
-            candidate_anchors
+            candidate_anchors,
+            _recovered_cells_by_piece
         )
         if not resolution.is_valid:
             continue
@@ -124,7 +125,8 @@ func gesture_finalize() -> bool:
     var resolution = _stage_stable_retirement(
         candidate_sequence,
         candidate_ledger,
-        candidate_anchors
+        candidate_anchors,
+        _recovered_cells_by_piece
     )
     if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
         _clear_gesture_state()
@@ -257,7 +259,12 @@ func gesture_update(
             return false
     var candidate_ledger = _duplicate_pieces(_gesture_origin_locked_ledger)
     var candidate_anchors = _duplicate_anchors(_gesture_origin_anchors)
-    var resolution = _resolve_candidate(candidate_sequence, candidate_ledger, candidate_anchors)
+    var resolution = _resolve_candidate(
+        candidate_sequence,
+        candidate_ledger,
+        candidate_anchors,
+        _gesture_origin_recovered_cells_by_piece
+    )
     if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
         return false
     _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
@@ -378,7 +385,12 @@ func append_cells(cells: Array[Vector2i]) -> int:
             break
         var candidate_ledger = _duplicate_pieces(_locked_ledger)
         var candidate_anchors = _duplicate_anchors(_anchors)
-        var resolution = _stage_stable_retirement(candidate_sequence, candidate_ledger, candidate_anchors)
+        var resolution = _stage_stable_retirement(
+            candidate_sequence,
+            candidate_ledger,
+            candidate_anchors,
+            _recovered_cells_by_piece
+        )
         if not resolution.is_valid:
             break
         _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
@@ -416,7 +428,12 @@ func cancel_ghost_suffix(cell: Vector2i) -> bool:
         return false
     var candidate_ledger = _duplicate_pieces(_locked_ledger)
     var candidate_anchors = _duplicate_anchors(_anchors)
-    var resolution = _stage_stable_retirement(candidate_sequence, candidate_ledger, candidate_anchors)
+    var resolution = _stage_stable_retirement(
+        candidate_sequence,
+        candidate_ledger,
+        candidate_anchors,
+        _recovered_cells_by_piece
+    )
     if not resolution.is_valid:
         return false
     _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
@@ -477,7 +494,12 @@ func _stage_anchor_update(
 ) -> Dictionary:
     var candidate_sequence = source_sequence.duplicate_sequence()
     var candidate_ledger = _duplicate_pieces(source_ledger)
-    var resolution = _stage_stable_retirement(candidate_sequence, candidate_ledger, anchors)
+    var resolution = _stage_stable_retirement(
+        candidate_sequence,
+        candidate_ledger,
+        anchors,
+        recovered_cells_by_piece
+    )
     if not resolution.is_valid:
         return {"valid": false}
     _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
@@ -670,7 +692,12 @@ func _stage_recovery_for_route(
         candidate_recovered_cells_by_piece
     )
     var candidate_anchors = _duplicate_anchors(source_anchors)
-    var resolution = _resolve_candidate(candidate_sequence, candidate_ledger, candidate_anchors)
+    var resolution = _resolve_candidate(
+        candidate_sequence,
+        candidate_ledger,
+        candidate_anchors,
+        candidate_recovered_cells_by_piece
+    )
     if not resolution.is_valid:
         return {}
     _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
@@ -805,7 +832,12 @@ func prepare_for_train_sampling(current_distance: float, through_distance: float
         ):
             return false
         candidate_ledger.append(ledger_piece)
-    var resolution = _resolve_candidate(candidate_sequence, candidate_ledger, candidate_anchors)
+    var resolution = _resolve_candidate(
+        candidate_sequence,
+        candidate_ledger,
+        candidate_anchors,
+        _recovered_cells_by_piece
+    )
     if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
         return false
     _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
@@ -1170,7 +1202,9 @@ func _template_candidate_is_legal(span: Dictionary, template_cells: Array[Vector
     var resolution = _resolver.resolve(
         active_predecessor,
         records,
-        candidate_ledger,
+        _blocking_ledger_for_resolution(
+            candidate_ledger, _recovered_cells_by_piece
+        ),
         candidate_anchors,
         _grid_origin_units,
         _grid_size,
@@ -1270,7 +1304,12 @@ func _clear_gesture_state() -> void:
 
 
 func _resolve_records():
-    return _resolve_candidate(_sequence, _locked_ledger, _anchors)
+    return _resolve_candidate(
+        _sequence,
+        _locked_ledger,
+        _anchors,
+        _recovered_cells_by_piece
+    )
 
 
 func _duplicate_anchors(source: Array[RouteContactAnchorScript]) -> Array[RouteContactAnchorScript]:
@@ -1290,15 +1329,12 @@ func _duplicate_pieces(source: Array[TrackGeometryPieceScript]) -> Array[TrackGe
 func _resolve_candidate(
     sequence: TrackCellSequenceScript,
     ledger: Array[TrackGeometryPieceScript],
-    anchors: Array[RouteContactAnchorScript]
+    anchors: Array[RouteContactAnchorScript],
+    recovered_cells_by_piece: Dictionary
 ) -> RefCounted:
-    var blocking_ledger = _duplicate_pieces(ledger)
-    for piece in blocking_ledger:
-        var recovered_cells: Dictionary = _recovered_cells_by_piece.get(
-            _piece_key(piece), {}
-        )
-        for cell in recovered_cells:
-            piece.footprint_cells.erase(cell)
+    var blocking_ledger = _blocking_ledger_for_resolution(
+        ledger, recovered_cells_by_piece
+    )
     var resolution = _resolver.resolve(
         sequence.get_active_predecessor_cell(),
         sequence.get_records(),
@@ -1321,6 +1357,20 @@ func _resolve_candidate(
                     resolved_piece.footprint_cells = source_piece.footprint_cells.duplicate()
                     break
     return resolution
+
+
+func _blocking_ledger_for_resolution(
+    ledger: Array[TrackGeometryPieceScript],
+    recovered_cells_by_piece: Dictionary
+) -> Array[TrackGeometryPieceScript]:
+    var blocking_ledger = _duplicate_pieces(ledger)
+    for piece in blocking_ledger:
+        var recovered_cells: Dictionary = recovered_cells_by_piece.get(
+            _piece_key(piece), {}
+        )
+        for cell in recovered_cells:
+            piece.footprint_cells.erase(cell)
+    return blocking_ledger
 
 
 func _replace_pieces(source: Array) -> void:
@@ -1374,7 +1424,8 @@ func _gesture_candidate_can_finalize(
     var final_resolution = _stage_stable_retirement(
         final_sequence,
         final_ledger,
-        final_anchors
+        final_anchors,
+        _gesture_origin_recovered_cells_by_piece
     )
     if not final_resolution.is_valid or not _pieces_are_continuous(final_resolution.pieces):
         return false
@@ -1392,9 +1443,12 @@ func _gesture_candidate_can_finalize(
 func _stage_stable_retirement(
     sequence: TrackCellSequenceScript,
     ledger: Array[TrackGeometryPieceScript],
-    anchors: Array[RouteContactAnchorScript]
+    anchors: Array[RouteContactAnchorScript],
+    recovered_cells_by_piece: Dictionary
 ) -> RefCounted:
-    var resolution = _resolve_candidate(sequence, ledger, anchors)
+    var resolution = _resolve_candidate(
+        sequence, ledger, anchors, recovered_cells_by_piece
+    )
     if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
         return TrackGeometryResolutionScript.rejected(-1, &"candidate_resolution")
     var records: Array[TrackCellRecordScript] = sequence.get_records()
@@ -1412,7 +1466,9 @@ func _stage_stable_retirement(
         ):
             return TrackGeometryResolutionScript.rejected(-1, &"invalid_exit_support")
         ledger.append(ledger_piece)
-        resolution = _resolve_candidate(sequence, ledger, anchors)
+        resolution = _resolve_candidate(
+            sequence, ledger, anchors, recovered_cells_by_piece
+        )
         if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
             return TrackGeometryResolutionScript.rejected(-1, &"retirement_resolution")
     return resolution
@@ -1549,7 +1605,8 @@ func _stage_active_gesture_train_safety_origin(
     var origin_resolution = _resolve_candidate(
         origin_sequence,
         origin_ledger,
-        _gesture_origin_anchors
+        _gesture_origin_anchors,
+        _gesture_origin_recovered_cells_by_piece
     )
     if not origin_resolution.is_valid or not _pieces_are_continuous(origin_resolution.pieces):
         return {}
