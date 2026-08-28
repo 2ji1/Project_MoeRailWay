@@ -99,6 +99,7 @@ func run() -> PackedStringArray:
     _verify_partial_dependency_probe()
     _test_snapshot_and_result_expose_warp_cargo_observations()
     _test_preparation_freezes_scheduling_and_departure_starts_tick_one()
+    _test_running_prepare_failure_rolls_back_warp_tick()
     _test_controller_resolves_ordinal_and_physical_hit_order()
     _test_final_life_delivery_survives_regular_track_end_tie()
     _test_regular_and_early_completion_void_nonterminal_cargo()
@@ -217,6 +218,47 @@ func _test_preparation_freezes_scheduling_and_departure_starts_tick_one() -> voi
             Vector2(0.25, 0.5),
             "Running query receives previous and through train distances"
         )
+
+
+func _test_running_prepare_failure_rolls_back_warp_tick() -> void:
+    var reference_fixture := _fixture(_config())
+    var reference_controller: SessionControllerScript = reference_fixture["controller"]
+    reference_controller.start()
+    reference_controller.advance_tick(_draw_frame([Vector2i(1, 0), Vector2i(2, 0)]))
+    reference_controller.advance_tick()
+    var reference_snapshot: SessionSnapshotScript = reference_controller.get_snapshot()
+
+    var fixture := _fixture(_config())
+    var controller: SessionControllerScript = fixture["controller"]
+    var track: ContactTrackSpy = fixture["track"]
+    controller.start()
+    controller.advance_tick(_draw_frame([Vector2i(1, 0), Vector2i(2, 0)]))
+    var tick_one_snapshot: SessionSnapshotScript = controller.get_snapshot()
+
+    track.allow_prepare = false
+    controller.advance_tick()
+    assert_true(
+        controller.get_snapshot() == tick_one_snapshot,
+        "Failed running preparation publishes no snapshot"
+    )
+
+    track.allow_prepare = true
+    controller.advance_tick()
+    var tick_two_snapshot: SessionSnapshotScript = controller.get_snapshot()
+    assert_equal(tick_two_snapshot.get_elapsed_ticks(), 2, "Retry advances exactly one session tick")
+    assert_equal(tick_two_snapshot.get_warp_pair_records().size(), 2, "Retry creates only the tick-two pair")
+    _assert_event_types(
+        tick_two_snapshot.get_warp_cargo_events(),
+        [&"FORECASTED", &"ACTIVATED"],
+        "Retry publishes the tick-two Warp events"
+    )
+    for event in tick_two_snapshot.get_warp_cargo_events():
+        assert_equal(event["tick"], 2, "Retry events retain the accepted running tick index")
+    assert_equal(
+        _pair_signatures(tick_two_snapshot.get_warp_pair_records()),
+        _pair_signatures(reference_snapshot.get_warp_pair_records()),
+        "Failed preparation consumes no Warp RNG or lifecycle state"
+    )
 
 
 func _test_controller_resolves_ordinal_and_physical_hit_order() -> void:
@@ -426,3 +468,20 @@ func _event_index(events: Array[String], prefix: String) -> int:
         if events[index].begins_with(prefix):
             return index
     return -1
+
+
+func _pair_signatures(records: Array) -> Array[Dictionary]:
+    var signatures: Array[Dictionary] = []
+    for record in records:
+        signatures.append({
+            "ordinal": record.ordinal,
+            "pair_id": record.pair_id,
+            "origin_cell": record.origin_cell,
+            "destination_cell": record.destination_cell,
+            "lifetime_total_ticks": record.lifetime_total_ticks,
+            "lifetime_remaining_ticks": record.lifetime_remaining_ticks,
+            "forecast_remaining_ticks": record.forecast_remaining_ticks,
+            "style_index": record.style_index,
+            "state": record.state,
+        })
+    return signatures

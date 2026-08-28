@@ -83,7 +83,11 @@ func start() -> void:
 func advance_tick(input_frame: TrackInputFrameScript = null) -> void:
 	if _state == State.READY or _state == State.COMPLETED:
 		return
+	var running_tick_index_before := _running_tick_index
+	var warp_tick_checkpoint := {}
 	if _state == State.RUNNING:
+		if _warp_cargo_enabled():
+			warp_tick_checkpoint = _warp_pair_system.create_running_tick_checkpoint()
 		_begin_warp_running_tick()
 	var frame: TrackInputFrameScript = (
 		input_frame if input_frame != null else TrackInputFrameScript.empty()
@@ -122,6 +126,10 @@ func advance_tick(input_frame: TrackInputFrameScript = null) -> void:
 			_track_system.get_built_end_distance_cells()
 		)
 		if not _prepare_or_abort(current_distance, through_distance):
+			_restore_aborted_warp_running_tick(
+				warp_tick_checkpoint,
+				running_tick_index_before
+			)
 			return
 		track_end_requested = _train_system.advance_tick(_track_system, _seconds_per_tick)
 		_cached_tick_pose = _train_system.capture_pose(_track_system)
@@ -170,6 +178,17 @@ func get_state() -> State:
 
 func _prepare_or_abort(current_distance: float, through_distance: float) -> bool:
 	return _track_system.prepare_for_train_sampling(current_distance, through_distance)
+
+
+func _restore_aborted_warp_running_tick(
+	checkpoint: Dictionary,
+	running_tick_index_before: int
+) -> void:
+	if not _warp_cargo_enabled() or checkpoint.is_empty():
+		return
+	_warp_pair_system.restore_running_tick_checkpoint(checkpoint)
+	_running_tick_index = running_tick_index_before
+	_install_warp_anchors()
 
 
 func _complete(reason: SessionResultScript.Reason) -> void:

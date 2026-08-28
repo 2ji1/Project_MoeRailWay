@@ -209,6 +209,38 @@ func get_tick_events() -> Array[Dictionary]:
     return copies
 
 
+func create_running_tick_checkpoint() -> Dictionary:
+    return {
+        "records": get_pair_records(),
+        "tick_events": get_tick_events(),
+        "last_begin_tick": _last_begin_tick,
+        "last_expire_tick": _last_expire_tick,
+        "last_contact_tick": _last_contact_tick,
+        "last_generation_tick": _last_generation_tick,
+        "next_ordinal": _next_ordinal,
+        "generation_pending": _generation_pending,
+        "terminal": _terminal,
+        "rng_state": _session_rng.capture_state(),
+    }
+
+
+func restore_running_tick_checkpoint(checkpoint: Dictionary) -> void:
+    _records = []
+    for record in checkpoint["records"]:
+        _records.append(record.duplicate_record())
+    _tick_events = []
+    for event in checkpoint["tick_events"]:
+        _tick_events.append(event.duplicate(true))
+    _last_begin_tick = checkpoint["last_begin_tick"]
+    _last_expire_tick = checkpoint["last_expire_tick"]
+    _last_contact_tick = checkpoint["last_contact_tick"]
+    _last_generation_tick = checkpoint["last_generation_tick"]
+    _next_ordinal = checkpoint["next_ordinal"]
+    _generation_pending = checkpoint["generation_pending"]
+    _terminal = checkpoint["terminal"]
+    _session_rng.restore_state(checkpoint["rng_state"])
+
+
 func _generate_pair(tick_index: int) -> void:
     var cell_count := _grid_size.x * _grid_size.y
     if cell_count <= 0 or _session_rng == null:

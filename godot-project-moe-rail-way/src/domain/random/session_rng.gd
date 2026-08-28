@@ -30,3 +30,11 @@ func peek_index(exclusive_upper_bound: int) -> int:
 	var sampled_index := next_index(exclusive_upper_bound)
 	_rng.state = saved_state
 	return sampled_index
+
+
+func capture_state() -> int:
+	return _rng.state
+
+
+func restore_state(saved_state: int) -> void:
+	_rng.state = saved_state
