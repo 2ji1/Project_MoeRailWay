@@ -2,11 +2,11 @@
 
 **Date:** 2026-08-27
 
-**Status:** Implementation corrections in progress; pending manual re-acceptance and main integration
+**Status:** Implemented on feature branch; pending main integration
 
 **Implementation branch:** `feature/live-gesture-path-reflow`
 
-**Prior manually tested implementation commit (historical; pending re-acceptance):** `6b1cfc9c1bc88a18bbc811de9059da5beb6ced41`
+**Manually accepted implementation commit:** `be18f1fc84b96ce1f1361cb6b9878c1ed8aeda7f`
 
 **Verified base:** `1a0cd466287f81c3a413c773fd8974d5dbb72f08` (`main`, `origin/main`)
 
@@ -271,7 +271,7 @@ On Windows with Godot `4.7.1.stable.official.a13da4feb`:
    remains ghost-only until release. Verify the visible result before release and
    confirm recovery remains paused while the gesture is held.
 
-The discovered recovery failure is a required fix before acceptance: while the session is RUNNING (not `SESSION COMPLETE — TRACK END REACHED`), repeat the 18-cell, 13-straight, construct/lock/sample, rear-recovery-to-7-records/11-available setup, press the three-record straight editable-head endpoint, drag one adjacent cell, and verify the eighth record appears with 10 available cells before release. Do not treat a terminal completed-session click as evidence of this defect. The later coalesced-release and template-replay corrections are also required before the status can return to an implemented, manually accepted state.
+The discovered recovery failure was a required fix before acceptance: while the session is RUNNING (not `SESSION COMPLETE — TRACK END REACHED`), repeat the 18-cell, 13-straight, construct/lock/sample, rear-recovery-to-7-records/11-available setup, press the three-record straight editable-head endpoint, drag one adjacent cell, and verify the eighth record appears with 10 available cells before release. Do not treat a terminal completed-session click as evidence of this defect. The later coalesced-release, template-replay, and active-gesture construction corrections are covered by the reviewed implementation and manual evidence at `be18f1fc84b96ce1f1361cb6b9878c1ed8aeda7f`; main integration remains pending.
 
 Record the evidence in English in the existing Windows track-train manual record. The primary `main` checkout remains the user playtest workspace and is updated only after reviewed pull-request integration.
 

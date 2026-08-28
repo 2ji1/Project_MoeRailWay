@@ -214,3 +214,23 @@ Observation: Production SessionController and TrainSystem advanced an actual RUN
 Result: PASS
 
 ENDPOINT_RESHAPE_EVIDENCE_END
+
+## Task 6 active-gesture construction acceptance — 2026-08-28
+
+**Tested implementation SHA:** `be18f1fc84b96ce1f1361cb6b9878c1ed8aeda7f`
+**Godot:** `4.7.1.stable.official.a13da4feb`
+**Observation provenance:** User-observed in the tested feature-branch candidate.
+**Result:** PASS.
+
+- After releasing a track gesture, the user began a fresh endpoint extension while
+  the prior route was still progressively constructing. Already-reserved route
+  records continued visibly solidifying from the rear during the held extension.
+- The newly dragged suffix remained a ghost while the endpoint gesture stayed held;
+  it did not enter progressive construction until the gesture was released.
+- The observed behavior matched the route-identity frontier contract: existing
+  origin-owned construction continued, while gesture-added suffix construction
+  waited for finalization. No user-owned editor was terminated, reset, or interacted
+  with during the observation.
+
+Main integration, push, pull request, merge, primary retest, and cleanup remain
+outside this manual acceptance record.
