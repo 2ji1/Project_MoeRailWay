@@ -1,11 +1,14 @@
-# Warp Cargo 설계·구현 계획 검토 브리핑
+# Warp Cargo 설계·구현 완료 브리핑
 
 - 날짜: 2026-08-28
-- 상태: 사용자 검토용 초안
+- 상태: 구현·검증·`main` 통합 완료
+- 검토 완료 feature HEAD: `402c9a28913acb24047a35cfcd4d5b8c2bb752f1`
+- 통합 결과: PR #17, merge commit `e42d9a6ccc64c55da44ee8e5fddc6f40e48c2874`, tag `prototype-m5`
+- 검증 결과: 검토 완료 feature HEAD에서 독립 사양·품질 검토와 `960x540`, `1280x720`, `1600x900`, `1920x1080` Windows 수동 검증 통과, 병합 후 `main`에서 등록 테스트 스위트 24개와 별도 통합 러너 5개 재통과
 - 영어 설계 정본: [`docs/superpowers/specs/2026-08-28-warp-cargo-design.md`](../../superpowers/specs/2026-08-28-warp-cargo-design.md)
 - 영어 구현 계획 정본: [`docs/superpowers/plans/2026-08-28-warp-cargo.md`](../../superpowers/plans/2026-08-28-warp-cargo.md)
 
-이 문서는 검토 편의를 위한 한국어 브리핑이며 구현 기준이 아닙니다. 실제 구현에서는 위 두 영어 정본을 기준으로 사용합니다.
+이 문서는 완료 상태를 확인하기 위한 한국어 브리핑이며 구현 기준이 아닙니다. 위 두 영어 정본과 조작감 보정 정본이 실제 구현 계약입니다.
 
 ## 이번 슬라이스의 목표
 

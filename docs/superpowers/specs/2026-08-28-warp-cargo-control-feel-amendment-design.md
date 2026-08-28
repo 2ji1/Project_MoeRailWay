@@ -1,10 +1,10 @@
 # Warp Cargo Control-Feel Amendment Design
 
 - Date: 2026-08-28
-- Status: Draft for user review
+- Status: Implemented, verified, and integrated on `main`
 - Audience: Agent-facing canonical specification
-- Implementation branch: `feature/warp-cargo`
-- External worktree: `D:\godot\MoeRailWay-worktrees\warp-cargo`
+- Implementation branch: `feature/warp-cargo` (removed after integration)
+- Historical external worktree: `D:\godot\MoeRailWay-worktrees\warp-cargo` (removed after integration)
 - Verified feature base: `b5d33117d08ed3e14269b353f2a84a72c4f24a0c`
 - Verified merge base: `edebc32c977300ed21ee163b89d42624cf070bf3`
 - Parent Warp Cargo design: `docs/superpowers/specs/2026-08-28-warp-cargo-design.md`
@@ -12,6 +12,9 @@
 - Gesture authority: `docs/superpowers/specs/2026-08-26-endpoint-track-reshaping-design.md`
 - Branch authority: `docs/superpowers/specs/2026-08-25-main-first-branch-management-design.md`
 - Implementation plan: `docs/superpowers/plans/2026-08-28-warp-cargo-control-feel-amendment.md`
+- Reviewed feature HEAD: `402c9a28913acb24047a35cfcd4d5b8c2bb752f1`
+- Integration: [PR #17](https://github.com/2ji1/Project_MoeRailWay/pull/17), merge commit `e42d9a6ccc64c55da44ee8e5fddc6f40e48c2874`, tag `prototype-m5`
+- Verification: the reviewed feature HEAD received independent specification and quality approvals and passed Windows manual verification at `960x540`, `1280x720`, `1600x900`, and `1920x1080`; post-merge `main` at `e42d9a6ccc64c55da44ee8e5fddc6f40e48c2874` passed `PASS: 24 prototype test suite(s)` plus five standalone integration runners
 
 ## 1. Outcome
 

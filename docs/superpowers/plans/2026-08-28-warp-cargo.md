@@ -1,19 +1,22 @@
 # Warp Cargo Prototype Slice Implementation Plan
 
 - Date: 2026-08-28
-- Status: Draft for user review; not authorized for implementation
+- Status: Completed, verified, and integrated on `main`
 - Audience: Agent-facing execution plan
 - Canonical design: `docs/superpowers/specs/2026-08-28-warp-cargo-design.md`
 - Branch authority: `docs/superpowers/specs/2026-08-25-main-first-branch-management-design.md`
 - Planning base observed on 2026-08-28: `edebc32c977300ed21ee163b89d42624cf070bf3`
-- Planned branch: `feature/warp-cargo`
-- Planned external worktree: `D:\godot\MoeRailWay-worktrees\warp-cargo`
+- Implemented branch: `feature/warp-cargo` (removed after integration)
+- Historical external worktree: `D:\godot\MoeRailWay-worktrees\warp-cargo` (removed after integration)
+- Reviewed feature HEAD: `402c9a28913acb24047a35cfcd4d5b8c2bb752f1`
+- Integration: [PR #17](https://github.com/2ji1/Project_MoeRailWay/pull/17), merge commit `e42d9a6ccc64c55da44ee8e5fddc6f40e48c2874`, tag `prototype-m5`
+- Verification: the reviewed feature HEAD received independent specification and quality approvals and passed Windows manual verification at `960x540`, `1280x720`, `1600x900`, and `1920x1080`; post-merge `main` at `e42d9a6ccc64c55da44ee8e5fddc6f40e48c2874` passed `PASS: 24 prototype test suite(s)` plus five standalone integration runners
 
 ## 1. Execution Boundary
 
-This document is a plan, not implementation authorization. Do not modify gameplay code until the user explicitly starts implementation in a separate session.
+This document is the retained execution record for the completed Warp Cargo slice. It authorizes no new gameplay edits or reopening of completed task allowlists. Any later correction requires a new reviewed amendment or feature plan based on the then-current `main`.
 
-This planning task authorizes no stage, commit, push, pull request, merge, tag, primary synchronization, worktree removal, or branch deletion. A later implementation authorization may explicitly include the task-local exact staging and focused commits prescribed here; publication, integration, tags, synchronization, and cleanup always remain separate approval gates.
+The user separately authorized implementation, task-local commits, publication, integration, tagging, primary synchronization, and cleanup. Those operations completed through PR #17 and the `prototype-m5` tag after the required automated, manual, specification, and quality gates passed.
 
 Prototype code must remain concrete. Do not add production abstractions or widen scope to Risk & Investment, Contract Economy, Credit Survival, custom art, or mobile support.
 

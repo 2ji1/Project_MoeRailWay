@@ -1,6 +1,9 @@
 # Warp Cargo Windows Manual Verification
 
-Run this checklist only after the exact final feature HEAD passes every automated gate. Keep screenshots and the completed evidence table outside the repository.
+- Status: Completed on reviewed feature HEAD `402c9a28913acb24047a35cfcd4d5b8c2bb752f1` and integrated through PR #17 as `prototype-m5`
+- Result: Passed deterministic and mouse-only verification at all four supported window sizes
+
+This checklist remains the manual regression procedure for the integrated slice. Run it only after the exact candidate `HEAD` passes every automated gate. Keep screenshots and the completed evidence table outside the repository.
 
 ## Fixed setup
 
@@ -14,7 +17,7 @@ In PowerShell, define the fixed local paths once:
 
 ```powershell
 $Godot = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
-$Project = 'D:\godot\MoeRailWay-worktrees\warp-cargo\godot-project-moe-rail-way'
+$Project = 'D:\godot\MoeRailWay\godot-project-moe-rail-way'
 ```
 
 ## Deterministic visible run

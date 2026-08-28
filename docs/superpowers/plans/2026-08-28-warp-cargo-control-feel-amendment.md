@@ -1,27 +1,30 @@
 # Warp Cargo Control-Feel Amendment Implementation Plan
 
 - Date: 2026-08-28
-- Status: Draft for user review; not authorized for implementation
+- Status: Completed, verified, and integrated on `main`
 - Audience: Agent-facing execution plan
 - Canonical design: `docs/superpowers/specs/2026-08-28-warp-cargo-control-feel-amendment-design.md`
 - Parent plan: `docs/superpowers/plans/2026-08-28-warp-cargo.md`
 - Branch authority: `docs/superpowers/specs/2026-08-25-main-first-branch-management-design.md`
 - Planning feature base: `b5d33117d08ed3e14269b353f2a84a72c4f24a0c`
 - Merge base: `edebc32c977300ed21ee163b89d42624cf070bf3`
-- Branch: `feature/warp-cargo`
-- External worktree: `D:\godot\MoeRailWay-worktrees\warp-cargo`
+- Implemented branch: `feature/warp-cargo` (removed after integration)
+- Historical external worktree: `D:\godot\MoeRailWay-worktrees\warp-cargo` (removed after integration)
+- Reviewed feature HEAD: `402c9a28913acb24047a35cfcd4d5b8c2bb752f1`
+- Integration: [PR #17](https://github.com/2ji1/Project_MoeRailWay/pull/17), merge commit `e42d9a6ccc64c55da44ee8e5fddc6f40e48c2874`, tag `prototype-m5`
+- Verification: the reviewed feature HEAD received independent specification and quality approvals and passed Windows manual verification at `960x540`, `1280x720`, `1600x900`, and `1920x1080`; post-merge `main` at `e42d9a6ccc64c55da44ee8e5fddc6f40e48c2874` passed `PASS: 24 prototype test suite(s)` plus five standalone integration runners
 
 ## 1. Execution Boundary
 
-This plan documents the next implementation cycle. It does not itself authorize gameplay-code edits.
+This plan is the retained execution record for the completed control-feel amendment. It authorizes no new gameplay edits or reuse of completed task allowlists. Any later correction requires a new reviewed amendment based on the then-current `main`.
 
-Before Task 1, require one focused, separately approved documentation commit containing exactly:
+Before Task 1, the implementation required one focused, separately approved documentation commit containing exactly:
 
 - `docs/superpowers/specs/2026-08-28-warp-cargo-control-feel-amendment-design.md`
 - `docs/superpowers/plans/2026-08-28-warp-cargo-control-feel-amendment.md`
 - `docs/briefings/ko/2026-08-28-warp-cargo-control-feel-amendment-briefing.md`
 
-Implementation authorization may include task-local exact staging and focused commits. Push, pull request, merge, tag, primary synchronization, cleanup, and changes in any other worktree remain separate approval gates.
+The user separately authorized implementation, task-local commits, publication, integration, tagging, primary synchronization, and cleanup. Those operations completed through PR #17 and the `prototype-m5` tag after every required gate passed.
 
 Do not widen scope to production abstractions, automatic routing, impossible-request correction, later economy or hazard slices, custom art, or mobile input.
 
