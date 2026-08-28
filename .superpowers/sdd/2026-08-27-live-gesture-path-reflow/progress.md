@@ -34,4 +34,6 @@ Task 3: dispatched implementer `/root/path_reflow_task3_impl` on `gpt-5.6-luna`;
 Task 3: initial Sol review found an absent-target append-only fallback and non-transactional serial allocation. Fix round 1 resolved serial allocation but left the fallback reachable from authoritative pointer-exit input.
 Task 3: Luna fix round 2 removed the ambiguous fallback and updated synthetic fixtures to provide full authoritative paths; scoped Sol re-review approved specification and quality with no Critical, Important, or Minor findings.
 Task 3: complete (commits 8cf591b..22895b3, review clean)
-Task 6: complete (commits 87f63e0..be18f1f, full automated gate, Sol specification/quality approvals, and user manual PASS complete; main integration remains pending)
+Task 4: complete (manual acceptance and design status evidence recorded; historical Task 4 commit/report chain retained)
+Task 5: complete (commits 85e579c..6eee5f2, full automated gate, Sol specification/quality approvals, and explicit user manual PASS recorded; final clean gate remains pending while the leak diagnostic is open)
+Task 6: complete (commits 87f63e0..be18f1f, full automated gate, Sol specification/quality approvals, user manual PASS including recovery pause/resume; final clean gate remains pending while the leak diagnostic is open)

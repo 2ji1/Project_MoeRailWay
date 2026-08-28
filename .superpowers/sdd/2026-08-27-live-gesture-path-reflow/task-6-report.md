@@ -9,8 +9,9 @@ plus all four registered standalone integrations. Sol approved the specification
 quality reviews. The user then manually passed the active-gesture construction case
 at the same tested HEAD.
 
-The feature branch is ready for the separate main-integration gate. This report does
-not claim push, pull request, merge, primary-main retest, or worktree cleanup.
+The feature branch is not yet ready for main integration: the final clean gate and
+remaining review are pending while the separate leak diagnostic is open. This report
+does not claim push, pull request, merge, primary-main retest, or worktree cleanup.
 
 ## Diagnosis
 
@@ -111,6 +112,11 @@ started a new held endpoint extension while construction was still progressing;
 already-reserved route records continued solidifying visibly from the rear, while the
 newly dragged suffix remained a ghost until release. The manual run used Godot
 `4.7.1.stable.official.a13da4feb`.
+
+The user also verified that rear recovery remained paused while the left-button
+extension was held and resumed after release under the existing session lifecycle.
+This recovery pause/resume observation is manual evidence for the preserved lifecycle
+contract, not a claim that the separate leak diagnostic is closed.
 
 No user-owned editor was terminated, reset, or interacted with. The detailed dated
 manual evidence is recorded in

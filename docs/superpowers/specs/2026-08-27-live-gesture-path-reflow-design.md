@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-27
 
-**Status:** Implemented on feature branch; pending main integration
+**Status:** Implementation and manual acceptance complete on feature branch; final clean automated/review gate pending while the leak diagnostic is open; main integration pending
 
 **Implementation branch:** `feature/live-gesture-path-reflow`
 

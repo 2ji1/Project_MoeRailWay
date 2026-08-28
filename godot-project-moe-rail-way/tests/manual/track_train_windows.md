@@ -215,6 +215,22 @@ Result: PASS
 
 ENDPOINT_RESHAPE_EVIDENCE_END
 
+## Task 5 manual re-acceptance clarification — 2026-08-28
+
+**Tested implementation SHA:** `6eee5f2f15d586806c3d68d99fd2e0cc87d4c239`
+**Godot:** `4.7.1.stable.official.a13da4feb`
+**Observation status:** PASS by explicit user report for the listed cases.
+
+The user explicitly reported PASS for all three Task 5 acceptance groups: moving
+release A to fresh press B preserved the old release facts and began the fresh held
+gesture correctly; completed-template replay was idempotent; and the prior ordinary,
+RUNNING recovery, and terminal input-lock cases remained passing. The exact numeric
+observations already recorded above remain the evidence source: `18/18 -> 3/18 ->
+18/18` at the press origin, equal-length rebranch `14/18 -> 14/18`, and the
+18-cell/13-straight recovery sequence leaving 7 visible records at `TRACK 11/18`
+before the direct endpoint drag produced 8 records at `TRACK 10/18`. `SESSION
+COMPLETE — TRACK END REACHED` remained input-locked.
+
 ## Task 6 active-gesture construction acceptance — 2026-08-28
 
 **Tested implementation SHA:** `be18f1fc84b96ce1f1361cb6b9878c1ed8aeda7f`
@@ -231,6 +247,8 @@ ENDPOINT_RESHAPE_EVIDENCE_END
   origin-owned construction continued, while gesture-added suffix construction
   waited for finalization. No user-owned editor was terminated, reset, or interacted
   with during the observation.
+- While the left button remained held, rear recovery remained paused; after release,
+  recovery resumed under the existing session lifecycle.
 
 Main integration, push, pull request, merge, primary retest, and cleanup remain
 outside this manual acceptance record.
