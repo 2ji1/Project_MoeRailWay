@@ -4,7 +4,7 @@ This repository contains the design documents and Godot prototype foundation for
 
 The project is in early prototype development. The immediate goal is to validate whether the core route-drawing loop remains readable, tense, and strategically interesting before committing to campaign content or production-scale architecture.
 
-> **Current status:** Milestone M4 and live gesture path reflow are integrated on `main` via PR #15. The playable prototype includes the deterministic session shell, a centered logical-cell grid, mouse-driven endpoint track extension with live held reflow, completed-head template reselection, hover/cancel feedback, per-cell track inventory, construction continuity during an active endpoint gesture, paused and resumed recovery, and continuous movement for one train. Cargo, contracts, hazards, debt, and company economy remain planned work.
+> **Current status:** Milestone M5, Warp Cargo, is integrated on `main` through [PR #17](https://github.com/2ji1/Project_MoeRailWay/pull/17). Reviewed feature HEAD `402c9a28913acb24047a35cfcd4d5b8c2bb752f1` is the feature parent of merge commit `e42d9a6ccc64c55da44ee8e5fddc6f40e48c2874`, and `prototype-m5` resolves to that merge commit. The playable prototype includes the deterministic session shell and logical-cell track loop, one continuously moving train, live endpoint route reflow, sequential construction and recovery, seeded finite-lifetime Warp pairs, exact-center Warp snapping and contact, automatic finite-slot cargo handling, provisional base delivery rewards, planning slowdown with full-frequency pointer feedback, departure-marker dissolve, recovered departure-cell reuse, and locked-endpoint anchored-turn stitching. Risk & Investment is the next prototype slice; contracts, persistent economy, credit survival, and playtest-ready packaging remain planned work.
 
 ## Game Concept
 
@@ -78,7 +78,7 @@ $MoeRailProject = '.\godot-project-moe-rail-way'
 & $MoeRailGodot --editor --path $MoeRailProject
 ```
 
-Run the registered suite and four standalone integrations with:
+Run the registered suite and five standalone integrations with:
 
 ```powershell
 $MoeRailScripts = @(
@@ -86,7 +86,8 @@ $MoeRailScripts = @(
     'res://tests/integration/run_session_shell_integration.gd',
     'res://tests/integration/run_logical_track_field_integration.gd',
     'res://tests/integration/run_track_train_input_integration.gd',
-    'res://tests/integration/run_track_train_app_integration.gd'
+    'res://tests/integration/run_track_train_app_integration.gd',
+    'res://tests/integration/run_warp_cargo_integration.gd'
 )
 foreach ($MoeRailScript in $MoeRailScripts) {
     & $MoeRailGodot --headless --path $MoeRailProject --script $MoeRailScript
@@ -94,7 +95,7 @@ foreach ($MoeRailScript in $MoeRailScripts) {
 }
 ```
 
-The current automated baseline reports `PASS: 19 prototype test suite(s)` and passes the session-shell, logical-track-field, track-input, and track-and-train-app integrations.
+The current automated baseline reports `PASS: 24 prototype test suite(s)` from the registered runner plus five standalone integration runners: session-shell, logical-track-field, track-input, track-and-train-app, and Warp Cargo.
 
 ## Editor Playtest Safety
 
@@ -122,7 +123,11 @@ pwsh -NoProfile -File .\godot-project-moe-rail-way\tools\playtest\launch_editor_
 - [Main-First Branch Management Implementation Plan](docs/superpowers/plans/2026-08-25-main-first-branch-management.md)
 - [Grid Track Amendment Design](docs/superpowers/specs/2026-08-24-prototype-grid-track-amendment-design.md)
 - [Grid Track Amendment Plan](docs/superpowers/plans/2026-08-24-prototype-grid-track-amendment.md)
+- [Warp Cargo Design](docs/superpowers/specs/2026-08-28-warp-cargo-design.md)
+- [Warp Cargo Implementation Plan](docs/superpowers/plans/2026-08-28-warp-cargo.md)
+- [Warp Cargo Control-Feel Amendment](docs/superpowers/specs/2026-08-28-warp-cargo-control-feel-amendment-design.md)
+- [Warp Cargo Windows Manual Verification](godot-project-moe-rail-way/tests/manual/warp_cargo_windows.md)
 
 ## Current Scope
 
-The integrated M4 scope is a deterministic session shell with one continuously moving train and a playable logical-cell track loop: endpoint-only mouse input, centered grid mapping, live held endpoint reflow, completed-head template reselection, hover/cancel feedback, curve fitting and overlap downgrade, per-cell reservation and inventory, construction continuity through the shared origin frontier while a gesture is held, atomic completion, and paused/resumed ordered recovery. The next prototype slices add warp cargo, risk and investment, contracts and economy, credit survival, and playtest-ready polish. Campaign structure, narrative progression, and production architecture remain outside the current prototype.
+The integrated M5 scope combines the deterministic session shell and one-train logical-cell track loop with Warp Cargo: seeded immutable requests, forecast and finite lifetime, exact-center route knots, automatic loading and delivery, finite cargo slots, provisional base rewards, color-and-shape placeholder feedback, and the reviewed control-feel refinements. The next prototype slices are Risk & Investment, Contract Economy, Credit Survival, and Playtest Ready. Campaign structure, narrative progression, custom art production, mobile support, and production architecture remain outside the current prototype.

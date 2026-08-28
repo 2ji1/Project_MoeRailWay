@@ -1,6 +1,10 @@
 # Warp Cargo Windows Manual Verification
 
-Run this checklist only after the exact final feature HEAD passes every automated gate. Keep screenshots and the completed evidence table outside the repository.
+- Status: Integrated through PR #17 as `prototype-m5`; complete final-head four-size evidence remains outstanding
+- Recorded evidence: pre-amendment HEAD `b5d33117d08ed3e14269b353f2a84a72c4f24a0c` passed deterministic and mouse-only verification at all four supported sizes; final reviewed HEAD `402c9a28913acb24047a35cfcd4d5b8c2bb752f1` passed the targeted `1280x720` locked-endpoint anchored-turn regression
+- Outstanding evidence: rerun the complete deterministic and mouse-only checklist at `960x540`, `1280x720`, `1600x900`, and `1920x1080` on one exact current integration-candidate commit
+
+This checklist remains the manual regression procedure for the integrated slice. Run it only after the exact candidate `HEAD` passes every automated gate. Keep screenshots and the completed evidence table outside the repository.
 
 ## Fixed setup
 
@@ -14,7 +18,7 @@ In PowerShell, define the fixed local paths once:
 
 ```powershell
 $Godot = 'D:\godot\p-h\.tools\godot\4.7.1\Godot_v4.7.1-stable_win64_console.exe'
-$Project = 'D:\godot\MoeRailWay-worktrees\warp-cargo\godot-project-moe-rail-way'
+$Project = 'D:\godot\MoeRailWay\godot-project-moe-rail-way'
 ```
 
 ## Deterministic visible run
@@ -71,7 +75,7 @@ At every size, also complete these control-feel checks:
 
 ## Evidence header
 
-Record the exact feature HEAD, tester, UTC timestamp, Godot version, startup seed, observed tick trace, every tested window size, pass/fail result, and absolute screenshot paths in task-owned evidence outside this repository.
+Record the exact tested commit, its branch or ref context, tester, UTC timestamp, Godot version, startup seed, observed tick trace, every tested window size, pass/fail result, and absolute screenshot paths in task-owned evidence outside this repository.
 
 ## Evidence checklist
 
