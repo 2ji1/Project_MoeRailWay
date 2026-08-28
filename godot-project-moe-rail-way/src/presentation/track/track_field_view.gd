@@ -22,10 +22,13 @@ const EXTEND_HOVER_COLOR := Color(0.29, 0.92, 0.45, 0.82)
 const BUILT_WIDTH := 7.0
 const RESERVED_WIDTH := 4.0
 const DEPARTURE_RADIUS := 9.0
+const DEPARTURE_DISSOLVE_DURATION_SECONDS := 0.75
 const TRAIN_LENGTH := 13.0
 const TRAIN_HALF_WIDTH := 7.0
 const INTERVAL_SAMPLE_COUNT := 9
 const WARP_FORECAST_ALPHA := 0.35
+const PLANNING_BACK_COLOR := Color(0.04, 0.07, 0.08, 0.82)
+const PLANNING_TEXT_COLOR := Color(0.91, 0.73, 0.29, 1.0)
 const WARP_STYLE_COLORS := [
 	Color("2ec4b6"), Color("ff9f1c"), Color("9b5de5"),
 	Color("f4d35e"), Color("3a86ff"), Color("ff5d8f"),
@@ -85,6 +88,10 @@ var _presented_snapshot_has_endpoint_eligibility := false
 var _presented_warp_pairs: Array[WarpPairRecordScript] = []
 var _presented_warp_events: Array[Dictionary] = []
 var _presented_ticks_per_second := 1
+var _departure_marker_alpha := 1.0
+var _departure_dissolve_started := false
+var _planning_indicator_visible := false
+var _planning_indicator_text := ""
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -323,6 +330,11 @@ func configure_session(start_config: SessionStartConfigScript) -> void:
 	_selected_candidate_id = candidate_departure_id
 	_selected_departure_position = candidate_departure_position
 	_selected_departure_cell = candidate_departure_cell
+	_departure_marker_alpha = 1.0
+	_departure_dissolve_started = false
+	_planning_indicator_visible = false
+	_planning_indicator_text = ""
+	set_process(false)
 	_session_configured = true
 	if not Engine.is_editor_hint():
 		var candidate_parent = field.get_node_or_null("DepartureCandidates")
@@ -374,6 +386,18 @@ func present(snapshot: SessionSnapshotScript) -> void:
 	_presented_warp_pairs = snapshot.get_warp_pair_records()
 	_presented_warp_events = snapshot.get_warp_cargo_events()
 	_presented_ticks_per_second = maxi(1, snapshot.get_ticks_per_second())
+	if _presented_state == SessionControllerScript.State.RUNNING and not _departure_dissolve_started:
+		_departure_dissolve_started = true
+		set_process(true)
+	_planning_indicator_visible = (
+		_presented_state == SessionControllerScript.State.RUNNING
+		and snapshot.is_planning_slowdown_active()
+	)
+	_planning_indicator_text = (
+		"PLANNING %d%%" % snapshot.get_planning_time_scale_percent()
+		if _planning_indicator_visible
+		else ""
+	)
 	var snapshot_gesture_active := snapshot.is_endpoint_gesture_active()
 	if _presented_gesture_active and not snapshot_gesture_active:
 		_clear_view_capture_after_termination()
@@ -385,6 +409,19 @@ func present(snapshot: SessionSnapshotScript) -> void:
 		_update_hover_cell(_latest_cursor_local)
 	else:
 		_clear_hover_cell()
+	queue_redraw()
+
+
+func _process(delta: float) -> void:
+	if not _departure_dissolve_started or _departure_marker_alpha <= 0.0:
+		set_process(false)
+		return
+	_departure_marker_alpha = maxf(
+		0.0,
+		_departure_marker_alpha - delta / DEPARTURE_DISSOLVE_DURATION_SECONDS
+	)
+	if _departure_marker_alpha <= 0.0:
+		set_process(false)
 	queue_redraw()
 
 
@@ -436,6 +473,14 @@ func get_render_observation() -> Dictionary:
 		"intervals": _duplicate_intervals(_presented_intervals),
 		"selected_departure_id": StringName(_selected_candidate_id),
 		"selected_departure_position": Vector2(_selected_departure_position),
+		"departure_marker": {
+			"visible": _session_configured and _departure_marker_alpha > 0.0,
+			"alpha": _departure_marker_alpha,
+		},
+		"planning_indicator": {
+			"visible": _planning_indicator_visible,
+			"text": _planning_indicator_text,
+		},
 		"train_active": _train_active,
 		"train_position": Vector2(_train_position),
 		"train_heading": Vector2(_train_heading),
@@ -628,8 +673,10 @@ func _draw() -> void:
 		)
 		var extend_rect := Rect2(_grid_rect.position + Vector2(_hover_extend_cell) * cell_size, cell_size)
 		draw_rect(extend_rect, EXTEND_HOVER_COLOR, false, 4.0, true)
-	if _session_configured:
-		draw_circle(_selected_departure_position, DEPARTURE_RADIUS, DEPARTURE_COLOR, true)
+	if _session_configured and _departure_marker_alpha > 0.0:
+		var departure_color := Color(DEPARTURE_COLOR)
+		departure_color.a *= _departure_marker_alpha
+		draw_circle(_selected_departure_position, DEPARTURE_RADIUS, departure_color, true)
 	for endpoint in _build_warp_endpoint_observations():
 		_draw_warp_endpoint(endpoint)
 	if _train_active:
@@ -643,7 +690,29 @@ func _draw() -> void:
 			_train_position - heading * TRAIN_LENGTH * 0.55 - side * TRAIN_HALF_WIDTH,
 		])
 		draw_colored_polygon(triangle, TRAIN_COLOR)
+	if _planning_indicator_visible:
+		_draw_planning_indicator()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_planning_indicator() -> void:
+	var position := _grid_rect.position + Vector2(8.0, 8.0)
+	var text_size := ThemeDB.fallback_font.get_string_size(
+		_planning_indicator_text,
+		HORIZONTAL_ALIGNMENT_LEFT,
+		-1.0,
+		13
+	)
+	draw_rect(Rect2(position, text_size + Vector2(12.0, 8.0)), PLANNING_BACK_COLOR, true)
+	draw_string(
+		ThemeDB.fallback_font,
+		position + Vector2(6.0, text_size.y + 1.0),
+		_planning_indicator_text,
+		HORIZONTAL_ALIGNMENT_LEFT,
+		-1.0,
+		13,
+		PLANNING_TEXT_COLOR
+	)
 
 
 func _draw_warp_endpoint(endpoint: Dictionary) -> void:

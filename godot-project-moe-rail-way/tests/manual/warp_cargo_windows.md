@@ -31,16 +31,16 @@ The driver disables automatic physics, injects the approved 47-cell route on tic
 |---|---|
 | `1` | Empty cargo; pair 1 forecast uses matching low-alpha color/shape and `F 1s`. |
 | `3` | Pair 1 is active with a filled origin, outlined destination, and `12s`. |
-| `4` | Pair 1 is in transit, origin is outline-only, and slot 0 is filled. |
-| `10` | Pair 2 fills slot 1 and the HUD reads `2 / 2`. |
+| `11` | Pair 2 loads at its exact origin center into slot 0 and the HUD reads `1 / 2`. |
 | `13` | Pair 3 remains at the seeded origin/destination shown in the panel; no route correction occurs. |
-| `64` | The full-slot pair 3 origin contact is a no-op; pair 3 remains active and cargo remains `2 / 2`. |
-| `120` | Pair 1 expires, slot 0 clears, reward remains `0`, and cargo reads `1 / 2`. |
+| `64` | Impossible exact contacts remain unloaded; pair 3 remains active and cargo remains `1 / 2`. |
+| `120` | Pair 1 expires unloaded, reward remains `0`, and cargo remains `1 / 2`. |
 | `121` | Pair 4 forecast appears at the seeded cells shown in the panel without correction. |
-| `124` | Pair 4 uses the lowest empty slot 0 and cargo returns to `2 / 2`. |
+| `123` | Pair 4 activates with its original seeded lifetime facts. |
+| `126` | Pair 4 loads at its exact origin center into slot 1 and cargo reaches `2 / 2`. |
 | `138` | Pair 2 is in transit with `1s`, immediately before final-life delivery. |
-| `139` | Pair 2's brief filled destination remains, cargo is `0 / 2`, reward is `37`, and all other live endpoints are absent. |
-| `result` | The regular-end result is shown and adds no penalty, failure, settlement, or action text. |
+| `139` | Pair 2 expires before completion voids the remaining live pairs; cargo is `0 / 2` and reward remains `0`. |
+| `result` | The regular-end result retains reward `0` and adds no penalty, failure, settlement, or action text. |
 
 The checkpoint panel also prints every pair's exact origin, destination, state, and remaining ticks. Use those facts to confirm impossible or behind-train generation is retained rather than rerolled.
 
@@ -54,6 +54,19 @@ After the deterministic run at each size, launch the real scene without the driv
 
 This mouse-only mode leaves the canonical fixed-seed fixture unchanged and applies runtime-only usability values: a `90` second session, train speed `1.5` cells per second, recovery lag `2` cells, and a doubled Warp lifetime range of `3.0..33.0` seconds. Starting at departure cell `(5, 2)`, use only the left mouse button to draw an orthogonally connected route. While Warp endpoints and countdowns are visible, extend from the active endpoint, move backward and rebranch during one held gesture, release to finalize, then begin another held edit and right-click to restore its gesture origin. Clicking or dragging across Warp shapes and the cargo strip must behave exactly like the underlying track field; the Warp presentation must not capture or consume input.
 
+At every size, also complete these control-feel checks:
+
+1. Build a straight route through an active Warp cell and confirm the track passes through the exact center of the Warp marker.
+2. Build a turning route through another active Warp cell and confirm the accepted curve passes through the exact marker center without inserting or relocating a route cell.
+3. Let a route segment lock off-center before a Warp activates in that cell; confirm the locked curve does not move and the missed opportunity remains visible until lifecycle removal.
+4. Start the session and confirm the departure marker is opaque before departure, fades smoothly for about `0.75` real seconds after the train departs, and stays absent afterward.
+5. Hold left drag from the active endpoint and confirm `PLANNING 25%` appears near the top-left without overlapping or obscuring track work.
+6. While holding, move the pointer continuously and confirm the live route preview responds every rendered update while train travel, track confirmation, recovery, Warp countdowns, and session time advance at one quarter of normal cadence.
+7. During the same held edit, let recovery consume eligible pre-gesture track; confirm the candidate and its cancellation origin both retain that recovery, inventory refunds once, and new suffix cells remain editable.
+8. Release and repeat with right-click abort; confirm the planning label clears immediately, no simulation catch-up occurs, and neither path resurrects recovered track.
+9. Click invalid cells and merely hold after a rejected press; confirm neither case shows the planning label or slows the simulation.
+10. Confirm the planning label and departure fade remain readable at this window size and that neither primitive intercepts field input.
+
 ## Evidence header
 
 Record the exact feature HEAD, tester, UTC timestamp, Godot version, startup seed, observed tick trace, every tested window size, pass/fail result, and absolute screenshot paths in task-owned evidence outside this repository.
@@ -62,11 +75,10 @@ Record the exact feature HEAD, tester, UTC timestamp, Godot version, startup see
 
 1. Confirm forecast endpoints use matching color and shape, low alpha, and readable whole-second `F <seconds>s` text.
 2. Confirm active origins are filled, destinations are outlined, and lifetime countdowns remain readable.
-3. Confirm loading changes the origin to outline-only and fills the matching cargo slot without stealing mouse input from track drawing.
+3. Confirm exact-center loading changes the origin to outline-only and fills the matching cargo slot without stealing mouse input from track drawing.
 4. Confirm empty, full, and mixed cargo-slot states are distinguishable and the HUD reads `occupied / total`.
-5. Confirm a full-slot origin contact is a no-op and a later mixed-slot load uses the lowest empty slot.
-6. Confirm delivery on the final lifetime tick clears the slot and updates `BASE REWARD` immediately.
-7. Confirm expiry clears matching cargo without reward, fine, or failure text.
-8. Confirm an origin behind the train is not rerolled or corrected, and locked impossible contact remains visible as a missed opportunity until expiry.
-9. Confirm regular expiry removes every live field endpoint, clears all cargo slots, retains earned delivery/reward totals, and adds no penalty text.
-10. Repeat mouse-only drawing, held extension, rebranch, right-click cancellation, and endpoint reshaping at every required window size; Warp Cargo visuals must never intercept input.
+5. Confirm the fixed-seed exact-contact trace loads pair 2 into slot 0 and pair 4 into slot 1.
+6. Confirm expiry clears matching cargo without reward, fine, or failure text.
+7. Confirm an origin behind the train is not rerolled or corrected, and locked impossible contact remains visible as a missed opportunity until expiry.
+8. Confirm regular expiry removes every live field endpoint, clears all cargo slots, retains earned delivery/reward totals, and adds no penalty text.
+9. Repeat mouse-only drawing, held extension, rebranch, right-click cancellation, endpoint reshaping, exact-center snapping, planning slowdown, and departure dissolve at every required window size; Warp Cargo visuals must never intercept input.

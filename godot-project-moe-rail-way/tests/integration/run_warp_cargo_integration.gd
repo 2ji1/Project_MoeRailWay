@@ -210,15 +210,19 @@ func _assert_real_scene_planning_cadence(packed: PackedScene) -> void:
     await process_frame
     cadence_app.set_physics_process(false)
     var controller = cadence_app.session_controller
+    var track_field_view = cadence_app.get_node("SessionShell").get_track_field_view()
     controller.advance_tick(_route_frame())
     var endpoint: Vector2i = cadence_app.track_system.get_endpoint_cell()
     controller.advance_tick(_held_endpoint_frame(endpoint))
     var press = controller.get_snapshot()
+    var press_presentation: Dictionary = track_field_view.get_render_observation()
     _assert_true(press.is_planning_slowdown_active(), "Real scene accepted press publishes planning active")
     _assert_equal(press.get_planning_time_scale_percent(), 25, "Real scene publishes configured 25 percent")
     _assert_true(press.did_advance_simulation_tick(), "Real scene accepted press remains a simulation tick")
     _assert_equal(press.get_elapsed_ticks(), 2, "Real scene press advances literal simulation tick two")
     _assert_true(is_equal_approx(press.get_train_route_distance_cells(), 0.6474820144), "Real scene press advances literal train distance")
+    _assert_equal(press_presentation.planning_indicator, {"visible": true, "text": "PLANNING 25%"}, "Real scene shows planning feedback")
+    _assert_equal(press_presentation.departure_marker, {"visible": true, "alpha": 1.0}, "Real scene starts departure dissolve at alpha one")
     var expected_did_advance := [false, false, false, true]
     var expected_elapsed := [2, 2, 2, 3]
     var expected_distances := [0.6474820144, 0.6474820144, 0.6474820144, 0.9712230216]
@@ -230,12 +234,20 @@ func _assert_real_scene_planning_cadence(packed: PackedScene) -> void:
         _assert_true(is_equal_approx(snapshot.get_train_route_distance_cells(), expected_distances[index]), "Real scene literal train cadence step %d" % (index + 1))
         if not expected_did_advance[index]:
             _assert_equal(snapshot.get_warp_cargo_events(), [], "Real scene skipped tick %d has no repeated Warp events" % (index + 1))
+        if index == 0:
+            track_field_view.call("_process", 0.375)
+            var half_dissolved: Dictionary = track_field_view.get_render_observation()
+            _assert_true(is_equal_approx(half_dissolved.departure_marker.alpha, 0.5), "Real scene dissolve advances on presentation time during skipped simulation")
+            _assert_true(half_dissolved.planning_indicator.visible, "Real scene planning feedback remains visible during skipped simulation")
     var due = controller.get_snapshot()
+    track_field_view.call("_process", 0.375)
+    _assert_equal(track_field_view.get_render_observation().departure_marker, {"visible": false, "alpha": 0.0}, "Real scene departure marker completes its dissolve")
     controller.advance_tick(_release_endpoint_frame(endpoint))
     var released = controller.get_snapshot()
     _assert_true(not released.is_planning_slowdown_active(), "Real scene release clears planning immediately")
     _assert_true(not released.did_advance_simulation_tick(), "Real scene release consumes no simulation tick")
     _assert_equal(released.get_elapsed_ticks(), 3, "Real scene release has no catch-up")
+    _assert_equal(track_field_view.get_render_observation().planning_indicator, {"visible": false, "text": ""}, "Real scene release clears planning feedback")
     controller.advance_tick()
     var resumed = controller.get_snapshot()
     _assert_true(resumed.did_advance_simulation_tick(), "Real scene resumes one-for-one after release")
