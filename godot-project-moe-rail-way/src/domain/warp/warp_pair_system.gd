@@ -5,6 +5,7 @@ const SessionStartConfigScript = preload("res://src/domain/session/session_start
 const SessionRngScript = preload("res://src/domain/random/session_rng.gd")
 const WarpPairRecordScript = preload("res://src/domain/warp/warp_pair_record.gd")
 const RouteContactAnchorScript = preload("res://src/domain/track/route_contact_anchor.gd")
+const CargoSystemScript = preload("res://src/domain/cargo/cargo_system.gd")
 
 var _grid_size: Vector2i
 var _forecast_ticks: int
@@ -17,6 +18,7 @@ var _records: Array[WarpPairRecordScript] = []
 var _tick_events: Array[Dictionary] = []
 var _last_begin_tick := 0
 var _last_expire_tick := 0
+var _last_contact_tick := 0
 var _last_generation_tick := 0
 var _next_ordinal := 1
 var _generation_pending := false
@@ -72,7 +74,55 @@ func begin_running_tick(tick_index: int) -> void:
     _generate_pair(tick_index)
 
 
-func expire_after_contact(tick_index: int) -> void:
+func resolve_contact_hits(
+    tick_index: int,
+    hits: Array[Dictionary],
+    cargo_system: CargoSystemScript
+) -> void:
+    if _terminal or cargo_system == null or tick_index <= _last_contact_tick:
+        return
+    _last_contact_tick = tick_index
+    var ordered_hits: Array[Dictionary] = []
+    var seen_anchor_ids := {}
+    for hit in hits:
+        var candidate := _contact_candidate(hit)
+        if candidate.is_empty():
+            continue
+        var anchor_id: StringName = candidate["anchor_id"]
+        if seen_anchor_ids.has(anchor_id):
+            continue
+        seen_anchor_ids[anchor_id] = true
+        ordered_hits.append(candidate)
+    ordered_hits.sort_custom(_contact_less)
+
+    for hit in ordered_hits:
+        var record: WarpPairRecordScript = hit["record"]
+        var endpoint: StringName = hit["endpoint"]
+        if endpoint == &"origin":
+            if record.state != WarpPairRecordScript.State.ACTIVE_UNLOADED:
+                continue
+            var loaded_slot := cargo_system.try_load(record.pair_id, record.style_index)
+            if loaded_slot < 0:
+                continue
+            record.state = WarpPairRecordScript.State.IN_TRANSIT
+            _append_event(tick_index, &"LOADED", record.pair_id, loaded_slot)
+        elif endpoint == &"destination":
+            if record.state != WarpPairRecordScript.State.IN_TRANSIT:
+                continue
+            var delivery: Dictionary = cargo_system.try_deliver(record.pair_id)
+            if not delivery["delivered"]:
+                continue
+            record.state = WarpPairRecordScript.State.DELIVERED
+            _append_event(
+                tick_index,
+                &"DELIVERED",
+                record.pair_id,
+                delivery["slot_index"],
+                delivery["amount"]
+            )
+
+
+func expire_after_contact(tick_index: int, cargo_system: CargoSystemScript) -> void:
     if _terminal or tick_index <= _last_expire_tick:
         return
     _last_expire_tick = tick_index
@@ -85,19 +135,30 @@ func expire_after_contact(tick_index: int) -> void:
         if record.lifetime_remaining_ticks > 0:
             record.lifetime_remaining_ticks -= 1
         if record.lifetime_remaining_ticks == 0:
+            var cleared_slot := -1
+            if (
+                record.state == WarpPairRecordScript.State.IN_TRANSIT
+                and cargo_system != null
+            ):
+                cleared_slot = cargo_system.remove_pair(record.pair_id)
             record.state = WarpPairRecordScript.State.EXPIRED
-            _append_event(tick_index, &"EXPIRED", record.pair_id)
+            _append_event(tick_index, &"EXPIRED", record.pair_id, cleared_slot)
 
 
-func void_nonterminal(tick_index: int) -> void:
+func void_nonterminal(tick_index: int, cargo_system: CargoSystemScript) -> void:
     if _terminal:
         return
     _terminal = true
     for record in _records:
         if not _is_live_state(record.state):
             continue
+        var cleared_slot := -1
+        if record.state == WarpPairRecordScript.State.IN_TRANSIT and cargo_system != null:
+            cleared_slot = cargo_system.remove_pair(record.pair_id)
         record.state = WarpPairRecordScript.State.VOIDED
-        _append_event(tick_index, &"VOIDED", record.pair_id)
+        _append_event(tick_index, &"VOIDED", record.pair_id, cleared_slot)
+    if cargo_system != null:
+        cargo_system.clear_all()
 
 
 func get_route_contact_anchors() -> Array[RouteContactAnchorScript]:
@@ -184,14 +245,83 @@ func _activate(record: WarpPairRecordScript, tick_index: int) -> void:
     _append_event(tick_index, &"ACTIVATED", record.pair_id)
 
 
-func _append_event(tick_index: int, type: StringName, pair_id: StringName) -> void:
+func _append_event(
+    tick_index: int,
+    type: StringName,
+    pair_id: StringName,
+    slot_index: int = -1,
+    amount: int = 0
+) -> void:
     _tick_events.append({
         "tick": tick_index,
         "type": type,
         "pair_id": pair_id,
-        "slot_index": -1,
-        "amount": 0,
+        "slot_index": slot_index,
+        "amount": amount,
     })
+
+
+func _contact_candidate(hit: Dictionary) -> Dictionary:
+    if (
+        not hit.has("anchor_id")
+        or not hit.has("cell")
+        or not hit.has("contact_distance_cells")
+        or typeof(hit["anchor_id"]) != TYPE_STRING_NAME
+        or typeof(hit["cell"]) != TYPE_VECTOR2I
+        or (
+            typeof(hit["contact_distance_cells"]) != TYPE_FLOAT
+            and typeof(hit["contact_distance_cells"]) != TYPE_INT
+        )
+    ):
+        return {}
+    var distance := float(hit["contact_distance_cells"])
+    if not is_finite(distance):
+        return {}
+    var anchor_id: StringName = hit["anchor_id"]
+    var cell: Vector2i = hit["cell"]
+    for record in _records:
+        if not _is_live_state(record.state):
+            continue
+        var origin_id := StringName("%s/origin" % record.pair_id)
+        if (
+            anchor_id == origin_id
+            and record.state == WarpPairRecordScript.State.ACTIVE_UNLOADED
+            and cell == record.origin_cell
+        ):
+            return {
+                "anchor_id": anchor_id,
+                "cell": cell,
+                "contact_distance_cells": distance,
+                "endpoint": &"origin",
+                "record": record,
+            }
+        var destination_id := StringName("%s/destination" % record.pair_id)
+        if anchor_id == destination_id and cell == record.destination_cell:
+            return {
+                "anchor_id": anchor_id,
+                "cell": cell,
+                "contact_distance_cells": distance,
+                "endpoint": &"destination",
+                "record": record,
+            }
+    return {}
+
+
+func _contact_less(first: Dictionary, second: Dictionary) -> bool:
+    var first_distance: float = first["contact_distance_cells"]
+    var second_distance: float = second["contact_distance_cells"]
+    if first_distance != second_distance:
+        return first_distance < second_distance
+    var first_record: WarpPairRecordScript = first["record"]
+    var second_record: WarpPairRecordScript = second["record"]
+    if (
+        first_record.ordinal == second_record.ordinal
+        and first["endpoint"] != second["endpoint"]
+    ):
+        return first["endpoint"] == &"origin"
+    if first_record.ordinal != second_record.ordinal:
+        return first_record.ordinal < second_record.ordinal
+    return String(first["anchor_id"]) < String(second["anchor_id"])
 
 
 func _get_live_pair_count() -> int:

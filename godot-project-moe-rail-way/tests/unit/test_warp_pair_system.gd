@@ -3,6 +3,7 @@ extends "res://tests/support/prototype_test.gd"
 const PrototypeBalanceScript = preload("res://src/config/prototype_balance.gd")
 const PrototypeConfigValidatorScript = preload("res://src/config/prototype_config_validator.gd")
 const SessionRngScript = preload("res://src/domain/random/session_rng.gd")
+const CargoSystemScript = preload("res://src/domain/cargo/cargo_system.gd")
 const WarpPairRecordScript = preload("res://src/domain/warp/warp_pair_record.gd")
 const WarpPairSystemScript = preload("res://src/domain/warp/warp_pair_system.gd")
 
@@ -15,6 +16,7 @@ func run() -> PackedStringArray:
     _test_forecast_activation_and_anchors()
     _test_capacity_gating_and_delayed_cadence()
     _test_expiry_void_and_idempotence()
+    _test_contact_loading_delivery_and_removal()
     _test_fixed_seed_replay_and_detached_observations()
     return finish()
 
@@ -322,17 +324,18 @@ func _test_capacity_gating_and_delayed_cadence() -> void:
     var system_rng := SessionRngScript.new(404)
     var mirror_rng := SessionRngScript.new(404)
     var system := WarpPairSystemScript.new(config, system_rng)
+    var cargo := CargoSystemScript.new(1, 37)
 
     system.begin_running_tick(1)
     mirror_rng.next_index(6)
     mirror_rng.next_index(6)
     mirror_rng.next_index(1)
-    system.expire_after_contact(1)
+    system.expire_after_contact(1, cargo)
     system.begin_running_tick(2)
     mirror_rng.next_index(6)
     mirror_rng.next_index(6)
     mirror_rng.next_index(1)
-    system.expire_after_contact(2)
+    system.expire_after_contact(2, cargo)
     system.begin_running_tick(3)
     assert_equal(
         system.get_pair_records().size(),
@@ -345,7 +348,7 @@ func _test_capacity_gating_and_delayed_cadence() -> void:
         mirror_rng.next_u32(),
         "Blocked due tick must consume no RNG"
     )
-    system.expire_after_contact(3)
+    system.expire_after_contact(3, cargo)
 
     var expected_origin_index := mirror_rng.next_index(6)
     var expected_destination_index := mirror_rng.next_index(6)
@@ -385,7 +388,7 @@ func _test_capacity_gating_and_delayed_cadence() -> void:
             expected_lifetime,
             "Delayed pair lifetime must use the third unconsumed draw"
         )
-    system.expire_after_contact(4)
+    system.expire_after_contact(4, cargo)
 
     system.begin_running_tick(5)
     var tick_five_records: Array = system.get_pair_records()
@@ -402,6 +405,7 @@ func _test_expiry_void_and_idempotence() -> void:
     var expiry_balance := _make_warp_balance(0.0, 10.0, 1.0, 1.0, 1)
     var expiry_config = _complete_config(expiry_balance, 51, Vector2i(2, 2))
     var expiry_system := WarpPairSystemScript.new(expiry_config, SessionRngScript.new(51))
+    var expiry_cargo := CargoSystemScript.new(1, 37)
     expiry_system.begin_running_tick(1)
     expiry_system.begin_running_tick(1)
     assert_equal(
@@ -409,8 +413,8 @@ func _test_expiry_void_and_idempotence() -> void:
         1,
         "Repeated begin on one tick must not generate twice"
     )
-    expiry_system.expire_after_contact(1)
-    expiry_system.expire_after_contact(1)
+    expiry_system.expire_after_contact(1, expiry_cargo)
+    expiry_system.expire_after_contact(1, expiry_cargo)
     var expired_records: Array = expiry_system.get_pair_records()
     if expired_records.size() == 1:
         assert_equal(
@@ -433,9 +437,10 @@ func _test_expiry_void_and_idempotence() -> void:
     var void_balance := _make_warp_balance(4.0, 10.0, 5.0, 5.0, 1)
     var void_config = _complete_config(void_balance, 52, Vector2i(2, 2))
     var void_system := WarpPairSystemScript.new(void_config, SessionRngScript.new(52))
+    var void_cargo := CargoSystemScript.new(1, 37)
     void_system.begin_running_tick(1)
-    void_system.void_nonterminal(1)
-    void_system.void_nonterminal(1)
+    void_system.void_nonterminal(1, void_cargo)
+    void_system.void_nonterminal(1, void_cargo)
     var void_records: Array = void_system.get_pair_records()
     if void_records.size() == 1:
         assert_equal(
@@ -456,19 +461,216 @@ func _test_expiry_void_and_idempotence() -> void:
     )
 
 
+func _test_contact_loading_delivery_and_removal() -> void:
+    var equal_balance := _make_warp_balance(0.0, 10.0, 3.0, 3.0, 1)
+    var equal_config = _complete_config(equal_balance, 77, Vector2i.ONE)
+    var equal_system := WarpPairSystemScript.new(equal_config, SessionRngScript.new(77))
+    var equal_cargo := CargoSystemScript.new(1, 37)
+    equal_system.begin_running_tick(1)
+    var equal_records: Array = equal_system.get_pair_records()
+    if equal_records.size() == 1:
+        var equal_hits: Array[Dictionary] = [
+            _contact_hit(equal_records[0], "destination", 1.0),
+            _contact_hit(equal_records[0], "origin", 1.0),
+        ]
+        equal_system.resolve_contact_hits(1, equal_hits, equal_cargo)
+        var delivered_records: Array = equal_system.get_pair_records()
+        assert_equal(
+            delivered_records[0].state,
+            WarpPairRecordScript.State.DELIVERED,
+            "Equal-cell hit must load then deliver in one ordered sweep"
+        )
+        assert_equal(equal_cargo.get_occupied_slot_count(), 0, "Delivery clears equal-cell cargo")
+        assert_equal(equal_cargo.get_delivered_pair_count(), 1, "Equal-cell delivery counts once")
+        assert_equal(equal_cargo.get_base_delivery_reward_total(), 37, "Delivery pays once")
+        _assert_event_types(
+            equal_system.get_tick_events(),
+            [&"FORECASTED", &"ACTIVATED", &"LOADED", &"DELIVERED"],
+            "Equal-cell load and delivery event order"
+        )
+        var equal_events: Array[Dictionary] = equal_system.get_tick_events()
+        if equal_events.size() == 4:
+            assert_equal(equal_events[2]["slot_index"], 0, "Load event names the occupied slot")
+            assert_equal(equal_events[2]["amount"], 0, "Load event has no reward")
+            assert_equal(equal_events[3]["slot_index"], 0, "Delivery event names the cleared slot")
+            assert_equal(equal_events[3]["amount"], 37, "Delivery event names exact reward")
+        equal_system.resolve_contact_hits(1, equal_hits, equal_cargo)
+        equal_system.resolve_contact_hits(2, equal_hits, equal_cargo)
+        assert_equal(equal_cargo.get_delivered_pair_count(), 1, "Repeated contacts cannot redeliver")
+        assert_equal(equal_cargo.get_base_delivery_reward_total(), 37, "Repeated contacts cannot repay")
+        assert_equal(
+            equal_system.get_route_contact_anchors().size(),
+            0,
+            "Delivered pair publishes no anchors"
+        )
+
+    var full_balance := _make_warp_balance(0.0, 10.0, 4.0, 4.0, 1)
+    var full_config = _complete_config(full_balance, 78, Vector2i(2, 2))
+    var full_system := WarpPairSystemScript.new(full_config, SessionRngScript.new(78))
+    var full_cargo := CargoSystemScript.new(1, 37)
+    full_cargo.try_load(&"blocker", 5)
+    full_system.begin_running_tick(1)
+    var full_records: Array = full_system.get_pair_records()
+    if full_records.size() == 1:
+        var full_hits: Array[Dictionary] = [
+            _contact_hit(full_records[0], "origin", 1.0),
+            _contact_hit(full_records[0], "destination", 2.0),
+        ]
+        full_system.resolve_contact_hits(1, full_hits, full_cargo)
+        assert_equal(
+            full_system.get_pair_records()[0].state,
+            WarpPairRecordScript.State.ACTIVE_UNLOADED,
+            "Full capacity leaves the pair active and unloaded"
+        )
+        var blocked_slots: Array = full_cargo.get_slot_records()
+        assert_equal(blocked_slots.size(), 1, "Full fixture must retain one slot")
+        if blocked_slots.size() == 1:
+            assert_equal(blocked_slots[0].pair_id, &"blocker", "Full load changes no slot")
+        assert_equal(full_cargo.get_delivered_pair_count(), 0, "Destination before load is a no-op")
+
+        full_cargo.remove_pair(&"blocker")
+        full_system.resolve_contact_hits(
+            2,
+            [_contact_hit(full_records[0], "origin", 1.0)],
+            full_cargo
+        )
+        assert_equal(
+            full_system.get_pair_records()[0].state,
+            WarpPairRecordScript.State.IN_TRANSIT,
+            "Successful later load changes lifecycle to in transit"
+        )
+        var loaded_slots: Array = full_cargo.get_slot_records()
+        assert_equal(loaded_slots.size(), 1, "Loaded fixture must retain one slot")
+        if loaded_slots.size() == 1:
+            assert_equal(loaded_slots[0].pair_id, &"warp_pair_1", "Loaded pair owns slot")
+        full_system.resolve_contact_hits(
+            3,
+            [_contact_hit(full_records[0], "origin", 1.0)],
+            full_cargo
+        )
+        assert_equal(full_cargo.get_occupied_slot_count(), 1, "Repeated origin contact is a no-op")
+
+    var ordered_balance := _make_warp_balance(0.0, 1.0, 1.0, 1.0, 2)
+    var ordered_config = _complete_config(ordered_balance, 79, Vector2i(2, 2))
+    var ordered_system := WarpPairSystemScript.new(ordered_config, SessionRngScript.new(79))
+    var ordered_cargo := CargoSystemScript.new(1, 37)
+    ordered_system.begin_running_tick(1)
+    ordered_system.begin_running_tick(2)
+    var ordered_records: Array = ordered_system.get_pair_records()
+    if ordered_records.size() == 2:
+        var ordered_hits: Array[Dictionary] = [
+            _contact_hit(ordered_records[1], "origin", 3.0),
+            _contact_hit(ordered_records[0], "destination", 2.0),
+            _contact_hit(ordered_records[0], "origin", 1.0),
+        ]
+        ordered_system.resolve_contact_hits(2, ordered_hits, ordered_cargo)
+        var after_contacts: Array = ordered_system.get_pair_records()
+        assert_equal(
+            after_contacts[0].state,
+            WarpPairRecordScript.State.DELIVERED,
+            "Earlier route delivery must complete the first pair"
+        )
+        assert_equal(
+            after_contacts[1].state,
+            WarpPairRecordScript.State.IN_TRANSIT,
+            "Later route origin must reuse the slot freed in the same sweep"
+        )
+        var ordered_slots: Array = ordered_cargo.get_slot_records()
+        assert_equal(ordered_slots.size(), 1, "Ordered fixture must retain one slot")
+        if ordered_slots.size() == 1:
+            assert_equal(
+                ordered_slots[0].pair_id,
+                &"warp_pair_2",
+                "Physical hit order controls same-sweep slot turnover"
+            )
+        ordered_system.expire_after_contact(2, ordered_cargo)
+        var after_expiry: Array = ordered_system.get_pair_records()
+        assert_equal(
+            after_expiry[1].state,
+            WarpPairRecordScript.State.EXPIRED,
+            "In-transit final lifetime must expire after contact"
+        )
+        assert_equal(ordered_cargo.get_occupied_slot_count(), 0, "In-transit expiry clears slot")
+        assert_equal(ordered_cargo.get_delivered_pair_count(), 1, "Expiry adds no delivery")
+        assert_equal(ordered_cargo.get_base_delivery_reward_total(), 37, "Expiry adds no reward")
+        var expiry_events: Array[Dictionary] = ordered_system.get_tick_events()
+        assert_equal(expiry_events[-1]["type"], &"EXPIRED", "Expiry event is published")
+        assert_equal(expiry_events[-1]["slot_index"], 0, "Expiry event names cleared slot")
+        assert_equal(expiry_events[-1]["amount"], 0, "Expiry event has no reward")
+
+    var close_balance := _make_warp_balance(0.0, 1.0, 5.0, 5.0, 2)
+    var close_config = _complete_config(close_balance, 790, Vector2i(2, 2))
+    var close_system := WarpPairSystemScript.new(close_config, SessionRngScript.new(790))
+    var close_cargo := CargoSystemScript.new(1, 37)
+    close_system.begin_running_tick(1)
+    var close_first: Array = close_system.get_pair_records()
+    if close_first.size() == 1:
+        close_system.resolve_contact_hits(
+            1,
+            [_contact_hit(close_first[0], "origin", 0.5)],
+            close_cargo
+        )
+    close_system.begin_running_tick(2)
+    var close_records: Array = close_system.get_pair_records()
+    if close_records.size() == 2:
+        close_system.resolve_contact_hits(
+            2,
+            [
+                _contact_hit(close_records[0], "destination", 1.00000001),
+                _contact_hit(close_records[1], "origin", 1.0),
+            ],
+            close_cargo
+        )
+        var close_after: Array = close_system.get_pair_records()
+        assert_equal(
+            close_after[1].state,
+            WarpPairRecordScript.State.ACTIVE_UNLOADED,
+            "Distinct close distances must preserve physical origin-before-delivery order"
+        )
+        assert_equal(
+            close_cargo.get_occupied_slot_count(),
+            0,
+            "Later close-distance delivery cannot retroactively load an earlier origin"
+        )
+
+    var void_balance := _make_warp_balance(0.0, 10.0, 5.0, 5.0, 1)
+    var void_config = _complete_config(void_balance, 80, Vector2i(2, 2))
+    var void_system := WarpPairSystemScript.new(void_config, SessionRngScript.new(80))
+    var void_cargo := CargoSystemScript.new(1, 37)
+    void_system.begin_running_tick(1)
+    var void_records: Array = void_system.get_pair_records()
+    if void_records.size() == 1:
+        void_system.resolve_contact_hits(
+            1,
+            [_contact_hit(void_records[0], "origin", 1.0)],
+            void_cargo
+        )
+        void_system.void_nonterminal(1, void_cargo)
+        assert_equal(
+            void_system.get_pair_records()[0].state,
+            WarpPairRecordScript.State.VOIDED,
+            "In-transit regular end must void the pair"
+        )
+        assert_equal(void_cargo.get_occupied_slot_count(), 0, "Void clears in-transit cargo")
+        assert_equal(void_cargo.get_delivered_pair_count(), 0, "Void adds no delivery")
+        assert_equal(void_cargo.get_base_delivery_reward_total(), 0, "Void adds no reward")
+
+
 func _test_fixed_seed_replay_and_detached_observations() -> void:
     var replay_balance := _make_warp_balance(1.0, 2.0, 2.0, 4.0, 3)
     var first_config = _complete_config(replay_balance, 8181, Vector2i(3, 3))
     var second_config = _complete_config(replay_balance, 8181, Vector2i(3, 3))
     var first := WarpPairSystemScript.new(first_config, SessionRngScript.new(8181))
     var second := WarpPairSystemScript.new(second_config, SessionRngScript.new(8181))
+    var first_cargo := CargoSystemScript.new(2, 37)
+    var second_cargo := CargoSystemScript.new(2, 37)
     var first_history := []
     var second_history := []
     for tick in range(1, 9):
         first.begin_running_tick(tick)
         second.begin_running_tick(tick)
-        first.expire_after_contact(tick)
-        second.expire_after_contact(tick)
+        first.expire_after_contact(tick, first_cargo)
+        second.expire_after_contact(tick, second_cargo)
         first_history.append(_system_observation(first))
         second_history.append(_system_observation(second))
     assert_equal(
@@ -553,6 +755,17 @@ func _assert_event_types(events: Array[Dictionary], expected: Array, message: St
         assert_true(event.has("slot_index"), "%s event must include slot_index" % message)
         assert_true(event.has("amount"), "%s event must include amount" % message)
     assert_equal(actual, expected, message)
+
+
+func _contact_hit(record: RefCounted, endpoint: String, distance: float) -> Dictionary:
+    var cell: Vector2i = record.origin_cell
+    if endpoint == "destination":
+        cell = record.destination_cell
+    return {
+        "anchor_id": StringName("%s/%s" % [record.pair_id, endpoint]),
+        "cell": cell,
+        "contact_distance_cells": distance,
+    }
 
 
 func _system_observation(system: RefCounted) -> Dictionary:
