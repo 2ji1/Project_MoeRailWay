@@ -459,6 +459,10 @@ The test must show the method consumes the same active piece ledger and cell map
 - `godot-project-moe-rail-way/src/presentation/session/session_shell.gd`
 - `godot-project-moe-rail-way/src/presentation/session/session_shell.tscn`
 - `godot-project-moe-rail-way/tests/run_all.gd`
+- `godot-project-moe-rail-way/tests/smoke/test_track_train_app_composition.gd`
+- `godot-project-moe-rail-way/tests/integration/run_session_shell_integration.gd`
+
+The two existing regression tests above require assertion-only updates for Task 5's intended public presentation changes: `TrackFieldView` adds the `warp_endpoints` observation key, and the inactive `CASH`/`CARGO` placeholders become the live `BASE REWARD` and `occupied / total` displays. No production behavior or additional scope is authorized by these paths.
 
 **RED:** First register presentation assertions and create the integration runner with expected missing-view failures. Require observations for all six placeholder styles, forecast alpha/countdown, filled origin, outlined destination, in-transit origin change, slot fill, delivered reward change, expiry removal, void clearing, nonintercepting field input, correct logical-grid mapping, and `occupied / total` text. The integration must run a fixed seed through forecast, load, full-slot no-op, mixed-slot load, delivery on the final lifetime tick, expiry, and regular-end void in the real scene.
 
