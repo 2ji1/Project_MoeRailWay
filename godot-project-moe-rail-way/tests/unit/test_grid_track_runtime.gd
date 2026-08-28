@@ -179,6 +179,7 @@ func _test_exact_center_observation_and_hit_distance() -> void:
 	var departure_observations := track.get_contact_observations()
 	assert_equal(departure_observations[0].get("contact_distance_cells", -1.0), 0.0, "Departure exact anchor owns nominal distance zero")
 	assert_equal(track.get_contact_hits_between(0.0, 0.1).size(), 1, "Departure exact anchor fires on the first positive sweep")
+	assert_equal(track.get_contact_hits_between(0.000001, 0.1), [], "Departure exact anchor never leaks into a later positive sweep")
 
 
 func _test_exact_anchor_lifecycle_evolves_active_gesture_forms() -> void:

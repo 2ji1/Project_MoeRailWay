@@ -930,8 +930,8 @@ func get_contact_hits_between(
             continue
         var contact_distance: float = observation.get("contact_distance_cells", -1.0)
         var departure_hit := (
-            is_zero_approx(contact_distance)
-            and is_zero_approx(previous_distance_cells)
+            contact_distance == 0.0
+            and previous_distance_cells == 0.0
             and through_distance_cells > 0.0
         )
         if not departure_hit and (
