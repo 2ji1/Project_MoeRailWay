@@ -188,12 +188,10 @@ func _centerline_gap_is_forward(
         return true
     if predecessor.centerline.size() < 2 or successor.centerline.size() < 2:
         return false
-    var predecessor_heading: Vector2 = (
-        predecessor.centerline[-1] - predecessor.centerline[-2]
-    ).normalized()
-    var successor_heading: Vector2 = (
-        successor.centerline[1] - successor.centerline[0]
-    ).normalized()
+    var predecessor_heading: Vector2 = predecessor.sample_nominal(
+        float(predecessor.nominal_length_cells)
+    ).heading
+    var successor_heading: Vector2 = successor.sample_nominal(0.0).heading
     var gap_heading := gap.normalized()
     return (
         gap_heading.dot(predecessor_heading) >= 1.0 - TANGENT_DOT_EPSILON

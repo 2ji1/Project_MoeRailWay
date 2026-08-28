@@ -26,6 +26,7 @@ func run() -> PackedStringArray:
 	_test_non_final_curve_continuity_and_one_cell_tangents()
 	_test_non_owned_route_cell_in_curve_footprint()
 	_test_locked_piece_identity_and_determinism()
+	_test_locked_predecessor_stitches_anchored_turn_by_declared_heading()
 	_test_empty_acceptance_and_final_conflict_rejection()
 	_test_detached_duplicates()
 	_test_exit_support_metadata_copies_with_active_slices()
@@ -369,6 +370,59 @@ func _test_locked_piece_identity_and_determinism() -> void:
 	])
 	var blocked = _resolver.resolve(DEPARTURE, reentry_records, locked_pieces, [], Vector2.ZERO, Vector2i(8, 8), 40.0)
 	assert_true(not blocked.is_valid, "Unlocked suffix cannot enter active locked footprint")
+
+
+func _test_locked_predecessor_stitches_anchored_turn_by_declared_heading() -> void:
+	var departure := Vector2i(7, 4)
+	var records := _records_for([
+		Vector2i(7, 3), Vector2i(7, 2), Vector2i(6, 2),
+	], departure)
+	var locked = TrackGeometryPieceScript.new()
+	locked.group_id = 90
+	locked.kind = STRAIGHT
+	locked.first_route_serial = records[0].route_serial
+	locked.last_route_serial = records[0].route_serial
+	locked.nominal_length_cells = 1
+	locked.absolute_start_distance_cells = 0.0
+	var locked_footprint: Array[Vector2i] = [Vector2i(7, 3)]
+	locked.footprint_cells = locked_footprint
+	locked.centerline = PackedVector2Array([Vector2(300.0, 180.0), Vector2(300.0, 140.0)])
+	locked.locked = true
+	locked.active_local_end_cells = 1.0
+	var locked_before := _piece_signature(locked)
+	var anchor = RouteContactAnchorScript.new(
+		&"warp_exact", Vector2i(7, 2), RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var result = _resolver.resolve(
+		departure, records, [locked], [anchor], Vector2.ZERO, Vector2i(16, 10), 40.0
+	)
+	assert_true(result.is_valid, "Locked endpoint anchored-turn fixture resolves")
+	if not result.is_valid:
+		return
+	assert_equal(_piece_signature(locked), locked_before, "Resolver never mutates the source locked predecessor")
+	assert_equal(result.pieces.size(), 3, "Locked endpoint fixture retains one predecessor, one curve, and one suffix")
+	if result.pieces.size() != 3:
+		return
+	var predecessor = result.pieces[0]
+	var curve = result.pieces[1]
+	assert_equal(curve.kind, CURVE_1X1, "First unlocked successor remains an anchored 1x1 curve")
+	assert_equal(curve.first_route_serial, records[1].route_serial, "Anchored curve owns only the Warp route record")
+	assert_equal(curve.footprint_cells, [Vector2i(7, 2)], "Anchored turn preserves its one-cell footprint")
+	assert_true(
+		predecessor.centerline[-1].is_equal_approx(curve.centerline[0]),
+		"Declared entry heading stitches the anchored curve to the immutable predecessor"
+	)
+	assert_true(
+		curve.sample_nominal(0.5).position.is_equal_approx(Vector2(300.0, 100.0)),
+		"Stitched successor retains the exact Warp center knot"
+	)
+	var sideways = curve.duplicate_piece()
+	sideways.centerline[0] = Vector2(300.0, 120.0)
+	sideways.entry_heading_override = Vector2.LEFT
+	assert_false(
+		_resolver._centerline_gap_is_forward(predecessor, sideways),
+		"A sideways declared entry remains ineligible for locked-boundary stitching"
+	)
 
 
 func _test_empty_acceptance_and_final_conflict_rejection() -> void:

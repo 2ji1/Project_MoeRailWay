@@ -33,6 +33,7 @@ func run() -> PackedStringArray:
 	_test_live_template_suffix_reconciles_from_current_path()
 	_test_recovered_running_endpoint_accepts_direct_extension()
 	_test_recovered_departure_endpoint_gesture_installs_and_owns_exact_anchor()
+	_test_locked_endpoint_exact_warp_turn_retains_same_gesture_suffix()
 	_test_template_origin_suffix_guards_remain_atomic()
 	_test_template_change_does_not_anchor_control_path_at_origin()
 	_test_live_template_suffix_absent_on_first_update()
@@ -1208,6 +1209,54 @@ func _test_recovered_departure_endpoint_gesture_installs_and_owns_exact_anchor()
 			resolved_after.active_local_start_cells,
 			resolved_after.active_local_end_cells,
 		], resolved_interval_before, "Recovered-cell reuse preserves the resolved active interval")
+
+
+func _test_locked_endpoint_exact_warp_turn_retains_same_gesture_suffix() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(5, 2), 60, Vector2.ZERO, Vector2i(16, 10), 40.0
+	)
+	var route: Array[Vector2i] = [
+		Vector2i(5, 3), Vector2i(5, 4), Vector2i(5, 5), Vector2i(5, 6),
+		Vector2i(5, 7), Vector2i(6, 7), Vector2i(7, 7), Vector2i(7, 6),
+		Vector2i(7, 5), Vector2i(7, 4), Vector2i(7, 3),
+	]
+	assert_equal(track.append_cells(route), route.size(), "Manual reproduction route appends")
+	assert_equal(track.advance_construction(11.0), 11.0, "Manual reproduction route fully builds")
+	assert_true(track.prepare_for_train_sampling(9.0, 10.5), "Train sampling locks through the active endpoint")
+	assert_equal(track.recover_behind(4.0), 4, "Manual reproduction recovers the literal rear prefix")
+	var anchor = RouteContactAnchorScript.new(
+		&"warp_pair_1/origin", Vector2i(7, 2), RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	track.set_contact_anchors([anchor])
+	var locked_before := _piece_values(track._locked_ledger)
+	assert_false(track.gesture_begin(Vector2i(7, 3)).is_empty(), "Locked endpoint begins the observed held gesture")
+	var warp_only: Array[Vector2i] = [Vector2i(7, 2)]
+	assert_true(track.gesture_update(warp_only, warp_only[-1]), "Exact Warp cell publishes after the locked endpoint")
+	assert_equal(_piece_values(track._locked_ledger), locked_before, "Warp cell publication preserves the locked ledger")
+	var first_turn: Array[Vector2i] = [Vector2i(7, 2), Vector2i(6, 2)]
+	assert_true(track.gesture_update(first_turn, first_turn[-1]), "First turn after the exact Warp remains in the same gesture")
+	assert_equal(_piece_values(track._locked_ledger), locked_before, "Anchored first turn preserves the locked ledger")
+	var full_suffix: Array[Vector2i] = [Vector2i(7, 2), Vector2i(6, 2), Vector2i(5, 2)]
+	assert_true(track.gesture_update(full_suffix, full_suffix[-1]), "Held suffix after the anchored first turn publishes in full")
+	assert_equal(_piece_values(track._locked_ledger), locked_before, "Full held suffix preserves the locked ledger")
+	assert_equal(track.get_endpoint_cell(), Vector2i(5, 2), "Live candidate reaches the literal manual pointer cell")
+	assert_true(track.gesture_finalize(), "Observed Warp suffix gesture finalizes")
+	assert_equal(track.get_endpoint_cell(), Vector2i(5, 2), "Final route retains every same-gesture suffix cell")
+	assert_equal(
+		_piece_values(track._locked_ledger).slice(0, locked_before.size()),
+		locked_before,
+		"Finalize preserves every pre-existing locked piece"
+	)
+	var warp_record = track.get_cell_records().filter(func(record): return record.cell == Vector2i(7, 2))[0]
+	var warp_piece = _piece_containing(track.get_geometry_pieces(), warp_record.route_serial)
+	assert_not_null(warp_piece, "Final exact Warp record has an owning curve")
+	if warp_piece != null:
+		var local_distance: float = warp_record.route_distance_start_cells \
+			- warp_piece.absolute_start_distance_cells + 0.5
+		assert_true(
+			warp_piece.sample_nominal(local_distance).position.is_equal_approx(Vector2(300.0, 100.0)),
+			"Final anchored turn retains the exact Warp center"
+		)
 
 
 func _test_template_origin_suffix_guards_remain_atomic() -> void:
