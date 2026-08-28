@@ -560,6 +560,8 @@ func _test_legacy_combined_frame_discriminates_without_release_snapshot() -> voi
 	assert_false(legacy.has_explicit_release_snapshot, "Legacy constructor has no explicit release discriminator")
 	track.apply_left_input(legacy)
 	var events: Array = capturing_runtime.events
+	# The test-only runtime records facade state through this back-reference; release it before scope teardown.
+	capturing_runtime.facade = null
 	assert_equal(events.size(), 5, "Legacy combined frame records old update, finalize, fresh begin, and update")
 	if events.size() < 5:
 		return
