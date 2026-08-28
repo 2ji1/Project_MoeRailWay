@@ -403,10 +403,15 @@ The test must show the method consumes the same active piece ledger and cell map
 **Modify:**
 
 - `godot-project-moe-rail-way/src/app/prototype_app.gd`
+- `godot-project-moe-rail-way/src/domain/random/session_rng.gd`
 - `godot-project-moe-rail-way/src/domain/session/session_controller.gd`
 - `godot-project-moe-rail-way/src/domain/session/session_snapshot.gd`
 - `godot-project-moe-rail-way/src/domain/session/session_result.gd`
+- `godot-project-moe-rail-way/src/domain/warp/warp_pair_system.gd`
+- `godot-project-moe-rail-way/tests/smoke/test_project_boot.gd`
 - `godot-project-moe-rail-way/tests/run_all.gd`
+
+`test_project_boot.gd` must keep its seed-offset balance fixture valid by delegating to the complete configured balance after Task 1 adds required nested Resources. `session_rng.gd` may expose only exact state capture and restore, and `warp_pair_system.gd` may expose only exact pair-state capture and restore, so a rejected Task 4 preparation attempt can roll back the attempted running tick atomically without changing later Warp draws or pair state. These paths authorize no new random policy, request correction, pair transition, or test replacement.
 
 **RED:** Register the controller suite. Use deterministic small-grid systems and explicit ticks to require:
 
