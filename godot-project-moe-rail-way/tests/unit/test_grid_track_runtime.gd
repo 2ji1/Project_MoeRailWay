@@ -1,6 +1,7 @@
 extends "res://tests/support/prototype_test.gd"
 
 const GridTrackRuntimeScript = preload("res://src/domain/track/grid_track_runtime.gd")
+const TrackCellSequenceScript = preload("res://src/domain/track/track_cell_sequence.gd")
 const TrackCellRecordScript = preload("res://src/domain/track/track_cell_record.gd")
 const RouteContactAnchorScript = preload("res://src/domain/track/route_contact_anchor.gd")
 const TrackGeometryPieceScript = preload("res://src/domain/track/track_geometry_piece.gd")
@@ -1121,19 +1122,19 @@ func _test_recovered_departure_endpoint_gesture_installs_and_owns_exact_anchor()
 		locked_before.active_local_start_cells,
 		locked_before.active_local_end_cells,
 	]
-	var unrecovered_records: Array[TrackCellRecordScript] = [
-		TrackCellRecordScript.new(20, Vector2i(3, 2), 19.0),
-	]
+	var unrecovered_sequence = TrackCellSequenceScript.new(Vector2i(4, 2), 1)
+	unrecovered_sequence._next_route_serial = 20
+	unrecovered_sequence._next_nominal_start_cells = 19.0
+	assert_not_null(
+		unrecovered_sequence.try_append_candidate(Vector2i(3, 2)),
+		"Unrecovered overlap fixture appends its independent candidate"
+	)
 	var unrecovered_ledger: Array[TrackGeometryPieceScript] = [locked_before.duplicate_piece()]
 	var no_anchors: Array[RouteContactAnchorScript] = []
-	var unrecovered_overlap = track._resolver.resolve(
-		Vector2i(4, 2),
-		unrecovered_records,
+	var unrecovered_overlap = track._resolve_candidate(
+		unrecovered_sequence,
 		unrecovered_ledger,
-		no_anchors,
-		Vector2.ZERO,
-		Vector2i(8, 8),
-		40.0
+		no_anchors
 	)
 	assert_false(unrecovered_overlap.is_valid, "Unrecovered cell of the partial locked piece remains blocked")
 	assert_equal(unrecovered_overlap.reason, &"locked_overlap", "Unrecovered ownership rejects with locked_overlap")
