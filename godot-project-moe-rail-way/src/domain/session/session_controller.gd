@@ -7,6 +7,10 @@ const SessionStartConfigScript = preload("res://src/domain/session/session_start
 const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
 const TrackSystemScript = preload("res://src/domain/track/track_system.gd")
 const TrainSystemScript = preload("res://src/domain/train/train_system.gd")
+const WarpPairSystemScript = preload("res://src/domain/warp/warp_pair_system.gd")
+const CargoSystemScript = preload("res://src/domain/cargo/cargo_system.gd")
+const WarpPairRecordScript = preload("res://src/domain/warp/warp_pair_record.gd")
+const CargoSlotRecordScript = preload("res://src/domain/cargo/cargo_slot_record.gd")
 
 const DISTANCE_EPSILON := 0.0001
 
@@ -24,9 +28,12 @@ var _state: State = State.READY
 var _start_config: SessionStartConfigScript
 var _track_system: TrackSystemScript
 var _train_system: TrainSystemScript
+var _warp_pair_system: WarpPairSystemScript
+var _cargo_system: CargoSystemScript
 var _total_ticks: int
 var _elapsed_ticks := 0
 var _remaining_ticks: int
+var _running_tick_index := 0
 var _ticks_per_second: int
 var _seconds_per_tick: float
 var _construction_cells_per_tick: float
@@ -37,14 +44,22 @@ var _cached_tick_pose: Dictionary = {"position": Vector2.ZERO, "heading": Vector
 func _init(
 	start_config: SessionStartConfigScript,
 	track_system: TrackSystemScript,
-	train_system: TrainSystemScript
+	train_system: TrainSystemScript,
+	warp_pair_system: WarpPairSystemScript = null,
+	cargo_system: CargoSystemScript = null
 ) -> void:
 	assert(start_config != null, "Session start config is required")
 	assert(track_system != null, "Track system is required")
 	assert(train_system != null, "Train system is required")
+	assert(
+		(warp_pair_system == null) == (cargo_system == null),
+		"Warp pair and cargo systems must both be provided or both be null"
+	)
 	_start_config = start_config
 	_track_system = track_system
 	_train_system = train_system
+	_warp_pair_system = warp_pair_system
+	_cargo_system = cargo_system
 	_ticks_per_second = _start_config.simulation_ticks_per_second
 	_total_ticks = maxi(
 		1,
@@ -68,6 +83,8 @@ func start() -> void:
 func advance_tick(input_frame: TrackInputFrameScript = null) -> void:
 	if _state == State.READY or _state == State.COMPLETED:
 		return
+	if _state == State.RUNNING:
+		_begin_warp_running_tick()
 	var frame: TrackInputFrameScript = (
 		input_frame if input_frame != null else TrackInputFrameScript.empty()
 	)
@@ -77,6 +94,8 @@ func advance_tick(input_frame: TrackInputFrameScript = null) -> void:
 
 	_track_system.advance_construction(_construction_cells_per_tick)
 	var track_end_requested := false
+	var previous_train_distance := 0.0
+	var train_moved := false
 	if (
 		_state == State.PREPARING_DEPARTURE
 		and _track_system.get_built_end_distance_cells() + DISTANCE_EPSILON
@@ -88,13 +107,16 @@ func advance_tick(input_frame: TrackInputFrameScript = null) -> void:
 		)
 		if not _prepare_or_abort(0.0, departure_through):
 			return
+		_begin_warp_running_tick()
 		_train_system.depart(0.0)
 		_train_system.capture_pose(_track_system)
 		_state = State.RUNNING
 		track_end_requested = _train_system.advance_tick(_track_system, _seconds_per_tick)
 		_cached_tick_pose = _train_system.capture_pose(_track_system)
+		train_moved = true
 	elif _state == State.RUNNING:
 		var current_distance := _train_system.get_route_distance_cells()
+		previous_train_distance = current_distance
 		var through_distance := minf(
 			current_distance + _start_config.train_speed_cells_per_second * _seconds_per_tick,
 			_track_system.get_built_end_distance_cells()
@@ -103,11 +125,26 @@ func advance_tick(input_frame: TrackInputFrameScript = null) -> void:
 			return
 		track_end_requested = _train_system.advance_tick(_track_system, _seconds_per_tick)
 		_cached_tick_pose = _train_system.capture_pose(_track_system)
+		train_moved = true
 
-	if _state == State.RUNNING:
+	if _state == State.RUNNING and train_moved:
+		if _warp_cargo_enabled():
+			var contact_hits := _track_system.get_contact_hits_between(
+				previous_train_distance,
+				_train_system.get_route_distance_cells()
+			)
+			_warp_pair_system.resolve_contact_hits(
+				_running_tick_index,
+				contact_hits,
+				_cargo_system
+			)
+			_install_warp_anchors()
 		_track_system.recover_behind(
 			_train_system.get_route_distance_cells() - float(_start_config.recovery_lag_cells)
 		)
+		if _warp_cargo_enabled():
+			_warp_pair_system.expire_after_contact(_running_tick_index, _cargo_system)
+			_install_warp_anchors()
 
 	var regular_expiry_requested := false
 	if _state == State.RUNNING:
@@ -138,14 +175,24 @@ func _prepare_or_abort(current_distance: float, through_distance: float) -> bool
 func _complete(reason: SessionResultScript.Reason) -> void:
 	if _state == State.COMPLETED:
 		return
+	if _warp_cargo_enabled():
+		_warp_pair_system.void_nonterminal(_running_tick_index, _cargo_system)
+		_install_warp_anchors()
 	_track_system.terminate_for_session_completion()
 	_state = State.COMPLETED
 	_publish_snapshot()
+	var delivered_pair_count := 0
+	var base_delivery_reward_total := 0
+	if _warp_cargo_enabled():
+		delivered_pair_count = _cargo_system.get_delivered_pair_count()
+		base_delivery_reward_total = _cargo_system.get_base_delivery_reward_total()
 	session_completed.emit(SessionResultScript.new(
 		reason,
 		_total_ticks,
 		_elapsed_ticks,
-		_remaining_ticks
+		_remaining_ticks,
+		delivered_pair_count,
+		base_delivery_reward_total
 	))
 
 
@@ -175,6 +222,21 @@ func _create_snapshot() -> SessionSnapshotScript:
 		_start_config.departure_required_built_cells,
 		int(floor(built_end + DISTANCE_EPSILON))
 	)
+	var warp_pair_records: Array[WarpPairRecordScript] = []
+	var cargo_slot_records: Array[CargoSlotRecordScript] = []
+	var occupied_cargo_slots := 0
+	var total_cargo_slots := 0
+	var delivered_pair_count := 0
+	var base_delivery_reward_total := 0
+	var warp_cargo_events: Array[Dictionary] = []
+	if _warp_cargo_enabled():
+		warp_pair_records = _warp_pair_system.get_pair_records()
+		cargo_slot_records = _cargo_system.get_slot_records()
+		occupied_cargo_slots = _cargo_system.get_occupied_slot_count()
+		total_cargo_slots = _cargo_system.get_total_slot_count()
+		delivered_pair_count = _cargo_system.get_delivered_pair_count()
+		base_delivery_reward_total = _cargo_system.get_base_delivery_reward_total()
+		warp_cargo_events = _warp_pair_system.get_tick_events()
 	return SessionSnapshotScript.new(
 		_total_ticks,
 		_elapsed_ticks,
@@ -201,5 +263,30 @@ func _create_snapshot() -> SessionSnapshotScript:
 		_start_config.departure_candidate_id,
 		_start_config.departure_cell,
 		_track_system.is_endpoint_gesture_eligible(),
-		_track_system.is_runtime_gesture_active()
+		_track_system.is_runtime_gesture_active(),
+		warp_pair_records,
+		cargo_slot_records,
+		occupied_cargo_slots,
+		total_cargo_slots,
+		delivered_pair_count,
+		base_delivery_reward_total,
+		warp_cargo_events
 	)
+
+
+func _begin_warp_running_tick() -> void:
+	if not _warp_cargo_enabled():
+		return
+	_running_tick_index += 1
+	_warp_pair_system.begin_running_tick(_running_tick_index)
+	_install_warp_anchors()
+
+
+func _install_warp_anchors() -> void:
+	if not _warp_cargo_enabled():
+		return
+	_track_system.set_contact_anchors(_warp_pair_system.get_route_contact_anchors())
+
+
+func _warp_cargo_enabled() -> bool:
+	return _warp_pair_system != null and _cargo_system != null

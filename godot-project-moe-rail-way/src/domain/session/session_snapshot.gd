@@ -3,6 +3,8 @@ extends RefCounted
 
 const TrackCellRecordScript = preload("res://src/domain/track/track_cell_record.gd")
 const TrackGeometryPieceScript = preload("res://src/domain/track/track_geometry_piece.gd")
+const WarpPairRecordScript = preload("res://src/domain/warp/warp_pair_record.gd")
+const CargoSlotRecordScript = preload("res://src/domain/cargo/cargo_slot_record.gd")
 
 var _total_ticks: int
 var _elapsed_ticks: int
@@ -30,6 +32,13 @@ var _selected_departure_candidate_id: StringName
 var _departure_cell: Vector2i
 var _endpoint_gesture_eligible: bool
 var _endpoint_gesture_active: bool
+var _warp_pair_records: Array[WarpPairRecordScript] = []
+var _cargo_slot_records: Array[CargoSlotRecordScript] = []
+var _occupied_cargo_slots: int
+var _total_cargo_slots: int
+var _delivered_pair_count: int
+var _base_delivery_reward_total: int
+var _warp_cargo_events: Array[Dictionary] = []
 
 
 func _init(
@@ -58,7 +67,14 @@ func _init(
 	selected_departure_candidate_id_value: StringName = StringName(),
 	departure_cell_value: Vector2i = Vector2i(-1, -1),
 	endpoint_gesture_eligible_value: bool = false,
-	endpoint_gesture_active_value: bool = false
+	endpoint_gesture_active_value: bool = false,
+	warp_pair_records_value: Array[WarpPairRecordScript] = [],
+	cargo_slot_records_value: Array[CargoSlotRecordScript] = [],
+	occupied_cargo_slots_value: int = 0,
+	total_cargo_slots_value: int = 0,
+	delivered_pair_count_value: int = 0,
+	base_delivery_reward_total_value: int = 0,
+	warp_cargo_events_value: Array[Dictionary] = []
 ) -> void:
 	_total_ticks = total_ticks_value
 	_elapsed_ticks = elapsed_ticks_value
@@ -86,6 +102,13 @@ func _init(
 	_departure_cell = Vector2i(departure_cell_value)
 	_endpoint_gesture_eligible = endpoint_gesture_eligible_value
 	_endpoint_gesture_active = endpoint_gesture_active_value
+	_warp_pair_records = _duplicate_warp_pairs(warp_pair_records_value)
+	_cargo_slot_records = _duplicate_cargo_slots(cargo_slot_records_value)
+	_occupied_cargo_slots = occupied_cargo_slots_value
+	_total_cargo_slots = total_cargo_slots_value
+	_delivered_pair_count = delivered_pair_count_value
+	_base_delivery_reward_total = base_delivery_reward_total_value
+	_warp_cargo_events = warp_cargo_events_value.duplicate(true)
 
 
 func get_total_ticks() -> int:
@@ -198,6 +221,34 @@ func is_endpoint_gesture_active() -> bool:
 	return _endpoint_gesture_active
 
 
+func get_warp_pair_records() -> Array[WarpPairRecordScript]:
+	return _duplicate_warp_pairs(_warp_pair_records)
+
+
+func get_cargo_slot_records() -> Array[CargoSlotRecordScript]:
+	return _duplicate_cargo_slots(_cargo_slot_records)
+
+
+func get_occupied_cargo_slots() -> int:
+	return _occupied_cargo_slots
+
+
+func get_total_cargo_slots() -> int:
+	return _total_cargo_slots
+
+
+func get_delivered_pair_count() -> int:
+	return _delivered_pair_count
+
+
+func get_base_delivery_reward_total() -> int:
+	return _base_delivery_reward_total
+
+
+func get_warp_cargo_events() -> Array[Dictionary]:
+	return _warp_cargo_events.duplicate(true)
+
+
 func _duplicate_records(source: Array[TrackCellRecordScript]) -> Array[TrackCellRecordScript]:
 	var copies: Array[TrackCellRecordScript] = []
 	for record in source:
@@ -209,4 +260,22 @@ func _duplicate_pieces(source: Array[TrackGeometryPieceScript]) -> Array[TrackGe
 	var copies: Array[TrackGeometryPieceScript] = []
 	for piece in source:
 		copies.append(piece.duplicate_piece())
+	return copies
+
+
+func _duplicate_warp_pairs(
+	source: Array[WarpPairRecordScript]
+) -> Array[WarpPairRecordScript]:
+	var copies: Array[WarpPairRecordScript] = []
+	for record in source:
+		copies.append(record.duplicate_record())
+	return copies
+
+
+func _duplicate_cargo_slots(
+	source: Array[CargoSlotRecordScript]
+) -> Array[CargoSlotRecordScript]:
+	var copies: Array[CargoSlotRecordScript] = []
+	for record in source:
+		copies.append(record.duplicate_record())
 	return copies

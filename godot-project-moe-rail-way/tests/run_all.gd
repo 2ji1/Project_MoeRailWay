@@ -22,11 +22,15 @@ const SUITES = [
     preload("res://tests/unit/test_grid_pointer_rasterizer.gd"),
     preload("res://tests/unit/test_warp_pair_system.gd"),
     preload("res://tests/unit/test_cargo_system.gd"),
+    preload("res://tests/unit/test_warp_cargo_session_controller.gd"),
 ]
 
 const GridTrackRuntimeSuiteScript = preload("res://tests/unit/test_grid_track_runtime.gd")
 const WarpPairSystemSuiteScript = preload("res://tests/unit/test_warp_pair_system.gd")
 const CargoSystemSuiteScript = preload("res://tests/unit/test_cargo_system.gd")
+const WarpCargoSessionControllerSuiteScript = preload(
+    "res://tests/unit/test_warp_cargo_session_controller.gd"
+)
 
 
 func _initialize() -> void:
@@ -34,9 +38,16 @@ func _initialize() -> void:
 
 
 func _run_suites() -> void:
+    var controller_probe_prefix := "--warp-cargo-controller-invalid-probe="
     var warp_probe_prefix := "--warp-pair-invalid-probe="
     var cargo_probe_prefix := "--cargo-invalid-probe="
     for argument in OS.get_cmdline_user_args():
+        if argument.begins_with(controller_probe_prefix):
+            var probe_case := argument.trim_prefix(controller_probe_prefix)
+            print("WARP_CARGO_CONTROLLER_INVALID_PROBE_BEGIN:" + probe_case)
+            WarpCargoSessionControllerSuiteScript.new().run_invalid_probe(probe_case)
+            quit(0)
+            return
         if argument.begins_with(warp_probe_prefix):
             var probe_case := argument.trim_prefix(warp_probe_prefix)
             print("WARP_PAIR_INVALID_PROBE_BEGIN:" + probe_case)
