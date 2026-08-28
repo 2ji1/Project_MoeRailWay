@@ -5,12 +5,13 @@
 - Feature branch: `feature/warp-exact-center-local-corners`
 - Verified base: `877b3dadd710abc44ea3602b530d854dd215a665`
 - Canonical design: `docs/superpowers/specs/2026-08-29-warp-exact-center-local-corners-design.md`
-- Stop point: tested and committed feature HEAD with user manual playtest pending; push, PR, merge, tag, primary fast-forward, and cleanup require separate approval
+- Stop point: merged remote `main`, synchronized and tested local `main`, and completed feature cleanup; manual visual rows remain user-owned and `PENDING`
 
 ## 1. Fixed Allowlist
 
 Documentation commit:
 
+- `.claude/ballast.rules.json`
 - `docs/superpowers/specs/2026-08-29-warp-exact-center-local-corners-design.md`
 - `docs/superpowers/plans/2026-08-29-warp-exact-center-local-corners.md`
 - `docs/briefings/ko/2026-08-29-warp-exact-center-local-corners-briefing.md`
@@ -25,7 +26,7 @@ Implementation commits:
 - `godot-project-moe-rail-way/tests/unit/test_track_field_view_input.gd`
 - `godot-project-moe-rail-way/tests/manual/warp_cargo_windows.md`
 
-No other path may change. No GDScript or UID sidecar is created. Risk & Investment and every unrelated worktree remain untouched.
+No other path may change. No GDScript or UID sidecar is created. Risk & Investment and every unrelated worktree remain untouched. The project rule catalog is allowed only for the user-approved `all-track-curves-local-corners` entry.
 
 ## 2. Gate Rules
 
@@ -103,7 +104,7 @@ Add all-eight-orientation fixtures for anchored `1x1`, `2x2`, and the previously
 - every curvature or reverse-direction excursion is confined to a local half-cell window;
 - all interior samples stay inside the footprint or the existing departure lead-in exception;
 - replay is byte-identical and every serial has one owner;
-- straight and unanchored baseline digests stay unchanged.
+- straight baseline digests stay unchanged; this task predates and is superseded by the Warp-independent generalization in Section 9 for unlocked unanchored curves.
 
 Run the resolver focused suite and record only the intended locality and retained-kind failures.
 
@@ -211,3 +212,56 @@ fix: allow adjacent local turn fallback
 ```
 
 Stop at a clean committed feature HEAD with `MANUAL: PENDING (user-owned)`, then launch the `1280x720` mouse-manual window from that exact feature worktree.
+
+## 9. Approved Follow-up: Warp-Independent Generalization and Integration
+
+The user clarified that the approved straight-spine and local-corner visual rule applies to every unlocked `CURVE_1X1`, `CURVE_2X2`, and `CURVE_3X3`, not only curves with a Warp exact-center anchor. The user also approved feature publication, merge-commit integration, primary fast-forward, post-merge verification, and cleanup. This section supersedes the prior stop boundary and every earlier unanchored centerline byte-stability requirement.
+
+### Documentation and Project Rule
+
+Create the approved `all-track-curves-local-corners` project rule and amend the three canonical documentation paths before behavior changes. Commit only those four paths:
+
+```text
+docs: generalize local corner geometry
+```
+
+### RED
+
+Modify only `test_track_geometry_resolver.gd`, `test_grid_track_runtime.gd`, and `test_track_field_view_input.gd`.
+
+- Require unanchored `1x1`, `2x2`, and `3x3` curves in all eight orthogonal orientations to use `nominal_length_cells * 16 + 1` deterministic samples.
+- Require endpoint headings, the straight interior spine, bounded local nonlinear runs, footprint containment, kind, span, ownership, nominal length, nonzero origin behavior, and replay determinism.
+- Add a Warp-free `3x3` runtime and presentation fixture matching the reported visual class. Require the middle run to remain straight while both endpoint transition neighborhoods are visibly rounded at the existing one-eighth presentation cadence.
+- Retain straight centerline bytes, locked curve bytes, exact-center hard knots, adjacent-turn asymmetric fallback, construction, recovery, and train-sampling contracts.
+- Remove only the obsolete unlocked unanchored centerline digest expectations. Run the three focused suites and require failures only from the new fixed-count and local-shape assertions on unchanged production.
+
+### Minimum GREEN
+
+Modify only `track_geometry_resolver.gd`.
+
+- Rename the anchored-only builder and footprint validator to describe their curve-wide authority.
+- Call the common local-corner builder for every unlocked curve with zero or more exact knots; do not retain a legacy radius-based centerline branch.
+- With no exact knot, use endpoint supports and the straight segment between them as the ordinary curve skeleton.
+- With exact knots, preserve the current literal fixed-index centers and local exact-corner cubic halves.
+- Validate every generated curve's interior samples against its footprint, with only the existing first-route departure lead-in exception.
+- Preserve ownership selection, overlap fallback, locked ledger reuse, public APIs, nominal lengths, and deterministic ordering.
+
+Run all three focused suites and the complete automated gate. Stage exact paths and commit:
+
+```text
+fix: generalize local corner geometry
+```
+
+### Review and Integration
+
+Obtain separate specification and quality reviews of the final feature diff and evidence. Address every finding with focused commits and rerun affected gates. Keep every mouse-only row `PENDING` unless the user directly reports it.
+
+After all automated and review gates pass:
+
+1. verify the clean primary `main` still equals refreshed `origin/main` and the feature remains based on that first parent;
+2. push the feature branch and open a pull request targeting `main`, recording canonical documents, task commits, RED/GREEN evidence, complete gates, review outcomes, and the pending manual rows;
+3. merge automatically with a merge commit only and record its two parents;
+4. refresh the protected primary, require its `HEAD` to equal the merge first parent, and fast-forward local `main` to the exact remote merge commit;
+5. rerun the registered suite and all five standalone integrations in `D:\godot\MoeRailWay` with anchored diagnostic checks;
+6. require the primary to remain clean and equal `origin/main`, then stop only agent-owned feature-project Godot processes, remove this feature worktree, and delete the local and remote feature branches;
+7. do not tag, modify Risk & Investment, or change any legacy branch.

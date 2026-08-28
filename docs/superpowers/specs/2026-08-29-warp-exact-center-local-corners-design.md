@@ -1,7 +1,7 @@
-# Warp Exact-Center Local-Corner Geometry Design
+# Track Local-Corner Geometry Design
 
 - Date: 2026-08-29
-- Status: User-approved for implementation
+- Status: User-approved for implementation and integration
 - Audience: Agent-facing canonical specification
 - Feature branch: `feature/warp-exact-center-local-corners`
 - Verified base: `877b3dadd710abc44ea3602b530d854dd215a665`
@@ -12,7 +12,7 @@
 
 ## 1. Outcome
 
-An unlocked curve constrained by one or more `EXACT_CELL_CENTER` anchors must use straight centerline runs joined by bounded local corner blends. It must not use one cubic across the full distance between the entry boundary, exact knots, and exit boundary.
+Every unlocked `CURVE_1X1`, `CURVE_2X2`, and `CURVE_3X3` must use straight centerline runs joined by bounded local corner blends, whether or not any Warp exists. An `EXACT_CELL_CENTER` anchor adds a literal hard knot to that common construction; it is not the switch that enables local-corner geometry.
 
 The selected `CURVE_1X1`, `CURVE_2X2`, or `CURVE_3X3` owner remains selected unless an existing ownership, footprint, locked-overlap, exact-contact, or continuity rule rejects it. Visual quality no longer changes curve ownership merely to hide a global S-shape.
 
@@ -26,7 +26,7 @@ The unmerged experiment on `feature/warp-exact-center-visual-downgrade` at `228f
 
 That experiment is evidence only and has no authority over this branch. This design does not carry forward its reverse-travel threshold, its ownership downgrade, or its accepted anchored-centerline digests.
 
-For unlocked exact-anchored curves, this amendment supersedes Section 4.1 steps 2, 4, 5, and 6 of the parent Warp amendment: endpoint/exact-only hard points, owner-wide tangent assignment, owner-wide handles, and owner-wide cubic evaluation are replaced by the skeleton and local-window rules in Section 5 below. The parent's fixed exact-knot indices, footprint validation, deterministic candidate fallback for existing validity failures, straight geometry, unanchored geometry, and locked-geometry rules remain authoritative.
+For every unlocked curve, this amendment supersedes Section 4.1 steps 2, 4, 5, and 6 of the parent Warp amendment and the legacy unanchored `1x1` quadratic, `2x2` four-point, and `3x3` six-point centerlines. Endpoint and optional exact hard points, owner-wide tangents, and sparse owner-wide interpolation are replaced by the common skeleton and local-window rules in Section 5 below. The parent's fixed exact-knot indices, deterministic candidate fallback for existing validity failures, straight geometry, and locked-geometry rules remain authoritative.
 
 ## 3. Preserved Contracts
 
@@ -34,7 +34,8 @@ The following remain unchanged:
 
 - ordered route cells are authoritative and no cell is inserted, removed, reordered, relocated, rerolled, or pathfound;
 - every active route record has exactly one geometry owner;
-- straight and unanchored curve centerlines remain byte-for-byte stable;
+- straight centerlines remain byte-for-byte stable;
+- unlocked unanchored curve centerlines deliberately change to the common local-corner construction;
 - already locked pieces remain byte-for-byte stable and may leave an exact Warp impossible;
 - exact anchors constrain only their owned active route-record occurrence, except for the existing free departure-origin case;
 - each exact knot remains at local nominal distance `record_offset + 0.5` and at the literal cell center;
@@ -83,7 +84,7 @@ These cadences must not be collapsed into one global setting.
 
 ## 5. Local-Corner Centerline Construction
 
-The rule applies only when an unlocked candidate curve owns at least one exact anchor. Unanchored templates keep their existing code path.
+The rule applies to every unlocked candidate curve. The same builder accepts zero or more exact knots. A Warp-free curve therefore uses the entry boundary, endpoint support knots, a straight interior spine, and the exit boundary; an exact-anchored curve adds its literal centers as ordered hard knots without changing the selected ownership kind.
 
 Use the following fixed geometry constants, not Resources or Inspector settings:
 
@@ -96,22 +97,22 @@ LOCAL_CORNER_HALF_WINDOW_SAMPLES = 4
 
 Construction is deterministic:
 
-1. Create hard knots for the entry boundary at sample `0`, every deduplicated exact center at `(record_offset * 16) + 8`, and the exit boundary at `nominal_length_cells * 16`.
+1. Create hard knots for the entry boundary at sample `0`, every deduplicated exact center when present at `(record_offset * 16) + 8`, and the exit boundary at `nominal_length_cells * 16`.
 2. Stable anchor-ID ordering continues to deduplicate multiple anchors in one route cell without changing their gameplay IDs.
-3. Insert an entry support knot on the incoming ray and an exit support knot on the outgoing ray when a distinct adjacent hard point permits it. A support is at most eight samples and one half cell from its endpoint, is capped to half the adjacent sample-index and spatial forward-projection gaps, and never passes its adjacent hard point.
+3. Insert an entry support knot on the incoming ray and an exit support knot on the outgoing ray when a distinct adjacent hard point permits it. A support is at most eight samples and one half cell from its endpoint, is capped to half the adjacent sample-index and spatial forward-projection gaps, and never passes its adjacent hard point. With no exact knot, the straight segment between these two supports is the visible diagonal spine shown in the approved `2x2` and `3x3` proposal.
 4. Fill every integer sample index by linear interpolation between consecutive ordered skeleton knots.
 5. At an interior skeleton knot whose incoming and outgoing directions are not collinear, choose a half-window no larger than four samples and no larger than half either adjacent sample-index gap. Corner-window interiors therefore never overlap.
 6. For a non-exact support corner, replace only that window with a quadratic fillet whose control is the skeleton corner. The fillet is tangent to the adjacent straight runs and need not pass through the discarded sharp support point.
 7. For an exact corner, use two local cubic halves. They meet at the literal exact knot with one shared normalized bisector tangent. Each handle is no longer than one third of its local chord. The exact sample is never moved.
 8. Samples outside declared corner windows remain exactly equal to the linear skeleton. A local blend spans at most eight stored segments, or one half nominal cell in total.
 9. Preserve exactly `nominal_length_cells * 16 + 1` samples. Preserve explicit entry and exit heading overrides and the existing boundary stitch rules.
-10. Apply the existing interior footprint validation after generation. The first-route departure lead-in remains the only existing exception. Candidate fallback remains `3x3 -> 2x2 -> 1x1` only for the pre-existing validity rules, not for a new visual-backtrack score.
+10. Apply interior footprint validation to every generated curve, not only exact-anchored curves. The first-route departure lead-in remains the only existing exception. Candidate fallback remains `3x3 -> 2x2 -> 1x1` only for existing ownership, grid, locked, anchor, and footprint validity rules, not for a visual-backtrack score.
 
-Passing through an exact center that is itself a geometric corner cannot be a conventional cut-corner fillet: cutting the corner would miss the exact center. The permitted local cubic may therefore contain a small local inflection, but all such deviation is confined to the fixed half-cell window rather than distributed across the entire curve owner.
+For a Warp-free curve, the endpoint support fillets are the only curved neighborhoods and all samples between them remain on the straight spine. Passing through an exact center that is itself a geometric corner cannot be a conventional cut-corner fillet: cutting the corner would miss the exact center. The permitted local cubic may therefore contain a small local inflection, but all such deviation is confined to the fixed half-cell window rather than distributed across the entire curve owner.
 
 ## 6. Ownership, Locking, Sampling, and Determinism
 
-For the same accepted candidate, local-corner generation changes only the unlocked anchored `centerline` samples. Kind, serial span, footprint, group ID, nominal length, active range, and absolute nominal start do not change.
+For the same accepted candidate, local-corner generation changes only unlocked curve `centerline` samples. Kind, serial span, footprint, group ID, nominal length, active range, and absolute nominal start do not change. The common fixed sampling count is `nominal_length_cells * 16 + 1` for anchored and unanchored curves alike.
 
 `sample_nominal()` remains uniform in stored sample index rather than screen-space arc length. This is the authoritative nominal-distance model used by train motion, exact contact distance, construction intervals, recovery slices, and presentation. Arc-length reparameterization is out of scope.
 
@@ -125,18 +126,18 @@ Focused tests must prove:
 
 1. resolver and runtime exact-center checks use the same earliest segment projection, including a target between stored points and a repeated-point segment;
 2. active nominal-range contact observations use the same eight-subdivision policy as swept `CELL_ENTRY` hits;
-3. anchored `1x1`, `2x2`, and `3x3` retain their pre-anchor kind, span, footprint, nominal length, and one-owner-per-serial invariant in all eight orthogonal turn orientations;
+3. anchored and unanchored `1x1`, `2x2`, and `3x3` retain their kind, span, footprint, nominal length, and one-owner-per-serial invariant in all eight orthogonal turn orientations;
 4. exact knots remain at their literal centers and fixed midpoint sample indices;
 5. curvature exists only inside declared local windows and samples outside those windows remain straight;
 6. the former excessive `3x3` remains `CURVE_3X3` and no longer contains a long global S excursion;
 7. entry and exit headings, footprint containment, nonzero grid origin, deterministic replay, partial recovery, and locked immutability remain valid;
-8. straight and unanchored `1x1`, `2x2`, and `3x3` centerlines retain their baseline byte digests;
-9. presentation's one-eighth interval samples preserve the exact center and visibly contain the local bend without introducing curvature into distant straight runs;
+8. straight centerlines and locked curve centerlines retain their baseline bytes, while newly resolved unanchored curves use deterministic fixed-count local-corner samples;
+9. presentation's one-eighth interval samples show the local bends and straight spine for Warp-free curves, and additionally preserve the exact center for anchored curves;
 10. all existing registered and standalone integration gates remain green.
 
 ## 8. Manual Acceptance and Scope Boundary
 
-The user will perform the manual playtest. At `960x540`, `1280x720`, `1600x900`, and `1920x1080`, inspect the previously rejected exact-center turns and confirm:
+The user will perform the manual playtest. At `960x540`, `1280x720`, `1600x900`, and `1920x1080`, inspect both ordinary Warp-free turns and exact-center turns and confirm:
 
 - long portions of each owner are visually straight;
 - curvature is confined to actual direction changes;
@@ -145,6 +146,8 @@ The user will perform the manual playtest. At `960x540`, `1280x720`, `1600x900`,
 - `1x1`, `2x2`, and `3x3` ownership does not unexpectedly shrink;
 - construction locks exactly the displayed geometry and later anchors cannot rewrite it;
 - loading and delivery occur once at the exact marker center.
+
+The screenshot-reported ordinary `3x3` case is a required row: its long middle run must be straight, with curvature confined to the two endpoint transition neighborhoods even though no Warp lies on the owner.
 
 Manual status remains `PENDING` until the user reports the result. Automated evidence cannot mark it passed.
 
@@ -170,3 +173,11 @@ Focused evidence must cover both horizontal directions from the reported `2x2` t
 GREEN review must also reclassify any historical runtime fixture that changes from `final_overlap` to accepted geometry only after proving that its final footprints are pairwise disjoint, every active serial has exactly one owner, the locked ledger is unchanged, inventory is conserved, and the accepted route remains constructible and train-sampleable. The two existing dense-turn fixtures meet those conditions and therefore become positive regressions for exhaustive local fallback. The irreducible duplicate-turn resolver fixture remains the authoritative negative case; no genuine final overlap is accepted.
 
 The manual result remains user-owned. Recheck the reported left and right drags in the same mouse test, confirm the preview may locally reclassify the unlocked tail without moving locked geometry, and confirm the right-hand Warp marker is crossed at its exact center.
+
+## 10. Approved Warp-Independent Generalization
+
+The user clarified twice that local-corner geometry was always intended for ordinary curves as well as Warp exact-center curves. Treating the exact-center correction as a substitute for generalization was a scope error. This section supersedes every earlier statement in this document or plan that preserves unlocked unanchored curve centerlines byte-for-byte.
+
+The correction must reuse one deterministic local-corner builder for every unlocked curve. An empty exact-knot list produces the ordinary straight-spine shape; one or more exact knots constrain that same construction. No Warp-ID or anchor-presence branch may select between a legacy curve and the common local-corner curve.
+
+The user also approved publication and integration after the required tests and independent reviews: push this feature branch, open a pull request to `main`, merge with a merge commit, fast-forward the clean primary `main`, rerun the complete automated gate there, and clean up the feature worktree and local and remote feature branches. Manual visual rows remain `PENDING` unless the user directly confirms them; publication does not convert them to PASS.

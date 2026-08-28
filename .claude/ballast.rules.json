@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "all-track-curves-local-corners",
+      "title": "Generalize local corners",
+      "when": {
+        "keywords": [
+          "곡선",
+          "커브",
+          "곡률",
+          "Warp",
+          "워프",
+          "exact-center",
+          "선로"
+        ]
+      },
+      "body": "MoeRailWay의 곡선 개선은 Warp 존재 여부와 무관하게 모든 unlocked CURVE_1X1/2X2/3X3에 적용한다. 직선 구간은 직선으로 유지하고 실제 방향 전환부에만 곡률을 주며, exact-center는 공통 선형에 추가되는 통과 제약일 뿐 적용 조건이 아니다. (substitute illusion: exact-center 개선을 전체 일반화의 대체물로 잘못 처리함)"
+    }
+  ]
+}
