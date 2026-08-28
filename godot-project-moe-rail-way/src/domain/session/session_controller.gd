@@ -39,6 +39,8 @@ var _seconds_per_tick: float
 var _construction_cells_per_tick: float
 var _snapshot: SessionSnapshotScript
 var _cached_tick_pose: Dictionary = {"position": Vector2.ZERO, "heading": Vector2.RIGHT}
+var _planning_accumulator_percent := 0
+var _did_advance_simulation_tick := true
 
 
 func _init(
@@ -83,9 +85,21 @@ func start() -> void:
 func advance_tick(input_frame: TrackInputFrameScript = null) -> void:
 	if _state == State.READY or _state == State.COMPLETED:
 		return
+	var planning_at_real_tick_start := (
+		_state == State.RUNNING and _track_system.is_runtime_gesture_active()
+	)
+	var simulation_tick_due := true
+	if planning_at_real_tick_start:
+		_planning_accumulator_percent += _start_config.planning_time_scale_percent
+		simulation_tick_due = _planning_accumulator_percent >= 100
+		if simulation_tick_due:
+			_planning_accumulator_percent -= 100
+	else:
+		_planning_accumulator_percent = 0
+	_did_advance_simulation_tick = simulation_tick_due
 	var running_tick_index_before := _running_tick_index
 	var warp_tick_checkpoint := {}
-	if _state == State.RUNNING:
+	if _state == State.RUNNING and simulation_tick_due:
 		if _warp_cargo_enabled():
 			warp_tick_checkpoint = _warp_pair_system.create_running_tick_checkpoint()
 		_begin_warp_running_tick()
@@ -95,6 +109,11 @@ func advance_tick(input_frame: TrackInputFrameScript = null) -> void:
 	var right_won := _track_system.apply_right_input(frame)
 	if not right_won:
 		_track_system.apply_left_input(frame)
+	if not simulation_tick_due:
+		if not _track_system.is_runtime_gesture_active():
+			_planning_accumulator_percent = 0
+		_publish_snapshot(false)
+		return
 
 	_track_system.advance_construction(_construction_cells_per_tick)
 	var track_end_requested := false
@@ -165,6 +184,8 @@ func advance_tick(input_frame: TrackInputFrameScript = null) -> void:
 	elif track_end_requested:
 		_complete(SessionResultScript.Reason.TRACK_END_REACHED)
 	else:
+		if not _track_system.is_runtime_gesture_active():
+			_planning_accumulator_percent = 0
 		_publish_snapshot()
 
 
@@ -215,12 +236,12 @@ func _complete(reason: SessionResultScript.Reason) -> void:
 	))
 
 
-func _publish_snapshot() -> void:
-	_snapshot = _create_snapshot()
+func _publish_snapshot(include_warp_events: bool = true) -> void:
+	_snapshot = _create_snapshot(include_warp_events)
 	snapshot_published.emit(_snapshot)
 
 
-func _create_snapshot() -> SessionSnapshotScript:
+func _create_snapshot(include_warp_events: bool = true) -> SessionSnapshotScript:
 	var train_active := _train_system.is_active()
 	var train_distance := _train_system.get_route_distance_cells()
 	var train_position := Vector2(_start_config.departure_position)
@@ -255,7 +276,8 @@ func _create_snapshot() -> SessionSnapshotScript:
 		total_cargo_slots = _cargo_system.get_total_slot_count()
 		delivered_pair_count = _cargo_system.get_delivered_pair_count()
 		base_delivery_reward_total = _cargo_system.get_base_delivery_reward_total()
-		warp_cargo_events = _warp_pair_system.get_tick_events()
+		if include_warp_events:
+			warp_cargo_events = _warp_pair_system.get_tick_events()
 	return SessionSnapshotScript.new(
 		_total_ticks,
 		_elapsed_ticks,
@@ -289,7 +311,10 @@ func _create_snapshot() -> SessionSnapshotScript:
 		total_cargo_slots,
 		delivered_pair_count,
 		base_delivery_reward_total,
-		warp_cargo_events
+		warp_cargo_events,
+		_state == State.RUNNING and _track_system.is_runtime_gesture_active(),
+		_start_config.planning_time_scale_percent,
+		_did_advance_simulation_tick
 	)
 
 

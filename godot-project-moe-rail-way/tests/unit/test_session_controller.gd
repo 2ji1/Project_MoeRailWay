@@ -113,6 +113,7 @@ class OrderingTrainSystem extends TrainSystemScript:
 
 
 func run() -> PackedStringArray:
+	_test_planning_snapshot_contract_defaults()
 	_test_preparation_freezes_timer_and_departure_moves_same_tick()
 	_test_fractional_duration_rounds_up()
 	_test_terminal_snapshot_precedes_result_and_completion_is_inert()
@@ -126,6 +127,18 @@ func run() -> PackedStringArray:
 	_test_session_tick_order_is_causal_across_controlled_ticks()
 	_test_active_gesture_tick_advances_before_overlapping_sampling()
 	return finish()
+
+
+func _test_planning_snapshot_contract_defaults() -> void:
+	var snapshot = SessionSnapshotScript.new(10, 2, 8, 1)
+	assert_true(snapshot.has_method("is_planning_slowdown_active"), "Snapshot exposes planning-active observation")
+	assert_true(snapshot.has_method("get_planning_time_scale_percent"), "Snapshot exposes planning percentage")
+	assert_true(snapshot.has_method("did_advance_simulation_tick"), "Snapshot exposes simulation-step observation")
+	if not snapshot.has_method("did_advance_simulation_tick"):
+		return
+	assert_false(snapshot.call("is_planning_slowdown_active"), "Legacy snapshot defaults to normal cadence")
+	assert_equal(snapshot.call("get_planning_time_scale_percent"), 100, "Legacy snapshot defaults to 100 percent")
+	assert_true(snapshot.call("did_advance_simulation_tick"), "Legacy snapshot defaults to a simulation step")
 
 
 func _config(
@@ -429,13 +442,13 @@ func _test_held_gesture_defers_work_until_train_termination() -> void:
 	assert_true(track.is_runtime_gesture_active(), "Held-gesture fixture remains active without release")
 	assert_equal(track.advance_construction(0.5), 0.5, "Origin-owned construction advances while the gesture is held")
 	assert_equal(track.get_cell_records()[-1].build_progress, 1.0, "Held gesture completes the shared origin serial")
-	assert_equal(track.recover_behind(1.0), 0, "Recovery defers while the gesture is held")
+	assert_equal(track.recover_behind(1.0), 1, "Recovery advances transactionally while the gesture is held")
 	var controller = SessionControllerScript.new(config, track, TrainSystemScript.new(config.train_speed_cells_per_second))
 	controller.start()
 	controller.advance_tick()
-	assert_false(track.is_runtime_gesture_active(), "Overlapping train preparation terminates the held gesture")
+	assert_true(track.is_runtime_gesture_active(), "Slowed input-only tick preserves the non-overlapping held gesture")
 	assert_equal(track.advance_construction(0.5), 0.0, "No construction budget remains after the origin frontier completes")
-	assert_equal(track.recover_behind(1.0), 1, "Recovery resumes after train termination")
+	assert_equal(track.recover_behind(1.0), 0, "Already committed recovery is never repeated")
 
 
 func _test_session_tick_order_is_causal_across_controlled_ticks() -> void:

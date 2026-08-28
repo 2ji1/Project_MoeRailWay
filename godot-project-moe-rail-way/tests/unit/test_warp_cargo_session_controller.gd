@@ -96,6 +96,7 @@ class ContactTrackSpy extends TrackSystemScript:
 
 
 func run() -> PackedStringArray:
+    _test_skipped_planning_snapshot_never_repeats_warp_events()
     _verify_partial_dependency_probe()
     _test_snapshot_and_result_expose_warp_cargo_observations()
     _test_preparation_freezes_scheduling_and_departure_starts_tick_one()
@@ -105,6 +106,34 @@ func run() -> PackedStringArray:
     _test_regular_and_early_completion_void_nonterminal_cargo()
     _test_pair_expiry_precedes_regular_completion_void()
     return finish()
+
+
+func _test_skipped_planning_snapshot_never_repeats_warp_events() -> void:
+    var config := _config(20.0, 0.1, 40, 2)
+    config.planning_time_scale_percent = 25
+    var fixture := _fixture(config)
+    var controller: SessionControllerScript = fixture["controller"]
+    var track: ContactTrackSpy = fixture["track"]
+    controller.start()
+    controller.advance_tick(_draw_frame([
+        Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0), Vector2i(4, 0),
+    ]))
+    controller.advance_tick(_held_endpoint(track.get_endpoint_cell()))
+    var due_snapshot: SessionSnapshotScript = controller.get_snapshot()
+    assert_true(due_snapshot.is_planning_slowdown_active(), "Warp fixture accepts a running planning gesture")
+    assert_true(due_snapshot.did_advance_simulation_tick(), "Accepted press advances the canonical simulation tick")
+    assert_false(due_snapshot.get_warp_cargo_events().is_empty(), "Due press tick exposes its one-shot Warp events")
+    var pairs_before_skip := _pair_signatures(due_snapshot.get_warp_pair_records())
+    var elapsed_before_skip := due_snapshot.get_elapsed_ticks()
+    var distance_before_skip := due_snapshot.get_train_route_distance_cells()
+    controller.advance_tick(_held_endpoint(track.get_endpoint_cell()))
+    var skipped: SessionSnapshotScript = controller.get_snapshot()
+    assert_true(skipped.is_planning_slowdown_active(), "Held skipped tick remains planning-active")
+    assert_false(skipped.did_advance_simulation_tick(), "First held planning tick is skipped at 25 percent")
+    assert_equal(skipped.get_warp_cargo_events(), [], "Skipped snapshot never repeats prior Warp events")
+    assert_equal(_pair_signatures(skipped.get_warp_pair_records()), pairs_before_skip, "Skipped snapshot freezes Warp lifecycle")
+    assert_equal(skipped.get_elapsed_ticks(), elapsed_before_skip, "Skipped snapshot freezes session elapsed ticks")
+    assert_equal(skipped.get_train_route_distance_cells(), distance_before_skip, "Skipped snapshot freezes train distance")
 
 
 func _verify_partial_dependency_probe() -> void:
@@ -445,6 +474,14 @@ func _draw_frame(cells: Array[Vector2i]) -> TrackInputFrameScript:
     return TrackInputFrameScript.new(
         cells, Vector2i(0, 0), true, Vector2i(-1, -1), false,
         true, false, true, false, cells[-1], true
+    )
+
+
+func _held_endpoint(endpoint: Vector2i) -> TrackInputFrameScript:
+    var empty: Array[Vector2i] = []
+    return TrackInputFrameScript.new(
+        empty, endpoint, true, Vector2i(-1, -1), false,
+        true, true, false, false, endpoint, true
     )
 
 

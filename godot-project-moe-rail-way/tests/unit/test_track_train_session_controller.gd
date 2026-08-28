@@ -12,6 +12,7 @@ const TrainSystemScript = preload("res://src/domain/train/train_system.gd")
 
 
 func run() -> PackedStringArray:
+	_test_valid_running_gesture_uses_literal_four_to_one_cadence()
 	_test_departure_transition_moves_from_departure_center()
 	_test_right_cancellation_wins_before_buffered_left_cells()
 	_test_recovery_refund_is_not_spendable_until_next_tick()
@@ -20,6 +21,54 @@ func run() -> PackedStringArray:
 	_test_held_gesture_defers_work_until_train_termination()
 	_test_active_gesture_controller_tick_preserves_train_sampling_order()
 	return finish()
+
+
+func _test_valid_running_gesture_uses_literal_four_to_one_cadence() -> void:
+	var config := _config(20.0, 8, 8, 0.1)
+	if not _object_has_property(config, &"planning_time_scale_percent"):
+		assert_true(false, "Runtime config exposes planning time scale")
+		return
+	config.set("planning_time_scale_percent", 25)
+	var track = TrackSystemScript.new(config)
+	var controller = SessionControllerScript.new(config, track, TrainSystemScript.new(0.1))
+	controller.start()
+	controller.advance_tick(_left([Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0), Vector2i(4, 0)], Vector2i(0, 0)))
+	var endpoint := track.get_endpoint_cell()
+	var press := _held_endpoint(endpoint)
+	controller.advance_tick(press)
+	var press_snapshot = controller.get_snapshot()
+	assert_true(press_snapshot.call("is_planning_slowdown_active"), "Accepted press publishes active planning")
+	assert_equal(press_snapshot.call("get_planning_time_scale_percent"), 25, "Accepted press publishes configured percentage")
+	assert_true(press_snapshot.call("did_advance_simulation_tick"), "Accepted press remains a simulation tick")
+	var elapsed_after_press := press_snapshot.get_elapsed_ticks()
+	var distance_after_press := press_snapshot.get_train_route_distance_cells()
+	var expected_did_advance := [false, false, false, true]
+	var expected_elapsed := [elapsed_after_press, elapsed_after_press, elapsed_after_press, elapsed_after_press + 1]
+	var expected_distance := [distance_after_press, distance_after_press, distance_after_press, distance_after_press + 0.1]
+	for index in range(4):
+		controller.advance_tick(_held_endpoint(endpoint))
+		var snapshot = controller.get_snapshot()
+		assert_equal(snapshot.call("did_advance_simulation_tick"), expected_did_advance[index], "Literal planning cadence step %d" % (index + 1))
+		assert_equal(snapshot.get_elapsed_ticks(), expected_elapsed[index], "Elapsed cadence step %d" % (index + 1))
+		assert_equal(snapshot.get_train_route_distance_cells(), expected_distance[index], "Train cadence step %d" % (index + 1))
+	var due_snapshot = controller.get_snapshot()
+	controller.advance_tick(_release_endpoint(endpoint))
+	var released = controller.get_snapshot()
+	assert_false(released.is_planning_slowdown_active(), "Release hides planning immediately")
+	assert_false(released.did_advance_simulation_tick(), "Release consumes its slowed real tick without simulation")
+	assert_equal(released.get_elapsed_ticks(), due_snapshot.get_elapsed_ticks(), "Release adds no catch-up simulation")
+	controller.advance_tick()
+	var resumed = controller.get_snapshot()
+	assert_true(resumed.did_advance_simulation_tick(), "First post-release real tick resumes normal simulation")
+	assert_equal(resumed.get_elapsed_ticks(), due_snapshot.get_elapsed_ticks() + 1, "Post-release cadence advances exactly once")
+	assert_equal(resumed.get_train_route_distance_cells(), due_snapshot.get_train_route_distance_cells() + 0.1, "Post-release train movement advances exactly once")
+
+
+func _object_has_property(object: Object, property_name: StringName) -> bool:
+	for property in object.get_property_list():
+		if property.get("name", StringName()) == property_name:
+			return true
+	return false
 
 
 func _config(
@@ -197,13 +246,13 @@ func _test_held_gesture_defers_work_until_train_termination() -> void:
 	assert_true(track.is_runtime_gesture_active(), "Held-gesture fixture remains active without release")
 	assert_equal(track.advance_construction(0.5), 0.5, "Origin-owned construction advances while the gesture is held")
 	assert_equal(track.get_cell_records()[-1].build_progress, 1.0, "Held gesture completes the shared origin serial")
-	assert_equal(track.recover_behind(1.0), 0, "Recovery defers while the gesture is held")
+	assert_equal(track.recover_behind(1.0), 1, "Recovery advances transactionally while the gesture is held")
 	var controller = SessionControllerScript.new(config, track, TrainSystemScript.new(config.train_speed_cells_per_second))
 	controller.start()
 	controller.advance_tick()
 	assert_false(track.is_runtime_gesture_active(), "Overlapping train preparation terminates the held gesture")
 	assert_equal(track.advance_construction(0.5), 0.0, "No construction budget remains after the origin frontier completes")
-	assert_equal(track.recover_behind(1.0), 1, "Recovery resumes after train termination")
+	assert_equal(track.recover_behind(1.0), 0, "Train termination does not repeat already committed recovery")
 
 
 func _test_active_gesture_controller_tick_preserves_train_sampling_order() -> void:

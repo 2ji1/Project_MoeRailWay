@@ -30,12 +30,23 @@ var simulation_ticks_per_second: int:
     set(value):
         session_balance.simulation_ticks_per_second = value
 
+var planning_time_scale_percent: int:
+    get:
+        return session_balance.planning_time_scale_percent
+    set(value):
+        session_balance.planning_time_scale_percent = value
+
 
 func create_session_start_config(seed_value: int) -> SessionStartConfigScript:
     var config := SessionStartConfigScript.new(
         seed_value,
         session_duration_seconds,
-        simulation_ticks_per_second
+        simulation_ticks_per_second,
+        0.0, 0, 0, 0.0, 0.0, 0,
+        Vector2.ZERO, Vector2i.ZERO, 0.0, Vector2.ZERO,
+        StringName(), Vector2.ZERO, Vector2i(-1, -1),
+        0, 0, 0, 0, 0, 0, 0,
+        planning_time_scale_percent
     )
     config.warp_forecast_ticks = _seconds_to_ticks(
         warp_lifecycle_balance.forecast_duration_seconds,
@@ -92,7 +103,8 @@ func complete_session_start_config(
         base_config.warp_lifetime_max_ticks,
         base_config.warp_max_live_pairs,
         base_config.cargo_base_slot_count,
-        base_config.cargo_base_delivery_reward
+        base_config.cargo_base_delivery_reward,
+        base_config.planning_time_scale_percent
     )
 
 

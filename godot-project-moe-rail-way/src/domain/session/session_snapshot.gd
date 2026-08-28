@@ -39,6 +39,9 @@ var _total_cargo_slots: int
 var _delivered_pair_count: int
 var _base_delivery_reward_total: int
 var _warp_cargo_events: Array[Dictionary] = []
+var _planning_slowdown_active: bool
+var _planning_time_scale_percent: int
+var _did_advance_simulation_tick: bool
 
 
 func _init(
@@ -74,7 +77,10 @@ func _init(
 	total_cargo_slots_value: int = 0,
 	delivered_pair_count_value: int = 0,
 	base_delivery_reward_total_value: int = 0,
-	warp_cargo_events_value: Array[Dictionary] = []
+	warp_cargo_events_value: Array[Dictionary] = [],
+	planning_slowdown_active_value: bool = false,
+	planning_time_scale_percent_value: int = 100,
+	did_advance_simulation_tick_value: bool = true
 ) -> void:
 	_total_ticks = total_ticks_value
 	_elapsed_ticks = elapsed_ticks_value
@@ -109,6 +115,9 @@ func _init(
 	_delivered_pair_count = delivered_pair_count_value
 	_base_delivery_reward_total = base_delivery_reward_total_value
 	_warp_cargo_events = warp_cargo_events_value.duplicate(true)
+	_planning_slowdown_active = planning_slowdown_active_value
+	_planning_time_scale_percent = planning_time_scale_percent_value
+	_did_advance_simulation_tick = did_advance_simulation_tick_value
 
 
 func get_total_ticks() -> int:
@@ -247,6 +256,18 @@ func get_base_delivery_reward_total() -> int:
 
 func get_warp_cargo_events() -> Array[Dictionary]:
 	return _warp_cargo_events.duplicate(true)
+
+
+func is_planning_slowdown_active() -> bool:
+	return _planning_slowdown_active
+
+
+func get_planning_time_scale_percent() -> int:
+	return _planning_time_scale_percent
+
+
+func did_advance_simulation_tick() -> bool:
+	return _did_advance_simulation_tick
 
 
 func _duplicate_records(source: Array[TrackCellRecordScript]) -> Array[TrackCellRecordScript]:

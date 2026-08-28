@@ -5,6 +5,7 @@ const Validator = preload("res://src/config/prototype_config_validator.gd")
 
 
 func run() -> PackedStringArray:
+	_test_planning_time_scale_contract()
 	var valid_balance := PrototypeBalanceScript.new()
 	assert_equal(
 		Validator.validate(valid_balance).size(),
@@ -106,8 +107,37 @@ func run() -> PackedStringArray:
 	return finish()
 
 
+func _test_planning_time_scale_contract() -> void:
+	var balance := PrototypeBalanceScript.new()
+	var session_balance = balance.session_balance
+	var has_property := _object_has_property(session_balance, &"planning_time_scale_percent")
+	assert_true(has_property, "Session balance exposes a planning time-scale percentage")
+	if not has_property:
+		return
+	assert_equal(session_balance.get("planning_time_scale_percent"), 25, "Planning defaults to 25 percent")
+	for valid_percent in [10, 100]:
+		session_balance.set("planning_time_scale_percent", valid_percent)
+		assert_equal(Validator.validate(balance), PackedStringArray(), "Inclusive planning boundary %d is valid" % valid_percent)
+	for invalid_percent in [9, 101]:
+		session_balance.set("planning_time_scale_percent", invalid_percent)
+		var errors := Validator.validate(balance)
+		_assert_contains(errors, "prototype_balance.session_balance.planning_time_scale_percent")
+	session_balance.set("planning_time_scale_percent", 25)
+	var config = balance.create_session_start_config(77)
+	assert_equal(config.get("planning_time_scale_percent"), 25, "Runtime config copies planning percentage")
+	session_balance.set("planning_time_scale_percent", 75)
+	assert_equal(config.get("planning_time_scale_percent"), 25, "Runtime config remains isolated from resource mutation")
+
+
 func _assert_contains(errors: PackedStringArray, fragment: String) -> void:
 	var found := false
 	for error_message in errors:
 		found = found or error_message.contains(fragment)
 	assert_true(found, "Expected error containing %s" % fragment)
+
+
+func _object_has_property(object: Object, property_name: StringName) -> bool:
+	for property in object.get_property_list():
+		if property.get("name", StringName()) == property_name:
+			return true
+	return false

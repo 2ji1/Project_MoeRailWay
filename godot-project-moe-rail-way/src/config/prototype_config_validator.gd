@@ -24,6 +24,13 @@ static func validate(balance: PrototypeBalanceScript) -> PackedStringArray:
             errors.append(
                 "prototype_balance.session_balance.simulation_ticks_per_second must be between 1 and 240"
             )
+        if (
+            balance.session_balance.planning_time_scale_percent < 10
+            or balance.session_balance.planning_time_scale_percent > 100
+        ):
+            errors.append(
+                "prototype_balance.session_balance.planning_time_scale_percent must be between 10 and 100"
+            )
 
     if balance.train_balance == null:
         errors.append("prototype_balance.train_balance.resource is required")

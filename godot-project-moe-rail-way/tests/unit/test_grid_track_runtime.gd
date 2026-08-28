@@ -9,6 +9,8 @@ const TrackGeometryResolutionScript = preload("res://src/domain/track/track_geom
 
 
 func run() -> PackedStringArray:
+	_test_active_gesture_recovery_evolves_origin_and_candidate()
+	_test_active_recovery_failure_asserts_and_preserves_transaction()
 	_test_swept_contact_api_exists()
 	_test_endpoint_reshape_legal_operation_requires_concrete_candidate()
 	_test_endpoint_reshape_identical_template_is_not_a_legal_operation()
@@ -101,6 +103,35 @@ func run() -> PackedStringArray:
 	_test_prepared_built_curve_recovers_same_serials_without_ledger_mutation()
 	_test_unfinalizable_tight_turn_is_not_published()
 	return finish()
+
+
+func _test_active_recovery_failure_asserts_and_preserves_transaction() -> void:
+	var output: Array = []
+	var arguments := PackedStringArray([
+		"--headless", "--path", ProjectSettings.globalize_path("res://"),
+		"--script", "res://tests/run_all.gd", "--quit-after", "1", "--",
+		"--reflow-unprepared-pose-probe",
+	])
+	OS.execute(OS.get_executable_path(), arguments, output, true)
+	var captured := "\n".join(PackedStringArray(output))
+	assert_true(captured.contains("Active gesture recovery origin and candidate must stage the same records"), "Active recovery debug probe reports the public owner invariant")
+	assert_true(captured.contains("ACTIVE_RECOVERY_ATOMIC:true"), "Active recovery failure leaves both transaction forms unchanged")
+
+
+func _test_active_gesture_recovery_evolves_origin_and_candidate() -> void:
+	var track = _reflow_runtime()
+	assert_equal(track.append_cells(_reflow_curve_cells()), 5, "Planning recovery fixture appends its prefix")
+	assert_equal(track.append_cells([Vector2i(2, 3)]), 1, "Planning recovery fixture appends support")
+	assert_equal(track.advance_construction(6.0), 6.0, "Planning recovery fixture builds")
+	assert_false(track.gesture_begin(track.get_endpoint_cell()).is_empty(), "Planning recovery fixture begins a valid gesture")
+	var added_suffix: Array[Vector2i] = [Vector2i(2, 4)]
+	assert_true(track.gesture_update(added_suffix), "Planning recovery fixture publishes a new suffix")
+	var inventory_before := track.get_available_track_cells()
+	assert_equal(track.recover_behind(1.0), 1, "Recovery removes one eligible pre-gesture cell while planning")
+	assert_equal(track.get_available_track_cells(), inventory_before + 1, "Planning recovery refunds exactly once")
+	assert_equal(track.get_cell_records()[-1].cell, Vector2i(2, 4), "Planning recovery preserves the new suffix")
+	track.gesture_abort()
+	assert_false(track.get_cell_records().any(func(record): return record.cell == Vector2i(0, 0)), "Abort never resurrects the recovered prefix cell")
 
 
 func _test_exact_center_observation_and_hit_distance() -> void:
@@ -419,9 +450,7 @@ func _test_endpoint_reshape_active_gesture_defers_construction_and_recovery() ->
 	assert_equal(track.recover_behind(1.0), 1, "Deferral fixture records a recovered prefix")
 	var endpoint: Vector2i = track.get_endpoint_cell()
 	var records_before := _record_values(track.get_cell_records())
-	var pieces_before := _piece_values(track.get_geometry_pieces())
 	var inventory_before: int = track.get_available_track_cells()
-	var recovery_before := _recovery_observation_values(track)
 	print("Endpoint reshape: active gesture advances origin construction and defers recovery")
 	assert_true(track.has_method("gesture_begin"), "Gesture begin deferral contract exists")
 	if not track.has_method("gesture_begin"):
@@ -433,16 +462,14 @@ func _test_endpoint_reshape_active_gesture_defers_construction_and_recovery() ->
 	var origin_before_tick: Dictionary = track.call("get_gesture_origin_observation")
 	var consumed := track.advance_construction(0.75)
 	assert_equal(consumed, 0.75, "Active gesture consumes origin-owned construction work")
-	assert_equal(track.recover_behind(5.0), 0, "Recovery remains paused during active construction")
-	assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before, "Active construction preserves geometry")
-	assert_equal(track.get_available_track_cells(), inventory_before, "Active construction preserves inventory")
+	assert_equal(track.recover_behind(5.0), 2, "Recovery advances eligible pre-gesture cells during active construction")
+	assert_equal(track.get_available_track_cells(), inventory_before + 2, "Active recovery refunds each removed cell once")
 	var recovery_after := _recovery_observation_values(track)
-	assert_equal(recovery_after["recovered_cells_by_piece"], recovery_before["recovered_cells_by_piece"], "Active construction preserves recovered cells")
-	assert_equal(recovery_after["recovered_end_distance_cells"], recovery_before["recovered_end_distance_cells"], "Active construction preserves recovery distance")
+	assert_equal(recovery_after["recovered_end_distance_cells"], 3.0, "Active recovery advances the nominal frontier")
 	var current_after_tick := _record_values(track.get_cell_records())
 	var origin_after_tick := _record_values(track.call("get_gesture_origin_observation")["route_records"])
 	assert_equal(current_after_tick, origin_after_tick, "Active construction mirrors exact state into origin and candidate")
-	assert_true(current_after_tick != _record_values(origin_before_tick["route_records"]), "Active construction advances the origin frontier")
+	assert_true(current_after_tick != records_before, "Active construction and recovery evolve the origin frontier")
 	assert_true(track.has_method("gesture_finalize"), "Gesture finalize deferral contract exists")
 	if track.has_method("gesture_finalize"):
 		track.call("gesture_finalize")
@@ -483,9 +510,9 @@ func _test_active_gesture_advances_only_origin_owned_frontier() -> void:
 	var origin_after := _record_values(track.call("get_gesture_origin_observation")["route_records"])
 	assert_equal(origin_after, [after_tick[0], after_tick[1]], "Origin mirrors all shared construction state")
 	assert_equal(track.get_available_track_cells(), 5, "Active construction does not change inventory")
-	assert_equal(track.recover_behind(5.0), 0, "Active gesture keeps recovery paused")
+	assert_equal(track.recover_behind(5.0), 2, "Active gesture recovers the same origin prefix transactionally")
 	assert_true(track.gesture_abort(), "Frontier fixture aborts cleanly")
-	assert_equal(_record_values(track.get_cell_records()), origin_after, "Abort restores the latest mirrored origin")
+	assert_equal(_record_values(track.get_cell_records()), [], "Abort restores the evolved origin without recovered cells")
 
 	var long_track := GridTrackRuntimeScript.new(
 		Vector2i(-1, 1), 10, Vector2.ZERO, Vector2i(10, 8), 40.0
@@ -3216,6 +3243,21 @@ func _assert_locked_prefix_then_provisional(pieces: Array[TrackGeometryPieceScri
 
 
 func run_unprepared_pose_probe() -> bool:
+	var recovery_track = _reflow_runtime()
+	recovery_track.append_cells(_reflow_curve_cells())
+	recovery_track.append_cells([Vector2i(2, 3)])
+	recovery_track.advance_construction(6.0)
+	recovery_track.gesture_begin(recovery_track.get_endpoint_cell())
+	recovery_track.gesture_update([Vector2i(2, 4)])
+	var recovery_before := _recovery_observation_values(recovery_track)
+	var origin_before := _abort_origin_values(recovery_track.get_gesture_origin_observation())
+	recovery_track._resolver = _RejectAfterRecoveryRemovalResolver.new()
+	recovery_track.recover_behind(1.0)
+	var recovery_atomic := (
+		_recovery_observation_values(recovery_track) == recovery_before
+		and _abort_origin_values(recovery_track.get_gesture_origin_observation()) == origin_before
+	)
+	print("ACTIVE_RECOVERY_ATOMIC:", recovery_atomic)
 	var track = _reflow_runtime()
 	assert_equal(track.append_cells(_reflow_curve_cells()), 5, "Probe fixture appends provisional head")
 	var pose = track.get_pose_sample_at_distance(0.0)

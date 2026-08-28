@@ -588,15 +588,82 @@ func advance_construction(progress_cells: float) -> float:
 
 
 func recover_behind(cutoff_distance_cells: float) -> int:
-    if _gesture_active:
+    var candidate_stage := _stage_recovery_for_route(
+        _sequence,
+        _locked_ledger,
+        _recovered_cells_by_piece,
+        _recovered_end_distance_cells,
+        _anchors,
+        cutoff_distance_cells
+    )
+    if candidate_stage.is_empty():
+        if _gesture_active:
+            assert(false, "Active gesture recovery candidate staging must succeed atomically")
         return 0
-    var candidate_sequence = _sequence.duplicate_sequence()
-    var recovered: Array = candidate_sequence.recover_eligible_cells(cutoff_distance_cells)
+    var recovered: Array = candidate_stage["recovered"]
     if recovered.is_empty():
         return 0
-    var candidate_ledger = _duplicate_pieces(_locked_ledger)
-    var candidate_recovered_cells_by_piece: Dictionary = _recovered_cells_by_piece.duplicate(true)
-    var candidate_recovered_end_distance_cells := _recovered_end_distance_cells
+    var origin_stage := {}
+    if _gesture_active:
+        if _gesture_origin_sequence == null:
+            assert(false, "Active gesture recovery requires an evolving origin")
+            return 0
+        origin_stage = _stage_recovery_for_route(
+            _gesture_origin_sequence,
+            _gesture_origin_locked_ledger,
+            _gesture_origin_recovered_cells_by_piece,
+            _gesture_origin_recovered_end_distance_cells,
+            _gesture_origin_anchors,
+            cutoff_distance_cells
+        )
+        if origin_stage.is_empty() or not _same_recovered_serials(
+            recovered, origin_stage.get("recovered", [])
+        ):
+            assert(false, "Active gesture recovery origin and candidate must stage the same records")
+            return 0
+    _commit_candidate(
+        candidate_stage["sequence"],
+        candidate_stage["ledger"],
+        candidate_stage["resolution"]
+    )
+    _recovered_cells_by_piece = candidate_stage["recovered_cells_by_piece"].duplicate(true)
+    _recovered_end_distance_cells = candidate_stage["recovered_end_distance_cells"]
+    _contact_observations = candidate_stage["contacts"].duplicate(true)
+    if _gesture_active:
+        _gesture_origin_sequence = origin_stage["sequence"]
+        _gesture_origin_locked_ledger = _duplicate_pieces(origin_stage["ledger"])
+        _gesture_origin_pieces = _duplicate_pieces(origin_stage["resolution"].pieces)
+        _gesture_origin_recovered_cells_by_piece = origin_stage["recovered_cells_by_piece"].duplicate(true)
+        _gesture_origin_recovered_end_distance_cells = origin_stage["recovered_end_distance_cells"]
+        _gesture_origin_contacts = origin_stage["contacts"].duplicate(true)
+    return recovered.size()
+
+
+func _stage_recovery_for_route(
+    source_sequence: TrackCellSequenceScript,
+    source_ledger: Array[TrackGeometryPieceScript],
+    source_recovered_cells_by_piece: Dictionary,
+    source_recovered_end_distance_cells: float,
+    source_anchors: Array[RouteContactAnchorScript],
+    cutoff_distance_cells: float
+) -> Dictionary:
+    var candidate_sequence = source_sequence.duplicate_sequence()
+    var recovered: Array = candidate_sequence.recover_eligible_cells(cutoff_distance_cells)
+    if recovered.is_empty():
+        return {
+            "sequence": candidate_sequence,
+            "ledger": _duplicate_pieces(source_ledger),
+            "resolution": TrackGeometryResolutionScript.accepted(_duplicate_pieces(
+                _gesture_origin_pieces if source_sequence == _gesture_origin_sequence else _pieces
+            )),
+            "recovered_cells_by_piece": source_recovered_cells_by_piece.duplicate(true),
+            "recovered_end_distance_cells": source_recovered_end_distance_cells,
+            "contacts": [],
+            "recovered": recovered,
+        }
+    var candidate_ledger = _duplicate_pieces(source_ledger)
+    var candidate_recovered_cells_by_piece: Dictionary = source_recovered_cells_by_piece.duplicate(true)
+    var candidate_recovered_end_distance_cells := source_recovered_end_distance_cells
     for record in recovered:
         _remember_recovered_piece_cell_in(
             candidate_ledger,
@@ -612,10 +679,10 @@ func recover_behind(cutoff_distance_cells: float) -> int:
         candidate_sequence.get_records(),
         candidate_recovered_cells_by_piece
     )
-    var candidate_anchors = _duplicate_anchors(_anchors)
+    var candidate_anchors = _duplicate_anchors(source_anchors)
     var resolution = _resolve_candidate(candidate_sequence, candidate_ledger, candidate_anchors)
     if not resolution.is_valid:
-        return 0
+        return {}
     _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
     candidate_sequence.apply_resolved_geometry(resolution.pieces)
     if not _validate_candidate(
@@ -625,18 +692,30 @@ func recover_behind(cutoff_distance_cells: float) -> int:
         candidate_recovered_cells_by_piece,
         candidate_recovered_end_distance_cells
     ):
-        return 0
-    var candidate_contacts = _build_contact_observations(
-        resolution.pieces,
-        candidate_anchors,
-        candidate_recovered_cells_by_piece,
-        candidate_sequence.get_records()
-    )
-    _commit_candidate(candidate_sequence, candidate_ledger, resolution)
-    _recovered_cells_by_piece = candidate_recovered_cells_by_piece.duplicate(true)
-    _recovered_end_distance_cells = candidate_recovered_end_distance_cells
-    _contact_observations = candidate_contacts.duplicate(true)
-    return recovered.size()
+        return {}
+    return {
+        "sequence": candidate_sequence,
+        "ledger": candidate_ledger,
+        "resolution": resolution,
+        "recovered_cells_by_piece": candidate_recovered_cells_by_piece,
+        "recovered_end_distance_cells": candidate_recovered_end_distance_cells,
+        "contacts": _build_contact_observations(
+            resolution.pieces,
+            candidate_anchors,
+            candidate_recovered_cells_by_piece,
+            candidate_sequence.get_records()
+        ),
+        "recovered": recovered,
+    }
+
+
+func _same_recovered_serials(first: Array, second: Array) -> bool:
+    if first.size() != second.size():
+        return false
+    for index in range(first.size()):
+        if first[index].route_serial != second[index].route_serial:
+            return false
+    return true
 
 
 func get_endpoint_cell() -> Vector2i:

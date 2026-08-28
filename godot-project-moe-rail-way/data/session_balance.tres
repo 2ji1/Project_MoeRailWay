@@ -4,3 +4,4 @@
 
 [resource]
 script = ExtResource("1_session")
+planning_time_scale_percent = 25

@@ -94,6 +94,7 @@ func _run() -> void:
     if packed == null:
         _finish()
         return
+    await _assert_real_scene_planning_cadence(packed)
     var app = packed.instantiate()
     if _mouse_manual_mode:
         _configure_mouse_manual_balance(app)
@@ -202,6 +203,48 @@ func _run() -> void:
     _finish()
 
 
+func _assert_real_scene_planning_cadence(packed: PackedScene) -> void:
+    var cadence_app = packed.instantiate()
+    root.add_child(cadence_app)
+    cadence_app.set_physics_process(false)
+    await process_frame
+    cadence_app.set_physics_process(false)
+    var controller = cadence_app.session_controller
+    controller.advance_tick(_route_frame())
+    var endpoint: Vector2i = cadence_app.track_system.get_endpoint_cell()
+    controller.advance_tick(_held_endpoint_frame(endpoint))
+    var press = controller.get_snapshot()
+    _assert_true(press.is_planning_slowdown_active(), "Real scene accepted press publishes planning active")
+    _assert_equal(press.get_planning_time_scale_percent(), 25, "Real scene publishes configured 25 percent")
+    _assert_true(press.did_advance_simulation_tick(), "Real scene accepted press remains a simulation tick")
+    _assert_equal(press.get_elapsed_ticks(), 2, "Real scene press advances literal simulation tick two")
+    _assert_true(is_equal_approx(press.get_train_route_distance_cells(), 0.6474820144), "Real scene press advances literal train distance")
+    var expected_did_advance := [false, false, false, true]
+    var expected_elapsed := [2, 2, 2, 3]
+    var expected_distances := [0.6474820144, 0.6474820144, 0.6474820144, 0.9712230216]
+    for index in range(4):
+        controller.advance_tick(_held_endpoint_frame(endpoint))
+        var snapshot = controller.get_snapshot()
+        _assert_equal(snapshot.did_advance_simulation_tick(), expected_did_advance[index], "Real scene literal planning cadence step %d" % (index + 1))
+        _assert_equal(snapshot.get_elapsed_ticks(), expected_elapsed[index], "Real scene literal elapsed cadence step %d" % (index + 1))
+        _assert_true(is_equal_approx(snapshot.get_train_route_distance_cells(), expected_distances[index]), "Real scene literal train cadence step %d" % (index + 1))
+        if not expected_did_advance[index]:
+            _assert_equal(snapshot.get_warp_cargo_events(), [], "Real scene skipped tick %d has no repeated Warp events" % (index + 1))
+    var due = controller.get_snapshot()
+    controller.advance_tick(_release_endpoint_frame(endpoint))
+    var released = controller.get_snapshot()
+    _assert_true(not released.is_planning_slowdown_active(), "Real scene release clears planning immediately")
+    _assert_true(not released.did_advance_simulation_tick(), "Real scene release consumes no simulation tick")
+    _assert_equal(released.get_elapsed_ticks(), 3, "Real scene release has no catch-up")
+    controller.advance_tick()
+    var resumed = controller.get_snapshot()
+    _assert_true(resumed.did_advance_simulation_tick(), "Real scene resumes one-for-one after release")
+    _assert_equal(resumed.get_elapsed_ticks(), 4, "Real scene first post-release tick advances once")
+    _assert_true(is_equal_approx(due.get_train_route_distance_cells() + 0.3237410072, resumed.get_train_route_distance_cells()), "Real scene post-release train advances exactly once")
+    cadence_app.queue_free()
+    await process_frame
+
+
 func _route_frame() -> TrackInputFrameScript:
     return TrackInputFrameScript.new(
         ROUTE_CELLS,
@@ -215,6 +258,22 @@ func _route_frame() -> TrackInputFrameScript:
         false,
         ROUTE_CELLS[-1],
         true
+    )
+
+
+func _held_endpoint_frame(endpoint: Vector2i) -> TrackInputFrameScript:
+    var empty: Array[Vector2i] = []
+    return TrackInputFrameScript.new(
+        empty, endpoint, true, Vector2i(-1, -1), false,
+        true, true, false, false, endpoint, true
+    )
+
+
+func _release_endpoint_frame(endpoint: Vector2i) -> TrackInputFrameScript:
+    var empty: Array[Vector2i] = []
+    return TrackInputFrameScript.new(
+        empty, endpoint, true, Vector2i(-1, -1), false,
+        false, false, true, false, endpoint, true
     )
 
 
