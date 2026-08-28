@@ -102,8 +102,8 @@ func resolve(
                         anchor.cell, grid_origin_units, cell_size_units
                     ):
                         valid = false
-                if valid and not _anchored_curve_samples_fit_footprint(
-                    preview, anchors, span, records, departure_cell,
+                if valid and not _curve_samples_fit_footprint(
+                    preview, span, records, departure_cell,
                     grid_origin_units, cell_size_units
                 ):
                     valid = false
@@ -342,18 +342,6 @@ func _boundary_after(index: int, records: Array, origin: Vector2, size: float) -
     return (current + _cell_center(records[index + 1].cell, origin, size)) * 0.5
 
 
-func _quadratic_centerline(start: Vector2, control: Vector2, finish: Vector2) -> PackedVector2Array:
-    var points := PackedVector2Array()
-    for step in range(CENTERLINE_SEGMENTS_PER_NOMINAL_CELL + 1):
-        var weight := float(step) / float(CENTERLINE_SEGMENTS_PER_NOMINAL_CELL)
-        points.append(
-            start * (1.0 - weight) * (1.0 - weight)
-            + control * 2.0 * (1.0 - weight) * weight
-            + finish * weight * weight
-        )
-    return points
-
-
 func _curve_centerline(
     candidate: Dictionary,
     start_index: int,
@@ -373,57 +361,15 @@ func _curve_centerline(
     var exact_knots := _exact_knots_for_span(
         anchors, records, start_index, end_index, origin, cell_size
     )
-    if not exact_knots.is_empty():
-        return _anchored_curve_centerline(
-            start,
-            finish,
-            Vector2(incoming),
-            Vector2(outgoing),
-            exact_knots,
-            end_index - start_index + 1,
-            cell_size
-        )
-    if candidate.radius <= 1:
-        var centerline := _quadratic_centerline(
-            start,
-            _cell_center(records[turn_index].cell, origin, cell_size),
-            finish
-        )
-        var incoming_units := Vector2(incoming)
-        var outgoing_units := Vector2(outgoing)
-        var entry_distance := maxf(
-            (centerline[1] - start).dot(incoming_units),
-            cell_size * 0.001
-        )
-        var exit_distance := maxf(
-            (finish - centerline[-2]).dot(outgoing_units),
-            cell_size * 0.001
-        )
-        centerline[1] = start + incoming_units * entry_distance
-        centerline[-2] = finish - outgoing_units * exit_distance
-        return centerline
-    if candidate.radius == 2:
-        return PackedVector2Array([
-            start,
-            start + Vector2(incoming) * cell_size * 0.25,
-            finish - Vector2(outgoing) * cell_size * 0.25,
-            finish,
-        ])
-    var inner_cell: Vector2i = records[turn_index].cell - incoming + outgoing
-    var inner_center := _cell_center(inner_cell, origin, cell_size)
-    var corner := (
-        inner_center
-        + (Vector2(incoming) + Vector2(outgoing)) * cell_size * 0.5
-    )
-    var before_finish := finish - Vector2(outgoing) * cell_size * 0.25
-    return PackedVector2Array([
+    return _local_corner_curve_centerline(
         start,
-        start + Vector2(incoming) * cell_size * 0.25,
-        inner_center,
-        corner,
-        before_finish,
         finish,
-    ])
+        Vector2(incoming),
+        Vector2(outgoing),
+        exact_knots,
+        end_index - start_index + 1,
+        cell_size
+    )
 
 
 func _cell_center(cell: Vector2i, origin: Vector2, size: float) -> Vector2:
@@ -464,7 +410,7 @@ func _exact_knots_for_span(
     return knots
 
 
-func _anchored_curve_centerline(
+func _local_corner_curve_centerline(
     start: Vector2,
     finish: Vector2,
     incoming: Vector2,
@@ -732,25 +678,14 @@ func _piece_contains_exact_center(
     return piece.find_nominal_distance_at_position(target, DISTANCE_EPSILON) >= 0.0
 
 
-func _anchored_curve_samples_fit_footprint(
+func _curve_samples_fit_footprint(
     piece,
-    anchors: Array,
     span: Vector2i,
     records: Array,
     departure_cell: Vector2i,
     origin: Vector2,
     cell_size: float
 ) -> bool:
-    var has_exact_anchor := false
-    for anchor in anchors:
-        if (
-            anchor.contact_mode == RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
-            and _span_owns_cell(span, records, anchor.cell)
-        ):
-            has_exact_anchor = true
-            break
-    if not has_exact_anchor:
-        return true
     for index in range(1, piece.centerline.size() - 1):
         var point: Vector2 = piece.centerline[index]
         var cell := Vector2i(

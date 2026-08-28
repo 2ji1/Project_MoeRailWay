@@ -108,6 +108,7 @@ func run() -> PackedStringArray:
 	_test_departure_forward_boundary_and_route_end_ownership()
 	_test_two_sided_outside_epsilon_stitch_continuity()
 	_test_prepared_built_curve_recovers_same_serials_without_ledger_mutation()
+	_test_unanchored_three_by_three_runtime_uses_local_corners()
 	_test_tight_turn_suffix_resolves_with_disjoint_local_footprints()
 	return finish()
 
@@ -3578,6 +3579,49 @@ func _test_built_head_reflows_without_geometry_lock() -> void:
 		assert_equal(record.state, TrackCellRecordScript.State.BUILT, "Reclassification keeps built state")
 
 
+func _test_unanchored_three_by_three_runtime_uses_local_corners() -> void:
+	var track = _make_three_by_three_curve_runtime()
+	var records = track.get_cell_records()
+	var piece = _piece_containing(track.get_geometry_pieces(), records[2].route_serial)
+	assert_not_null(piece, "Warp-free 3x3 runtime fixture has one owner")
+	if piece == null:
+		return
+	assert_equal(piece.kind, TrackGeometryPieceScript.Kind.CURVE_3X3, "Warp-free runtime retains 3x3 ownership")
+	assert_equal(piece.first_route_serial, records[0].route_serial, "Warp-free runtime owner begins at B")
+	assert_equal(piece.last_route_serial, records[4].route_serial, "Warp-free runtime owner ends at F")
+	assert_equal(piece.nominal_length_cells, 5, "Warp-free runtime owner keeps five nominal cells")
+	assert_equal(piece.centerline.size(), 81, "Warp-free runtime owner uses sixteen samples per nominal cell")
+	var first_spine: Vector2 = piece.sample_nominal(1.5).position
+	var middle_spine: Vector2 = piece.sample_nominal(2.5).position
+	var last_spine: Vector2 = piece.sample_nominal(3.5).position
+	assert_true(
+		absf((middle_spine - first_spine).cross(last_spine - middle_spine)) <= 0.0001
+			and (middle_spine - first_spine).dot(last_spine - middle_spine) > 0.0,
+		"Warp-free runtime keeps the long 3x3 interior spine straight"
+	)
+	assert_equal(track.get_contact_observations(), [], "Warp-free local corners do not synthesize anchors")
+	var unlocked_centerline: PackedVector2Array = piece.centerline
+	assert_equal(track.advance_construction(5.0), 5.0, "Warp-free local-corner route fully constructs")
+	var built_piece = _piece_containing(track.get_geometry_pieces(), records[2].route_serial)
+	assert_equal(built_piece.centerline, unlocked_centerline, "Construction does not rewrite local-corner geometry")
+	assert_true(track.prepare_for_train_sampling(0.0, 5.0), "Warp-free local-corner route prepares for train sampling")
+	var locked_piece = _piece_containing(track.get_geometry_pieces(), records[2].route_serial)
+	assert_true(locked_piece.locked, "Preparation locks the complete Warp-free owner")
+	assert_equal(locked_piece.centerline, unlocked_centerline, "Locking preserves local-corner bytes")
+	assert_true(
+		locked_piece.sample_nominal(2.5).position.is_equal_approx(middle_spine),
+		"Locked train sampling uses the same straight spine"
+	)
+	var inventory_before: int = track.get_available_track_cells()
+	assert_equal(track.recover_behind(1.0), 1, "Warp-free local-corner route recovers one nominal cell")
+	var recovered_piece = _piece_containing(track.get_geometry_pieces(), records[1].route_serial)
+	assert_not_null(recovered_piece, "Recovered Warp-free route retains its locked owner")
+	if recovered_piece != null:
+		assert_equal(recovered_piece.centerline, unlocked_centerline, "Recovery preserves locked local-corner bytes")
+	assert_equal(track.get_available_track_cells(), inventory_before + 1, "Recovery refunds exactly one track cell")
+	_assert_conservation(track, "Warp-free local-corner runtime conserves route inventory")
+
+
 func _test_twenty_construction_steps_keep_completed_head_reflowable() -> void:
 	var track = GridTrackRuntimeScript.new(
 		Vector2i(-1, 0), 18, Vector2.ZERO, Vector2i(8, 8), 40.0
@@ -3850,7 +3894,9 @@ func _test_prepare_transaction_rejects_after_staging_without_mutation() -> void:
 
 func _test_two_sided_outside_epsilon_stitch_continuity() -> void:
 	var track = _boundary_runtime()
-	var predecessor = track.get_geometry_pieces()[0]
+	var initial_pieces = track.get_geometry_pieces()
+	var predecessor = initial_pieces[0]
+	var successor = initial_pieces[1]
 	var boundary: float = predecessor.absolute_start_distance_cells + float(predecessor.nominal_length_cells)
 	var epsilon := GridTrackRuntimeScript.NOMINAL_BOUNDARY_EPSILON
 	var before_distance := boundary - epsilon * 1.01
@@ -3861,9 +3907,25 @@ func _test_two_sided_outside_epsilon_stitch_continuity() -> void:
 	var after = track.get_pose_sample_at_distance(after_distance)
 	assert_true(before.heading.is_equal_approx(after.heading), "Two-sided stitch heading remains approximately continuous")
 	var separation: float = before.position.distance_to(after.position)
-	var nominal_travel_upper_bound := epsilon * 2.02 * 40.0
+	var predecessor_rate: float = (
+		predecessor.centerline[-1].distance_to(predecessor.centerline[-2])
+		* float(predecessor.centerline.size() - 1)
+		/ float(predecessor.nominal_length_cells)
+	)
+	var successor_rate: float = (
+		successor.centerline[1].distance_to(successor.centerline[0])
+		* float(successor.centerline.size() - 1)
+		/ float(successor.nominal_length_cells)
+	)
+	var nominal_travel_upper_bound: float = (
+		epsilon * 1.01 * (predecessor_rate + successor_rate) + 0.000001
+	)
 	assert_true(separation > 0.0, "Two-sided samples remain spatially distinct")
-	assert_true(separation <= nominal_travel_upper_bound, "Two-sided samples stay within their known nominal travel bound")
+	assert_true(
+		separation <= nominal_travel_upper_bound,
+		"Two-sided samples stay within their known nominal travel bound (separation=%.9f bound=%.9f)"
+			% [separation, nominal_travel_upper_bound]
+	)
 
 
 func _test_zero_extent_internal_wait_does_not_lock_successor_reflow() -> void:

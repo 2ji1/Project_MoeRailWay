@@ -21,6 +21,7 @@ func run() -> PackedStringArray:
 	_test_grid_render_observation_reports_inclusive_nonzero_origin_geometry()
 	_test_valid_start_render_observation_tracks_empty_route_endpoint_and_completion()
 	_test_built_reflow_interval_stays_solid_without_provisional_style()
+	_test_unanchored_local_corner_presentation()
 	_test_exact_center_local_corner_presentation()
 	_test_ordinary_provisional_ghost_keeps_cancel_hover()
 	_test_locked_non_support_ghost_has_no_cancel_hover()
@@ -158,6 +159,15 @@ func _three_points_are_forward_collinear(
 		absf(first_delta.cross(second_delta)) <= 0.0001
 		and first_delta.dot(second_delta) > 0.0
 	)
+
+
+func _points_contain_bend(points: PackedVector2Array) -> bool:
+	for index in range(1, points.size() - 1):
+		var incoming := points[index] - points[index - 1]
+		var outgoing := points[index + 1] - points[index]
+		if absf(incoming.cross(outgoing)) > 0.0001:
+			return true
+	return false
 
 
 func _view_straight_piece(
@@ -966,6 +976,55 @@ func _test_exact_center_local_corner_presentation() -> void:
 		PackedVector2Array(replay_interval.points)[4].distance_to(exact_center) <= 0.0001,
 		"Presented interval points are detached from the stored render observation"
 	)
+	fixture.parent.free()
+
+
+func _test_unanchored_local_corner_presentation() -> void:
+	var fixture := _fixture()
+	var runtime := GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 18, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(runtime.append_cells([
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+		Vector2i(2, 1), Vector2i(2, 2),
+	]), 5, "Warp-free presentation fixture appends the reported 3x3 route")
+	var records: Array[TrackCellRecordScript] = runtime.get_cell_records()
+	var pieces: Array[TrackGeometryPieceScript] = runtime.get_geometry_pieces()
+	var owner := _runtime_piece_for_serial(pieces, 3)
+	assert_not_null(owner, "Warp-free presentation fixture has one curve owner")
+	if owner == null:
+		fixture.parent.free()
+		return
+	assert_equal(owner.kind, TrackGeometryPieceScript.Kind.CURVE_3X3, "Warp-free presentation retains 3x3 ownership")
+	assert_equal(owner.centerline.size(), 81, "Warp-free presentation receives fixed-count local-corner samples")
+	fixture.view.present(_view_snapshot(records, pieces))
+	var observation: Dictionary = fixture.view.get_render_observation()
+	var entry_interval := _view_interval_for_serial(observation, 1)
+	var spine_interval := _view_interval_for_serial(observation, 3)
+	var exit_interval := _view_interval_for_serial(observation, 5)
+	for interval in [entry_interval, spine_interval, exit_interval]:
+		assert_false(interval.is_empty(), "Warp-free presentation exposes each inspected interval")
+		if not interval.is_empty():
+			assert_equal(PackedVector2Array(interval.points).size(), 9, "Presentation keeps one-eighth nominal cadence")
+	if not entry_interval.is_empty():
+		assert_true(
+			_points_contain_bend(PackedVector2Array(entry_interval.points)),
+			"Warp-free presentation rounds only the entry transition neighborhood"
+		)
+	if not spine_interval.is_empty():
+		var spine_points := PackedVector2Array(spine_interval.points)
+		for index in range(spine_points.size() - 2):
+			assert_true(
+				_three_points_are_forward_collinear(
+					spine_points[index], spine_points[index + 1], spine_points[index + 2]
+				),
+				"Warp-free presentation keeps middle spine sample %d straight" % index
+			)
+	if not exit_interval.is_empty():
+		assert_true(
+			_points_contain_bend(PackedVector2Array(exit_interval.points)),
+			"Warp-free presentation rounds only the exit transition neighborhood"
+		)
 	fixture.parent.free()
 
 

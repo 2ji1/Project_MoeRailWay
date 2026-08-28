@@ -56,7 +56,9 @@ func _test_position_and_heading_are_continuous_across_piece_boundaries() -> void
 	var pieces = track.get_geometry_pieces()
 	assert_equal(pieces.size(), 2, "Boundary fixture has two pieces")
 	for index in range(pieces.size() - 1):
-		var boundary: float = pieces[index].absolute_start_distance_cells + pieces[index].nominal_length_cells
+		var predecessor = pieces[index]
+		var successor = pieces[index + 1]
+		var boundary: float = predecessor.absolute_start_distance_cells + predecessor.nominal_length_cells
 		var edge := GridTrackRuntimeScript.NOMINAL_BOUNDARY_EPSILON * 1.01
 		assert_true(track.prepare_for_train_sampling(boundary - edge, boundary + edge), "Boundary interval prepares both owners")
 		var before_position: Vector2 = track.get_position_at_distance_cells(boundary - edge)
@@ -64,8 +66,24 @@ func _test_position_and_heading_are_continuous_across_piece_boundaries() -> void
 		var before_heading: Vector2 = track.get_heading_at_distance_cells(boundary - edge)
 		var after_heading: Vector2 = track.get_heading_at_distance_cells(boundary + edge)
 		var separation: float = before_position.distance_to(after_position)
+		var predecessor_rate: float = (
+			predecessor.centerline[-1].distance_to(predecessor.centerline[-2])
+			* float(predecessor.centerline.size() - 1)
+			/ float(predecessor.nominal_length_cells)
+		)
+		var successor_rate: float = (
+			successor.centerline[1].distance_to(successor.centerline[0])
+			* float(successor.centerline.size() - 1)
+			/ float(successor.nominal_length_cells)
+		)
+		var nominal_travel_upper_bound: float = (
+			edge * (predecessor_rate + successor_rate) + 0.000001
+		)
 		assert_true(separation > 0.0, "True-side samples stay spatially distinct")
-		assert_true(separation <= edge * 2.0 * 40.0, "True-side samples stay within nominal travel bound")
+		assert_true(
+			separation <= nominal_travel_upper_bound,
+			"True-side samples stay within nominal travel bound"
+		)
 		assert_true(before_heading.dot(after_heading) > 0.999, "Heading is continuous across piece boundary")
 
 
