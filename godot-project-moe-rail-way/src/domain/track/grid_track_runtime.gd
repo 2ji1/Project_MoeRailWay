@@ -866,8 +866,8 @@ func get_contact_hits_between(
             and through_distance_cells > 0.0
         )
         if not departure_hit and (
-            contact_distance <= previous_distance_cells + NOMINAL_BOUNDARY_EPSILON
-            or contact_distance > through_distance_cells + NOMINAL_BOUNDARY_EPSILON
+            contact_distance <= previous_distance_cells
+            or contact_distance > through_distance_cells
         ):
             continue
         hits.append({

@@ -96,7 +96,7 @@ func resolve(
                     ):
                         valid = false
                 if valid and not _anchored_curve_samples_fit_footprint(
-                    preview, anchors, span, records, departure_cell, grid_origin_units, cell_size_units
+                    preview, anchors, span, records, grid_origin_units, cell_size_units
                 ):
                     valid = false
             if valid:
@@ -280,6 +280,16 @@ func _curve_piece(
         candidate, start_index, end_index,
         departure_cell, records, origin, cell_size, anchors
     )
+    var exact_knots := _exact_knots_for_span(
+        anchors, records, start_index, end_index, origin, cell_size
+    )
+    if not exact_knots.is_empty():
+        if start_index == 0 and not piece.footprint_cells.has(departure_cell):
+            piece.footprint_cells.append(departure_cell)
+        var turn_index: int = candidate.turn_index
+        var previous: Vector2i = departure_cell if turn_index == 0 else records[turn_index - 1].cell
+        piece.entry_heading_override = Vector2(records[turn_index].cell - previous).normalized()
+        piece.exit_heading_override = Vector2(records[turn_index + 1].cell - records[turn_index].cell).normalized()
     piece.active_local_end_cells = float(piece.nominal_length_cells)
     return piece
 
@@ -532,7 +542,6 @@ func _anchored_curve_samples_fit_footprint(
     anchors: Array,
     span: Vector2i,
     records: Array,
-    departure_cell: Vector2i,
     origin: Vector2,
     cell_size: float
 ) -> bool:
@@ -552,10 +561,7 @@ func _anchored_curve_samples_fit_footprint(
             int(floor((point.x - origin.x) / cell_size)),
             int(floor((point.y - origin.y) / cell_size))
         )
-        if (
-            not piece.footprint_cells.has(cell)
-            and not (span.x == 0 and cell == departure_cell)
-        ):
+        if not piece.footprint_cells.has(cell):
             return false
     return true
 

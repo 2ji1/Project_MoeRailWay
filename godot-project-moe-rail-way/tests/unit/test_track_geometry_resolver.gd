@@ -54,30 +54,65 @@ func _test_exact_anchor_knots_preserve_template_contracts() -> void:
 			"Exact anchored straight passes its literal cell center at nominal midpoint"
 		)
 
-	_assert_exact_curve_fixture(
+	_assert_exact_curve_orientations(
 		[Vector2i(0, 0), Vector2i(0, 1)], 0, CURVE_1X1, "1x1"
 	)
-	_assert_exact_curve_fixture(
+	_assert_exact_curve_orientations(
 		[Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1)], 1, CURVE_2X2, "2x2"
 	)
-	_assert_exact_curve_fixture(
+	_assert_exact_curve_orientations(
 		[Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2)],
 		2, CURVE_3X3, "3x3"
 	)
+
+
+func _assert_exact_curve_orientations(
+	base_cells: Array,
+	anchor_offset: int,
+	expected_kind: int,
+	label: String
+) -> void:
+	var bases := [
+		[Vector2i(1, 0), Vector2i(0, 1)],
+		[Vector2i(0, 1), Vector2i(-1, 0)],
+		[Vector2i(-1, 0), Vector2i(0, -1)],
+		[Vector2i(0, -1), Vector2i(1, 0)],
+		[Vector2i(-1, 0), Vector2i(0, 1)],
+		[Vector2i(0, 1), Vector2i(1, 0)],
+		[Vector2i(1, 0), Vector2i(0, -1)],
+		[Vector2i(0, -1), Vector2i(-1, 0)],
+	]
+	for orientation in range(bases.size()):
+		var basis_x: Vector2i = bases[orientation][0]
+		var basis_y: Vector2i = bases[orientation][1]
+		var offset := Vector2i(5, 5)
+		var departure := _transform_cell(DEPARTURE, basis_x, basis_y) + offset
+		var cells: Array[Vector2i] = []
+		for base_cell in base_cells:
+			cells.append(_transform_cell(base_cell, basis_x, basis_y) + offset)
+		_assert_exact_curve_fixture(
+			cells, anchor_offset, expected_kind,
+			"%s orientation %d" % [label, orientation], departure
+		)
+
+
+func _transform_cell(cell: Vector2i, basis_x: Vector2i, basis_y: Vector2i) -> Vector2i:
+	return basis_x * cell.x + basis_y * cell.y
 
 
 func _assert_exact_curve_fixture(
 	cells: Array,
 	anchor_offset: int,
 	expected_kind: int,
-	label: String
+	label: String,
+	departure: Vector2i = DEPARTURE
 ) -> void:
-	var records := _records_for(cells)
+	var records := _records_for(cells, departure)
 	var anchor_cell: Vector2i = records[anchor_offset].cell
 	var anchor = RouteContactAnchorScript.new(&"warp_exact", anchor_cell)
 	anchor.set(&"contact_mode", 1)
 	var result = _resolver.resolve(
-		DEPARTURE, records, [], [anchor], Vector2.ZERO, Vector2i(8, 8), 40.0
+		departure, records, [], [anchor], Vector2.ZERO, Vector2i(12, 12), 40.0
 	)
 	assert_true(result.is_valid, "%s exact anchored curve resolves" % label)
 	if not result.is_valid:
@@ -98,6 +133,29 @@ func _assert_exact_curve_fixture(
 		piece.sample_nominal(local_offset).position.distance_to(expected_center) <= 0.0001,
 		"%s passes the literal cell center at its nominal knot" % label
 	)
+	var turn_index := _first_turn_index(departure, records)
+	var previous: Vector2i = departure if turn_index == 0 else records[turn_index - 1].cell
+	var incoming := Vector2(records[turn_index].cell - previous).normalized()
+	var outgoing := Vector2(records[turn_index + 1].cell - records[turn_index].cell).normalized()
+	assert_true(piece.sample_nominal(0.0).heading.is_equal_approx(incoming), "%s preserves operational entry heading" % label)
+	assert_true(piece.sample_nominal(float(piece.nominal_length_cells)).heading.is_equal_approx(outgoing), "%s preserves operational exit heading" % label)
+	for sample_index in range(1, piece.centerline.size() - 1):
+		var point: Vector2 = piece.centerline[sample_index]
+		var cell := Vector2i(int(floor(point.x / 40.0)), int(floor(point.y / 40.0)))
+		assert_true(piece.footprint_cells.has(cell), "%s interior sample %d remains inside footprint" % [label, sample_index])
+	var replay = _resolver.resolve(
+		departure, records, [], [anchor], Vector2.ZERO, Vector2i(12, 12), 40.0
+	)
+	var replay_piece = _piece_covering_serial(replay.pieces, records[anchor_offset].route_serial)
+	assert_equal(replay_piece.centerline, piece.centerline, "%s exact geometry replays deterministically" % label)
+
+
+func _first_turn_index(departure: Vector2i, records: Array) -> int:
+	for index in range(records.size() - 1):
+		var previous: Vector2i = departure if index == 0 else records[index - 1].cell
+		if records[index].cell - previous != records[index + 1].cell - records[index].cell:
+			return index
+	return -1
 
 
 func _object_has_property(object: Object, property_name: StringName) -> bool:
@@ -336,11 +394,11 @@ func _test_exit_support_metadata_copies_with_active_slices() -> void:
 	assert_equal(piece.exit_support_route_serial, 6, "Active slice support metadata is detached")
 
 
-func _records_for(source_cells: Array) -> Array:
+func _records_for(source_cells: Array, departure: Vector2i = DEPARTURE) -> Array:
 	var cells: Array[Vector2i] = []
 	for cell in source_cells:
 		cells.append(cell)
-	var sequence = TrackCellSequenceScript.new(DEPARTURE, 32)
+	var sequence = TrackCellSequenceScript.new(departure, 32)
 	assert_equal(sequence.append_candidates(cells), cells.size(), "Fixture cells accepted")
 	return sequence.get_records()
 

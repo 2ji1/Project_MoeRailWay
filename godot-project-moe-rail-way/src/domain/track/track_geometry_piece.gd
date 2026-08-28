@@ -15,6 +15,8 @@ var locked := false
 var exit_support_route_serial: int = -1
 var active_local_start_cells := 0.0
 var active_local_end_cells := 0.0
+var entry_heading_override := Vector2.ZERO
+var exit_heading_override := Vector2.ZERO
 
 
 func contains_serial(route_serial: int) -> bool:
@@ -56,6 +58,10 @@ func sample_nominal(local_distance_cells: float) -> Dictionary:
     var weight := scaled - float(segment)
     var position: Vector2 = centerline[segment].lerp(centerline[segment + 1], weight)
     var heading: Vector2 = (centerline[segment + 1] - centerline[segment]).normalized()
+    if segment == 0 and not entry_heading_override.is_zero_approx():
+        heading = entry_heading_override.normalized()
+    elif segment == centerline.size() - 2 and not exit_heading_override.is_zero_approx():
+        heading = exit_heading_override.normalized()
     if heading.is_zero_approx():
         for offset in range(1, centerline.size()):
             var fallback_index := mini(segment + offset, centerline.size() - 2)
@@ -91,4 +97,6 @@ func duplicate_piece() -> RefCounted:
     copy.exit_support_route_serial = exit_support_route_serial
     copy.active_local_start_cells = active_local_start_cells
     copy.active_local_end_cells = active_local_end_cells
+    copy.entry_heading_override = Vector2(entry_heading_override)
+    copy.exit_heading_override = Vector2(exit_heading_override)
     return copy

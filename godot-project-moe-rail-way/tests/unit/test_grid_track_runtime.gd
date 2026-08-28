@@ -132,6 +132,20 @@ func _test_exact_center_observation_and_hit_distance() -> void:
 	assert_equal(hits.size(), 1, "Exact hit fires once at the knot")
 	if hits.size() == 1:
 		assert_equal(hits[0]["contact_distance_cells"], 2.5, "Exact hit reports the knot distance")
+	assert_equal(track.get_contact_hits_between(2.4998, 2.49995), [], "Exact hit never fires before a nearby knot")
+	assert_equal(track.get_contact_hits_between(2.49995, 2.50005).size(), 1, "Narrow sweep across a knot cannot miss")
+	assert_equal(track.get_contact_hits_between(2.50005, 2.6), [], "Exact half-open sweep never repeats a crossed knot")
+	var second_anchor = RouteContactAnchorScript.new(&"a_second", Vector2i(2, 0))
+	second_anchor.contact_mode = RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	track.set_contact_anchors([anchor, second_anchor])
+	var duplicate_hits := track.get_contact_hits_between(2.49, 2.5)
+	assert_equal(_hit_anchor_ids(duplicate_hits), [&"a_second", &"warp_exact"], "Same-knot exact IDs emit once in deterministic ID order")
+	var departure = RouteContactAnchorScript.new(&"departure_exact", Vector2i(-1, 0))
+	departure.contact_mode = RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	track.set_contact_anchors([departure])
+	var departure_observations := track.get_contact_observations()
+	assert_equal(departure_observations[0].get("contact_distance_cells", -1.0), 0.0, "Departure exact anchor owns nominal distance zero")
+	assert_equal(track.get_contact_hits_between(0.0, 0.1).size(), 1, "Departure exact anchor fires on the first positive sweep")
 
 
 func _object_has_property(object: Object, property_name: StringName) -> bool:
@@ -139,6 +153,13 @@ func _object_has_property(object: Object, property_name: StringName) -> bool:
 		if property.get("name", StringName()) == property_name:
 			return true
 	return false
+
+
+func _hit_anchor_ids(hits: Array[Dictionary]) -> Array[StringName]:
+	var ids: Array[StringName] = []
+	for hit in hits:
+		ids.append(hit["anchor_id"])
+	return ids
 
 
 func _test_swept_contact_api_exists() -> void:

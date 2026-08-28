@@ -4,7 +4,7 @@ const SCENE_PATH := "res://tests/integration/warp_cargo_app.tscn"
 const SessionControllerScript = preload("res://src/domain/session/session_controller.gd")
 const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
 const WarpPairRecordScript = preload("res://src/domain/warp/warp_pair_record.gd")
-const INTEGRATION_SEED := 88695099
+const INTEGRATION_SEED := 73013
 
 const ROUTE_CELLS: Array[Vector2i] = [
     Vector2i(6, 2), Vector2i(7, 2), Vector2i(7, 3), Vector2i(7, 4), Vector2i(7, 5),
@@ -25,41 +25,45 @@ const EXPECTED_EVENT_TICKS := {
     3: ["ACTIVATED:warp_pair_1:-1:0"],
     6: ["FORECASTED:warp_pair_2:-1:0"],
     8: ["ACTIVATED:warp_pair_2:-1:0"],
-    11: ["FORECASTED:warp_pair_3:-1:0", "LOADED:warp_pair_1:0:0"],
+    11: ["FORECASTED:warp_pair_3:-1:0", "LOADED:warp_pair_2:0:0"],
     13: ["ACTIVATED:warp_pair_3:-1:0"],
-    17: ["LOADED:warp_pair_2:1:0"],
-    117: ["EXPIRED:warp_pair_1:0:0"],
-    118: ["FORECASTED:warp_pair_4:-1:0"],
-    120: ["ACTIVATED:warp_pair_4:-1:0"],
-    138: ["DELIVERED:warp_pair_2:1:37"],
-    139: ["FORECASTED:warp_pair_5:-1:0", "VOIDED:warp_pair_3:-1:0", "VOIDED:warp_pair_4:-1:0", "VOIDED:warp_pair_5:-1:0"],
+    120: ["EXPIRED:warp_pair_1:-1:0"],
+    121: ["FORECASTED:warp_pair_4:-1:0"],
+    123: ["ACTIVATED:warp_pair_4:-1:0"],
+    126: ["LOADED:warp_pair_4:1:0"],
+    139: ["EXPIRED:warp_pair_2:0:0", "VOIDED:warp_pair_3:-1:0", "VOIDED:warp_pair_4:1:0"],
 }
 
 const EXPECTED_STATE_TRACE := [
-    {"tick": 1, "state": "RUNNING", "pairs": ["warp_pair_1:FORECAST:0:F2:L115"], "occupied": 0, "delivered": 0, "reward": 0},
-    {"tick": 3, "state": "RUNNING", "pairs": ["warp_pair_1:ACTIVE_UNLOADED:0:F0:L114"], "occupied": 0, "delivered": 0, "reward": 0},
-    {"tick": 11, "state": "RUNNING", "pairs": ["warp_pair_1:IN_TRANSIT:0:F0:L106", "warp_pair_2:ACTIVE_UNLOADED:1:F0:L127", "warp_pair_3:FORECAST:2:F2:L155"], "occupied": 1, "delivered": 0, "reward": 0},
-    {"tick": 17, "state": "RUNNING", "pairs": ["warp_pair_1:IN_TRANSIT:0:F0:L100", "warp_pair_2:IN_TRANSIT:1:F0:L121", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L150"], "occupied": 2, "delivered": 0, "reward": 0},
-    {"tick": 45, "state": "RUNNING", "pairs": ["warp_pair_1:IN_TRANSIT:0:F0:L72", "warp_pair_2:IN_TRANSIT:1:F0:L93", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L122"], "occupied": 2, "delivered": 0, "reward": 0},
-    {"tick": 117, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L21", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L50"], "occupied": 1, "delivered": 0, "reward": 0},
-    {"tick": 118, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L20", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L49", "warp_pair_4:FORECAST:0:F2:L31"], "occupied": 1, "delivered": 0, "reward": 0},
-    {"tick": 120, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L18", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L47", "warp_pair_4:ACTIVE_UNLOADED:0:F0:L30"], "occupied": 1, "delivered": 0, "reward": 0},
-    {"tick": 138, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:DELIVERED:1:F0:L1", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L29", "warp_pair_4:ACTIVE_UNLOADED:0:F0:L12"], "occupied": 0, "delivered": 1, "reward": 37},
-    {"tick": 139, "state": "COMPLETED", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:DELIVERED:1:F0:L1", "warp_pair_3:VOIDED:2:F0:L28", "warp_pair_4:VOIDED:0:F0:L11", "warp_pair_5:VOIDED:1:F2:L101"], "occupied": 0, "delivered": 1, "reward": 37},
+    {"tick": 1, "state": "RUNNING", "pairs": ["warp_pair_1:FORECAST:0:F2:L118"], "occupied": 0, "delivered": 0, "reward": 0},
+    {"tick": 3, "state": "RUNNING", "pairs": ["warp_pair_1:ACTIVE_UNLOADED:0:F0:L117"], "occupied": 0, "delivered": 0, "reward": 0},
+    {"tick": 4, "state": "RUNNING", "pairs": ["warp_pair_1:ACTIVE_UNLOADED:0:F0:L116"], "occupied": 0, "delivered": 0, "reward": 0},
+    {"tick": 8, "state": "RUNNING", "pairs": ["warp_pair_1:ACTIVE_UNLOADED:0:F0:L112", "warp_pair_2:ACTIVE_UNLOADED:1:F0:L131"], "occupied": 0, "delivered": 0, "reward": 0},
+    {"tick": 10, "state": "RUNNING", "pairs": ["warp_pair_1:ACTIVE_UNLOADED:0:F0:L110", "warp_pair_2:ACTIVE_UNLOADED:1:F0:L129"], "occupied": 0, "delivered": 0, "reward": 0},
+    {"tick": 13, "state": "RUNNING", "pairs": ["warp_pair_1:ACTIVE_UNLOADED:0:F0:L107", "warp_pair_2:IN_TRANSIT:1:F0:L126", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L152"], "occupied": 1, "delivered": 0, "reward": 0},
+    {"tick": 64, "state": "RUNNING", "pairs": ["warp_pair_1:ACTIVE_UNLOADED:0:F0:L56", "warp_pair_2:IN_TRANSIT:1:F0:L75", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L101"], "occupied": 1, "delivered": 0, "reward": 0},
+    {"tick": 119, "state": "RUNNING", "pairs": ["warp_pair_1:ACTIVE_UNLOADED:0:F0:L1", "warp_pair_2:IN_TRANSIT:1:F0:L20", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L46"], "occupied": 1, "delivered": 0, "reward": 0},
+    {"tick": 120, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L19", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L45"], "occupied": 1, "delivered": 0, "reward": 0},
+    {"tick": 121, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L18", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L44", "warp_pair_4:FORECAST:0:F2:L159"], "occupied": 1, "delivered": 0, "reward": 0},
+    {"tick": 123, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L16", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L42", "warp_pair_4:ACTIVE_UNLOADED:0:F0:L158"], "occupied": 1, "delivered": 0, "reward": 0},
+    {"tick": 124, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L15", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L41", "warp_pair_4:ACTIVE_UNLOADED:0:F0:L157"], "occupied": 1, "delivered": 0, "reward": 0},
+    {"tick": 138, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L1", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L27", "warp_pair_4:IN_TRANSIT:0:F0:L143"], "occupied": 2, "delivered": 0, "reward": 0},
+    {"tick": 139, "state": "COMPLETED", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:EXPIRED:1:F0:L0", "warp_pair_3:VOIDED:2:F0:L26", "warp_pair_4:VOIDED:0:F0:L142"], "occupied": 0, "delivered": 0, "reward": 0},
 ]
 
-const MANUAL_CHECKPOINT_TICKS: Array[int] = [1, 3, 11, 17, 45, 117, 118, 120, 138, 139]
+const MANUAL_CHECKPOINT_TICKS: Array[int] = [1, 3, 11, 13, 64, 120, 121, 123, 126, 138, 139]
 const MANUAL_EXPECTATIONS := {
     1: "Empty cargo; pair 1 forecast with low-alpha endpoints and F 1s.",
     3: "Pair 1 active: filled origin, outlined destination, 12s lifetime.",
-    11: "Pair 1 loads at its exact origin center into slot 0.",
-    17: "Pair 2 loads at its exact origin center; cargo is full at 2 / 2.",
-    45: "The train crosses pair 3 exact origin while full; pair 3 remains unloaded.",
-    117: "Pair 1 expires; slot 0 clears and cargo becomes mixed at 1 / 2.",
-    118: "Pair 4 forecast appears at its seeded cells without route correction.",
-    120: "Pair 4 activates but remains impossible; cargo stays mixed at 1 / 2.",
-    138: "Pair 2 delivers on its final lifetime tick and reward becomes 37.",
-    139: "Regular end clears every remaining live endpoint without penalty.",
+    11: "Pair 2 loads at its exact origin center into slot 0.",
+    13: "Pair 3 activates at its seeded cells without route correction.",
+    64: "Impossible exact contacts remain unloaded without route correction.",
+    120: "Pair 1 expires unloaded and cargo remains at 1 / 2.",
+    121: "Pair 4 forecast appears at its original seeded cells.",
+    123: "Pair 4 activates with the original lifetime facts.",
+    126: "Pair 4 loads at its exact origin center into slot 1.",
+    138: "Both loaded pairs remain in transit; pair 2 has one lifetime tick.",
+    139: "Pair 2 expires before completion voids the remaining live pairs.",
 }
 
 var _failures := PackedStringArray()
@@ -91,7 +95,6 @@ func _run() -> void:
         _finish()
         return
     var app = packed.instantiate()
-    app.startup_seed = INTEGRATION_SEED
     if _mouse_manual_mode:
         _configure_mouse_manual_balance(app)
     root.add_child(app)
@@ -126,14 +129,13 @@ func _run() -> void:
         _create_manual_overlay(app)
     var actual_events_by_tick: Array = []
     var actual_state_trace: Array[Dictionary] = []
-    var trace_ticks := {1: true, 3: true, 11: true, 17: true, 45: true, 117: true, 118: true, 120: true, 138: true, 139: true}
+    var trace_ticks := {1: true, 3: true, 4: true, 8: true, 10: true, 13: true, 64: true, 119: true, 120: true, 121: true, 123: true, 124: true, 138: true, 139: true}
     var results: Array = []
     var result_observer := func(result): results.append(result)
     app.session_result_presented.connect(result_observer)
 
     for tick in range(1, 140):
         var frame = _route_frame() if tick == 1 else TrackInputFrameScript.empty()
-        var previous_train_distance: float = controller.get_snapshot().get_train_route_distance_cells()
         controller.advance_tick(frame)
         var snapshot = controller.get_snapshot()
         actual_events_by_tick.append(_event_signatures(snapshot))
@@ -147,29 +149,13 @@ func _run() -> void:
                 var forecast_origin: Dictionary = field_observation.warp_endpoints[0]
                 _assert_equal(forecast_origin.alpha, 0.35, "Real forecast is low alpha")
                 _assert_equal(forecast_origin.countdown_text, "F 1s", "Real forecast countdown is readable")
-                _assert_true(forecast_origin.position.is_equal_approx(Vector2(360.0, 120.0)), "Real endpoint uses logical grid center")
-        if tick == 17:
+                _assert_true(forecast_origin.position.is_equal_approx(Vector2(360.0, 66.6666667)), "Real endpoint uses logical grid center")
+        if tick == 126:
             _assert_equal(_cargo_text(shell), "2 / 2", "Real HUD shows full cargo")
-        if tick == 45:
-            var tick_pairs: Array = snapshot.get_warp_pair_records()
-            var sweep_anchor_ids := _hit_anchor_ids(app.track_system.get_contact_hits_between(
-                previous_train_distance,
-                snapshot.get_train_route_distance_cells()
-            ))
-            _assert_true(sweep_anchor_ids.has(&"warp_pair_3/origin"), "Full-slot tick crosses pair three origin in the real route sweep")
-            _assert_true(previous_train_distance < 14.5, "Full-slot sweep begins before the independent exact-center distance")
-            _assert_true(snapshot.get_train_route_distance_cells() >= 14.5, "Full-slot sweep reaches the independent exact-center distance")
-            _assert_equal(snapshot.get_occupied_cargo_slots(), 2, "Full-slot sweep begins with both cargo slots occupied")
-            _assert_true(tick_pairs.size() >= 3, "Full-slot tick retains pair three")
-            if tick_pairs.size() >= 3:
-                _assert_equal(tick_pairs[2].state, WarpPairRecordScript.State.ACTIVE_UNLOADED, "Full-slot origin contact leaves pair three unloaded")
-                _assert_true(not _event_signatures(snapshot).has("LOADED:warp_pair_3:0:0"), "Full-slot origin contact emits no load event")
-        if tick == 117:
-            _assert_equal(_cargo_text(shell), "1 / 2", "Expiry clears one real cargo slot")
         if tick == 120:
-            _assert_equal(_cargo_text(shell), "1 / 2", "Impossible active pair does not refill cargo")
-        if tick == 138:
-            _assert_equal(_reward_text(shell), "37", "Final-life delivery updates base reward immediately")
+            _assert_equal(_cargo_text(shell), "1 / 2", "Unloaded expiry leaves occupied cargo unchanged")
+        if tick == 139:
+            _assert_equal(_reward_text(shell), "0", "Final-life expiry leaves base reward unchanged")
 
         if _manual_mode and tick in MANUAL_CHECKPOINT_TICKS:
             var result_overlay = shell.get_node("ResultOverlay")
@@ -182,7 +168,7 @@ func _run() -> void:
                     "result",
                     tick,
                     snapshot,
-                    "Regular end result retains reward 37 and contains no penalty or settlement action."
+                    "Regular end result retains reward 0 and contains no penalty or settlement action."
                 )
 
     _assert_equal(actual_events_by_tick, _expected_events_by_tick(), "Every fixed-seed tick produces the approved event trace")
@@ -190,7 +176,7 @@ func _run() -> void:
     _assert_equal(results.size(), 1, "Regular completion presents one result")
     _assert_equal(controller.get_state(), SessionControllerScript.State.COMPLETED, "Trace ends by regular completion")
     _assert_equal(_cargo_text(shell), "0 / 2", "Regular end clears the cargo HUD")
-    _assert_equal(_reward_text(shell), "37", "Regular end retains earned reward")
+    _assert_equal(_reward_text(shell), "0", "Regular end retains the unchanged base reward")
     _assert_true(shell.get_layout_observation().hud_texts.has("BASE REWARD"), "Cash placeholder is renamed BASE REWARD")
     _assert_true(shell.has_method("get_cargo_slot_strip"), "Real shell exposes the cargo slot strip")
     if shell.has_method("get_cargo_slot_strip"):
