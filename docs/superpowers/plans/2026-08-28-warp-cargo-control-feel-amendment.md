@@ -238,9 +238,38 @@ The cadence fixtures must declare the expected real-tick/simulation-tick sequenc
 
 **Reviews:** Specification review checks real-time dissolve and exact planning visibility. Quality review checks redraw/process lifecycle, repeated-snapshot idempotence, input pass-through, resize mapping, observation detachment, and no presentation-owned gameplay decisions.
 
-## 8. Final Automated and Manual Evidence Gate
+## 8. Task 4: Reuse the Recovered Departure Coordinate
 
-After Task 3 and its reviews, run the complete gate without changing files:
+**Objective:** Fix the manual-play failure in which a valid endpoint drag was silently rejected after Warp snapping because its next cell was the already recovered departure coordinate.
+
+**Modify:**
+
+- `godot-project-moe-rail-way/src/domain/track/track_cell_sequence.gd`
+- `godot-project-moe-rail-way/src/domain/track/grid_track_runtime.gd`
+- `godot-project-moe-rail-way/tests/unit/test_track_cell_sequence.gd`
+- `godot-project-moe-rail-way/tests/unit/test_grid_track_runtime.gd`
+- `godot-project-moe-rail-way/tests/manual/warp_cargo_windows.md`
+
+**RED:** Reproduce the observed route contract with departure `(5, 2)`: build and recover a prefix, retain an active endpoint at `(6, 2)`, then perform an endpoint gesture through `(5, 2)` to `(4, 2)`. Require legal-operation discovery, the live candidate, and finalize to retain both cells. At the sequence layer, require the departure coordinate to remain rejected before recovery, become reservable only after the active predecessor advances beyond it, consume one inventory cell with a fresh route serial and absolute nominal distance, remain subject to active-cell uniqueness, and become temporarily reserved again when a reused departure record itself becomes the active predecessor boundary after recovery. Cover both append and in-place replacement before and after that recovery boundary. With an exact Warp on the reused coordinate, require contact observation to select the active record occurrence and its fresh midpoint distance; without an active record there, retain the free-origin `0.0` behavior.
+
+The expected eligibility transition must be asserted from literal cells, route records, inventory counts, and recovery operations. Tests may inspect the sequence's concrete records but may not add a policy flag, train-state dependency, or mock recovery service.
+
+**Minimum GREEN:** Replace the permanent departure-coordinate blacklist with the concrete active-predecessor rule already owned by `TrackCellSequence`. Apply the same rule to append, in-place span replacement, and runtime legal-operation discovery. In exact-anchor lookup, prefer an active record that owns the departure coordinate and otherwise retain the free-origin occurrence. Do not change route distance origin, departure presentation, Warp geometry, recovery cadence, overlap validation, inventory values, or train behavior.
+
+**Regressions:**
+
+- focused `test_track_cell_sequence.gd` and `test_grid_track_runtime.gd`;
+- full `run_all.gd`, still exactly `PASS: 24 prototype test suite(s)`;
+- all five integration runners;
+- exact UID audit and `git diff --check`.
+
+**Commit:** `fix: allow recovered departure cell reuse`
+
+**Reviews:** Specification review checks the pre-recovery prohibition, post-recovery eligibility, immediate predecessor boundary, unchanged distance origin, and exact captured gesture. Quality review checks a single source of truth for eligibility, append/replacement consistency, monotonic identity, inventory conservation, transactional rejection, and absence of train or Warp coupling.
+
+## 9. Final Automated and Manual Evidence Gate
+
+After Task 4 and its reviews, run the complete gate without changing files:
 
 - full `run_all.gd`, exact `PASS: 24 prototype test suite(s)`;
 - `run_session_shell_integration.gd`;
@@ -251,13 +280,13 @@ After Task 3 and its reviews, run the complete gate without changing files:
 - exit `0`, every required PASS marker, no rejected anchored diagnostics;
 - feature changed-path union audit, `.gd.uid` one-to-one audit, and `git diff --check`.
 
-Then run the Task 3 manual checklist at `960x540`, `1280x720`, `1600x900`, and `1920x1080` on the exact reviewed implementation head. The user verifies each state and reports pass/fail. Keep screenshots and completed evidence outside the repository; the tracked manual file contains instructions only. A failed automated or manual row returns to the owning Task 1, 2, or 3 allowlist through an explicit review finding. The evidence gate itself creates no commit and cannot manufacture a test-only RED.
+Then run the Task 3 and Task 4 manual checklist at `960x540`, `1280x720`, `1600x900`, and `1920x1080` on the exact reviewed implementation head. The user verifies each state and reports pass/fail. Keep screenshots and completed evidence outside the repository; the tracked manual file contains instructions only. A failed automated or manual row returns to the owning Task 1, 2, 3, or 4 allowlist through an explicit review finding. The evidence gate itself creates no commit and cannot manufacture a test-only RED.
 
 Integration expected positions, knot distances, tick indices, and four-to-one cadence remain hard-coded fixture facts. Do not derive an expected value by calling the same production method under test. The Windows user observation is the independent visual and control-feel check rather than a substitute for deterministic assertions.
 
-## 9. Task Allowlist Summary
+## 10. Task Allowlist Summary
 
-No task may change a path outside its section. The complete implementation union is the exact union of Task 1 through Task 3 paths. The three planning documents belong only to the focused documentation commit and never enter an implementation task commit.
+No task may change a path outside its section. The complete implementation union is the exact union of Task 1 through Task 4 paths. The three planning documents belong only to the focused documentation commit and never enter an implementation task commit.
 
 Before each task commit:
 
@@ -270,9 +299,9 @@ Before each task commit:
 
 An unexpected path stops the task. Do not absorb it into the nearest allowlist.
 
-## 10. Final Feature Gate and Stop Point
+## 11. Final Feature Gate and Stop Point
 
-After Task 3, the evidence gate, and any reviewed allowlisted fixes:
+After Task 4, the evidence gate, and any reviewed allowlisted fixes:
 
 1. Require clean `feature/warp-cargo` at the reviewed final head and unchanged approved merge base.
 2. Require protected primary `main` to remain clean and exactly equal to current `origin/main`.
@@ -283,7 +312,7 @@ After Task 3, the evidence gate, and any reviewed allowlisted fixes:
    - `docs/superpowers/specs/2026-08-28-warp-cargo-control-feel-amendment-design.md`
    - `docs/superpowers/plans/2026-08-28-warp-cargo-control-feel-amendment.md`
    - `docs/briefings/ko/2026-08-28-warp-cargo-control-feel-amendment-briefing.md`
-4. Require the complete automated and manual evidence from Section 8 to be current for the exact head.
+4. Require the complete automated and manual evidence from Section 9 to be current for the exact head.
 5. Obtain final independent specification and quality approvals against that exact head and evidence.
 6. Report commits, tests, manual result, changed-path audit, and residual risks.
 

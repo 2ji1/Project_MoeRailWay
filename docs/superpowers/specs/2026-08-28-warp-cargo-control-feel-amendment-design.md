@@ -69,6 +69,14 @@ The default planning scale is `25` percent. It is active only while all of the f
 
 Invalid presses, presses away from the endpoint, ordinary hover, right-click without an active gesture, and a merely held button after a rejected or terminated capture do not slow simulation. `PREPARING_DEPARTURE` remains untimed and uses the normal cadence.
 
+### 3.4 Recovered departure-cell reuse
+
+The departure cell remains a free, non-reservable route origin until rear recovery advances the active route predecessor beyond that origin. After at least one route record has been recovered and the active predecessor is no longer the departure cell, the recovered departure coordinate becomes an ordinary reservable route cell. It costs one inventory cell, receives a fresh monotonic route serial and absolute nominal distance, participates in geometry and contact resolution normally, and may be used as an exact Warp knot when an active Warp occupies it. When an active route record owns the departure coordinate, exact-anchor lookup selects that record occurrence and its centerline distance. Only the free origin occurrence, with no active record owning the coordinate, uses distance `0.0`.
+
+If a later recovered route record is itself the departure coordinate, that coordinate becomes the active predecessor boundary again and is not immediately reservable a second time. It becomes eligible again only after recovery advances beyond it. Active-cell uniqueness, orthogonal continuity, geometry overlap rejection, train locking, and inventory conservation remain unchanged.
+
+This rule does not move the route distance origin, recreate the dissolved departure marker, reset train distance, or permit reservation through active or unrecovered geometry. It only removes the permanent historical blacklist after the coordinate is safely behind the train.
+
 ## 4. Exact Cell-Center Anchor Contract
 
 `RouteContactAnchor` gains a concrete contact mode:
@@ -110,7 +118,7 @@ Unanchored templates retain their existing centerlines byte-for-byte. The amendm
 
 ### 4.2 Departure-cell exact anchor
 
-The departure cell is the one permitted exact anchor without an active route record. Its center is the route's nominal distance `0.0` and already forms the first centerline boundary. The first positive train sweep may therefore contact it at `0.0`, preserving the accepted same-cell departure behavior.
+The departure cell is the one permitted exact anchor without an active route record. In that free-origin state, its center is the route's nominal distance `0.0` and already forms the first centerline boundary. The first positive train sweep may therefore contact it at `0.0`, preserving the accepted same-cell departure behavior. If an active route record owns the same coordinate after reuse, that active occurrence takes precedence and uses its fresh nominal midpoint rather than the origin distance.
 
 ### 4.3 Locked geometry and impossible outcomes
 
@@ -137,7 +145,7 @@ For a newly constrained exact anchor owned by route-record offset `i` inside an 
 piece.absolute_start_distance_cells + i + 0.5
 ```
 
-The departure-cell distance is `0.0`. A previously locked centerline that already passes through the exact center uses the earliest matching centerline-segment projection, converted through the piece's canonical uniform nominal sampling to an absolute nominal distance. An exact hit occurs once when the authoritative distance lies in the half-open sweep `(previous, through]`, with the existing first-positive-movement exception for `0.0`. Exact anchors with `contact_possible = false` emit nothing.
+The free-origin departure-cell distance is `0.0`. When an active route record reuses that coordinate, its selected occurrence uses the record-owning piece's center projection and fresh absolute nominal distance instead. A previously locked centerline that already passes through the exact center uses the earliest matching centerline-segment projection within the selected occurrence, converted through the piece's canonical uniform nominal sampling to an absolute nominal distance. An exact hit occurs once when the authoritative distance lies in the half-open sweep `(previous, through]`, with the existing first-positive-movement exception for the free-origin `0.0`. Exact anchors with `contact_possible = false` emit nothing.
 
 Raw hits remain ordered by contact distance and stable anchor ID. `WarpPairSystem` retains origin-before-destination and pair-ordinal tie ordering, so equal-cell loading and delivery still resolve once in the same sweep.
 
@@ -248,6 +256,7 @@ Warp countdowns, session time, construction, train position, and recovery observ
 17. `PLANNING 25%` appears only while the accepted running gesture remains active.
 18. The departure marker is opaque before departure, partially visible during its 0.75-second dissolve, and absent afterward without changing domain departure facts.
 19. Existing route, cargo, RNG, lifecycle, resize, result-priority, and manual Warp Cargo scenarios remain green after updating only their intended exact-contact tick expectations.
+20. Before rear recovery advances beyond the route origin, the departure cell cannot be reserved as track; afterward, a valid endpoint gesture may reserve the recovered coordinate with fresh identity, exact inventory accounting, normal geometry validation, and no change to route distance origin or departure presentation.
 
 ## 10. Scope Exclusions
 
@@ -270,6 +279,7 @@ This amendment is complete only when:
 - all named domain systems advance only on deterministic simulation ticks during planning;
 - recovery progresses transactionally during the gesture and never batches on release;
 - departure dissolve and planning feedback pass automated presentation checks and Windows manual play at all supported 16:9 sizes;
+- the recovered departure coordinate is reusable only after the active predecessor advances beyond it, while pre-recovery reservation and immediate predecessor reuse remain rejected;
 - the complete 24-suite target and every integration runner pass without rejected diagnostics;
 - each implementation task preserves RED, minimum GREEN, regression, explicit allowlist, exact staging, focused commit, independent specification review, and independent quality review;
 - no push, pull request, merge, tag, primary synchronization, or cleanup occurs without separate approval.
