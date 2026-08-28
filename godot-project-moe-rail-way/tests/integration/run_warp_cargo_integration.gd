@@ -70,6 +70,8 @@ const MANUAL_EXPECTATIONS := {
 var _failures := PackedStringArray()
 var _manual_mode := false
 var _manual_auto_advance := false
+var _mouse_manual_mode := false
+var _mouse_manual_auto := false
 var _manual_checkpoint_ids: Array[String] = []
 var _manual_layer: CanvasLayer
 var _manual_panel: PanelContainer
@@ -82,6 +84,8 @@ func _initialize() -> void:
     var user_arguments := OS.get_cmdline_user_args()
     _manual_mode = user_arguments.has("--manual") or user_arguments.has("--manual-auto")
     _manual_auto_advance = user_arguments.has("--manual-auto")
+    _mouse_manual_mode = user_arguments.has("--mouse-manual") or user_arguments.has("--mouse-manual-auto")
+    _mouse_manual_auto = user_arguments.has("--mouse-manual-auto")
     call_deferred("_run")
 
 
@@ -92,7 +96,22 @@ func _run() -> void:
         _finish()
         return
     var app = packed.instantiate()
+    if _mouse_manual_mode:
+        _configure_mouse_manual_balance(app)
     root.add_child(app)
+    if _mouse_manual_mode:
+        await process_frame
+        _assert_equal(app.session_start_config.session_duration_seconds, 90.0, "Mouse manual session lasts 90 seconds")
+        _assert_equal(app.session_start_config.train_speed_cells_per_second, 1.5, "Mouse manual train speed is reduced")
+        _assert_equal(app.session_start_config.recovery_lag_cells, 2, "Mouse manual recovery begins two cells behind")
+        if not _failures.is_empty() or _mouse_manual_auto:
+            app.queue_free()
+            await process_frame
+            _finish()
+        else:
+            DisplayServer.window_set_title("Warp Cargo Mouse Test | train 1.5 cells/s | recovery lag 2 | 90s")
+            print("MOUSE MANUAL READY | duration=90 speed=1.5 recovery_lag=2")
+        return
     app.set_physics_process(false)
     await process_frame
     app.set_physics_process(false)
@@ -215,6 +234,14 @@ func _route_frame() -> TrackInputFrameScript:
         ROUTE_CELLS[-1],
         true
     )
+
+
+func _configure_mouse_manual_balance(app) -> void:
+    var manual_balance = app.balance.duplicate(true)
+    manual_balance.session_balance.session_duration_seconds = 90.0
+    manual_balance.train_balance.speed_cells_per_second = 1.5
+    manual_balance.track_inventory_balance.recovery_lag_cells = 2
+    app.balance = manual_balance
 
 
 func _event_signatures(snapshot) -> Array[String]:
