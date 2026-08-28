@@ -9,6 +9,7 @@ const TrackGeometryResolutionScript = preload("res://src/domain/track/track_geom
 
 
 func run() -> PackedStringArray:
+	_test_swept_contact_api_exists()
 	_test_endpoint_reshape_legal_operation_requires_concrete_candidate()
 	_test_endpoint_reshape_identical_template_is_not_a_legal_operation()
 	_test_endpoint_reshape_supported_straight_head_has_non_degenerate_targets()
@@ -71,6 +72,9 @@ func run() -> PackedStringArray:
 	_test_runtime_applies_nonzero_grid_origin_to_sampling()
 	_test_recovered_interval_is_not_reported_as_contacted()
 	_test_recovered_cell_can_be_contacted_by_new_geometry()
+	_test_swept_contacts_follow_active_centerlines()
+	_test_swept_contact_order_boundaries_and_detachment()
+	_test_swept_contacts_respect_recovery_and_invalid_ranges()
 	_test_detached_observations_and_conservation()
 	_test_twenty_construction_steps_keep_completed_head_reflowable()
 	_test_sixth_head_record_locks_whole_curve_and_supports_exit()
@@ -96,6 +100,16 @@ func run() -> PackedStringArray:
 	_test_prepared_built_curve_recovers_same_serials_without_ledger_mutation()
 	_test_unfinalizable_tight_turn_is_not_published()
 	return finish()
+
+
+func _test_swept_contact_api_exists() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 1, Vector2.ZERO, Vector2i(2, 1), 40.0
+	)
+	assert_true(
+		track.has_method("get_contact_hits_between"),
+		"Track runtime must expose swept route contact hits"
+	)
 
 
 func _test_endpoint_reshape_legal_operation_requires_concrete_candidate() -> void:
@@ -2730,6 +2744,242 @@ func _test_recovered_cell_can_be_contacted_by_new_geometry() -> void:
 	var observations: Array = track.get_contact_observations()
 	assert_true(observations[0].contact_possible, "New active centerline can contact a historical coordinate")
 	assert_true(observations[0].contacted, "Historical recovery does not blacklist current contact")
+
+
+func _test_swept_contacts_follow_active_centerlines() -> void:
+	var straight := _make_contact_runtime(
+		Vector2i(-1, 0),
+		[
+			Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+			Vector2i(3, 0), Vector2i(4, 0), Vector2i(5, 0),
+		]
+	)
+	_assert_fixture_swept_contact(
+		straight, TrackGeometryPieceScript.Kind.STRAIGHT, Vector2i(2, 0), "Straight"
+	)
+
+	var curve_1x1 := _make_contact_runtime(
+		Vector2i(-1, 0),
+		[
+			Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2),
+			Vector2i(0, 3), Vector2i(0, 4), Vector2i(0, 5),
+		]
+	)
+	_assert_fixture_swept_contact(
+		curve_1x1, TrackGeometryPieceScript.Kind.CURVE_1X1, Vector2i(0, 0), "1x1 curve"
+	)
+
+	var curve_2x2 := _make_contact_runtime(
+		Vector2i(-1, 0),
+		[
+			Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1),
+			Vector2i(1, 2), Vector2i(1, 3), Vector2i(1, 4),
+		]
+	)
+	_assert_fixture_swept_contact(
+		curve_2x2, TrackGeometryPieceScript.Kind.CURVE_2X2, Vector2i(0, 0), "2x2 curve"
+	)
+
+	var curve_3x3 := _make_contact_runtime(
+		Vector2i(-1, 0),
+		[
+			Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+			Vector2i(2, 1), Vector2i(2, 2), Vector2i(2, 3),
+		]
+	)
+	_assert_fixture_swept_contact(
+		curve_3x3, TrackGeometryPieceScript.Kind.CURVE_3X3, Vector2i(0, 0), "3x3 curve"
+	)
+
+	var shifted := _make_contact_runtime(
+		Vector2i(-1, 0),
+		[
+			Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+			Vector2i(3, 0), Vector2i(4, 0), Vector2i(5, 0),
+		],
+		Vector2(17.0, 23.0)
+	)
+	_assert_fixture_swept_contact(
+		shifted, TrackGeometryPieceScript.Kind.STRAIGHT, Vector2i(2, 0), "Shifted straight"
+	)
+
+
+func _test_swept_contact_order_boundaries_and_detachment() -> void:
+	var track := _make_contact_runtime(
+		Vector2i(0, 0),
+		[
+			Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0),
+			Vector2i(4, 0), Vector2i(5, 0), Vector2i(6, 0),
+		]
+	)
+	track.set_contact_anchors([
+		RouteContactAnchorScript.new(&"z_same", Vector2i(1, 0)),
+		RouteContactAnchorScript.new(&"a_same", Vector2i(1, 0)),
+		RouteContactAnchorScript.new(&"later", Vector2i(2, 0)),
+	])
+	assert_true(
+		track.prepare_for_train_sampling(0.0, track.get_built_end_distance_cells()),
+		"Ordered contact fixture prepares its accepted route"
+	)
+	var hits: Array[Dictionary] = track.get_contact_hits_between(0.0, 2.0)
+	assert_equal(hits.size(), 3, "One sweep emits one hit per active anchor")
+	if hits.size() == 3:
+		assert_equal(hits[0]["anchor_id"], &"a_same", "Equal distances sort by stable anchor ID")
+		assert_equal(hits[1]["anchor_id"], &"z_same", "Second equal-distance ID is stable")
+		assert_equal(hits[2]["anchor_id"], &"later", "Later physical contact sorts last")
+		assert_equal(hits[0]["cell"], Vector2i(1, 0), "Hit reports the authoritative cell")
+		assert_equal(hits[0]["contact_distance_cells"], 0.375, "First entry is the earliest eighth-cell sample")
+		assert_equal(hits[1]["contact_distance_cells"], 0.375, "Same-cell anchors share exact distance")
+		assert_equal(hits[2]["contact_distance_cells"], 1.0, "Later cell reports its entry sample")
+
+	assert_equal(
+		track.get_contact_hits_between(0.0, 0.3),
+		[],
+		"A sweep ending before the entry sample emits nothing"
+	)
+	assert_equal(
+		track.get_contact_hits_between(0.0, 0.375).size(),
+		2,
+		"The through boundary is inclusive"
+	)
+	assert_equal(
+		track.get_contact_hits_between(0.375, 0.5),
+		[],
+		"The previous boundary is exclusive when already inside"
+	)
+	assert_equal(
+		track.get_contact_hits_between(0.5, 0.625),
+		[],
+		"A second consecutive inside sweep does not re-hit"
+	)
+
+	if not hits.is_empty():
+		hits[0]["anchor_id"] = &"mutated"
+		hits[0]["cell"] = Vector2i(9, 9)
+		hits[0]["contact_distance_cells"] = 99.0
+	var fresh: Array[Dictionary] = track.get_contact_hits_between(0.0, 2.0)
+	if not fresh.is_empty():
+		assert_equal(fresh[0]["anchor_id"], &"a_same", "Returned hit ID is detached")
+		assert_equal(fresh[0]["cell"], Vector2i(1, 0), "Returned hit cell is detached")
+		assert_equal(fresh[0]["contact_distance_cells"], 0.375, "Returned hit distance is detached")
+
+	track.set_contact_anchors([RouteContactAnchorScript.new(&"departure", Vector2i(0, 0))])
+	var departure_hits: Array[Dictionary] = track.get_contact_hits_between(0.0, 0.125)
+	assert_equal(departure_hits.size(), 1, "First positive movement contacts the departure cell")
+	if departure_hits.size() == 1:
+		assert_equal(departure_hits[0]["contact_distance_cells"], 0.0, "Departure hit is reported at zero")
+
+	track.set_contact_anchors([RouteContactAnchorScript.new(&"activated_inside", Vector2i(1, 0))])
+	assert_equal(
+		track.get_contact_hits_between(0.625, 0.75),
+		[],
+		"An anchor activated around the train emits no immediate hit"
+	)
+
+
+func _test_swept_contacts_respect_recovery_and_invalid_ranges() -> void:
+	var recovered: GridTrackRuntimeScript = _make_fully_built_three_by_three_curve_runtime()
+	assert_true(
+		recovered.prepare_for_train_sampling(0.0, recovered.get_built_end_distance_cells()),
+		"Recovered contact fixture prepares its locked ledger"
+	)
+	assert_equal(recovered.recover_behind(1.0), 1, "Recovered contact fixture removes one route cell")
+	var candidate_anchors: Array[RouteContactAnchorScript] = []
+	for record in recovered.get_cell_records():
+		candidate_anchors.append(
+			RouteContactAnchorScript.new(StringName("candidate_%d" % record.route_serial), record.cell)
+		)
+	recovered.set_contact_anchors(candidate_anchors)
+	var active_cell := Vector2i(-1, -1)
+	for observation in recovered.get_contact_observations():
+		if observation["contact_possible"]:
+			active_cell = observation["cell"]
+			break
+	assert_true(active_cell != Vector2i(-1, -1), "Accepted active ledger exposes a possible cell")
+	recovered.set_contact_anchors([
+		RouteContactAnchorScript.new(&"recovered", Vector2i(0, 0)),
+		RouteContactAnchorScript.new(&"active", active_cell),
+		RouteContactAnchorScript.new(&"impossible", Vector2i(7, 7)),
+	])
+	var observations: Array[Dictionary] = recovered.get_contact_observations()
+	assert_equal(observations.size(), 3, "Recovered fixture retains authoritative anchors")
+	if observations.size() == 3:
+		assert_false(observations[0]["contact_possible"], "Recovered cell is impossible in observations")
+		assert_true(observations[1]["contact_possible"], "Active centerline cell remains possible")
+		assert_false(observations[2]["contact_possible"], "Off-route locked anchor is impossible")
+	var hits: Array[Dictionary] = recovered.get_contact_hits_between(
+		0.0, recovered.get_built_end_distance_cells()
+	)
+	assert_equal(hits.size(), 1, "Sweep consumes only the active, possible centerline anchor")
+	if hits.size() == 1:
+		assert_equal(hits[0]["anchor_id"], &"active", "Recovered and impossible anchors emit nothing")
+
+	var before: Array[Dictionary] = recovered.get_contact_observations()
+	for invalid_range in [
+		[NAN, 1.0],
+		[0.0, INF],
+		[-0.125, 1.0],
+		[2.0, 1.0],
+	]:
+		assert_equal(
+			recovered.get_contact_hits_between(invalid_range[0], invalid_range[1]),
+			[],
+			"Invalid swept range returns empty"
+		)
+	assert_equal(
+		recovered.get_contact_observations(),
+		before,
+		"Invalid swept ranges do not mutate contact state"
+	)
+
+
+func _make_contact_runtime(
+	departure_cell: Vector2i,
+	cells: Array,
+	grid_origin_units: Vector2 = Vector2.ZERO
+) -> GridTrackRuntimeScript:
+	var track = GridTrackRuntimeScript.new(
+		departure_cell, 24, grid_origin_units, Vector2i(10, 10), 40.0
+	)
+	var typed_cells: Array[Vector2i] = []
+	for cell in cells:
+		typed_cells.append(cell)
+	assert_equal(track.append_cells(typed_cells), typed_cells.size(), "Contact fixture route appends")
+	assert_equal(
+		track.advance_construction(float(typed_cells.size())),
+		float(typed_cells.size()),
+		"Contact fixture route builds"
+	)
+	return track
+
+
+func _assert_fixture_swept_contact(
+	track: GridTrackRuntimeScript,
+	expected_kind: int,
+	anchor_cell: Vector2i,
+	label: String
+) -> void:
+	var pieces: Array = track.get_geometry_pieces()
+	assert_false(pieces.is_empty(), "%s fixture publishes accepted geometry" % label)
+	if pieces.is_empty():
+		return
+	assert_equal(pieces[0].kind, expected_kind, "%s fixture uses the expected centerline" % label)
+	track.set_contact_anchors([RouteContactAnchorScript.new(&"fixture", anchor_cell)])
+	var observations: Array[Dictionary] = track.get_contact_observations()
+	assert_equal(observations.size(), 1, "%s fixture publishes one contact observation" % label)
+	if observations.size() == 1:
+		assert_true(observations[0]["contact_possible"], "%s anchor is on the accepted centerline" % label)
+	assert_true(
+		track.prepare_for_train_sampling(0.0, track.get_built_end_distance_cells()),
+		"%s fixture prepares the same route ledger" % label
+	)
+	var hits: Array[Dictionary] = track.get_contact_hits_between(
+		0.0, track.get_built_end_distance_cells()
+	)
+	assert_equal(hits.size(), 1, "%s accepted centerline emits one hit" % label)
+	if hits.size() == 1:
+		assert_equal(hits[0]["anchor_id"], &"fixture", "%s hit preserves anchor ID" % label)
+		assert_equal(hits[0]["cell"], anchor_cell, "%s hit preserves anchor cell" % label)
 
 
 func _test_detached_observations_and_conservation() -> void:

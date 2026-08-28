@@ -9,6 +9,7 @@ const TrackGeometryResolverScript = preload("res://src/domain/track/track_geomet
 const TrackGeometryResolutionScript = preload("res://src/domain/track/track_geometry_resolution.gd")
 
 const NOMINAL_BOUNDARY_EPSILON := 0.0001
+const CONTACT_SAMPLES_PER_CELL := 8
 
 var _departure_cell: Vector2i
 var _grid_origin_units: Vector2
@@ -781,6 +782,76 @@ func get_contact_observations() -> Array[Dictionary]:
     return _contact_observations.duplicate(true)
 
 
+func get_contact_hits_between(
+    previous_distance_cells: float,
+    through_distance_cells: float
+) -> Array[Dictionary]:
+    var hits: Array[Dictionary] = []
+    if (
+        not is_finite(previous_distance_cells)
+        or not is_finite(through_distance_cells)
+        or previous_distance_cells < 0.0
+        or through_distance_cells <= previous_distance_cells
+    ):
+        return hits
+
+    var anchors_by_id: Dictionary = {}
+    for anchor in _anchors:
+        if not anchors_by_id.has(anchor.anchor_id):
+            anchors_by_id[anchor.anchor_id] = anchor
+    if anchors_by_id.is_empty():
+        return hits
+
+    var emitted_anchor_ids: Dictionary = {}
+    var previous_cell := _active_route_cell_at_distance(previous_distance_cells)
+    if previous_distance_cells == 0.0:
+        _append_contact_hits_for_transition(
+            0.0,
+            {},
+            previous_cell,
+            anchors_by_id,
+            emitted_anchor_ids,
+            hits
+        )
+
+    var last_sample_distance := previous_distance_cells
+    var next_sample_index := int(floor(
+        previous_distance_cells * float(CONTACT_SAMPLES_PER_CELL)
+    )) + 1
+    while true:
+        var sample_distance := (
+            float(next_sample_index) / float(CONTACT_SAMPLES_PER_CELL)
+        )
+        if sample_distance > through_distance_cells:
+            break
+        var current_cell := _active_route_cell_at_distance(sample_distance)
+        _append_contact_hits_for_transition(
+            sample_distance,
+            previous_cell,
+            current_cell,
+            anchors_by_id,
+            emitted_anchor_ids,
+            hits
+        )
+        previous_cell = current_cell
+        last_sample_distance = sample_distance
+        next_sample_index += 1
+
+    if last_sample_distance < through_distance_cells:
+        var through_cell := _active_route_cell_at_distance(through_distance_cells)
+        _append_contact_hits_for_transition(
+            through_distance_cells,
+            previous_cell,
+            through_cell,
+            anchors_by_id,
+            emitted_anchor_ids,
+            hits
+        )
+
+    hits.sort_custom(_contact_hit_less)
+    return hits
+
+
 func is_exit_support_route_serial(route_serial: int) -> bool:
     if route_serial < 0:
         return false
@@ -1498,10 +1569,67 @@ func _active_piece_contacts_cell(
         var weight := float(step) / float(steps)
         var local_distance := lerpf(local_start, local_end, weight)
         var position: Vector2 = piece.sample_nominal(local_distance).position
-        var mapped := Vector2i(
-            int(floor((position.x - _grid_origin_units.x) / _cell_size_units)),
-            int(floor((position.y - _grid_origin_units.y) / _cell_size_units))
-        )
+        var mapped := _map_position_to_cell(position)
         if mapped == cell:
             return true
     return false
+
+
+func _active_route_cell_at_distance(route_distance_cells: float) -> Dictionary:
+    var canonical := _canonical_distance_and_owner(route_distance_cells)
+    var piece = canonical.piece
+    if piece == null or not piece.locked:
+        return {}
+    var local_distance: float = canonical.distance - piece.absolute_start_distance_cells
+    if (
+        local_distance < piece.active_local_start_cells
+        or local_distance > piece.active_local_end_cells
+    ):
+        return {}
+    var position: Vector2 = piece.sample_nominal(local_distance).position
+    var cell := _map_position_to_cell(position)
+    var recovered_cells: Dictionary = _recovered_cells_by_piece.get(_piece_key(piece), {})
+    if recovered_cells.has(cell):
+        return {}
+    return {"cell": cell}
+
+
+func _append_contact_hits_for_transition(
+    contact_distance_cells: float,
+    previous_cell: Dictionary,
+    current_cell: Dictionary,
+    anchors_by_id: Dictionary,
+    emitted_anchor_ids: Dictionary,
+    hits: Array[Dictionary]
+) -> void:
+    if current_cell.is_empty():
+        return
+    if not previous_cell.is_empty() and previous_cell["cell"] == current_cell["cell"]:
+        return
+    for anchor_id in anchors_by_id:
+        if emitted_anchor_ids.has(anchor_id):
+            continue
+        var anchor: RouteContactAnchorScript = anchors_by_id[anchor_id]
+        if anchor.cell != current_cell["cell"]:
+            continue
+        hits.append({
+            "anchor_id": anchor.anchor_id,
+            "cell": anchor.cell,
+            "contact_distance_cells": contact_distance_cells,
+        })
+        emitted_anchor_ids[anchor_id] = true
+
+
+func _contact_hit_less(first: Dictionary, second: Dictionary) -> bool:
+    var first_distance: float = first["contact_distance_cells"]
+    var second_distance: float = second["contact_distance_cells"]
+    if first_distance != second_distance:
+        return first_distance < second_distance
+    return String(first["anchor_id"]) < String(second["anchor_id"])
+
+
+func _map_position_to_cell(position: Vector2) -> Vector2i:
+    return Vector2i(
+        int(floor((position.x - _grid_origin_units.x) / _cell_size_units)),
+        int(floor((position.y - _grid_origin_units.y) / _cell_size_units))
+    )
