@@ -25,6 +25,7 @@ func _test_departure_dissolve_and_planning_indicator_contract() -> void:
     view.size = Vector2(640.0, 320.0)
     var config = _config()
     view.configure_session(config)
+    assert_false(view.is_processing(), "Configured READY field has no active presentation callback")
     var child_count := view.get_child_count()
 
     view.present(_snapshot(SessionControllerScript.State.READY))
@@ -41,6 +42,7 @@ func _test_departure_dissolve_and_planning_indicator_contract() -> void:
 
     var running := _snapshot(SessionControllerScript.State.RUNNING)
     view.present(running)
+    assert_true(view.is_processing(), "First RUNNING presentation enables the dissolve callback")
     var origin_before := view.get_render_observation()
     assert_equal(origin_before.departure_marker.alpha, 1.0, "First RUNNING presentation starts dissolve at alpha one")
     assert_true(view.has_method("_process"), "Field owns real-time presentation advancement")
@@ -48,11 +50,13 @@ func _test_departure_dissolve_and_planning_indicator_contract() -> void:
         view.free()
         return
     view.call("_process", 0.375)
+    assert_true(view.is_processing(), "Partial dissolve keeps the presentation callback active")
     assert_true(is_equal_approx(view.get_render_observation().departure_marker.alpha, 0.5), "Departure alpha is one half at 0.375 real seconds")
     view.present(running)
     assert_true(is_equal_approx(view.get_render_observation().departure_marker.alpha, 0.5), "Later RUNNING snapshots never restart dissolve")
     view.call("_process", 0.375)
     var dissolved := view.get_render_observation()
+    assert_false(view.is_processing(), "Completed dissolve disables the presentation callback")
     assert_true(is_zero_approx(dissolved.departure_marker.alpha), "Departure alpha reaches zero at 0.75 real seconds")
     assert_false(dissolved.departure_marker.visible, "Departure marker hides at zero alpha")
     assert_equal(dissolved.selected_departure_id, origin_before.selected_departure_id, "Dissolve never changes selected departure ID")
@@ -81,6 +85,7 @@ func _test_departure_dissolve_and_planning_indicator_contract() -> void:
     assert_equal(view.get_child_count(), child_count, "Primitive feedback adds no input-intercepting Control")
 
     view.configure_session(config)
+    assert_false(view.is_processing(), "New configuration resets to an idle presentation callback")
     assert_equal(view.get_render_observation().departure_marker, {"visible": true, "alpha": 1.0}, "New session configuration alone resets dissolve")
     view.free()
 
