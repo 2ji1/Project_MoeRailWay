@@ -63,10 +63,12 @@ func resolve(
                 )
                 if overlap <= 0:
                     continue
-                if candidates[first_index].radius <= 1 or candidates[second_index].radius <= 1:
+                if candidates[first_index].radius <= 1 and candidates[second_index].radius <= 1:
                     return TrackGeometryResolutionScript.rejected(newest_serial, &"final_overlap")
-                candidates[first_index].radius -= 1
-                candidates[second_index].radius -= 1
+                if candidates[first_index].radius > 1:
+                    candidates[first_index].radius -= 1
+                if candidates[second_index].radius > 1:
+                    candidates[second_index].radius -= 1
                 changed = true
 
     for candidate in candidates:

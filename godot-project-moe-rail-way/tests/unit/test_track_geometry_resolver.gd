@@ -1,6 +1,7 @@
 extends "res://tests/support/prototype_test.gd"
 
 const TrackCellSequenceScript = preload("res://src/domain/track/track_cell_sequence.gd")
+const TrackCellRecordScript = preload("res://src/domain/track/track_cell_record.gd")
 const RouteContactAnchorScript = preload("res://src/domain/track/route_contact_anchor.gd")
 const TrackGeometryPieceScript = preload("res://src/domain/track/track_geometry_piece.gd")
 const TrackGeometryResolutionScript = preload("res://src/domain/track/track_geometry_resolution.gd")
@@ -29,6 +30,8 @@ func run() -> PackedStringArray:
 	_test_route_zero_starts_at_departure_center()
 	_test_curve_growth_reclassifies_without_changing_cell_count()
 	_test_overlapping_curves_downgrade_both()
+	_test_adjacent_turn_overlap_downgrades_only_larger_candidate()
+	_test_irreducible_duplicate_turn_footprints_still_reject()
 	_test_anchor_forces_centerline_contact()
 	_test_exact_anchor_knots_preserve_template_contracts()
 	_test_multiple_exact_knots_remain_literal_and_deterministic()
@@ -386,6 +389,99 @@ func _test_overlapping_curves_downgrade_both() -> void:
 	assert_equal(_curve_sizes(result.pieces), [1, 1], "Both curves downgrade until ownership is disjoint")
 	assert_equal(_total_nominal_cells(result.pieces), 7, "Double turn covers seven nominal cells")
 	_assert_each_serial_owned_once(result.pieces, _close_double_turn_records())
+
+
+func _test_adjacent_turn_overlap_downgrades_only_larger_candidate() -> void:
+	var cells: Array[Vector2i] = [
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+		Vector2i(2, 1), Vector2i(3, 1),
+	]
+	var records := _records_for(cells)
+	var unanchored = _resolve(records)
+	assert_true(
+		unanchored.is_valid,
+		"Adjacent turns try the remaining 2x2-to-1x1 downgrade without an anchor"
+	)
+	if unanchored.is_valid:
+		_assert_adjacent_one_by_one_turns(unanchored.pieces, records, "Unanchored")
+
+	var anchor = RouteContactAnchorScript.new(
+		&"adjacent_exact",
+		cells[-1],
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var anchored = _resolver.resolve(
+		DEPARTURE, records, [], [anchor],
+		Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_true(
+		anchored.is_valid,
+		"Adjacent turns try the same remaining downgrade with an exact outgoing anchor"
+	)
+	if anchored.is_valid:
+		_assert_adjacent_one_by_one_turns(anchored.pieces, records, "Exact anchored")
+		var target := (Vector2(cells[-1]) + Vector2(0.5, 0.5)) * 40.0
+		var owner = _piece_covering_serial(anchored.pieces, records[-1].route_serial)
+		assert_not_null(owner, "Exact outgoing cell retains one owner")
+		if owner != null:
+			assert_true(
+				owner.find_nominal_distance_at_position(target, 0.0001) >= 0.0,
+				"Exact outgoing anchor remains on the accepted centerline"
+			)
+	var replay = _resolve(records)
+	if unanchored.is_valid and replay.is_valid:
+		assert_equal(
+			_resolution_signature(replay),
+			_resolution_signature(unanchored),
+			"Adjacent asymmetric downgrade replays deterministically"
+		)
+
+
+func _assert_adjacent_one_by_one_turns(
+	pieces: Array,
+	records: Array,
+	label: String
+) -> void:
+	var curves: Array = []
+	for piece in pieces:
+		if piece.kind != STRAIGHT:
+			curves.append(piece)
+	assert_equal(curves.size(), 2, "%s adjacent route retains both turns" % label)
+	if curves.size() != 2:
+		return
+	assert_equal(curves[0].kind, CURVE_1X1, "%s first turn reaches 1x1" % label)
+	assert_equal(curves[1].kind, CURVE_1X1, "%s second turn remains 1x1" % label)
+	assert_equal(
+		curves[0].footprint_cells,
+		[Vector2i(2, 0)],
+		"%s first turn owns only its turn cell" % label
+	)
+	assert_equal(
+		curves[1].footprint_cells,
+		[Vector2i(2, 1)],
+		"%s second turn owns only its distinct turn cell" % label
+	)
+	for cell in curves[0].footprint_cells:
+		assert_false(
+			curves[1].footprint_cells.has(cell),
+			"%s final curve footprints do not overlap" % label
+		)
+	_assert_each_serial_owned_once(pieces, records)
+
+
+func _test_irreducible_duplicate_turn_footprints_still_reject() -> void:
+	var cells: Array[Vector2i] = [
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1),
+		Vector2i(0, 1), Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1),
+	]
+	var records: Array = []
+	for index in range(cells.size()):
+		records.append(TrackCellRecordScript.new(index + 1, cells[index], float(index)))
+	var result = _resolver.resolve(
+		DEPARTURE, records, [], [], Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_false(result.is_valid, "Duplicate turn cells remain an irreducible overlap")
+	assert_equal(result.reason, &"final_overlap", "Irreducible 1x1 overlap keeps final_overlap")
 
 
 func _test_anchor_forces_centerline_contact() -> void:

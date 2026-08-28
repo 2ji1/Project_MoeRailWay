@@ -92,15 +92,16 @@ At every supported window size, inspect accepted exact-center turns representing
 6. Finalization locks exactly the displayed geometry, and later Warp lifecycle changes do not rewrite it.
 7. Loading and delivery each occur once at the exact marker center without changing route cells.
 8. Dragging, backtracking, rebranching, release, and right-click cancellation retain the same control feel around the locally rounded track.
+9. Reproduce a `2x2` tail that enters its endpoint vertically, then begin separate drags to the left and right neighbors. Confirm both previews publish, their two adjacent unlocked turns settle into visibly separate local corners, locked track does not move, and an exact Warp marker on the right target is crossed through its literal center.
 
 Record the user-owned result for the exact candidate in this table. Leave a row `PENDING` until that exact size and candidate commit have been checked.
 
-| Window size | 1x1 observed | 2x2 observed | 3x3 observed | Exact center | Local bends only | Lock stable | Control feel | User result |
-|---|---|---|---|---|---|---|---|---|
-| `960x540` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING (user-owned)` |
-| `1280x720` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING (user-owned)` |
-| `1600x900` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING (user-owned)` |
-| `1920x1080` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING (user-owned)` |
+| Window size | 1x1 observed | 2x2 observed | 3x3 observed | Exact center | Local bends only | Adjacent side turns | Lock stable | Control feel | User result |
+|---|---|---|---|---|---|---|---|---|---|
+| `960x540` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING (user-owned)` |
+| `1280x720` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING (user-owned)` |
+| `1600x900` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING (user-owned)` |
+| `1920x1080` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING (user-owned)` |
 
 ## Evidence header
 
