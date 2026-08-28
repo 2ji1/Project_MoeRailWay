@@ -72,6 +72,8 @@ var _manual_mode := false
 var _manual_auto_advance := false
 var _manual_checkpoint_ids: Array[String] = []
 var _manual_layer: CanvasLayer
+var _manual_panel: PanelContainer
+var _manual_scroll: ScrollContainer
 var _manual_label: Label
 var _manual_button: Button
 
@@ -270,32 +272,41 @@ func _create_manual_overlay(app) -> void:
     _manual_layer.process_mode = Node.PROCESS_MODE_ALWAYS
     app.add_child(_manual_layer)
 
-    var panel := PanelContainer.new()
-    panel.anchor_left = 1.0
-    panel.anchor_top = 1.0
-    panel.anchor_right = 1.0
-    panel.anchor_bottom = 1.0
-    panel.offset_left = -472.0
-    panel.offset_top = -176.0
-    panel.offset_right = -12.0
-    panel.offset_bottom = -12.0
-    panel.mouse_filter = Control.MOUSE_FILTER_STOP
-    _manual_layer.add_child(panel)
+    var viewport_size: Vector2 = app.get_viewport().get_visible_rect().size
+    var panel_size: Vector2 = Vector2(
+        minf(460.0, viewport_size.x - 24.0),
+        minf(250.0, viewport_size.y - 24.0)
+    )
+    _manual_panel = PanelContainer.new()
+    _manual_panel.anchor_left = 1.0
+    _manual_panel.anchor_top = 1.0
+    _manual_panel.anchor_right = 1.0
+    _manual_panel.anchor_bottom = 1.0
+    _manual_panel.offset_left = -panel_size.x - 12.0
+    _manual_panel.offset_top = -panel_size.y - 12.0
+    _manual_panel.offset_right = -12.0
+    _manual_panel.offset_bottom = -12.0
+    _manual_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+    _manual_layer.add_child(_manual_panel)
 
     var margin := MarginContainer.new()
     margin.add_theme_constant_override("margin_left", 12)
     margin.add_theme_constant_override("margin_top", 10)
     margin.add_theme_constant_override("margin_right", 12)
     margin.add_theme_constant_override("margin_bottom", 10)
-    panel.add_child(margin)
+    _manual_panel.add_child(margin)
 
     var column := VBoxContainer.new()
     column.add_theme_constant_override("separation", 8)
     margin.add_child(column)
+    _manual_scroll = ScrollContainer.new()
+    _manual_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+    _manual_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    column.add_child(_manual_scroll)
     _manual_label = Label.new()
     _manual_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    _manual_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    column.add_child(_manual_label)
+    _manual_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    _manual_scroll.add_child(_manual_label)
     _manual_button = Button.new()
     _manual_button.text = "Capture evidence, then continue"
     column.add_child(_manual_button)
@@ -321,10 +332,12 @@ func _show_manual_checkpoint(
     _manual_layer.visible = true
     print("MANUAL CHECKPOINT %s | %s" % [checkpoint_id, expected_text])
     await process_frame
-    if not _manual_auto_advance:
-        paused = true
-        await _manual_button.pressed
-        paused = false
+    _assert_manual_overlay_layout()
+    paused = true
+    if _manual_auto_advance:
+        call_deferred("_auto_press_manual_button")
+    await _manual_button.pressed
+    paused = false
     _manual_layer.visible = false
     await process_frame
 
@@ -340,6 +353,22 @@ func _manual_pair_summary(snapshot) -> String:
             pair.lifetime_remaining_ticks,
         ])
     return " | ".join(pair_summaries)
+
+
+func _auto_press_manual_button() -> void:
+    _assert_true(paused, "Manual auto-continue executes while the tree is paused")
+    _assert_manual_overlay_layout()
+    _manual_button.pressed.emit()
+
+
+func _assert_manual_overlay_layout() -> void:
+    var viewport_rect := _manual_panel.get_viewport_rect()
+    var panel_rect := _manual_panel.get_global_rect()
+    var button_rect := _manual_button.get_global_rect()
+    _assert_true(viewport_rect.encloses(panel_rect), "Manual checkpoint panel remains inside the viewport")
+    _assert_true(panel_rect.encloses(button_rect), "Manual continue button remains inside the checkpoint panel")
+    _assert_true(_manual_scroll.size.y > 0.0, "Manual checkpoint text has a scrollable viewport")
+    _assert_true(_manual_button.is_visible_in_tree() and not _manual_button.disabled, "Manual continue button remains reachable")
 
 
 func _assert_true(condition: bool, message: String) -> void:
