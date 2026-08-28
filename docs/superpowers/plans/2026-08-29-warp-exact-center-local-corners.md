@@ -174,3 +174,38 @@ For every process, inspect exit code, exact PASS marker, and anchored error diag
 Perform specification and quality reviews against the canonical design. Do not claim those reviews are independent unless a separate reviewer actually performs them. Resolve findings only inside the fixed allowlist and rerun the affected focused and final gates.
 
 Report documentation and implementation SHAs, test evidence, changed paths, residual risks, and `MANUAL: PENDING (user-owned)`. Stop without push, PR, merge, tag, primary update, branch cleanup, Risk & Investment changes, or automatic manual acceptance.
+
+## 8. Approved Follow-up: Adjacent-Turn Asymmetric Downgrade
+
+The user approved correcting the `1280x720` mouse finding after deterministic diagnosis. Keep the existing branch and fixed allowlist; do not absorb `feature/warp-reservation-anchor-correction` or Risk & Investment.
+
+### Documentation
+
+Update and commit only the three documentation paths from Section 1 before implementation:
+
+```text
+docs: define adjacent-turn overlap fallback
+```
+
+### RED
+
+Modify only `test_track_geometry_resolver.gd` and `test_grid_track_runtime.gd`.
+
+- Build the exact `2x2` tail ending at `(10, 7)` from the screenshot diagnosis.
+- Require both horizontal side extensions to publish, with the right target carrying an exact anchor.
+- Require forward extension to remain valid.
+- Require the resulting adjacent turns to use distinct `1x1` footprints, preserve exact contact, own every serial once, conserve inventory, and replay deterministically.
+- Retain a genuinely irreducible overlap fixture that returns `final_overlap`.
+- Run both focused suites and require only the new side-extension assertions to fail on unchanged production.
+
+### Minimum GREEN
+
+Modify only `track_geometry_resolver.gd`. In the existing pairwise overlap loop, reject only when both overlapping candidates are already radius `1`. Otherwise decrement each member whose radius is greater than `1` and repeat. Do not change footprint construction, locked conflict rules, anchor rules, sequence validation, or public APIs.
+
+Run the resolver and runtime focused suites, the full registered suite, and all five standalone integrations. Inspect exit codes, exact PASS markers, and anchored diagnostics. Repeat every audit from Section 7, update the manual checklist with the left/right finding, and commit the implementation and test paths exactly:
+
+```text
+fix: allow adjacent local turn fallback
+```
+
+Stop at a clean committed feature HEAD with `MANUAL: PENDING (user-owned)`, then launch the `1280x720` mouse-manual window from that exact feature worktree.

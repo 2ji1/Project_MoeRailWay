@@ -149,3 +149,22 @@ The user will perform the manual playtest. At `960x540`, `1280x720`, `1600x900`,
 Manual status remains `PENDING` until the user reports the result. Automated evidence cannot mark it passed.
 
 This feature does not add a general spline framework, curve Resources, arbitrary curvature tuning, arc-length motion, route correction, reachability filtering, rerolls, custom art, hazards, investments, contracts, credit, settlement, or snapshot-cache optimization.
+
+## 9. Approved Adjacent-Turn Overlap Amendment
+
+The user's `1280x720` mouse playtest exposed a separate resolver defect at an unlocked `2x2` tail. The route enters endpoint cell `(10, 7)` from `(10, 6)`. Extending from that endpoint to either horizontal neighbor creates an adjacent second turn. The unchanged resolver reports `final_overlap` with or without an exact Warp anchor, while the forward extension to `(10, 8)` succeeds.
+
+The cause is the pairwise overlap loop, not Warp contact or local-corner generation. It shrinks both overlapping candidates in lockstep. For adjacent turns whose initial radii are `3` and `2`, the first pass produces `2` and `1`. Their footprints still overlap, and the existing loop rejects immediately because one candidate is already `1`, without testing the non-overlapping `1` and `1` combination.
+
+For two overlapping unlocked curve candidates, the resolver must instead:
+
+1. reject with `final_overlap` only when both candidates are already `1x1` and their footprints still overlap;
+2. otherwise decrement every overlapping candidate whose radius is greater than `1`, leaving an already-`1x1` candidate unchanged;
+3. repeat the existing deterministic pair scan until no candidate footprints overlap;
+4. apply every existing span, grid, non-owned-record, locked-footprint, anchor-contact, centerline-footprint, continuity, and one-owner validation afterward.
+
+This is an exhaustive use of the existing `3x3 -> 2x2 -> 1x1` fallback, not a collision relaxation. It may re-resolve the previous unlocked `2x2` and the new adjacent turn as two `1x1` owners. It never changes a locked piece, never accepts overlapping final footprints, and never inserts, removes, reorders, or rerolls route cells.
+
+Focused evidence must cover both horizontal directions from the reported `2x2` tail, with the right target using `EXACT_CELL_CENTER`; the same right target without an anchor; the still-valid forward extension; exact-center contact; distinct final footprints; one owner per serial; inventory conservation; deterministic replay; and a negative case where two irreducible `1x1` footprints genuinely overlap and still return `final_overlap`.
+
+The manual result remains user-owned. Recheck the reported left and right drags in the same mouse test, confirm the preview may locally reclassify the unlocked tail without moving locked geometry, and confirm the right-hand Warp marker is crossed at its exact center.
