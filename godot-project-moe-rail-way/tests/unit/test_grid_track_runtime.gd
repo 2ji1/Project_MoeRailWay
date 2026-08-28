@@ -12,6 +12,8 @@ func run() -> PackedStringArray:
 	_test_active_gesture_recovery_evolves_origin_and_candidate()
 	_test_active_recovery_failure_asserts_and_preserves_transaction()
 	_test_swept_contact_api_exists()
+	_test_exact_anchor_lifecycle_evolves_active_gesture_forms()
+	_test_exact_anchor_impossible_locked_and_removal_contracts()
 	_test_endpoint_reshape_legal_operation_requires_concrete_candidate()
 	_test_endpoint_reshape_identical_template_is_not_a_legal_operation()
 	_test_endpoint_reshape_supported_straight_head_has_non_degenerate_targets()
@@ -177,6 +179,120 @@ func _test_exact_center_observation_and_hit_distance() -> void:
 	var departure_observations := track.get_contact_observations()
 	assert_equal(departure_observations[0].get("contact_distance_cells", -1.0), 0.0, "Departure exact anchor owns nominal distance zero")
 	assert_equal(track.get_contact_hits_between(0.0, 0.1).size(), 1, "Departure exact anchor fires on the first positive sweep")
+
+
+func _test_exact_anchor_lifecycle_evolves_active_gesture_forms() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 8, Vector2.ZERO, Vector2i(8, 4), 40.0
+	)
+	assert_equal(track.append_cells([Vector2i(0, 0)]), 1, "Anchor lifecycle fixture appends its route origin")
+	var began: Dictionary = track.gesture_begin(track.get_endpoint_cell())
+	assert_false(began.is_empty(), "Anchor lifecycle fixture begins an active gesture")
+	if began.is_empty():
+		return
+	var live_path: Array[Vector2i] = [Vector2i(1, 0)]
+	assert_true(track.gesture_update(live_path, live_path[-1]), "Anchor lifecycle fixture publishes a live candidate")
+	var anchor = RouteContactAnchorScript.new(&"gesture_exact", Vector2i(0, 0))
+	anchor.contact_mode = RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	var active_anchors: Array[RouteContactAnchorScript] = [anchor]
+	track.set_contact_anchors(active_anchors)
+	var current_contacts: Array[Dictionary] = track.get_contact_observations()
+	var evolved_origin: Dictionary = track.get_gesture_origin_observation()
+	assert_equal(current_contacts.size(), 1, "Active anchor reaches the live candidate")
+	assert_equal(evolved_origin["anchors"].size(), 1, "Active anchor reaches the evolving origin")
+	assert_equal(evolved_origin["contact_observations"].size(), 1, "Evolving origin publishes the active anchor contact")
+	if current_contacts.size() == 1 and evolved_origin["contact_observations"].size() == 1:
+		assert_true(current_contacts[0].contact_possible, "Live candidate resolves the exact anchor")
+		assert_true(evolved_origin["contact_observations"][0].contact_possible, "Evolving origin resolves the exact anchor")
+		assert_true(current_contacts[0].contact_distance_cells >= 0.0, "Live candidate publishes an exact contact distance")
+		assert_true(evolved_origin["contact_observations"][0].contact_distance_cells >= 0.0, "Evolving origin publishes an exact contact distance")
+	var evolved_origin_records := _record_values(evolved_origin["route_records"])
+	var evolved_origin_pieces := _piece_values(evolved_origin["pieces"])
+	var later_path: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0)]
+	assert_true(track.gesture_update(later_path, later_path[-1]), "Later input preserves the authoritative anchor lifecycle")
+	assert_equal(track.get_contact_observations().size(), 1, "Later input retains the authoritative active anchor")
+	assert_true(track.gesture_abort(), "Anchor lifecycle fixture aborts the route edit")
+	assert_equal(_record_values(track.get_cell_records()), evolved_origin_records, "Abort restores the evolved origin route")
+	assert_equal(_piece_values(track.get_geometry_pieces()), evolved_origin_pieces, "Abort restores the evolved exact-anchor geometry")
+	assert_equal(track.get_contact_observations().size(), 1, "Abort retains the authoritative active anchor")
+
+	var removal_track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 8, Vector2.ZERO, Vector2i(8, 4), 40.0
+	)
+	assert_equal(removal_track.append_cells([Vector2i(0, 0)]), 1, "Anchor removal fixture appends its route origin")
+	var removal_begin: Dictionary = removal_track.gesture_begin(removal_track.get_endpoint_cell())
+	if removal_begin.is_empty():
+		assert_true(false, "Anchor removal fixture begins an active gesture")
+		return
+	var removal_path: Array[Vector2i] = [Vector2i(1, 0)]
+	assert_true(removal_track.gesture_update(removal_path, removal_path[-1]), "Anchor removal fixture publishes a live candidate")
+	removal_track.set_contact_anchors(active_anchors)
+	var no_anchors: Array[RouteContactAnchorScript] = []
+	removal_track.set_contact_anchors(no_anchors)
+	assert_equal(removal_track.get_contact_observations(), [], "Anchor removal clears the live candidate observations")
+	var removed_origin: Dictionary = removal_track.get_gesture_origin_observation()
+	assert_equal(removed_origin["anchors"], [], "Anchor removal clears the evolving origin anchor set")
+	assert_equal(removed_origin["contact_observations"], [], "Anchor removal clears the evolving origin observations")
+	var removal_later_path: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0)]
+	assert_true(removal_track.gesture_update(removal_later_path, removal_later_path[-1]), "Later input cannot resurrect a removed anchor")
+	assert_true(removal_track.gesture_finalize(), "Anchor removal fixture finalizes")
+	assert_equal(removal_track.get_contact_observations(), [], "Finalize cannot resurrect a removed anchor")
+
+
+func _test_exact_anchor_impossible_locked_and_removal_contracts() -> void:
+	var absent = _make_contact_runtime(
+		Vector2i(-1, 0),
+		[Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0)]
+	)
+	var absent_anchor = RouteContactAnchorScript.new(&"absent_exact", Vector2i(1, 1))
+	absent_anchor.contact_mode = RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	var absent_anchors: Array[RouteContactAnchorScript] = [absent_anchor]
+	absent.set_contact_anchors(absent_anchors)
+	var absent_observation: Dictionary = absent.get_contact_observations()[0]
+	assert_false(absent_observation.contact_possible, "Exact anchor absent from the route is impossible")
+	assert_equal(absent_observation.contact_distance_cells, -1.0, "Absent exact anchor has no nominal distance")
+	assert_equal(absent.get_contact_hits_between(0.0, 3.0), [], "Absent exact anchor emits no hit")
+
+	var compatible = _make_contact_runtime(
+		Vector2i(-1, 0),
+		[Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0)]
+	)
+	assert_true(compatible.prepare_for_train_sampling(0.0, 3.0), "Compatible fixture locks its straight route")
+	var compatible_bytes := _piece_values(compatible.get_geometry_pieces())
+	var compatible_anchor = RouteContactAnchorScript.new(&"locked_compatible", Vector2i(1, 0))
+	compatible_anchor.contact_mode = RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	var compatible_anchors: Array[RouteContactAnchorScript] = [compatible_anchor]
+	compatible.set_contact_anchors(compatible_anchors)
+	var compatible_observation: Dictionary = compatible.get_contact_observations()[0]
+	assert_equal(_piece_values(compatible.get_geometry_pieces()), compatible_bytes, "Compatible locked geometry stays byte-unchanged")
+	assert_true(compatible_observation.contact_possible, "Compatible locked center remains possible")
+	assert_equal(compatible_observation.contact_distance_cells, 1.5, "Compatible locked center uses its earliest projection")
+	assert_equal(compatible.get_contact_hits_between(1.49, 1.5).size(), 1, "Compatible locked center emits at the projected knot")
+	var no_anchors: Array[RouteContactAnchorScript] = []
+	compatible.set_contact_anchors(no_anchors)
+	assert_equal(_piece_values(compatible.get_geometry_pieces()), compatible_bytes, "Anchor removal never reflows locked compatible geometry")
+
+	var unlocked = _make_three_by_three_curve_runtime()
+	var unlocked_before := _piece_values(unlocked.get_geometry_pieces())
+	var curve_anchor = RouteContactAnchorScript.new(&"curve_exact", Vector2i(1, 0))
+	curve_anchor.contact_mode = RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	var curve_anchors: Array[RouteContactAnchorScript] = [curve_anchor]
+	unlocked.set_contact_anchors(curve_anchors)
+	assert_true(_piece_values(unlocked.get_geometry_pieces()) != unlocked_before, "Activation reflows unlocked off-center geometry")
+	unlocked.set_contact_anchors(no_anchors)
+	assert_equal(_piece_values(unlocked.get_geometry_pieces()), unlocked_before, "Anchor removal restores only unlocked geometry")
+
+	var locked = _make_three_by_three_curve_runtime()
+	assert_equal(locked.advance_construction(5.0), 5.0, "Locked impossible fixture builds its curve")
+	assert_true(locked.prepare_for_train_sampling(0.0, 5.0), "Locked impossible fixture prepares its route")
+	var locked_bytes := _piece_values(locked.get_geometry_pieces())
+	locked.set_contact_anchors(curve_anchors)
+	var locked_observation: Dictionary = locked.get_contact_observations()[0]
+	assert_equal(_piece_values(locked.get_geometry_pieces()), locked_bytes, "Locked off-center geometry stays byte-unchanged")
+	assert_false(locked_observation.contact_possible, "Locked off-center exact anchor remains impossible")
+	assert_equal(locked_observation.contact_distance_cells, -1.0, "Locked impossible anchor has no nominal distance")
+	locked.set_contact_anchors(no_anchors)
+	assert_equal(_piece_values(locked.get_geometry_pieces()), locked_bytes, "Anchor removal never reflows locked impossible geometry")
 
 
 func _object_has_property(object: Object, property_name: StringName) -> bool:

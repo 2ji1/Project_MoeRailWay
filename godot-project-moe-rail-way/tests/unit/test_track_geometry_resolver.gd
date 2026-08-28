@@ -109,6 +109,12 @@ func _assert_exact_curve_fixture(
 ) -> void:
 	var records := _records_for(cells, departure)
 	var anchor_cell: Vector2i = records[anchor_offset].cell
+	var baseline = _resolver.resolve(
+		departure, records, [], [], Vector2.ZERO, Vector2i(12, 12), 40.0
+	)
+	var baseline_piece = _piece_covering_serial(
+		baseline.pieces, records[anchor_offset].route_serial
+	) if baseline.is_valid else null
 	var anchor = RouteContactAnchorScript.new(&"warp_exact", anchor_cell)
 	anchor.set(&"contact_mode", 1)
 	var result = _resolver.resolve(
@@ -122,6 +128,16 @@ func _assert_exact_curve_fixture(
 	if piece == null:
 		return
 	assert_equal(piece.kind, expected_kind, "%s retains its accepted template kind" % label)
+	assert_not_null(baseline_piece, "%s has a pre-anchor accepted owner" % label)
+	if baseline_piece != null:
+		assert_equal(
+			piece.footprint_cells, baseline_piece.footprint_cells,
+			"%s exact anchor preserves the accepted footprint byte-for-byte" % label
+		)
+	assert_false(
+		piece.footprint_cells.has(departure),
+		"%s departure lead-in never becomes route footprint ownership" % label
+	)
 	assert_equal(
 		piece.centerline.size(), piece.nominal_length_cells * 16 + 1,
 		"%s anchored curve uses fixed nominal sampling" % label
@@ -139,10 +155,23 @@ func _assert_exact_curve_fixture(
 	var outgoing := Vector2(records[turn_index + 1].cell - records[turn_index].cell).normalized()
 	assert_true(piece.sample_nominal(0.0).heading.is_equal_approx(incoming), "%s preserves operational entry heading" % label)
 	assert_true(piece.sample_nominal(float(piece.nominal_length_cells)).heading.is_equal_approx(outgoing), "%s preserves operational exit heading" % label)
+	var first_chord_heading: Vector2 = (piece.centerline[1] - piece.centerline[0]).normalized()
+	var last_chord_heading: Vector2 = (piece.centerline[-1] - piece.centerline[-2]).normalized()
+	assert_true(
+		piece.sample_nominal(1.0 / 32.0).heading.is_equal_approx(first_chord_heading),
+		"%s entry heading override applies only at the exact boundary" % label
+	)
+	assert_true(
+		piece.sample_nominal(float(piece.nominal_length_cells) - 1.0 / 32.0).heading.is_equal_approx(last_chord_heading),
+		"%s exit heading override applies only at the exact boundary" % label
+	)
 	for sample_index in range(1, piece.centerline.size() - 1):
 		var point: Vector2 = piece.centerline[sample_index]
 		var cell := Vector2i(int(floor(point.x / 40.0)), int(floor(point.y / 40.0)))
-		assert_true(piece.footprint_cells.has(cell), "%s interior sample %d remains inside footprint" % [label, sample_index])
+		assert_true(
+			piece.footprint_cells.has(cell) or cell == departure,
+			"%s interior sample %d remains inside footprint or the departure lead-in" % [label, sample_index]
+		)
 	var replay = _resolver.resolve(
 		departure, records, [], [anchor], Vector2.ZERO, Vector2i(12, 12), 40.0
 	)
