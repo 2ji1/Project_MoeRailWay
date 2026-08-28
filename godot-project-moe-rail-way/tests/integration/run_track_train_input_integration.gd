@@ -4,6 +4,7 @@ const SHELL_SCENE_PATH := "res://src/presentation/session/session_shell.tscn"
 const SessionSnapshotScript = preload("res://src/domain/session/session_snapshot.gd")
 const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
 const SessionControllerScript = preload("res://src/domain/session/session_controller.gd")
+const TrackCellRecordScript = preload("res://src/domain/track/track_cell_record.gd")
 const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
 const TrackGeometryPieceScript = preload("res://src/domain/track/track_geometry_piece.gd")
 const TrackSystemScript = preload("res://src/domain/track/track_system.gd")
@@ -11,6 +12,13 @@ const TrainSystemScript = preload("res://src/domain/train/train_system.gd")
 const UILayoutProfileScript = preload("res://src/presentation/layout/ui_layout_profile.gd")
 
 var _failures := PackedStringArray()
+
+
+class ConstructionRecordingTrackSystem extends TrackSystemScript:
+	var last_construction_consumed := -1.0
+	func advance_construction(progress_cells: float) -> float:
+		last_construction_consumed = super.advance_construction(progress_cells)
+		return last_construction_consumed
 
 
 func _initialize() -> void:
@@ -185,6 +193,8 @@ func _assert_view_termination_clean(view, prefix: String) -> void:
 	_assert_true(not view._right_press_inside_grid, "%s clears right press inside fact" % prefix)
 	_assert_equal(view._previous_pointer_cell, Vector2i(-1, -1), "%s clears previous pointer" % prefix)
 	_assert_true(not view._release_clears_capture, "%s clears release capture state" % prefix)
+	_assert_equal(view._live_gesture_path, [], "%s clears live gesture path" % prefix)
+	_assert_equal(view._release_live_gesture_path, [], "%s clears release gesture path" % prefix)
 
 
 func _train_cell(config: SessionStartConfigScript, position: Vector2) -> Vector2i:
@@ -299,6 +309,50 @@ func _run() -> void:
 	var view = shell.get_track_field_view()
 	var departure := _logical_to_viewport(view, Vector2(100.0, 100.0))
 
+	var held_construction_config := _config()
+	held_construction_config.departure_required_built_cells = 99
+	var held_construction_track := ConstructionRecordingTrackSystem.new(held_construction_config)
+	_assert_equal(
+		held_construction_track._runtime.append_cells([Vector2i(3, 2), Vector2i(4, 2)]),
+		2,
+		"Held construction integration creates an origin route"
+	)
+	_assert_equal(
+		held_construction_track.advance_construction(1.5),
+		1.5,
+		"Held construction integration creates partial origin progress"
+	)
+	view.present(_track_snapshot(held_construction_track))
+	var held_endpoint := _logical_to_viewport(view, Vector2(180.0, 100.0))
+	var held_suffix := _logical_to_viewport(view, Vector2(220.0, 100.0))
+	await _deliver(_button(held_endpoint, MOUSE_BUTTON_LEFT, true))
+	await _deliver(_motion(held_suffix, MOUSE_BUTTON_MASK_LEFT))
+	var held_construction_frame: TrackInputFrameScript = await _consume_view(shell, held_construction_track)
+	var held_before_tick := _record_facts(held_construction_track.get_cell_records())
+	var held_controller := SessionControllerScript.new(
+		held_construction_config,
+		held_construction_track,
+		TrainSystemScript.new(held_construction_config.train_speed_cells_per_second)
+	)
+	held_controller.start()
+	held_controller.advance_tick(held_construction_frame)
+	var held_consumed: float = held_construction_track.last_construction_consumed
+	var held_after_tick := _record_facts(held_construction_track.get_cell_records())
+	var held_origin_observation: Dictionary = held_construction_track._runtime.get_gesture_origin_observation()
+	var held_origin_records := _record_facts(held_origin_observation["route_records"])
+	var held_frontier_passed: bool = held_construction_frame.left_held \
+		and held_construction_frame.live_gesture_path == [Vector2i(5, 2)] \
+		and held_consumed == 0.5 \
+		and held_before_tick[-1]["state"] == TrackCellRecordScript.State.RESERVED_GHOST \
+		and held_after_tick[1]["state"] == TrackCellRecordScript.State.BUILT \
+		and held_after_tick[-1]["state"] == TrackCellRecordScript.State.RESERVED_GHOST \
+		and held_after_tick[-1]["progress"] == 0.0 \
+		and held_origin_records[1]["state"] == held_after_tick[1]["state"] \
+		and held_origin_records[1]["progress"] == held_after_tick[1]["progress"]
+	_assert_true(held_frontier_passed, "Held construction advances shared origin serials and leaves suffix ghost-only")
+	await _release_view(shell, held_suffix)
+	await _consume_view(shell, held_construction_track)
+
 	var running_track := TrackSystemScript.new(config)
 	var running_train := TrainSystemScript.new(config.train_speed_cells_per_second)
 	var running_controller := SessionControllerScript.new(config, running_track, running_train)
@@ -329,6 +383,8 @@ func _run() -> void:
 	_assert_true(running_green, "Endpoint reshape integration assertion failed endpoint green")
 	if running_green:
 		print("PASS: Endpoint reshape integration running endpoint green")
+
+	await _test_recovered_running_endpoint_accepts_direct_drag(shell, view, config)
 
 	var consecutive_track := TrackSystemScript.new(config)
 	var consecutive_controller := SessionControllerScript.new(
@@ -390,6 +446,144 @@ func _run() -> void:
 	if consecutive_first_persisted and consecutive_second_changed:
 		print("PASS: Endpoint reshape integration consecutive endpoint gestures")
 
+	var pending_track := TrackSystemScript.new(config)
+	var pending_controller := SessionControllerScript.new(
+		config,
+		pending_track,
+		TrainSystemScript.new(config.train_speed_cells_per_second)
+	)
+	pending_controller.start()
+	view.present(pending_controller.get_snapshot())
+	await _deliver(_button(departure, MOUSE_BUTTON_LEFT, true))
+	await _deliver(_motion(_logical_to_viewport(view, Vector2(140.0, 100.0)), MOUSE_BUTTON_MASK_LEFT))
+	var pending_first_frame: TrackInputFrameScript = await _consume_view(shell, pending_track)
+	var pending_first_cells := _record_cells(pending_track.get_cell_records())
+	var pending_first_path: Array[Vector2i] = [
+		Vector2i(3, 2),
+	]
+	var pending_first_persisted: bool = pending_first_frame.left_pressed \
+		and pending_first_frame.left_held \
+		and not pending_first_frame.left_released \
+		and pending_first_cells == pending_first_path
+	_assert_true(pending_first_persisted, "Pending-release integration first drag publishes its ghost")
+	var pending_endpoint_viewport := _logical_to_viewport(
+		view,
+		Vector2(140.0, 100.0)
+	)
+	var pending_next_viewport := _logical_to_viewport(
+		view,
+		Vector2(180.0, 100.0)
+	)
+	var pending_followup_viewport := _logical_to_viewport(
+		view,
+		Vector2(220.0, 100.0)
+	)
+	var pending_endpoint_position: Vector2 = view.get_global_transform_with_canvas().affine_inverse() * pending_endpoint_viewport
+	var pending_next_position: Vector2 = view.get_global_transform_with_canvas().affine_inverse() * pending_next_viewport
+	var pending_followup_position: Vector2 = view.get_global_transform_with_canvas().affine_inverse() * pending_followup_viewport
+	view.call("_gui_input", _button(pending_next_position, MOUSE_BUTTON_LEFT, false))
+	view.call("_gui_input", _button(pending_next_position, MOUSE_BUTTON_LEFT, true))
+	view.call("_gui_input", _motion(pending_followup_position, MOUSE_BUTTON_MASK_LEFT))
+	var pending_second_frame: TrackInputFrameScript = await _consume_view(shell, pending_track)
+	var pending_second_cells := _record_cells(pending_track.get_cell_records())
+	_assert_true(pending_second_frame.left_pressed, "Pending-release integration preserves fresh press edge")
+	_assert_true(pending_second_frame.left_held, "Pending-release integration preserves fresh held state")
+	_assert_true(pending_second_frame.left_released, "Pending-release integration preserves pending release edge")
+	_assert_true(pending_second_frame.has_explicit_release_snapshot, "Pending-release integration preserves explicit old release snapshot")
+	_assert_equal(pending_second_frame.release_live_gesture_path, [Vector2i(3, 2), Vector2i(4, 2)], "Pending-release integration preserves moving A-to-B release path")
+	_assert_equal(pending_second_frame.left_release_pointer_cell, Vector2i(4, 2), "Pending-release integration preserves old release pointer")
+	_assert_equal(pending_second_frame.live_gesture_path, [Vector2i(5, 2)], "Pending-release integration preserves fresh live path")
+	_assert_equal(pending_second_cells, [Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2)], "Pending-release integration publishes old then fresh ghost")
+	_assert_true(pending_track.is_left_capture_active(), "Pending-release integration keeps fresh facade capture")
+	_assert_true(pending_track.is_runtime_gesture_active(), "Pending-release integration keeps fresh runtime gesture")
+	view.call("_gui_input", _motion(pending_followup_position, MOUSE_BUTTON_MASK_LEFT))
+	var pending_followup_frame: TrackInputFrameScript = await _consume_view(shell, pending_track)
+	var pending_followup_cells := _record_cells(pending_track.get_cell_records())
+	_assert_true(pending_followup_frame.left_held, "Pending-release integration follow-up remains held")
+	_assert_true(not pending_followup_frame.left_released, "Pending-release integration follow-up has no new release edge")
+	_assert_equal(pending_followup_frame.live_gesture_path, [Vector2i(5, 2)], "Pending-release integration retains the full fresh path")
+	_assert_equal(pending_followup_cells, [Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2)], "Pending-release integration retains both fresh ghost cells")
+	_assert_equal(pending_track.get_available_track_cells(), config.total_track_cells - 3, "Pending-release integration preserves exact inventory")
+	_assert_true(pending_track.is_left_capture_active(), "Pending-release integration keeps follow-up facade capture")
+	_assert_true(pending_track.is_runtime_gesture_active(), "Pending-release integration keeps follow-up runtime gesture")
+	var pending_second_changed: bool = pending_second_frame.left_pressed \
+		and pending_second_frame.left_held \
+		and pending_second_frame.left_released \
+		and pending_second_frame.has_explicit_release_snapshot \
+		and pending_second_frame.release_live_gesture_path == [Vector2i(3, 2), Vector2i(4, 2)] \
+		and pending_second_frame.live_gesture_path == [Vector2i(5, 2)] \
+		and pending_second_cells == [Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2)] \
+		and pending_followup_frame.left_held \
+		and not pending_followup_frame.left_released \
+		and pending_followup_frame.live_gesture_path == [Vector2i(5, 2)] \
+		and pending_followup_cells == [Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2)] \
+		and pending_track.get_available_track_cells() == config.total_track_cells - 3 \
+		and pending_track.is_left_capture_active() \
+		and pending_track.is_runtime_gesture_active()
+	if pending_first_persisted and pending_second_changed:
+		print("PASS: live ordinary ghost survives pending release fresh press")
+	view.call("_gui_input", _motion(pending_next_position, MOUSE_BUTTON_MASK_LEFT))
+	view.call("_gui_input", _button(pending_next_position, MOUSE_BUTTON_LEFT, false))
+	view.call("_gui_input", _button(pending_next_position, MOUSE_BUTTON_LEFT, true))
+	view.call("_gui_input", _motion(pending_followup_position, MOUSE_BUTTON_MASK_LEFT))
+	var empty_coalesced_frame: TrackInputFrameScript = await _consume_view(shell, pending_track)
+	var empty_coalesced_cells := _record_cells(pending_track.get_cell_records())
+	_assert_true(empty_coalesced_frame.has_explicit_release_snapshot, "Active empty release remains explicit in a coalesced frame")
+	_assert_equal(empty_coalesced_frame.release_live_gesture_path, [], "Active empty release remains authoritative")
+	_assert_equal(empty_coalesced_frame.left_release_pointer_cell, Vector2i(4, 2), "Active empty release retains its pointer")
+	_assert_equal(empty_coalesced_cells, [Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2)], "Active empty release finalizes old origin before fresh update")
+	_assert_true(pending_track.is_left_capture_active(), "Fresh press after active empty release remains captured")
+	_assert_true(pending_track.is_runtime_gesture_active(), "Fresh press after active empty release remains active")
+	view.call("_gui_input", _button(pending_followup_position, MOUSE_BUTTON_LEFT, false))
+	var pending_cleanup_frame: TrackInputFrameScript = await _consume_view(shell)
+	pending_controller.advance_tick(pending_cleanup_frame)
+	var outside_track := TrackSystemScript.new(config)
+	var outside_old_path: Array[Vector2i] = [Vector2i(3, 2)]
+	var outside_old_frame := TrackInputFrameScript.new(
+		outside_old_path, Vector2i(2, 2), true, Vector2i(-1, -1), false,
+		true, true, false, false, Vector2i(3, 2), true, outside_old_path
+	)
+	outside_track.apply_left_input(outside_old_frame)
+	_assert_true(
+		outside_track.is_left_capture_active() and outside_track.is_runtime_gesture_active(),
+		"Outside release fixture starts with an active old runtime"
+	)
+	view.present(_track_snapshot(outside_track))
+	var outside_departure_viewport := _logical_to_viewport(view, Vector2(100.0, 100.0))
+	var outside_departure_position: Vector2 = view.get_global_transform_with_canvas().affine_inverse() * outside_departure_viewport
+	view.call("_gui_input", _button(Vector2(-20.0, -20.0), MOUSE_BUTTON_LEFT, true))
+	view.call("_gui_input", _button(Vector2(-20.0, -20.0), MOUSE_BUTTON_LEFT, false))
+	view.call("_gui_input", _button(outside_departure_position, MOUSE_BUTTON_LEFT, true))
+	view.call("_gui_input", _motion(pending_endpoint_position, MOUSE_BUTTON_MASK_LEFT))
+	var outside_release_frame: TrackInputFrameScript = await _consume_view(shell, outside_track)
+	_assert_true(outside_release_frame.has_explicit_release_snapshot, "Outside release emits an explicit snapshot")
+	_assert_equal(outside_release_frame.release_live_gesture_path, [], "Outside release emits an empty detached path")
+	_assert_true(not outside_release_frame.left_release_pointer_inside_grid, "Outside release emits an outside pointer fact")
+	_assert_true(outside_release_frame.left_pressed, "Outside release coalesces a fresh press edge")
+	_assert_equal(outside_release_frame.left_press_cell, Vector2i(2, 2), "Outside release fresh press targets the old origin")
+	_assert_equal(outside_release_frame.live_gesture_path, [Vector2i(3, 2)], "Outside release fresh motion is captured")
+	_assert_equal(_record_cells(outside_track.get_cell_records()), [Vector2i(3, 2)], "Outside release invents no cells from the old pointer")
+	_assert_equal(outside_track.get_endpoint_cell(), Vector2i(3, 2), "Outside release finalizes old origin before fresh endpoint")
+	_assert_true(outside_track.is_left_capture_active(), "Outside release fresh facade capture remains active")
+	_assert_true(outside_track.is_runtime_gesture_active(), "Outside release fresh runtime remains active")
+	var outside_substantive := outside_release_frame.has_explicit_release_snapshot \
+		and outside_release_frame.release_live_gesture_path.is_empty() \
+		and not outside_release_frame.left_release_pointer_inside_grid \
+		and outside_release_frame.left_pressed \
+		and outside_release_frame.left_press_cell == Vector2i(2, 2) \
+		and outside_release_frame.live_gesture_path == [Vector2i(3, 2)] \
+		and _record_cells(outside_track.get_cell_records()) == [Vector2i(3, 2)] \
+		and outside_track.get_endpoint_cell() == Vector2i(3, 2) \
+		and outside_track.is_left_capture_active() \
+		and outside_track.is_runtime_gesture_active()
+	if outside_substantive:
+		print("PASS: active outside release orders old finalize and fresh begin")
+	view.call("_gui_input", _button(pending_endpoint_position, MOUSE_BUTTON_LEFT, false))
+	var outside_cleanup_frame: TrackInputFrameScript = await _consume_view(shell, outside_track)
+	_assert_true(outside_cleanup_frame.left_released, "Outside release fresh gesture has a terminating release")
+	_assert_true(not outside_track.is_left_capture_active(), "Outside release cleanup clears fresh facade capture")
+	_assert_true(not outside_track.is_runtime_gesture_active(), "Outside release cleanup clears fresh runtime")
+
 	var reshape_config := SessionStartConfigScript.new(
 		123, 120.0, 60,
 		1.0, 10, 2, 3.0, 60.0, 1,
@@ -419,6 +613,48 @@ func _run() -> void:
 	await _consume_view(shell, reshape_track)
 
 	var held_reselection_passed := reshape_seed_ok and reshape_release.left_released
+	var replay_away := Vector2i(5, 1)
+	var replay_away_logical := (Vector2(replay_away) + Vector2(0.5, 0.5)) * reshape_config.grid_cell_size_units
+	await _deliver(_motion(_logical_to_viewport(view, replay_away_logical), MOUSE_BUTTON_MASK_LEFT))
+	var replay_away_frame: TrackInputFrameScript = await _consume_view(shell, reshape_track)
+	await _deliver(_motion(_logical_to_viewport(view, reshape_endpoint_logical), MOUSE_BUTTON_MASK_LEFT))
+	var signature_frame: TrackInputFrameScript = await _consume_view(shell, reshape_track)
+	var signature_records := _record_cells(reshape_track.get_cell_records())
+	var signature_inventory: int = reshape_track.get_available_track_cells()
+	var signature_ok: bool = replay_away_frame.left_held \
+		and signature_frame.left_held \
+		and signature_records == reshape_right_curve \
+		and signature_inventory == reshape_available \
+		and bool(reshape_track._runtime.get("_gesture_template_selection_signature_valid"))
+	_assert_true(signature_ok, "Actual input selects the origin-equal absent target without a suffix")
+	await _deliver(_motion(_logical_to_viewport(view, reshape_endpoint_logical), MOUSE_BUTTON_MASK_LEFT))
+	var replay_frame: TrackInputFrameScript = await _consume_view(shell, reshape_track)
+	var replay_ok: bool = replay_frame.left_held \
+		and not replay_frame.left_released \
+		and _record_cells(reshape_track.get_cell_records()) == signature_records \
+		and reshape_track.get_available_track_cells() == signature_inventory \
+		and reshape_track.get_endpoint_cell() == reshape_endpoint
+	_assert_true(replay_ok, "Completed-template identical held replay is idempotent")
+	var extension_cell := Vector2i(3, 5)
+	var extension_logical := (Vector2(extension_cell) + Vector2(0.5, 0.5)) * reshape_config.grid_cell_size_units
+	await _deliver(_motion(_logical_to_viewport(view, extension_logical), MOUSE_BUTTON_MASK_LEFT))
+	var extension_frame: TrackInputFrameScript = await _consume_view(shell, reshape_track)
+	var extension_records := _record_cells(reshape_track.get_cell_records())
+	var extension_ok: bool = extension_frame.left_held \
+		and extension_records.has(extension_cell) \
+		and reshape_track.get_endpoint_cell() == extension_cell
+	_assert_true(extension_ok, "Changed real motion extends the same-template implicit suffix")
+	await _deliver(_motion(_logical_to_viewport(view, reshape_endpoint_logical), MOUSE_BUTTON_MASK_LEFT))
+	var return_frame: TrackInputFrameScript = await _consume_view(shell, reshape_track)
+	var return_ok: bool = return_frame.left_held \
+		and _record_cells(reshape_track.get_cell_records()) == signature_records \
+		and not _record_cells(reshape_track.get_cell_records()).has(extension_cell) \
+		and reshape_track.get_available_track_cells() == signature_inventory
+	_assert_true(return_ok, "Returning to the signature removes the implicit suffix")
+	var replay_substantive := signature_ok and replay_ok and extension_ok and return_ok
+	if replay_substantive:
+		print("PASS: completed-template replay is idempotent")
+
 	var left_near := Vector2i(3, 1)
 	var left_near_logical := (Vector2(left_near) + Vector2(0.5, 0.5)) * reshape_config.grid_cell_size_units
 	await _deliver(_motion(_logical_to_viewport(view, left_near_logical), MOUSE_BUTTON_MASK_LEFT))
@@ -434,7 +670,7 @@ func _run() -> void:
 		and left_near_frame.left_held \
 		and not left_near_frame.left_released
 	_assert_true(left_ok, "Held pointer near left target reselects the left template")
-	held_reselection_passed = held_reselection_passed and left_ok
+	held_reselection_passed = held_reselection_passed and left_ok and replay_substantive
 
 	var straight_near := Vector2i(5, 1)
 	var straight_near_logical := (Vector2(straight_near) + Vector2(0.5, 0.5)) * reshape_config.grid_cell_size_units
@@ -469,6 +705,36 @@ func _run() -> void:
 		print("PASS: Endpoint reshape integration held pointer reselects live template")
 	await _release_view(shell, _logical_to_viewport(view, Vector2(140.0, 140.0)))
 	await _consume_view(shell, reshape_track)
+
+	var live_reflow_track := TrackSystemScript.new(config)
+	view.present(_track_snapshot(live_reflow_track))
+	var origin_position := _logical_to_viewport(view, Vector2(100.0, 100.0))
+	var first_endpoint_position := _logical_to_viewport(view, Vector2(180.0, 140.0))
+	var backtrack_position := _logical_to_viewport(view, Vector2(140.0, 100.0))
+	var opposite_endpoint_position := _logical_to_viewport(view, Vector2(140.0, 60.0))
+	await _deliver(_button(origin_position, MOUSE_BUTTON_LEFT, true))
+	await _deliver(_motion(first_endpoint_position, MOUSE_BUTTON_MASK_LEFT))
+	var first_frame: TrackInputFrameScript = await _consume_view(shell)
+	live_reflow_track.apply_left_input(first_frame)
+	await _deliver(_motion(backtrack_position, MOUSE_BUTTON_MASK_LEFT))
+	await _deliver(_motion(opposite_endpoint_position, MOUSE_BUTTON_MASK_LEFT))
+	var replacement_frame: TrackInputFrameScript = await _consume_view(shell)
+	live_reflow_track.apply_left_input(replacement_frame)
+	var first_live_path: Array[Vector2i] = [Vector2i(3, 2), Vector2i(3, 3), Vector2i(4, 3)]
+	var replacement_path: Array[Vector2i] = [Vector2i(3, 2), Vector2i(3, 1)]
+	var live_reflow_ok: bool = first_frame.left_held and not first_frame.left_released \
+		and replacement_frame.left_held and not replacement_frame.left_released \
+		and first_frame.live_gesture_path == first_live_path \
+		and replacement_frame.live_gesture_path == replacement_path \
+		and _record_cells(live_reflow_track.get_cell_records()) == replacement_path \
+		and live_reflow_track.get_available_track_cells() == live_reflow_track.get_total_track_cells() - replacement_path.size() \
+		and live_reflow_track.is_left_capture_active() \
+		and live_reflow_track.is_runtime_gesture_active()
+	_assert_true(live_reflow_ok, "Live ordinary ghost follows held rebranch before release")
+	if live_reflow_ok:
+		print("PASS: live ordinary ghost follows held rebranch")
+	await _release_view(shell, opposite_endpoint_position)
+	await _consume_view(shell, live_reflow_track)
 
 	var overlap_track := TrackSystemScript.new(config)
 	var overlap_frame := TrackInputFrameScript.new(
@@ -760,6 +1026,96 @@ func _run() -> void:
 	await process_frame
 	_assert_equal(horizontal_track.get_cell_records().size(), domain_before_resize.size(), "Resize does not change domain cells")
 	await _finish(shell)
+
+
+func _test_recovered_running_endpoint_accepts_direct_drag(shell, view, config) -> void:
+	var recovery_config := SessionStartConfigScript.new(
+		123, 120.0, 60,
+		1.0, 18, 2, 3.0, 60.0, 1,
+		Vector2(800.0, 400.0), Vector2i(20, 10), 40.0, Vector2.ZERO,
+		&"departure_01", Vector2(100.0, 100.0), Vector2i(2, 2)
+	)
+	var recovery_track := TrackSystemScript.new(recovery_config)
+	var recovery_controller := SessionControllerScript.new(
+		recovery_config,
+		recovery_track,
+		TrainSystemScript.new(recovery_config.train_speed_cells_per_second)
+	)
+	var recovery_cells: Array[Vector2i] = []
+	for x in range(recovery_config.departure_cell.x + 1, recovery_config.departure_cell.x + 14):
+		recovery_cells.append(Vector2i(x, recovery_config.departure_cell.y))
+	_assert_equal(
+		recovery_track._runtime.append_cells(recovery_cells),
+		13,
+		"Recovery integration appends the direct construction fixture"
+	)
+	_assert_equal(recovery_track.get_cell_records().size(), 13, "Recovery integration builds thirteen straight records")
+	_assert_equal(recovery_track.advance_construction(13.0), 13.0, "Recovery integration completes construction")
+	_assert_true(
+		recovery_track.prepare_for_train_sampling(0.0, 1.0),
+		"Recovery integration prepares train sampling"
+	)
+	recovery_controller.start()
+	recovery_controller.advance_tick()
+	_assert_equal(
+		recovery_controller.get_state(),
+		SessionControllerScript.State.RUNNING,
+		"Recovery integration enters RUNNING before the recovered edit"
+	)
+	_assert_equal(recovery_track.recover_behind(6.0), 6, "Recovery integration recovers six rear cells")
+	_assert_equal(recovery_track.get_cell_records().size(), 7, "Recovery integration leaves seven active records")
+	_assert_equal(recovery_track.get_available_track_cells(), 11, "Recovery integration leaves eleven available cells")
+	_assert_equal(recovery_track.get_endpoint_cell(), Vector2i(15, 2), "Recovery integration keeps the recovered endpoint")
+	var began = recovery_track._runtime.gesture_begin(recovery_track.get_endpoint_cell())
+	_assert_true(began is Dictionary and not began.is_empty(), "Recovery integration exposes the recovered endpoint gesture")
+	if began is Dictionary and not began.is_empty():
+		_assert_equal(recovery_track._runtime.get_editable_span()["record_count"], 3, "Recovery integration exposes a three-record editable head")
+		recovery_track._runtime.gesture_abort()
+	recovery_controller.advance_tick()
+	view.present(recovery_controller.get_snapshot())
+	var endpoint := recovery_track.get_endpoint_cell()
+	var next_cell := endpoint + Vector2i.RIGHT
+	var endpoint_position := _logical_to_viewport(
+		view,
+		Vector2(endpoint) * recovery_config.grid_cell_size_units
+			+ Vector2(recovery_config.grid_cell_size_units * 0.5, recovery_config.grid_cell_size_units * 0.5)
+	)
+	var next_position := _logical_to_viewport(
+		view,
+		Vector2(next_cell) * recovery_config.grid_cell_size_units
+			+ Vector2(recovery_config.grid_cell_size_units * 0.5, recovery_config.grid_cell_size_units * 0.5)
+	)
+	await _deliver(_motion(endpoint_position))
+	_assert_equal(
+		view.get_render_observation().get("hover_extend_cell", Vector2i(-1, -1)),
+		endpoint,
+		"Recovered RUNNING endpoint renders green before the direct drag"
+	)
+	await _deliver(_button(endpoint_position, MOUSE_BUTTON_LEFT, true))
+	await _deliver(_motion(next_position, MOUSE_BUTTON_MASK_LEFT))
+	var recovery_frame: TrackInputFrameScript = await _consume_view(shell)
+	recovery_controller.advance_tick(recovery_frame)
+	var recovery_cells_after := _record_cells(recovery_track.get_cell_records())
+	var recovery_drag_passed: bool = recovery_frame.left_pressed \
+		and recovery_frame.left_held \
+		and not recovery_frame.left_released \
+		and recovery_cells_after.size() == 8 \
+		and recovery_cells_after[-1] == next_cell \
+		and recovery_track.get_endpoint_cell() == next_cell \
+		and recovery_track.get_available_track_cells() == 10 \
+		and recovery_track.is_left_capture_active() \
+		and recovery_track.is_runtime_gesture_active() \
+		and recovery_controller.get_state() == SessionControllerScript.State.RUNNING
+	_assert_true(recovery_drag_passed, "Recovered RUNNING endpoint accepts the actual adjacent drag before release")
+	await _deliver(_button(next_position, MOUSE_BUTTON_LEFT, false))
+	var recovery_release: TrackInputFrameScript = await _consume_view(shell)
+	recovery_controller.advance_tick(recovery_release)
+	var recovery_release_passed: bool = recovery_release.left_released \
+		and not recovery_track.is_left_capture_active() \
+		and not recovery_track.is_runtime_gesture_active()
+	_assert_true(recovery_release_passed, "Recovered RUNNING endpoint direct drag releases cleanly")
+	if recovery_drag_passed and recovery_release_passed:
+		print("PASS: recovered running endpoint accepts direct drag")
 
 
 func _finish(shell) -> void:

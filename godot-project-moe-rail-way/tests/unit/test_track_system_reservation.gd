@@ -1,6 +1,7 @@
 extends "res://tests/support/prototype_test.gd"
 
 const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
+const TrackCellRecordScript = preload("res://src/domain/track/track_cell_record.gd")
 const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
 const TrackSystemScript = preload("res://src/domain/track/track_system.gd")
 const GridTrackRuntimeScript = preload("res://src/domain/track/grid_track_runtime.gd")
@@ -12,6 +13,8 @@ func run() -> PackedStringArray:
 	_test_input_frame_owns_an_independent_cell_buffer()
 	_test_facade_preserves_origin_and_exact_inventory()
 	_test_endpoint_capture_appends_ordered_cells()
+	_test_ordinary_held_path_replaces_visible_candidate()
+	_test_active_gesture_construction_advances_origin_only()
 	_test_invalid_candidates_stop_without_corrupting_ownership()
 	_test_right_edge_consumes_the_frame_and_cancels_a_suffix()
 	_test_right_edge_ends_left_capture_until_a_fresh_press()
@@ -21,8 +24,16 @@ func run() -> PackedStringArray:
 	_test_held_input_waits_for_release_and_fresh_press()
 	_test_left_release_finalizes_once()
 	_test_same_frame_press_routes_through_gesture_transaction()
+	_test_pending_release_preserves_fresh_press_gesture()
+	_test_explicit_release_facts_order_old_then_fresh()
+	_test_explicit_empty_release_outside_pointer_is_authoritative()
+	_test_legacy_combined_frame_discriminates_without_release_snapshot()
+	_test_pending_release_releases_inactive_rejected_latch()
+	_test_pending_release_reopens_after_train_preparation_termination()
+	_test_ineligible_coalesced_press_keeps_existing_rejection_latch_only()
 	_test_current_pointer_selects_completed_head_template()
 	_test_current_pointer_reselects_completed_head_template_while_held()
+	_test_completed_template_suffix_backtracks_while_held()
 	_test_authoritative_pointer_wins_over_crossed_target()
 	_test_reselection_keeps_suffix_after_selected_target()
 	_test_left_press_latch_requires_release_after_rejection()
@@ -106,12 +117,25 @@ func _left_frame(
 	press_cell: Vector2i = Vector2i(0, 0),
 	inside: bool = true,
 	current_pointer_cell: Vector2i = Vector2i(-1, -1),
-	current_pointer_inside_grid: bool = false
+	current_pointer_inside_grid: bool = false,
+	release_path: Variant = null,
+	release_pointer_cell: Vector2i = Vector2i(-1, -1),
+	release_pointer_inside_grid: bool = false
 ) -> TrackInputFrameScript:
+	if release_path == null:
+		return TrackInputFrameScript.new(
+			cells, press_cell, inside, Vector2i(-1, -1), false,
+			pressed, held, released, false,
+			current_pointer_cell, current_pointer_inside_grid, cells
+		)
+	var detached_release_path: Array[Vector2i] = []
+	for cell in release_path:
+		detached_release_path.append(Vector2i(cell))
 	return TrackInputFrameScript.new(
 		cells, press_cell, inside, Vector2i(-1, -1), false,
 		pressed, held, released, false,
-		current_pointer_cell, current_pointer_inside_grid
+		current_pointer_cell, current_pointer_inside_grid, cells,
+		detached_release_path, release_pointer_cell, release_pointer_inside_grid
 	)
 
 
@@ -127,10 +151,30 @@ func _right_frame(
 
 
 func _test_input_frame_owns_an_independent_cell_buffer() -> void:
+	var empty_frame = TrackInputFrameScript.empty()
+	assert_false(empty_frame.has_explicit_release_snapshot, "Legacy empty frame has no explicit release snapshot")
+	assert_not_null(empty_frame.get("live_gesture_path"), "Empty frame exposes the live gesture path")
+	if empty_frame.get("live_gesture_path") == null:
+		return
 	var source: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0)]
-	var frame = TrackInputFrameScript.new(source)
+	var source_path: Array[Vector2i] = [Vector2i(1, 0), Vector2i(1, 1)]
+	var frame_script = load("res://src/domain/track/track_input_frame.gd")
+	var frame = frame_script.call(
+		"new",
+		source, Vector2i(-1, -1), false, Vector2i(-1, -1), false,
+		false, false, false, false, Vector2i(-1, -1), false, source_path
+	)
+	assert_not_null(frame, "Frame constructor accepts an explicit live gesture path")
+	if frame == null:
+		return
 	source[0] = Vector2i(9, 9)
+	source_path[0] = Vector2i(9, 9)
 	assert_equal(frame.crossed_cells, [Vector2i(1, 0), Vector2i(2, 0)], "Frame copies cells")
+	assert_not_null(frame.get("live_gesture_path"), "Frame exposes the live gesture path")
+	assert_equal(frame.live_gesture_path, [Vector2i(1, 0), Vector2i(1, 1)], "Frame copies live gesture path")
+	var legacy = TrackInputFrameScript.new(source)
+	assert_not_null(legacy.get("live_gesture_path"), "Legacy frame exposes the live gesture path")
+	assert_equal(legacy.live_gesture_path, [Vector2i(9, 9), Vector2i(2, 0)], "Legacy constructor copies crossed cells into live gesture path")
 	var first = TrackInputFrameScript.empty()
 	var second = TrackInputFrameScript.empty()
 	first.crossed_cells.append(Vector2i(1, 0))
@@ -156,12 +200,82 @@ func _test_endpoint_capture_appends_ordered_cells() -> void:
 		assert_equal(records[index].cell, cells[index], "Physical crossing order is retained")
 	assert_equal(track.get_endpoint_cell(), Vector2i(3, 0), "Endpoint advances to the last cell")
 	assert_equal(track.get_available_track_cells(), 5, "Each unique cell charges exactly once")
-	var release_cells: Array[Vector2i] = [Vector2i(3, 1)]
+	var release_cells: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0), Vector2i(3, 1)]
 	track.apply_left_input(_left_frame(release_cells, false, false, true))
 	assert_equal(track.get_endpoint_cell(), Vector2i(3, 1), "Release crossings process before capture clears")
 	var after_release: Array[Vector2i] = [Vector2i(3, 2)]
 	track.apply_left_input(_left_frame(after_release))
 	assert_equal(track.get_endpoint_cell(), Vector2i(3, 1), "Held input after release has no capture")
+
+
+func _test_ordinary_held_path_replaces_visible_candidate() -> void:
+	print("Live gesture path: ordinary held candidate reflows before release")
+	var track = TrackSystemScript.new(_config(10))
+	var first_path: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)]
+	track.apply_left_input(TrackInputFrameScript.new(
+		first_path, Vector2i(0, 0), true, Vector2i(-1, -1), false,
+		true, true, false, false, Vector2i(3, 0), true, first_path
+	))
+	var first_serials := track.get_cell_records().map(func(record): return record.route_serial)
+	var replacement: Array[Vector2i] = [Vector2i(1, 0), Vector2i(1, 1), Vector2i(1, 2)]
+	track.apply_left_input(TrackInputFrameScript.new(
+		replacement, Vector2i(0, 0), true, Vector2i(-1, -1), false,
+		false, true, false, false, Vector2i(1, 2), true, replacement
+	))
+	assert_equal(track.get_cell_records().map(func(record): return record.cell), replacement, "Held replacement removes the superseded ordinary suffix")
+	assert_equal(track.get_available_track_cells(), 7, "Equal-length replacement preserves exact inventory")
+	assert_equal(track.get_cell_records()[0].route_serial, first_serials[0], "Common path prefix retains identity")
+	assert_true(track.get_cell_records()[1].route_serial > first_serials[-1], "New branch never reuses a removed serial")
+	assert_true(track.is_left_capture_active() and track.is_runtime_gesture_active(), "Replacement remains held")
+	var replacement_max_serial := 0
+	for record in track.get_cell_records():
+		replacement_max_serial = maxi(replacement_max_serial, record.route_serial)
+	var empty_path: Array[Vector2i] = []
+	track.apply_left_input(TrackInputFrameScript.new(
+		empty_path, Vector2i(0, 0), true, Vector2i(-1, -1), false,
+		false, true, false, false, Vector2i(0, 0), true, empty_path
+	))
+	assert_equal(track.get_cell_records(), [], "Empty authoritative path restores the departure origin")
+	assert_equal(track.get_available_track_cells(), 10, "Empty authoritative path refunds the full candidate")
+	var new_path: Array[Vector2i] = [Vector2i(1, 0)]
+	track.apply_left_input(TrackInputFrameScript.new(
+		new_path, Vector2i(0, 0), true, Vector2i(-1, -1), false,
+		false, true, false, false, Vector2i(1, 0), true, new_path
+	))
+	assert_equal(track.get_cell_records().map(func(record): return record.cell), new_path, "Held gesture accepts a new path after clearing")
+	assert_true(track.get_cell_records()[0].route_serial > replacement_max_serial, "New path serial remains above every serial observed before clearing")
+	var release_track = TrackSystemScript.new(_config(10))
+	release_track.apply_left_input(TrackInputFrameScript.new(
+		first_path, Vector2i(0, 0), true, Vector2i(-1, -1), false,
+		true, true, false, false, Vector2i(3, 0), true, first_path
+	))
+	var release_crossings: Array[Vector2i] = [Vector2i(3, 0), Vector2i(2, 0), Vector2i(1, 0), Vector2i(0, 0)]
+	release_track.apply_left_input(TrackInputFrameScript.new(
+		release_crossings, Vector2i(0, 0), true, Vector2i(-1, -1), false,
+		false, false, true, false, Vector2i(0, 0), true, empty_path
+	))
+	assert_equal(release_track.get_cell_records(), [], "Empty authoritative release path finalizes the origin candidate")
+	assert_equal(release_track.get_available_track_cells(), 10, "Empty authoritative release path refunds the candidate")
+
+
+func _test_active_gesture_construction_advances_origin_only() -> void:
+	print("Live gesture path: facade advances shared construction before suffix")
+	var track = TrackSystemScript.new(_config(8))
+	var origin_cells: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0)]
+	track.apply_left_input(_left_frame(origin_cells, true, true, false, Vector2i(0, 0), true, Vector2i(2, 0), true))
+	track.apply_left_input(_left_frame([], false, false, true, Vector2i(0, 0), true, Vector2i(2, 0), true, origin_cells))
+	assert_equal(track.advance_construction(1.5), 1.5, "Facade fixture creates partial origin progress")
+	var endpoint := track.get_endpoint_cell()
+	track.apply_left_input(_left_frame([], true, true, false, endpoint, true, endpoint, true))
+	track.apply_left_input(_left_frame([Vector2i(3, 0)], false, true, false, endpoint, true, Vector2i(3, 0), true, [Vector2i(3, 0)]))
+	var before_tick := track.get_cell_records()
+	assert_equal(before_tick[-1].state, TrackCellRecordScript.State.RESERVED_GHOST, "Facade suffix starts as a ghost")
+	assert_equal(track.advance_construction(2.0), 0.5, "Facade returns only shared origin construction")
+	var after_tick := track.get_cell_records()
+	assert_equal(after_tick[1].state, TrackCellRecordScript.State.BUILT, "Facade completes the origin frontier")
+	assert_equal(after_tick[-1].state, TrackCellRecordScript.State.RESERVED_GHOST, "Facade leaves the gesture suffix unbuilt")
+	assert_equal(after_tick[-1].build_progress, 0.0, "Facade leaves the gesture suffix at zero progress")
+	assert_equal(track.get_available_track_cells(), 5, "Facade construction preserves inventory")
 
 
 func _test_invalid_candidates_stop_without_corrupting_ownership() -> void:
@@ -174,7 +288,7 @@ func _test_invalid_candidates_stop_without_corrupting_ownership() -> void:
 		Vector2i(1, 0), Vector2i(2, 0), Vector2i(1, 0), Vector2i(2, 1),
 	]
 	track.apply_left_input(_left_frame(invalid_buffer.slice(0, 2), true))
-	track.apply_left_input(_left_frame(invalid_buffer.slice(2), false, true, false, Vector2i(2, 0)))
+	track.apply_left_input(_left_frame(invalid_buffer, false, true, false, Vector2i(2, 0)))
 	assert_equal(track.get_cell_records().size(), 2, "Candidates after the first invalid cell are ignored")
 	assert_equal(track.get_endpoint_cell(), Vector2i(2, 0), "Invalid suffix cannot move the endpoint")
 	assert_equal(track.get_available_track_cells(), 6, "Rejected cells never charge inventory")
@@ -184,7 +298,7 @@ func _test_right_edge_consumes_the_frame_and_cancels_a_suffix() -> void:
 	var track = TrackSystemScript.new(_config())
 	var cells: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)]
 	track.apply_left_input(_left_frame(cells, true))
-	track.apply_left_input(_left_frame([], false, false, true, Vector2i(3, 0)))
+	track.apply_left_input(_left_frame(cells, false, false, true, Vector2i(3, 0)))
 	assert_true(track.apply_right_input(_right_frame(Vector2i(2, 0))), "Right edge is consumed")
 	assert_equal(track.get_endpoint_cell(), Vector2i(1, 0), "Clicked cell and its suffix cancel")
 	assert_equal(track.get_available_track_cells(), 7, "Canceled ghosts refund once")
@@ -198,7 +312,7 @@ func _test_right_edge_ends_left_capture_until_a_fresh_press() -> void:
 	var track = TrackSystemScript.new(_config())
 	var initial: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0)]
 	track.apply_left_input(_left_frame(initial, true, true))
-	track.apply_left_input(_left_frame([], false, false, true, Vector2i(2, 0)))
+	track.apply_left_input(_left_frame(initial, false, false, true, Vector2i(2, 0)))
 	assert_true(track.apply_right_input(_right_frame(Vector2i(2, 0))), "Right edge cancels held drag")
 	assert_equal(track.get_endpoint_cell(), Vector2i(1, 0), "Right edge cancels the selected suffix")
 	var held_motion: Array[Vector2i] = [Vector2i(2, 0)]
@@ -235,7 +349,7 @@ func _test_active_right_abort_consumes_edge_before_cancellation() -> void:
 	print("Endpoint reshape: active right abort consumes edge")
 	var track = TrackSystemScript.new(_config())
 	track.apply_left_input(_left_frame([Vector2i(1, 0), Vector2i(2, 0)], true, true))
-	track.apply_left_input(_left_frame([], false, false, true, Vector2i(2, 0)))
+	track.apply_left_input(_left_frame([Vector2i(1, 0), Vector2i(2, 0)], false, false, true, Vector2i(2, 0)))
 	track.apply_left_input(_left_frame([], true, true, false, Vector2i(2, 0)))
 	track.apply_left_input(_left_frame([Vector2i(3, 0)], false, true, false, Vector2i(2, 0)))
 	assert_equal(track.get_endpoint_cell(), Vector2i(3, 0), "Active gesture publishes its candidate")
@@ -247,7 +361,7 @@ func _test_active_right_abort_consumes_edge_before_cancellation() -> void:
 
 	var simultaneous = TrackSystemScript.new(_config())
 	simultaneous.apply_left_input(_left_frame([Vector2i(1, 0), Vector2i(2, 0)], true, true))
-	simultaneous.apply_left_input(_left_frame([], false, false, true, Vector2i(2, 0)))
+	simultaneous.apply_left_input(_left_frame([Vector2i(1, 0), Vector2i(2, 0)], false, false, true, Vector2i(2, 0)))
 	simultaneous.apply_left_input(_left_frame([], true, true, false, Vector2i(2, 0)))
 	simultaneous.apply_left_input(_left_frame([Vector2i(3, 0)], false, true, false, Vector2i(2, 0)))
 	assert_true(
@@ -281,7 +395,7 @@ func _test_held_input_waits_for_release_and_fresh_press() -> void:
 	var track = TrackSystemScript.new(_config())
 	track.apply_left_input(_left_frame([], true, true, false, Vector2i(0, 0)))
 	track.apply_left_input(_left_frame([Vector2i(1, 0)], false, true, false, Vector2i(0, 0)))
-	track.apply_left_input(_left_frame([], false, false, true, Vector2i(1, 0)))
+	track.apply_left_input(_left_frame([Vector2i(1, 0)], false, false, true, Vector2i(1, 0)))
 	var completed_endpoint := track.get_endpoint_cell()
 	track.apply_left_input(_left_frame([Vector2i(2, 0)], false, true, false, completed_endpoint))
 	assert_equal(track.get_endpoint_cell(), completed_endpoint, "Held motion after completion is ignored")
@@ -312,7 +426,7 @@ func _test_left_release_finalizes_once() -> void:
 	assert_true(track.is_runtime_gesture_active(), "Held left input keeps runtime gesture active")
 	assert_equal(track.advance_construction(1.0), 0.0, "Active gesture defers construction")
 	assert_true(track.is_runtime_gesture_active(), "Construction cannot finalize the active gesture")
-	track.apply_left_input(_left_frame([], false, false, true, Vector2i(1, 0), true, Vector2i(1, 0), true))
+	track.apply_left_input(_left_frame([Vector2i(1, 0)], false, false, true, Vector2i(1, 0), true, Vector2i(1, 0), true))
 	assert_false(track.is_left_capture_active(), "Release clears facade capture")
 	assert_false(track.is_runtime_gesture_active(), "Release finalizes runtime gesture")
 	var endpoint_after_release := track.get_endpoint_cell()
@@ -329,7 +443,7 @@ func _test_same_frame_press_routes_through_gesture_transaction() -> void:
 		Vector2i(3, 1), Vector2i(3, 2),
 	]
 	track.apply_left_input(_left_frame(origin_cells, true, true, false, Vector2i(0, 0)))
-	track.apply_left_input(_left_frame([], false, false, true, Vector2i(3, 2)))
+	track.apply_left_input(_left_frame(origin_cells, false, false, true, Vector2i(3, 2)))
 	var origin_records = _record_values(track.get_cell_records())
 	var origin_pieces = _piece_values(track.get_geometry_pieces())
 	var endpoint := track.get_endpoint_cell()
@@ -361,6 +475,233 @@ func _test_same_frame_press_routes_through_gesture_transaction() -> void:
 	assert_true(track.is_left_capture_active(), "Fresh press after release starts a new gesture")
 
 
+func _test_pending_release_preserves_fresh_press_gesture() -> void:
+	print("Live gesture path: pending release preserves fresh press gesture")
+	var track = TrackSystemScript.new(_config(10))
+	var first_path: Array[Vector2i] = [Vector2i(1, 0)]
+	track.apply_left_input(TrackInputFrameScript.new(
+		first_path, Vector2i(0, 0), true, Vector2i(-1, -1), false,
+		true, true, false, false, Vector2i(1, 0), true, first_path
+	))
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		first_path,
+		"First gesture publishes before its release is consumed"
+	)
+	var second_path: Array[Vector2i] = [Vector2i(2, 0)]
+	track.apply_left_input(TrackInputFrameScript.new(
+		second_path, Vector2i(1, 0), true, Vector2i(-1, -1), false,
+		true, true, true, false, Vector2i(2, 0), true, second_path
+	))
+	assert_true(track.is_runtime_gesture_active(), "Combined frame starts the fresh runtime gesture")
+	assert_true(track.is_left_capture_active(), "Combined frame starts the fresh facade capture")
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		first_path + second_path,
+		"A fresh press coalesced with the prior release publishes its own ghost"
+	)
+	assert_true(track.is_left_capture_active(), "Coalesced fresh press remains captured")
+	assert_true(track.is_runtime_gesture_active(), "Coalesced fresh press remains active")
+	var continuation_path: Array[Vector2i] = [Vector2i(2, 0), Vector2i(3, 0)]
+	track.apply_left_input(_left_frame(continuation_path, false, true, false, Vector2i(2, 0)))
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		first_path + continuation_path,
+		"Active prior coalesced gesture retains its full fresh path on follow-up motion"
+	)
+	assert_true(track.is_left_capture_active(), "Active prior follow-up keeps facade capture")
+	assert_true(track.is_runtime_gesture_active(), "Active prior follow-up keeps runtime gesture")
+
+
+func _test_explicit_release_facts_order_old_then_fresh() -> void:
+	print("Live gesture path: explicit release facts finalize before fresh press")
+	var track = TrackSystemScript.new(_config(10))
+	var first_path: Array[Vector2i] = [Vector2i(1, 0)]
+	track.apply_left_input(_left_frame(first_path, true, true, false, Vector2i(0, 0), true, Vector2i(1, 0), true))
+	var old_release_path: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0)]
+	var fresh_path: Array[Vector2i] = [Vector2i(3, 0)]
+	var coalesced := _left_frame(
+		fresh_path, true, true, true, Vector2i(2, 0), true, Vector2i(3, 0), true,
+		old_release_path, Vector2i(2, 0), true
+	)
+	assert_true(coalesced.has_explicit_release_snapshot, "Combined frame exposes explicit release facts")
+	track.apply_left_input(coalesced)
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		old_release_path + fresh_path,
+		"Explicit old release path is finalized before fresh path begins"
+	)
+	assert_true(track.is_left_capture_active(), "Fresh explicit press remains captured")
+	assert_true(track.is_runtime_gesture_active(), "Fresh explicit press remains active")
+
+
+func _test_legacy_combined_frame_discriminates_without_release_snapshot() -> void:
+	print("Live gesture path: legacy combined frame does not contaminate old release")
+	var config := _config(10)
+	var track = TrackSystemScript.new(config)
+	var capturing_runtime := _CapturingTrackRuntime.new(
+		config.departure_cell,
+		config.total_track_cells,
+		config.grid_origin_units,
+		config.grid_size,
+		config.grid_cell_size_units
+	)
+	capturing_runtime.facade = track
+	track._runtime = capturing_runtime
+	var first_path: Array[Vector2i] = [Vector2i(1, 0)]
+	track.apply_left_input(_left_frame(first_path, true, true, false, Vector2i(0, 0), true, Vector2i(1, 0), true))
+	var frame_script = load("res://src/domain/track/track_input_frame.gd")
+	var legacy_cells: Array[Vector2i] = [Vector2i(2, 0)]
+	var legacy = frame_script.call("new",
+		legacy_cells, Vector2i(1, 0), true, Vector2i(-1, -1), false,
+		true, true, true, false, Vector2i(2, 0), true, legacy_cells
+	)
+	assert_not_null(legacy, "Legacy combined constructor returns a valid frame")
+	assert_false(legacy.has_explicit_release_snapshot, "Legacy constructor has no explicit release discriminator")
+	track.apply_left_input(legacy)
+	var events: Array = capturing_runtime.events
+	# The test-only runtime records facade state through this back-reference; release it before scope teardown.
+	capturing_runtime.facade = null
+	assert_equal(events.size(), 5, "Legacy combined frame records old update, finalize, fresh begin, and update")
+	if events.size() < 5:
+		return
+	assert_equal(events[1]["phase"], &"update", "Legacy old gesture update is recorded")
+	assert_equal(events[1]["path"], first_path, "Legacy old update does not receive fresh path facts")
+	assert_equal(events[1]["pointer"], Vector2i(1, 0), "Legacy old update retains old release pointer")
+	assert_equal(events[2]["phase"], &"finalize", "Legacy old last-valid candidate finalizes")
+	assert_equal(events[3]["phase"], &"begin", "Legacy fresh gesture begins after old finalize")
+	assert_equal(events[3]["endpoint"], Vector2i(1, 0), "Legacy fresh begin starts at old finalized endpoint")
+	assert_false(events[3]["capture_before"], "Legacy old facade capture ends before fresh begin")
+	assert_true(events[3]["latch_before"], "Legacy fresh latch is acquired only after old latch reset")
+	assert_equal(events[4]["phase"], &"update", "Legacy fresh gesture update is recorded")
+	assert_equal(events[4]["path"], legacy_cells, "Legacy fresh update receives fresh path facts")
+	assert_equal(events[4]["pointer"], Vector2i(2, 0), "Legacy fresh update receives fresh pointer")
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		first_path + [Vector2i(2, 0)],
+		"Legacy combined frame finalizes old last-valid state and applies fresh facts only to new gesture"
+	)
+	assert_true(track.is_left_capture_active(), "Legacy fresh press remains captured")
+
+
+func _test_explicit_empty_release_outside_pointer_is_authoritative() -> void:
+	print("Live gesture path: explicit empty outside release does not contaminate fresh press")
+	var track = TrackSystemScript.new(_config(10))
+	track.apply_left_input(_left_frame([Vector2i(1, 0)], true, true, false, Vector2i(0, 0), true, Vector2i(1, 0), true))
+	var fresh_path: Array[Vector2i] = [Vector2i(1, 0)]
+	var empty_release: Array[Vector2i] = []
+	var frame := TrackInputFrameScript.new(
+		fresh_path, Vector2i(0, 0), true, Vector2i(-1, -1), false,
+		true, true, true, false, Vector2i(1, 0), true, fresh_path,
+		empty_release, Vector2i(-1, -1), false
+	)
+	assert_true(frame.has_explicit_release_snapshot, "Empty release is explicitly distinguished")
+	assert_equal(frame.release_live_gesture_path, [], "Explicit empty release path remains empty")
+	assert_false(frame.left_release_pointer_inside_grid, "Outside release pointer is explicit")
+	track.apply_left_input(frame)
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		fresh_path,
+		"Empty explicit release removes the old candidate and fresh facts begin from its resulting origin"
+	)
+	assert_true(track.is_left_capture_active(), "Fresh press captures from the resulting origin after empty release")
+	assert_true(track.is_runtime_gesture_active(), "Fresh press remains active after empty release")
+
+
+func _test_pending_release_releases_inactive_rejected_latch() -> void:
+	print("Live gesture path: pending release releases inactive rejected latch")
+	var track = TrackSystemScript.new(_config(10))
+	track.apply_left_input(_left_frame([], true, true, false, Vector2i(4, 4)))
+	assert_false(track.is_left_capture_active(), "Rejected prior press has no facade capture")
+	assert_false(track.is_runtime_gesture_active(), "Rejected prior press has no runtime gesture")
+	var fresh_path: Array[Vector2i] = [Vector2i(1, 0)]
+	var ignored_old_release: Array[Vector2i] = [Vector2i(9, 9)]
+	track.apply_left_input(_left_frame(
+		fresh_path, true, true, true, Vector2i(0, 0), true, Vector2i(1, 0), true,
+		ignored_old_release, Vector2i(9, 9), true
+	))
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		fresh_path,
+		"Fresh eligible press after an inactive rejected latch publishes its ghost"
+	)
+	assert_true(track.is_left_capture_active(), "Fresh eligible press restores facade capture")
+	assert_true(track.is_runtime_gesture_active(), "Fresh eligible press restores runtime gesture")
+	var continuation_path: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0)]
+	track.apply_left_input(_left_frame(continuation_path, false, true, false, Vector2i(1, 0)))
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		continuation_path,
+		"Inactive rejected prior follow-up retains its full fresh path"
+	)
+	assert_true(track.is_left_capture_active(), "Inactive rejected prior follow-up keeps facade capture")
+	assert_true(track.is_runtime_gesture_active(), "Inactive rejected prior follow-up keeps runtime gesture")
+
+
+func _test_pending_release_reopens_after_train_preparation_termination() -> void:
+	print("Live gesture path: pending release reopens after train preparation termination")
+	var track = TrackSystemScript.new(_config(10))
+	track.apply_left_input(_left_frame([Vector2i(1, 0)], true, true))
+	assert_true(track.prepare_for_train_sampling(0.0, 1.0), "Preparation terminates the active prior gesture")
+	var endpoint_after_prepare := track.get_endpoint_cell()
+	assert_false(track.is_left_capture_active(), "Preparation terminates facade capture")
+	assert_false(track.is_runtime_gesture_active(), "Preparation terminates runtime gesture")
+	var fresh_path: Array[Vector2i] = [Vector2i(2, 0)]
+	var ignored_old_release: Array[Vector2i] = [Vector2i(8, 8)]
+	track.apply_left_input(_left_frame(
+		fresh_path, true, true, true, endpoint_after_prepare, true, fresh_path[-1], true,
+		ignored_old_release, Vector2i(8, 8), true
+	))
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		[Vector2i(1, 0), Vector2i(2, 0)],
+		"Fresh eligible press after preparation termination publishes its ghost"
+	)
+	assert_true(track.is_left_capture_active(), "Preparation-terminated latch accepts fresh facade capture")
+	assert_true(track.is_runtime_gesture_active(), "Preparation-terminated latch accepts fresh runtime gesture")
+	var continuation_path: Array[Vector2i] = [Vector2i(2, 0), Vector2i(3, 0)]
+	track.apply_left_input(_left_frame(continuation_path, false, true, false, Vector2i(2, 0)))
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		[Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)],
+		"Preparation-terminated prior follow-up retains its full fresh path"
+	)
+	assert_true(track.is_left_capture_active(), "Preparation-terminated follow-up keeps facade capture")
+	assert_true(track.is_runtime_gesture_active(), "Preparation-terminated follow-up keeps runtime gesture")
+
+
+func _test_ineligible_coalesced_press_keeps_existing_rejection_latch_only() -> void:
+	print("Live gesture path: ineligible coalesced press keeps only the fresh rejection latch")
+	var track = TrackSystemScript.new(_config(10))
+	track.apply_left_input(_left_frame([Vector2i(1, 0)], true, true))
+	var endpoint := track.get_endpoint_cell()
+	track.apply_left_input(_left_frame([], true, true, true, Vector2i(4, 4)))
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		[Vector2i(1, 0)],
+		"Ineligible coalesced press does not remove the finalized prior route"
+	)
+	assert_false(track.is_left_capture_active(), "Ineligible fresh press has no facade capture")
+	assert_false(track.is_runtime_gesture_active(), "Ineligible fresh press has no runtime gesture")
+	track.apply_left_input(_left_frame([Vector2i(2, 0)], true, true, true, endpoint))
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		[Vector2i(1, 0), Vector2i(2, 0)],
+		"A later release-plus-eligible press clears only the fresh rejection latch"
+	)
+	assert_true(track.is_left_capture_active(), "Later eligible press restores facade capture")
+	assert_true(track.is_runtime_gesture_active(), "Later eligible press restores runtime gesture")
+	var continuation_path: Array[Vector2i] = [Vector2i(2, 0), Vector2i(3, 0)]
+	track.apply_left_input(_left_frame(continuation_path, false, true, false, Vector2i(2, 0)))
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		[Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)],
+		"Ineligible coalesced press recovery retains its full fresh path"
+	)
+	assert_true(track.is_left_capture_active(), "Ineligible recovery follow-up keeps facade capture")
+	assert_true(track.is_runtime_gesture_active(), "Ineligible recovery follow-up keeps runtime gesture")
+
+
 func _test_current_pointer_selects_completed_head_template() -> void:
 	print("Endpoint interaction fix: current pointer selects completed head template")
 	var config = SessionStartConfigScript.new(
@@ -375,7 +716,7 @@ func _test_current_pointer_selects_completed_head_template() -> void:
 		Vector2i(3, 3), Vector2i(3, 4),
 	]
 	track.apply_left_input(_left_frame(right_curve, true, true, false, Vector2i(0, 2)))
-	track.apply_left_input(_left_frame([], false, false, true, Vector2i(3, 4)))
+	track.apply_left_input(_left_frame(right_curve, false, false, true, Vector2i(3, 4)))
 	var curve_endpoint := track.get_endpoint_cell()
 	var left_target := Vector2i(3, 0)
 	var straight_target := Vector2i(5, 2)
@@ -420,7 +761,7 @@ func _test_current_pointer_reselects_completed_head_template_while_held() -> voi
 		Vector2i(3, 3), Vector2i(3, 4),
 	]
 	track.apply_left_input(_left_frame(right_curve, true, true, false, Vector2i(0, 2)))
-	track.apply_left_input(_left_frame([], false, false, true, Vector2i(3, 4)))
+	track.apply_left_input(_left_frame(right_curve, false, false, true, Vector2i(3, 4)))
 	var endpoint := track.get_endpoint_cell()
 	var available := track.get_available_track_cells()
 	track.apply_left_input(_left_frame([], true, true, false, endpoint, true, endpoint, true))
@@ -471,6 +812,52 @@ func _test_current_pointer_reselects_completed_head_template_while_held() -> voi
 	assert_true(track.is_left_capture_active(), "Right reselection keeps facade capture active")
 	assert_true(track.is_runtime_gesture_active(), "Right reselection keeps runtime gesture active")
 	assert_equal(track.get_available_track_cells(), available, "Equal-length right replacement preserves inventory")
+
+
+func _test_completed_template_suffix_backtracks_while_held() -> void:
+	print("Live gesture path: completed template suffix backtracks while held")
+	var config = SessionStartConfigScript.new(
+		1, 20.0, 1,
+		1.0, 10, 2, 2.0, 1.0, 1,
+		Vector2(420.0, 260.0), Vector2i(10, 6), 40.0, Vector2(10.0, 10.0),
+		&"departure", Vector2(30.0, 110.0), Vector2i(0, 2)
+	)
+	var track = TrackSystemScript.new(config)
+	var right_curve: Array[Vector2i] = [
+		Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2),
+		Vector2i(3, 3), Vector2i(3, 4),
+	]
+	track.apply_left_input(_left_frame(right_curve, true, true, false, Vector2i(0, 2), true, Vector2i(3, 4), true))
+	track.apply_left_input(_left_frame(right_curve, false, false, true, Vector2i(0, 2), true, Vector2i(3, 4), true))
+	var endpoint := track.get_endpoint_cell()
+	track.apply_left_input(_left_frame([], true, true, false, endpoint, true, endpoint, true))
+	var straight_target := Vector2i(5, 2)
+	var first_path: Array[Vector2i] = [straight_target, Vector2i(6, 2), Vector2i(7, 2)]
+	var first_frame := _left_frame(first_path, false, true, false, endpoint, true, Vector2i(7, 2), true)
+	track.apply_left_input(first_frame)
+	var first_serials := track.get_cell_records().map(func(record): return record.route_serial)
+	assert_equal(track.get_cell_records().map(func(record): return record.cell), [
+		Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2),
+		Vector2i(4, 2), straight_target, Vector2i(6, 2), Vector2i(7, 2),
+	], "Completed template publishes the full held suffix")
+	var available_before_shorter := track.get_available_track_cells()
+	var shorter_path: Array[Vector2i] = [straight_target, Vector2i(6, 2)]
+	track.apply_left_input(_left_frame(shorter_path, false, true, false, endpoint, true, Vector2i(6, 2), true))
+	assert_equal(track.get_cell_records().map(func(record): return record.cell), [
+		Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2), Vector2i(4, 2),
+		straight_target, Vector2i(6, 2),
+	], "Held completed-template suffix backtracks from the current path")
+	assert_equal(track.get_available_track_cells(), available_before_shorter + 1, "Held suffix backtrack refunds exactly one cell")
+	assert_true(track.is_left_capture_active() and track.is_runtime_gesture_active(), "Held suffix backtrack keeps captures active")
+	var first_suffix_serial: int = first_serials[-2]
+	var first_removed_serial: int = first_serials[-1]
+	var rebranch_path: Array[Vector2i] = [straight_target, Vector2i(6, 2), Vector2i(6, 3)]
+	track.apply_left_input(_left_frame(rebranch_path, false, true, false, endpoint, true, Vector2i(6, 3), true))
+	var rebranch_records = track.get_cell_records()
+	assert_equal(rebranch_records[-2].route_serial, first_suffix_serial, "Rebranch preserves the surviving suffix serial")
+	assert_true(rebranch_records[-1].route_serial > first_removed_serial, "Rebranch allocates a fresh serial")
+	assert_equal(rebranch_records[-1].cell, Vector2i(6, 3), "Rebranch publishes the replacement suffix cell")
+	track.apply_left_input(_left_frame([], false, false, true, endpoint, true, Vector2i(6, 3), true))
 
 
 func _test_authoritative_pointer_wins_over_crossed_target() -> void:
@@ -527,7 +914,7 @@ func _test_reselection_keeps_suffix_after_selected_target() -> void:
 		Vector2i(3, 3), Vector2i(3, 4),
 	]
 	track.apply_left_input(_left_frame(right_curve, true, true, false, Vector2i(0, 2)))
-	track.apply_left_input(_left_frame([], false, false, true, Vector2i(3, 4)))
+	track.apply_left_input(_left_frame(right_curve, false, false, true, Vector2i(3, 4)))
 	var endpoint := track.get_endpoint_cell()
 	var available := track.get_available_track_cells()
 	track.apply_left_input(_left_frame([], true, true, false, endpoint, true, endpoint, true))
@@ -705,3 +1092,32 @@ func _test_observation_getters_are_detached() -> void:
 		"Piece centerlines are detached"
 	)
 	assert_equal(track.get_contact_observations(), [], "Contact observations are detached")
+
+
+class _CapturingTrackRuntime extends GridTrackRuntimeScript:
+	var events: Array = []
+	var facade: Object
+
+	func gesture_begin(endpoint: Vector2i) -> Dictionary:
+		events.append({
+			"phase": &"begin",
+			"endpoint": endpoint,
+			"capture_before": bool(facade.get("_left_capture_active")) if facade != null else false,
+			"latch_before": bool(facade.get("_left_press_latched")) if facade != null else false,
+		})
+		return super.gesture_begin(endpoint)
+
+	func gesture_update(
+		live_path: Array[Vector2i],
+		current_pointer_cell: Vector2i = Vector2i(-1, -1)
+	) -> bool:
+		events.append({
+			"phase": &"update",
+			"path": live_path.duplicate(),
+			"pointer": current_pointer_cell,
+		})
+		return super.gesture_update(live_path, current_pointer_cell)
+
+	func gesture_finalize() -> bool:
+		events.append({"phase": &"finalize"})
+		return super.gesture_finalize()

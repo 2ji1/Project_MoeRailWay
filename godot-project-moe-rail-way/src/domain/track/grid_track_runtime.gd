@@ -35,6 +35,9 @@ var _gesture_target_endpoints: Dictionary = {}
 var _gesture_selected_template_index := -1
 var _gesture_suffix_input_facts: Array[Dictionary] = []
 var _gesture_ordinary_input_facts: Array[Dictionary] = []
+var _gesture_template_selection_signature_valid := false
+var _gesture_template_selection_signature_path: Array[Vector2i] = []
+var _gesture_template_selection_signature_pointer := Vector2i(-1, -1)
 
 
 func _init(
@@ -104,6 +107,9 @@ func gesture_begin(endpoint: Vector2i) -> Dictionary:
     _gesture_selected_template_index = _matching_template_index(_gesture_editable_span)
     _gesture_suffix_input_facts.clear()
     _gesture_ordinary_input_facts.clear()
+    _gesture_template_selection_signature_valid = false
+    _gesture_template_selection_signature_path.clear()
+    _gesture_template_selection_signature_pointer = Vector2i(-1, -1)
     _gesture_active = true
     return _gesture_origin_observation()
 
@@ -160,78 +166,75 @@ func gesture_abort() -> bool:
 
 
 func gesture_update(
-    crossed_cells: Array[Vector2i],
+    live_path: Array[Vector2i],
     current_pointer_cell: Vector2i = Vector2i(-1, -1)
 ) -> bool:
-    if not _gesture_active or crossed_cells.is_empty():
+    if not _gesture_active:
         return false
     var frame_template_index := -1
-    var frame_target_index := -1
     var frame_target_indices: Array[int] = [-1, -1, -1]
-    for cell_index in range(crossed_cells.size()):
-        var cell: Vector2i = crossed_cells[cell_index]
+    for cell_index in range(live_path.size()):
+        var cell: Vector2i = live_path[cell_index]
         for index in range([&"straight", &"left", &"right"].size()):
             var template_name: StringName = [&"straight", &"left", &"right"][index]
             if _gesture_target_endpoints.get(template_name, Vector2i(-1, -1)) == cell:
                 frame_template_index = index
-                frame_target_index = cell_index
                 frame_target_indices[index] = cell_index
     var templates := _template_cells(_gesture_editable_span)
-    var next_template_index := _gesture_selected_template_index
+    var previous_template_index := _gesture_selected_template_index
+    var next_template_index := previous_template_index
     var next_suffix_input_facts: Array[Dictionary] = _gesture_suffix_input_facts.duplicate(true)
     var next_ordinary_input_facts: Array[Dictionary] = _gesture_ordinary_input_facts.duplicate(true)
     var pointer_template_index := _template_index_from_pointer(current_pointer_cell, templates)
-    var pointer_reselected := pointer_template_index >= 0 \
-        and pointer_template_index != _gesture_selected_template_index
     if pointer_template_index >= 0:
         next_template_index = pointer_template_index
-        if pointer_reselected:
-            next_suffix_input_facts.clear()
-            next_ordinary_input_facts.clear()
-            if frame_target_indices[pointer_template_index] >= 0:
-                for index in range(frame_target_indices[pointer_template_index] + 1, crossed_cells.size()):
-                    next_suffix_input_facts = _append_new_gesture_input_fact(
-                        next_suffix_input_facts,
-                        crossed_cells[index]
-                    )
-        elif frame_target_indices[pointer_template_index] >= 0:
-            next_suffix_input_facts.clear()
-            for index in range(frame_target_indices[pointer_template_index] + 1, crossed_cells.size()):
-                next_suffix_input_facts = _append_new_gesture_input_fact(
-                    next_suffix_input_facts,
-                    crossed_cells[index]
-                )
-            next_ordinary_input_facts.clear()
-        else:
-            for cell in crossed_cells:
-                next_suffix_input_facts = _append_new_gesture_input_fact(
-                    next_suffix_input_facts,
-                    cell
-                )
+        next_ordinary_input_facts.clear()
     elif frame_template_index >= 0 and frame_template_index < templates.size():
         next_template_index = frame_template_index
-        next_suffix_input_facts.clear()
-        for index in range(frame_target_index + 1, crossed_cells.size()):
-            next_suffix_input_facts = _append_new_gesture_input_fact(
-                next_suffix_input_facts,
-                crossed_cells[index]
-            )
         next_ordinary_input_facts.clear()
     elif _gesture_selected_template_index >= 0:
-        for cell in crossed_cells:
-            next_suffix_input_facts = _append_new_gesture_input_fact(
-                next_suffix_input_facts,
-                cell
-            )
+        next_ordinary_input_facts.clear()
     elif not _gesture_editable_span.is_empty() and not templates.is_empty():
         return false
     else:
-        for cell in crossed_cells:
-            next_ordinary_input_facts = _append_new_gesture_input_fact(
-                next_ordinary_input_facts,
-                cell
-            )
+        next_ordinary_input_facts = _reconcile_gesture_input_facts(
+            _gesture_ordinary_input_facts,
+            live_path
+        )
 
+    var template_changed := next_template_index != previous_template_index
+    if next_template_index >= 0:
+        var selected_target_index := -1
+        if next_template_index < frame_target_indices.size():
+            selected_target_index = frame_target_indices[next_template_index]
+        var current_suffix_cells: Array[Vector2i] = []
+        if selected_target_index >= 0:
+            for index in range(selected_target_index + 1, live_path.size()):
+                current_suffix_cells.append(live_path[index])
+        elif (
+            _gesture_origin_sequence != null
+            and next_template_index == previous_template_index
+            and next_template_index < [&"straight", &"left", &"right"].size()
+            and _gesture_target_endpoints.get(
+                [&"straight", &"left", &"right"][next_template_index],
+                Vector2i(-1, -1)
+            ) == _gesture_origin_sequence.get_endpoint_cell()
+        ):
+            var is_selection_replay := _gesture_template_selection_signature_valid \
+                and _gesture_template_selection_signature_pointer == current_pointer_cell \
+                and _gesture_template_selection_signature_path == live_path
+            if not is_selection_replay:
+                for cell in live_path:
+                    current_suffix_cells.append(cell)
+        var existing_suffix_input_facts: Array[Dictionary] = []
+        if next_template_index == previous_template_index:
+            existing_suffix_input_facts = _gesture_suffix_input_facts
+        if template_changed:
+            existing_suffix_input_facts = []
+        next_suffix_input_facts = _reconcile_gesture_input_facts(
+            existing_suffix_input_facts,
+            current_suffix_cells
+        )
     var candidate_sequence = _gesture_origin_sequence.duplicate_sequence()
     if next_template_index >= 0:
         if not _gesture_template_mutation_is_safe():
@@ -248,8 +251,6 @@ func gesture_update(
         if not _append_gesture_input_facts(candidate_sequence, next_suffix_input_facts):
             return false
     else:
-        if next_ordinary_input_facts.is_empty():
-            return false
         if not _append_gesture_input_facts(candidate_sequence, next_ordinary_input_facts):
             return false
     var candidate_ledger = _duplicate_pieces(_gesture_origin_locked_ledger)
@@ -273,8 +274,47 @@ func gesture_update(
     _gesture_selected_template_index = next_template_index
     _gesture_suffix_input_facts = next_suffix_input_facts
     _gesture_ordinary_input_facts = next_ordinary_input_facts
+    if template_changed:
+        _gesture_template_selection_signature_valid = false
+        _gesture_template_selection_signature_path.clear()
+        _gesture_template_selection_signature_pointer = Vector2i(-1, -1)
+        var selected_template_name := StringName()
+        if next_template_index >= 0 and next_template_index < 3:
+            selected_template_name = [&"straight", &"left", &"right"][next_template_index]
+        var selected_target: Vector2i = Vector2i(
+            _gesture_target_endpoints.get(selected_template_name, Vector2i(-1, -1))
+        )
+        var selected_target_in_frame := next_template_index >= 0 \
+            and next_template_index < frame_target_indices.size() \
+            and frame_target_indices[next_template_index] >= 0
+        if (
+            next_template_index >= 0
+            and not selected_target_in_frame
+            and _gesture_origin_sequence != null
+            and selected_target == _gesture_origin_sequence.get_endpoint_cell()
+        ):
+            _gesture_template_selection_signature_valid = true
+            _gesture_template_selection_signature_path = live_path.duplicate()
+            _gesture_template_selection_signature_pointer = current_pointer_cell
     _contact_observations = candidate_contacts.duplicate(true)
     return true
+
+
+func _reconcile_gesture_input_facts(
+    existing: Array[Dictionary],
+    cells: Array[Vector2i]
+) -> Array[Dictionary]:
+    var common_count := 0
+    while (
+        common_count < existing.size()
+        and common_count < cells.size()
+        and Vector2i(existing[common_count]["cell"]) == cells[common_count]
+    ):
+        common_count += 1
+    var reconciled: Array[Dictionary] = existing.slice(0, common_count).duplicate(true)
+    for index in range(common_count, cells.size()):
+        reconciled = _append_new_gesture_input_fact(reconciled, cells[index])
+    return reconciled
 
 
 func _template_index_from_pointer(
@@ -413,7 +453,76 @@ func set_contact_anchors(anchors: Array[RouteContactAnchorScript]) -> void:
 
 func advance_construction(progress_cells: float) -> float:
     if _gesture_active:
-        return 0.0
+        if _gesture_origin_sequence == null:
+            return 0.0
+        var candidate_sequence := _sequence.duplicate_sequence()
+        var origin_sequence := _gesture_origin_sequence.duplicate_sequence()
+        var origin_records_by_serial: Dictionary = {}
+        for origin_record in origin_sequence._records:
+            origin_records_by_serial[origin_record.route_serial] = origin_record
+        var candidate_records_by_serial: Dictionary = {}
+        for candidate_record in candidate_sequence._records:
+            candidate_records_by_serial[candidate_record.route_serial] = candidate_record
+        for route_serial in candidate_records_by_serial:
+            if not origin_records_by_serial.has(route_serial):
+                continue
+            var shared_origin_record: TrackCellRecordScript = (
+                origin_records_by_serial[route_serial]
+                as TrackCellRecordScript
+            )
+            var candidate_record: TrackCellRecordScript = (
+                candidate_records_by_serial[route_serial]
+                as TrackCellRecordScript
+            )
+            candidate_record.state = shared_origin_record.state
+            candidate_record.build_progress = shared_origin_record.build_progress
+        var remaining := maxf(progress_cells, 0.0)
+        var consumed_total := 0.0
+        while remaining > 0.0:
+            var target: TrackCellRecordScript = null
+            for candidate_record in candidate_sequence._records:
+                if not origin_records_by_serial.has(candidate_record.route_serial):
+                    continue
+                var origin_record: TrackCellRecordScript = (
+                    origin_records_by_serial[candidate_record.route_serial]
+                    as TrackCellRecordScript
+                )
+                if origin_record.state != TrackCellRecordScript.State.BUILT:
+                    target = candidate_record
+                    break
+            if target == null:
+                break
+            var origin_target: TrackCellRecordScript = (
+                origin_records_by_serial[target.route_serial]
+                as TrackCellRecordScript
+            )
+            if target.state == TrackCellRecordScript.State.RESERVED_GHOST:
+                candidate_sequence.start_building(target.route_serial)
+            if origin_target.state == TrackCellRecordScript.State.RESERVED_GHOST:
+                origin_sequence.start_building(origin_target.route_serial)
+            var candidate_consumed: float = candidate_sequence.add_build_progress(remaining)
+            var origin_consumed: float = origin_sequence.add_build_progress(remaining)
+            if candidate_consumed != origin_consumed:
+                return 0.0
+            if origin_consumed <= 0.0:
+                break
+            candidate_sequence.complete_building()
+            origin_sequence.complete_building()
+            consumed_total += origin_consumed
+            remaining -= origin_consumed
+            var updated_origin_record: TrackCellRecordScript = (
+                origin_records_by_serial[target.route_serial]
+                as TrackCellRecordScript
+            )
+            var updated_candidate_record: TrackCellRecordScript = (
+                candidate_records_by_serial[target.route_serial]
+                as TrackCellRecordScript
+            )
+            updated_candidate_record.state = updated_origin_record.state
+            updated_candidate_record.build_progress = updated_origin_record.build_progress
+        _sequence.replace_with(candidate_sequence)
+        _gesture_origin_sequence = origin_sequence
+        return consumed_total
     var remaining := maxf(progress_cells, 0.0)
     var consumed_total := 0.0
     while remaining > 0.0:
@@ -937,6 +1046,9 @@ func _clear_gesture_state() -> void:
     _gesture_selected_template_index = -1
     _gesture_suffix_input_facts.clear()
     _gesture_ordinary_input_facts.clear()
+    _gesture_template_selection_signature_valid = false
+    _gesture_template_selection_signature_path.clear()
+    _gesture_template_selection_signature_pointer = Vector2i(-1, -1)
 
 
 func _resolve_records():

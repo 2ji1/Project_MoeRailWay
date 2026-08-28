@@ -41,6 +41,8 @@ var _field_draw_order := PackedStringArray(["grid_lines", "valid_start"])
 
 var _rasterizer = GridPointerRasterizerScript.new()
 var _crossed_cells: Array[Vector2i] = []
+var _live_gesture_path: Array[Vector2i] = []
+var _release_live_gesture_path: Array[Vector2i] = []
 var _left_press_cell := INVALID_CELL
 var _left_press_inside_grid := false
 var _right_press_cell := INVALID_CELL
@@ -48,6 +50,8 @@ var _right_press_inside_grid := false
 var _left_pressed_pending := false
 var _left_held := false
 var _left_released_pending := false
+var _left_release_pointer_cell := INVALID_CELL
+var _left_release_pointer_inside_grid := false
 var _right_pressed_pending := false
 var _left_capture_active := false
 var _release_clears_capture := false
@@ -120,6 +124,7 @@ func _begin_left_press(local_position: Vector2) -> void:
 	_left_capture_active = mapping.inside_grid
 	_release_clears_capture = false
 	_crossed_cells.clear()
+	_live_gesture_path.clear()
 	if _left_capture_active:
 		_last_pointer_logical = mapping.logical
 		_previous_pointer_cell = mapping.cell
@@ -132,6 +137,9 @@ func _end_left_press(local_position: Vector2) -> void:
 		return
 	if _left_capture_active:
 		_rasterize_to(local_position)
+	_release_live_gesture_path = _live_gesture_path.duplicate()
+	_left_release_pointer_cell = _current_pointer_cell
+	_left_release_pointer_inside_grid = _current_pointer_inside_grid
 	_left_released_pending = true
 	_left_held = false
 	_release_clears_capture = true
@@ -150,16 +158,22 @@ func _rasterize_to(local_position: Vector2) -> void:
 	for cell in segment_cells:
 		if _crossed_cells.is_empty() or _crossed_cells[-1] != cell:
 			_crossed_cells.append(cell)
+		_apply_live_gesture_cell(cell)
 	if not segment_cells.is_empty():
 		_previous_pointer_cell = segment_cells[-1]
 	_last_pointer_logical = mapping.logical
 
 
 func consume_input_frame():
+	var frame_left_press_cell := _left_press_cell if _left_pressed_pending else INVALID_CELL
+	var frame_left_press_inside_grid := _left_press_inside_grid if _left_pressed_pending else false
+	var frame_release_path: Variant = _release_live_gesture_path if _left_released_pending else null
+	var frame_release_pointer_cell := _left_release_pointer_cell if _left_released_pending else INVALID_CELL
+	var frame_release_pointer_inside_grid := _left_release_pointer_inside_grid if _left_released_pending else false
 	var frame = TrackInputFrameScript.new(
 		_crossed_cells,
-		_left_press_cell,
-		_left_press_inside_grid,
+		frame_left_press_cell,
+		frame_left_press_inside_grid,
 		_right_press_cell,
 		_right_press_inside_grid,
 		_left_pressed_pending,
@@ -167,12 +181,22 @@ func consume_input_frame():
 		_left_released_pending,
 		_right_pressed_pending,
 		_current_pointer_cell,
-		_current_pointer_inside_grid
+		_current_pointer_inside_grid,
+		_live_gesture_path,
+		frame_release_path,
+		frame_release_pointer_cell,
+		frame_release_pointer_inside_grid
 	)
+	if _left_released_pending and not _left_held:
+		_live_gesture_path.clear()
 	_crossed_cells.clear()
+	_release_live_gesture_path.clear()
+	_left_release_pointer_cell = INVALID_CELL
+	_left_release_pointer_inside_grid = false
 	_left_pressed_pending = false
-	_left_press_cell = INVALID_CELL
-	_left_press_inside_grid = false
+	if not _left_held:
+		_left_press_cell = INVALID_CELL
+		_left_press_inside_grid = false
 	_left_released_pending = false
 	_right_pressed_pending = false
 	_right_press_cell = INVALID_CELL
@@ -182,6 +206,17 @@ func consume_input_frame():
 		_release_clears_capture = false
 		_previous_pointer_cell = INVALID_CELL
 	return frame
+
+
+func _apply_live_gesture_cell(cell: Vector2i) -> void:
+	if cell == _left_press_cell:
+		_live_gesture_path.clear()
+		return
+	var existing_index := _live_gesture_path.find(cell)
+	if existing_index >= 0:
+		_live_gesture_path.resize(existing_index + 1)
+		return
+	_live_gesture_path.append(cell)
 
 
 func _map_local_to_grid(local_position: Vector2, allow_unclamped := false) -> Dictionary:
@@ -647,6 +682,10 @@ func _clear_hover_observations() -> void:
 func _clear_view_capture_after_termination() -> void:
 	_left_capture_active = false
 	_crossed_cells.clear()
+	_live_gesture_path.clear()
+	_release_live_gesture_path.clear()
+	_left_release_pointer_cell = INVALID_CELL
+	_left_release_pointer_inside_grid = false
 	_left_pressed_pending = false
 	_left_press_cell = INVALID_CELL
 	_left_press_inside_grid = false

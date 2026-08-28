@@ -105,6 +105,44 @@ The user independently confirmed the combined provisional-hover, right-click can
 The same-candidate provisional-to-lock-to-sequential-recovery serial proof is intentionally not a manual evidence claim: mutually exclusive lifecycle states cannot be established in one manual frame. Coverage-only automated correction `9109dca4e9a9d1008940b44425c7d1c60871a683` supplies that same-serial lifecycle evidence instead.
 
 **Corrected PASS.** This supersedes the preceding broad Task 3 PASS summary only for final evidence attribution. The final manual evidence correction passes only for the exact G/H observations and the separately attributed user confirmations recorded in this section, together with the earlier direct train-entry and terminal-order replay. It does not claim that one screenshot sequence, one run, or one observer proved every hover, cancellation, refund, and running-turn fact.
+
+## Live Gesture Path Reflow — Windows Manual Acceptance — 2026-08-27
+
+**Manually tested implementation SHA:** `ecbcb191cd959d9ed24870a241d400b6cbf5d6c4`
+**Godot:** `4.7.1.stable.official.a13da4feb`
+**Observation provenance:** User-observed in a controller-launched, separate test-agent-owned Godot game window from the feature worktree. The user-owned Godot editor was not attached to, terminated, reset, or repurposed.
+**Observation status:** PASS for the listed acceptance actions and the explicitly reported RUNNING and terminal lifecycle observations.
+
+### Eight-step manual acceptance
+
+1. **Start a fresh session with the full track inventory visible.** The visible HUD showed `TRACK 18/18` before any drag.
+2. **Press the green departure endpoint and keep the left button held.** The departure endpoint accepted the gesture and the held edit remained active.
+3. **Drag several cells to create a visible straight or curve ghost.** A first candidate became visible; the reported inventory changed to `TRACK 3/18`.
+4. **Move backward across the ghost and continue toward the opposite side without releasing.** Returning to the press origin cleared the gesture-owned candidate and restored `TRACK 18/18`; the held ordinary drag then rebranched toward the opposite side.
+5. **Verify immediate superseded-cell removal and endpoint following.** The user observed that superseded cells disappeared immediately and the ghost endpoint followed the current drag path. The replacement appeared before left release. The rebranch candidate inventory was `TRACK 14/18` before and `TRACK 14/18` after the direction change.
+6. **Repeat from an existing completed editable head.** Straight, left-curve, and right-curve reselection all worked; moving backward through the suffix shortened it while held. The user also re-observed the previously failing post-finalize fresh-press path successfully.
+7. **Verify exact inventory conservation.** The visible sequence was exactly `18/18` before drag, `3/18` for the first candidate, `18/18` after returning to the press origin, `14/18 -> 14/18` during the rebranch direction change, and `18/18` after right-click abort.
+8. **Right-click during another held edit.** Right-click restored the exact pre-gesture route and inventory, visibly returning to `TRACK 18/18`.
+
+### Additional lifecycle observations
+
+- A recovered `RUNNING` endpoint accepted a direct endpoint drag before `SESSION COMPLETE`; the user explicitly passed this scenario.
+- The terminal `SESSION COMPLETE — TRACK END REACHED` state remained input-locked as expected.
+- The earlier post-finalize fresh-press failure and recovered-endpoint direct-extension failure were re-observed as passing after the reviewed fixes `a49a926` / `e1ebe8f` and `4f231ce` / `ecbcb19`, respectively. These are recorded as reviewed fix references, not as separate manual implementation candidates.
+- No user-owned editor termination or reset occurred.
+
+## Final specification-review affected manual rerun — 2026-08-28
+
+**Tested implementation SHA:** `6b1cfc9c1bc88a18bbc811de9059da5beb6ced41`
+**Godot:** `4.7.1.stable.official.a13da4feb`
+**Observation provenance:** User-observed in a controller-launched, separate test-agent-owned Godot 4.7.1 game window. No user-owned editor was terminated, reset, or interacted with.
+**Result:** PASS for the affected manual rerun.
+
+- After the first placement, an immediate fresh endpoint press followed by held motion across at least two added cells retained the earlier new ghost prefix through follow-up motion before release.
+- A fresh session built exactly 13 straight cells from 18 total; the train launched. After six rear cells recovered, 7 visible active cells remained with `TRACK 11/18`. Before `SESSION COMPLETE`, a direct one-cell drag from the endpoint showed 8 visible active cells with `TRACK 10/18` before left-button release.
+- `SESSION COMPLETE` remained input-locked.
+- The earlier ordinary figures remain literal and unchanged: `18/18 -> 3/18 -> 18/18` at the press origin, equal-length rebranch `14/18 -> 14/18`, and right-click abort `18/18`.
+- The earlier post-finalize fresh-press and recovered-endpoint direct-extension findings were re-observed after reviewed fix rounds `ad13092` and `6b1cfc9`; no user-owned editor termination, reset, or interaction occurred.
 ENDPOINT_RESHAPE_EVIDENCE_BEGIN
 
 ## Endpoint Reshaping Tool-Assisted Manual Evidence
@@ -176,3 +214,41 @@ Observation: Production SessionController and TrainSystem advanced an actual RUN
 Result: PASS
 
 ENDPOINT_RESHAPE_EVIDENCE_END
+
+## Task 5 manual re-acceptance clarification — 2026-08-28
+
+**Tested implementation SHA:** `6eee5f2f15d586806c3d68d99fd2e0cc87d4c239`
+**Godot:** `4.7.1.stable.official.a13da4feb`
+**Observation status:** PASS by explicit user report for the listed cases.
+
+The user explicitly reported PASS for all three Task 5 acceptance groups: moving
+release A to fresh press B preserved the old release facts and began the fresh held
+gesture correctly; completed-template replay was idempotent; and the prior ordinary,
+RUNNING recovery, and terminal input-lock cases remained passing. The exact numeric
+observations already recorded above remain the evidence source: `18/18 -> 3/18 ->
+18/18` at the press origin, equal-length rebranch `14/18 -> 14/18`, and the
+18-cell/13-straight recovery sequence leaving 7 visible records at `TRACK 11/18`
+before the direct endpoint drag produced 8 records at `TRACK 10/18`. `SESSION
+COMPLETE — TRACK END REACHED` remained input-locked.
+
+## Task 6 active-gesture construction acceptance — 2026-08-28
+
+**Tested implementation SHA:** `be18f1fc84b96ce1f1361cb6b9878c1ed8aeda7f`
+**Godot:** `4.7.1.stable.official.a13da4feb`
+**Observation provenance:** User-observed in the tested feature-branch candidate.
+**Result:** PASS.
+
+- After releasing a track gesture, the user began a fresh endpoint extension while
+  the prior route was still progressively constructing. Already-reserved route
+  records continued visibly solidifying from the rear during the held extension.
+- The newly dragged suffix remained a ghost while the endpoint gesture stayed held;
+  it did not enter progressive construction until the gesture was released.
+- The observed behavior matched the route-identity frontier contract: existing
+  origin-owned construction continued, while gesture-added suffix construction
+  waited for finalization. No user-owned editor was terminated, reset, or interacted
+  with during the observation.
+- While the left button remained held, rear recovery remained paused; after release,
+  recovery resumed under the existing session lifecycle.
+
+Main integration, push, pull request, merge, primary retest, and cleanup remain
+outside this manual acceptance record.

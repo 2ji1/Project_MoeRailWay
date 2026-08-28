@@ -67,6 +67,29 @@ func apply_left_input(input_frame: TrackInputFrameScript) -> void:
 	assert(input_frame != null, "Track input frame is required")
 	if _left_capture_active and not _runtime.gesture_is_active():
 		_left_capture_active = false
+	var had_old_release := input_frame.left_released and _left_press_latched
+	var coalesced_release_before_press := had_old_release \
+		and input_frame.left_pressed \
+		and input_frame.left_held
+	if had_old_release:
+		if _runtime.gesture_is_active():
+			if input_frame.has_explicit_release_snapshot:
+				var release_pointer_cell := input_frame.left_release_pointer_cell \
+					if input_frame.left_release_pointer_inside_grid else Vector2i(-1, -1)
+				_runtime.gesture_update(
+					input_frame.release_live_gesture_path,
+					release_pointer_cell
+				)
+			elif not coalesced_release_before_press and not (
+				input_frame.live_gesture_path.is_empty()
+				and input_frame.crossed_cells.is_empty()
+			):
+				var legacy_pointer_cell := input_frame.current_pointer_cell \
+					if input_frame.current_pointer_inside_grid else Vector2i(-1, -1)
+				_runtime.gesture_update(input_frame.live_gesture_path, legacy_pointer_cell)
+			_runtime.gesture_finalize()
+		_left_capture_active = false
+		_left_press_latched = false
 	if input_frame.left_pressed and not _left_press_latched:
 		_left_press_latched = true
 		var endpoint := _runtime.get_endpoint_cell()
@@ -77,23 +100,18 @@ func apply_left_input(input_frame: TrackInputFrameScript) -> void:
 		):
 			_left_capture_active = not _runtime.gesture_begin(endpoint).is_empty()
 	if _left_capture_active and _runtime.gesture_is_active():
-		var gesture_cells: Array[Vector2i] = input_frame.crossed_cells.duplicate()
-		if (
-			input_frame.current_pointer_inside_grid
-			and (
-				gesture_cells.is_empty()
-				or gesture_cells[-1] != input_frame.current_pointer_cell
-			)
+		var pointer_cell := input_frame.current_pointer_cell \
+			if input_frame.current_pointer_inside_grid else Vector2i(-1, -1)
+		if not (
+			input_frame.left_released
+			and input_frame.live_gesture_path.is_empty()
+			and input_frame.crossed_cells.is_empty()
 		):
-			gesture_cells.append(input_frame.current_pointer_cell)
-		if not gesture_cells.is_empty():
-			var pointer_cell := input_frame.current_pointer_cell \
-				if input_frame.current_pointer_inside_grid else Vector2i(-1, -1)
-			_runtime.gesture_update(gesture_cells, pointer_cell)
-		if input_frame.left_released:
+			_runtime.gesture_update(input_frame.live_gesture_path, pointer_cell)
+		if input_frame.left_released and not coalesced_release_before_press:
 			_runtime.gesture_finalize()
 			_left_capture_active = false
-	if input_frame.left_released:
+	if input_frame.left_released and not coalesced_release_before_press:
 		_left_capture_active = false
 		_left_press_latched = false
 
