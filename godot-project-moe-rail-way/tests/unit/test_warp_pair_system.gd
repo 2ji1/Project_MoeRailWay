@@ -319,11 +319,19 @@ func _test_forecast_activation_and_anchors() -> void:
 func _test_capacity_gating_and_delayed_cadence() -> void:
     var balance := _make_warp_balance(0.0, 1.0, 3.0, 3.0, 2)
     var config = _complete_config(balance, 404, Vector2i(3, 2))
-    var system := WarpPairSystemScript.new(config, SessionRngScript.new(404))
+    var system_rng := SessionRngScript.new(404)
+    var mirror_rng := SessionRngScript.new(404)
+    var system := WarpPairSystemScript.new(config, system_rng)
 
     system.begin_running_tick(1)
+    mirror_rng.next_index(6)
+    mirror_rng.next_index(6)
+    mirror_rng.next_index(1)
     system.expire_after_contact(1)
     system.begin_running_tick(2)
+    mirror_rng.next_index(6)
+    mirror_rng.next_index(6)
+    mirror_rng.next_index(1)
     system.expire_after_contact(2)
     system.begin_running_tick(3)
     assert_equal(
@@ -332,8 +340,16 @@ func _test_capacity_gating_and_delayed_cadence() -> void:
         "Due generation must remain pending while the live-pair limit is full"
     )
     assert_equal(system.get_tick_events().size(), 0, "Blocked due tick must consume no generation")
+    assert_equal(
+        system_rng.next_u32(),
+        mirror_rng.next_u32(),
+        "Blocked due tick must consume no RNG"
+    )
     system.expire_after_contact(3)
 
+    var expected_origin_index := mirror_rng.next_index(6)
+    var expected_destination_index := mirror_rng.next_index(6)
+    var expected_lifetime := 3 + mirror_rng.next_index(1)
     system.begin_running_tick(4)
     var tick_four_records: Array = system.get_pair_records()
     assert_equal(
@@ -347,6 +363,27 @@ func _test_capacity_gating_and_delayed_cadence() -> void:
             tick_four_records[2].style_index,
             0,
             "Delayed pair must take the lowest unused live style"
+        )
+        assert_equal(
+            tick_four_records[2].origin_cell,
+            WarpPairSystemScript.cell_from_row_major_index(
+                expected_origin_index,
+                Vector2i(3, 2)
+            ),
+            "Delayed pair origin must use the first unconsumed draw"
+        )
+        assert_equal(
+            tick_four_records[2].destination_cell,
+            WarpPairSystemScript.cell_from_row_major_index(
+                expected_destination_index,
+                Vector2i(3, 2)
+            ),
+            "Delayed pair destination must use the second unconsumed draw"
+        )
+        assert_equal(
+            tick_four_records[2].lifetime_total_ticks,
+            expected_lifetime,
+            "Delayed pair lifetime must use the third unconsumed draw"
         )
     system.expire_after_contact(4)
 
