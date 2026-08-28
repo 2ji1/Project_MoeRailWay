@@ -23,6 +23,7 @@ Implementation commits:
 - `godot-project-moe-rail-way/src/domain/track/grid_track_runtime.gd`
 - `godot-project-moe-rail-way/tests/unit/test_track_geometry_resolver.gd`
 - `godot-project-moe-rail-way/tests/unit/test_grid_track_runtime.gd`
+- `godot-project-moe-rail-way/tests/unit/test_nominal_train_motion.gd`
 - `godot-project-moe-rail-way/tests/unit/test_track_field_view_input.gd`
 - `godot-project-moe-rail-way/tests/manual/warp_cargo_windows.md`
 
@@ -245,6 +246,7 @@ Modify only `track_geometry_resolver.gd`.
 - With exact knots, preserve the current literal fixed-index centers and local exact-corner cubic halves.
 - Validate every generated curve's interior samples against its footprint, with only the existing first-route departure lead-in exception.
 - Preserve ownership selection, overlap fallback, locked ledger reuse, public APIs, nominal lengths, and deterministic ordering.
+- Migrate the one full-suite consumer in `test_nominal_train_motion.gd` whose cross-owner spatial bound assumes the legacy sparse curve's endpoint rate. Derive the bound from each owner's actual stored boundary segment and the unchanged uniform-index nominal mapping, just as the runtime boundary regression does. This is a test-contract generalization, not arc-length reparameterization or a production motion change.
 
 Run all three focused suites and the complete automated gate. Stage exact paths and commit:
 

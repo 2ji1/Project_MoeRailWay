@@ -133,7 +133,8 @@ Focused tests must prove:
 7. entry and exit headings, footprint containment, nonzero grid origin, deterministic replay, partial recovery, and locked immutability remain valid;
 8. straight centerlines and locked curve centerlines retain their baseline bytes, while newly resolved unanchored curves use deterministic fixed-count local-corner samples;
 9. presentation's one-eighth interval samples show the local bends and straight spine for Warp-free curves, and additionally preserve the exact center for anchored curves;
-10. all existing registered and standalone integration gates remain green.
+10. cross-owner continuity bounds derive spatial travel from the actual stored boundary segments under uniform-index nominal sampling rather than assuming the legacy sparse curve's endpoint rate;
+11. all existing registered and standalone integration gates remain green.
 
 ## 8. Manual Acceptance and Scope Boundary
 
