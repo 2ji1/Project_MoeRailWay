@@ -6,6 +6,11 @@ const TrackGeometryResolutionScript = preload("res://src/domain/track/track_geom
 const RouteContactAnchorScript = preload("res://src/domain/track/route_contact_anchor.gd")
 const DISTANCE_EPSILON := 0.0001
 const TANGENT_DOT_EPSILON := 0.0001
+const CENTERLINE_SEGMENTS_PER_NOMINAL_CELL := 16
+const EXACT_KNOT_OFFSET_SAMPLES := CENTERLINE_SEGMENTS_PER_NOMINAL_CELL / 2
+const ENDPOINT_SUPPORT_MAX_SAMPLES := CENTERLINE_SEGMENTS_PER_NOMINAL_CELL / 2
+const LOCAL_CORNER_HALF_WINDOW_SAMPLES := CENTERLINE_SEGMENTS_PER_NOMINAL_CELL / 4
+const LOCAL_CORNER_HANDLE_RATIO := 1.0 / 3.0
 
 
 func resolve(
@@ -337,8 +342,8 @@ func _boundary_after(index: int, records: Array, origin: Vector2, size: float) -
 
 func _quadratic_centerline(start: Vector2, control: Vector2, finish: Vector2) -> PackedVector2Array:
     var points := PackedVector2Array()
-    for step in range(17):
-        var weight := float(step) / 16.0
+    for step in range(CENTERLINE_SEGMENTS_PER_NOMINAL_CELL + 1):
+        var weight := float(step) / float(CENTERLINE_SEGMENTS_PER_NOMINAL_CELL)
         points.append(
             start * (1.0 - weight) * (1.0 - weight)
             + control * 2.0 * (1.0 - weight) * weight
@@ -373,7 +378,8 @@ func _curve_centerline(
             Vector2(incoming),
             Vector2(outgoing),
             exact_knots,
-            end_index - start_index + 1
+            end_index - start_index + 1,
+            cell_size
         )
     if candidate.radius <= 1:
         var centerline := _quadratic_centerline(
@@ -446,7 +452,11 @@ func _exact_knots_for_span(
                 continue
             seen_cells[anchor.cell] = true
             knots.append({
-                "sample_index": (record_index - start_index) * 16 + 8,
+                "sample_index": (
+                    (record_index - start_index)
+                    * CENTERLINE_SEGMENTS_PER_NOMINAL_CELL
+                    + EXACT_KNOT_OFFSET_SAMPLES
+                ),
                 "position": _cell_center(anchor.cell, origin, cell_size),
             })
     return knots
@@ -458,60 +468,249 @@ func _anchored_curve_centerline(
     incoming: Vector2,
     outgoing: Vector2,
     exact_knots: Array[Dictionary],
-    nominal_length_cells: int
+    nominal_length_cells: int,
+    cell_size: float
 ) -> PackedVector2Array:
-    var hard_points: Array[Vector2] = [start]
-    var hard_indices: Array[int] = [0]
+    var skeleton: Array[Dictionary] = [{
+        "sample_index": 0,
+        "position": start,
+        "exact": false,
+    }]
     for knot in exact_knots:
-        hard_points.append(knot["position"])
-        hard_indices.append(knot["sample_index"])
-    hard_points.append(finish)
-    hard_indices.append(nominal_length_cells * 16)
+        skeleton.append({
+            "sample_index": knot["sample_index"],
+            "position": knot["position"],
+            "exact": true,
+        })
+    skeleton.append({
+        "sample_index": nominal_length_cells * CENTERLINE_SEGMENTS_PER_NOMINAL_CELL,
+        "position": finish,
+        "exact": false,
+    })
+    _insert_endpoint_support_knots(skeleton, incoming, outgoing, cell_size)
+    var points := _linear_centerline_from_knots(
+        skeleton,
+        nominal_length_cells * CENTERLINE_SEGMENTS_PER_NOMINAL_CELL + 1
+    )
+    _round_local_skeleton_corners(points, skeleton)
+    return points
 
-    var tangents: Array[Vector2] = []
-    for index in range(hard_points.size()):
-        if index == 0:
-            tangents.append(incoming.normalized())
-        elif index == hard_points.size() - 1:
-            tangents.append(outgoing.normalized())
-        else:
-            tangents.append((hard_points[index + 1] - hard_points[index - 1]).normalized())
 
-    var base_handles: Array[float] = []
-    for index in range(hard_points.size()):
-        if index == 0:
-            base_handles.append(hard_points[0].distance_to(hard_points[1]) / 3.0)
-        elif index == hard_points.size() - 1:
-            base_handles.append(hard_points[-2].distance_to(hard_points[-1]) / 3.0)
-        else:
-            base_handles.append(minf(
-                hard_points[index].distance_to(hard_points[index - 1]),
-                hard_points[index].distance_to(hard_points[index + 1])
-            ) / 3.0)
+func _insert_endpoint_support_knots(
+    skeleton: Array[Dictionary],
+    incoming: Vector2,
+    outgoing: Vector2,
+    cell_size: float
+) -> void:
+    if skeleton.size() < 2:
+        return
+    var entry_support := _endpoint_support_knot(
+        skeleton[0], skeleton[1], incoming.normalized(), cell_size, true
+    )
+    if not entry_support.is_empty():
+        skeleton.insert(1, entry_support)
+    var exit_support := _endpoint_support_knot(
+        skeleton[-1], skeleton[-2], outgoing.normalized(), cell_size, false
+    )
+    if not exit_support.is_empty():
+        skeleton.insert(skeleton.size() - 1, exit_support)
 
+
+func _endpoint_support_knot(
+    endpoint: Dictionary,
+    neighbor: Dictionary,
+    heading: Vector2,
+    cell_size: float,
+    from_start: bool
+) -> Dictionary:
+    if heading.is_zero_approx() or cell_size <= 0.0:
+        return {}
+    var endpoint_index: int = endpoint["sample_index"]
+    var neighbor_index: int = neighbor["sample_index"]
+    var sample_gap := (
+        neighbor_index - endpoint_index
+        if from_start
+        else endpoint_index - neighbor_index
+    )
+    var sample_offset := mini(ENDPOINT_SUPPORT_MAX_SAMPLES, sample_gap / 2)
+    if sample_offset <= 0:
+        return {}
+    var endpoint_position: Vector2 = endpoint["position"]
+    var neighbor_position: Vector2 = neighbor["position"]
+    var toward_neighbor := (
+        neighbor_position - endpoint_position
+        if from_start
+        else endpoint_position - neighbor_position
+    )
+    var forward_gap := toward_neighbor.dot(heading)
+    if forward_gap <= DISTANCE_EPSILON:
+        return {}
+    var nominal_support_units := (
+        cell_size
+        * float(sample_offset)
+        / float(CENTERLINE_SEGMENTS_PER_NOMINAL_CELL)
+    )
+    var support_units := minf(
+        nominal_support_units,
+        minf(forward_gap * 0.5, toward_neighbor.length() * 0.5)
+    )
+    if support_units <= DISTANCE_EPSILON:
+        return {}
+    return {
+        "sample_index": (
+            endpoint_index + sample_offset
+            if from_start
+            else endpoint_index - sample_offset
+        ),
+        "position": (
+            endpoint_position + heading * support_units
+            if from_start
+            else endpoint_position - heading * support_units
+        ),
+        "exact": false,
+    }
+
+
+func _linear_centerline_from_knots(
+    skeleton: Array[Dictionary],
+    sample_count: int
+) -> PackedVector2Array:
     var points := PackedVector2Array()
-    for segment_index in range(hard_points.size() - 1):
-        var point_a: Vector2 = hard_points[segment_index]
-        var point_b: Vector2 = hard_points[segment_index + 1]
-        var index_a: int = hard_indices[segment_index]
-        var index_b: int = hard_indices[segment_index + 1]
-        var chord := point_a.distance_to(point_b)
-        var handle_a := minf(base_handles[segment_index], chord / 3.0)
-        var handle_b := minf(base_handles[segment_index + 1], chord / 3.0)
-        var control_a := point_a + tangents[segment_index] * handle_a
-        var control_b := point_b - tangents[segment_index + 1] * handle_b
+    points.resize(sample_count)
+    for segment_index in range(skeleton.size() - 1):
+        var knot_a: Dictionary = skeleton[segment_index]
+        var knot_b: Dictionary = skeleton[segment_index + 1]
+        var index_a: int = knot_a["sample_index"]
+        var index_b: int = knot_b["sample_index"]
+        if index_b <= index_a:
+            continue
         for sample_index in range(index_a, index_b + 1):
-            if segment_index > 0 and sample_index == index_a:
-                continue
             var weight := float(sample_index - index_a) / float(index_b - index_a)
-            var inverse := 1.0 - weight
-            points.append(
-                point_a * inverse * inverse * inverse
-                + control_a * 3.0 * inverse * inverse * weight
-                + control_b * 3.0 * inverse * weight * weight
-                + point_b * weight * weight * weight
+            points[sample_index] = Vector2(knot_a["position"]).lerp(
+                Vector2(knot_b["position"]), weight
             )
     return points
+
+
+func _round_local_skeleton_corners(
+    points: PackedVector2Array,
+    skeleton: Array[Dictionary]
+) -> void:
+    for knot_index in range(1, skeleton.size() - 1):
+        var previous: Dictionary = skeleton[knot_index - 1]
+        var current: Dictionary = skeleton[knot_index]
+        var following: Dictionary = skeleton[knot_index + 1]
+        var incoming_delta: Vector2 = current["position"] - previous["position"]
+        var outgoing_delta: Vector2 = following["position"] - current["position"]
+        if incoming_delta.is_zero_approx() or outgoing_delta.is_zero_approx():
+            continue
+        var incoming_heading := incoming_delta.normalized()
+        var outgoing_heading := outgoing_delta.normalized()
+        if incoming_heading.dot(outgoing_heading) >= 1.0 - TANGENT_DOT_EPSILON:
+            continue
+        var current_index: int = current["sample_index"]
+        var half_window := mini(
+            LOCAL_CORNER_HALF_WINDOW_SAMPLES,
+            mini(
+                (current_index - int(previous["sample_index"])) / 2,
+                (int(following["sample_index"]) - current_index) / 2
+            )
+        )
+        if half_window <= 0:
+            continue
+        if current["exact"]:
+            _round_exact_corner(
+                points,
+                current_index,
+                half_window,
+                Vector2(current["position"]),
+                incoming_heading,
+                outgoing_heading
+            )
+        else:
+            _round_support_corner(
+                points,
+                current_index,
+                half_window,
+                Vector2(current["position"])
+            )
+
+
+func _round_support_corner(
+    points: PackedVector2Array,
+    corner_index: int,
+    half_window: int,
+    corner_position: Vector2
+) -> void:
+    var start_index := corner_index - half_window
+    var finish_index := corner_index + half_window
+    var start: Vector2 = points[start_index]
+    var finish: Vector2 = points[finish_index]
+    for sample_index in range(start_index, finish_index + 1):
+        var weight := float(sample_index - start_index) / float(finish_index - start_index)
+        var inverse := 1.0 - weight
+        points[sample_index] = (
+            start * inverse * inverse
+            + corner_position * 2.0 * inverse * weight
+            + finish * weight * weight
+        )
+
+
+func _round_exact_corner(
+    points: PackedVector2Array,
+    corner_index: int,
+    half_window: int,
+    corner_position: Vector2,
+    incoming_heading: Vector2,
+    outgoing_heading: Vector2
+) -> void:
+    var shared_tangent := (incoming_heading + outgoing_heading).normalized()
+    if shared_tangent.is_zero_approx():
+        return
+    var start_index := corner_index - half_window
+    var finish_index := corner_index + half_window
+    var start: Vector2 = points[start_index]
+    var finish: Vector2 = points[finish_index]
+    var incoming_handle := start.distance_to(corner_position) * LOCAL_CORNER_HANDLE_RATIO
+    var outgoing_handle := corner_position.distance_to(finish) * LOCAL_CORNER_HANDLE_RATIO
+    _write_cubic_samples(
+        points,
+        start_index,
+        corner_index,
+        start,
+        start + incoming_heading * incoming_handle,
+        corner_position - shared_tangent * incoming_handle,
+        corner_position
+    )
+    _write_cubic_samples(
+        points,
+        corner_index,
+        finish_index,
+        corner_position,
+        corner_position + shared_tangent * outgoing_handle,
+        finish - outgoing_heading * outgoing_handle,
+        finish
+    )
+
+
+func _write_cubic_samples(
+    points: PackedVector2Array,
+    start_index: int,
+    finish_index: int,
+    start: Vector2,
+    control_a: Vector2,
+    control_b: Vector2,
+    finish: Vector2
+) -> void:
+    for sample_index in range(start_index, finish_index + 1):
+        var weight := float(sample_index - start_index) / float(finish_index - start_index)
+        var inverse := 1.0 - weight
+        points[sample_index] = (
+            start * inverse * inverse * inverse
+            + control_a * 3.0 * inverse * inverse * weight
+            + control_b * 3.0 * inverse * weight * weight
+            + finish * weight * weight * weight
+        )
 
 
 func _span_owns_cell(span: Vector2i, records: Array, cell: Vector2i) -> bool:

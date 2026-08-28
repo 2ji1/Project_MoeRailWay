@@ -11,6 +11,15 @@ const CURVE_1X1 := 1
 const CURVE_2X2 := 2
 const CURVE_3X3 := 3
 const DEPARTURE := Vector2i(-1, 0)
+const MAX_LOCAL_CORNER_NONLINEAR_RUN := 9
+const MAX_LOCAL_REVERSE_SEGMENT_RUN := 8
+const MIN_STRAIGHT_SEGMENT_RUN := 4
+
+const CANONICAL_UNANCHORED_CENTERLINE_DIGESTS := {
+	"1x1": "cf804d0218c1dffff98763e8b8fe4c322086567181f93ba408dd7eaeea5e926d",
+	"2x2": "b567afcde0267edbdebff6eef8ed2cb5dfe484d6b1623fc9f5ba85af02f2eddc",
+	"3x3": "47fa5aeabf7f7f46d9d6c1ee8eda3acf46c72c252c22cea49b137a4acaca313f",
+}
 
 var _resolver = TrackGeometryResolverScript.new()
 
@@ -22,6 +31,7 @@ func run() -> PackedStringArray:
 	_test_overlapping_curves_downgrade_both()
 	_test_anchor_forces_centerline_contact()
 	_test_exact_anchor_knots_preserve_template_contracts()
+	_test_multiple_exact_knots_remain_literal_and_deterministic()
 	_test_nonzero_grid_origin_translates_every_centerline()
 	_test_nominal_lengths_sampling_and_grid_bounds()
 	_test_non_final_curve_continuity_and_one_cell_tangents()
@@ -118,6 +128,53 @@ func _test_exact_anchor_knots_preserve_template_contracts() -> void:
 	)
 
 
+func _test_multiple_exact_knots_remain_literal_and_deterministic() -> void:
+	var records := _records_for([
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+		Vector2i(2, 1), Vector2i(2, 2),
+	])
+	var first = RouteContactAnchorScript.new(&"warp_first", records[1].cell)
+	var duplicate = RouteContactAnchorScript.new(&"warp_duplicate", records[1].cell)
+	var second = RouteContactAnchorScript.new(&"warp_second", records[2].cell)
+	for anchor in [first, duplicate, second]:
+		anchor.set(&"contact_mode", 1)
+	var result = _resolver.resolve(
+		DEPARTURE, records, [], [second, duplicate, first],
+		Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_true(result.is_valid, "Distinct and duplicate exact anchors resolve together")
+	if not result.is_valid:
+		return
+	var piece = _piece_covering_serial(result.pieces, records[1].route_serial)
+	assert_not_null(piece, "Multiple exact anchors share the accepted curve owner")
+	if piece == null:
+		return
+	assert_equal(piece.kind, CURVE_3X3, "Multiple exact anchors retain 3x3 ownership")
+	for record_offset in [1, 2]:
+		var local_offset: float = (
+			records[record_offset].route_distance_start_cells
+			- piece.absolute_start_distance_cells
+			+ 0.5
+		)
+		var exact_index := int(round(local_offset * 16.0))
+		var expected_center := (Vector2(records[record_offset].cell) + Vector2(0.5, 0.5)) * 40.0
+		assert_true(
+			piece.centerline[exact_index].distance_to(expected_center) <= 0.0001,
+			"Exact anchor at offset %d remains at its fixed sample" % record_offset
+		)
+	_assert_each_serial_owned_once(result.pieces, records)
+	var replay = _resolver.resolve(
+		DEPARTURE, records, [], [first, second],
+		Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	var replay_piece = _piece_covering_serial(replay.pieces, records[1].route_serial)
+	assert_equal(
+		replay_piece.centerline,
+		piece.centerline,
+		"Anchor ordering and same-cell duplicates do not change generated geometry"
+	)
+
+
 func _assert_exact_curve_orientations(
 	base_cells: Array,
 	anchor_offset: int,
@@ -182,14 +239,35 @@ func _assert_exact_curve_fixture(
 	assert_equal(piece.kind, expected_kind, "%s retains its accepted template kind" % label)
 	assert_not_null(baseline_piece, "%s has a pre-anchor accepted owner" % label)
 	if baseline_piece != null:
+		assert_equal(baseline_piece.kind, expected_kind, "%s baseline template kind" % label)
+		assert_equal(
+			piece.first_route_serial, baseline_piece.first_route_serial,
+			"%s exact anchor preserves the owner span start" % label
+		)
+		assert_equal(
+			piece.last_route_serial, baseline_piece.last_route_serial,
+			"%s exact anchor preserves the owner span end" % label
+		)
+		assert_equal(
+			piece.nominal_length_cells, baseline_piece.nominal_length_cells,
+			"%s exact anchor preserves nominal ownership length" % label
+		)
 		assert_equal(
 			piece.footprint_cells, baseline_piece.footprint_cells,
 			"%s exact anchor preserves the accepted footprint byte-for-byte" % label
 		)
+		if label.ends_with("orientation 0"):
+			var fixture_name := label.trim_suffix(" orientation 0")
+			assert_equal(
+				_centerline_digest(baseline_piece.centerline),
+				CANONICAL_UNANCHORED_CENTERLINE_DIGESTS[fixture_name],
+				"%s unanchored centerline remains byte-stable" % label
+			)
 	assert_false(
 		piece.footprint_cells.has(departure),
 		"%s departure lead-in never becomes route footprint ownership" % label
 	)
+	_assert_each_serial_owned_once(result.pieces, records)
 	assert_equal(
 		piece.centerline.size(), piece.nominal_length_cells * 16 + 1,
 		"%s anchored curve uses fixed nominal sampling" % label
@@ -197,6 +275,11 @@ func _assert_exact_curve_fixture(
 	var expected_center := (Vector2(anchor_cell) + Vector2(0.5, 0.5)) * 40.0
 	var local_offset: float = float(records[anchor_offset].route_distance_start_cells) \
 		- piece.absolute_start_distance_cells + 0.5
+	var exact_sample_index := int(round(local_offset * 16.0))
+	assert_true(
+		piece.centerline[exact_sample_index].distance_to(expected_center) <= 0.0001,
+		"%s stores the exact center at its literal fixed sample index" % label
+	)
 	assert_true(
 		piece.sample_nominal(local_offset).position.distance_to(expected_center) <= 0.0001,
 		"%s passes the literal cell center at its nominal knot" % label
@@ -207,6 +290,21 @@ func _assert_exact_curve_fixture(
 	var outgoing := Vector2(records[turn_index + 1].cell - records[turn_index].cell).normalized()
 	assert_true(piece.sample_nominal(0.0).heading.is_equal_approx(incoming), "%s preserves operational entry heading" % label)
 	assert_true(piece.sample_nominal(float(piece.nominal_length_cells)).heading.is_equal_approx(outgoing), "%s preserves operational exit heading" % label)
+	assert_true(
+		_longest_straight_segment_run(piece.centerline) >= MIN_STRAIGHT_SEGMENT_RUN,
+		"%s retains a visible straight run outside local corner blends" % label
+	)
+	var nonlinear_run := _longest_nonlinear_vertex_run(piece.centerline)
+	assert_true(
+		nonlinear_run <= MAX_LOCAL_CORNER_NONLINEAR_RUN,
+		"%s confines each nonlinear run to one local half-cell window (run=%d)"
+			% [label, nonlinear_run]
+	)
+	assert_true(
+		_longest_reverse_segment_run(piece.centerline, incoming, outgoing)
+			<= MAX_LOCAL_REVERSE_SEGMENT_RUN,
+		"%s confines any exact-knot reverse travel to one local window" % label
+	)
 	var first_chord_heading: Vector2 = (piece.centerline[1] - piece.centerline[0]).normalized()
 	var last_chord_heading: Vector2 = (piece.centerline[-1] - piece.centerline[-2]).normalized()
 	assert_true(
@@ -637,6 +735,68 @@ func _assert_each_serial_owned_once(pieces: Array, records: Array) -> void:
 			if piece.contains_serial(record.route_serial):
 				owner_count += 1
 		assert_equal(owner_count, 1, "Every route serial has exactly one geometry owner")
+
+
+func _centerline_digest(centerline: PackedVector2Array) -> String:
+	return var_to_bytes(centerline).hex_encode().sha256_text()
+
+
+func _longest_straight_segment_run(centerline: PackedVector2Array) -> int:
+	var longest := 0
+	var current := 0
+	var previous_heading := Vector2.ZERO
+	for index in range(centerline.size() - 1):
+		var delta: Vector2 = centerline[index + 1] - centerline[index]
+		if delta.is_zero_approx():
+			current = 0
+			previous_heading = Vector2.ZERO
+			continue
+		var heading := delta.normalized()
+		if (
+			not previous_heading.is_zero_approx()
+			and absf(previous_heading.cross(heading)) <= 0.000001
+			and previous_heading.dot(heading) > 0.0
+		):
+			current += 1
+		else:
+			current = 1
+		previous_heading = heading
+		longest = maxi(longest, current)
+	return longest
+
+
+func _longest_nonlinear_vertex_run(centerline: PackedVector2Array) -> int:
+	var longest := 0
+	var current := 0
+	for index in range(1, centerline.size() - 1):
+		var second_difference: Vector2 = (
+			centerline[index + 1]
+			- centerline[index] * 2.0
+			+ centerline[index - 1]
+		)
+		if second_difference.length() > 0.0001:
+			current += 1
+			longest = maxi(longest, current)
+		else:
+			current = 0
+	return longest
+
+
+func _longest_reverse_segment_run(
+	centerline: PackedVector2Array,
+	incoming: Vector2,
+	outgoing: Vector2
+) -> int:
+	var longest := 0
+	var current := 0
+	for index in range(centerline.size() - 1):
+		var delta: Vector2 = centerline[index + 1] - centerline[index]
+		if delta.dot(incoming) < -0.0001 or delta.dot(outgoing) < -0.0001:
+			current += 1
+			longest = maxi(longest, current)
+		else:
+			current = 0
+	return longest
 
 
 func _assert_centerline_never_reverses(
