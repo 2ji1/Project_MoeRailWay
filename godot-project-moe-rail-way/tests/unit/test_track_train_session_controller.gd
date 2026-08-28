@@ -16,6 +16,7 @@ func run() -> PackedStringArray:
 	_test_planning_exclusions_and_abort_discard_credit()
 	_test_planning_recovery_advances_only_on_due_tick()
 	_test_completion_discards_partial_planning_credit()
+	_test_train_safety_termination_discards_partial_credit()
 	_test_departure_transition_moves_from_departure_center()
 	_test_right_cancellation_wins_before_buffered_left_cells()
 	_test_recovery_refund_is_not_spendable_until_next_tick()
@@ -205,6 +206,36 @@ func _test_completion_discards_partial_planning_credit() -> void:
 	assert_equal(completed.get_elapsed_ticks(), 3, "Completion advances only the one due simulation tick")
 	controller.advance_tick(_held_endpoint(endpoint))
 	assert_equal(controller.get_snapshot().get_elapsed_ticks(), 3, "Post-completion input cannot spend leftover planning credit")
+
+
+func _test_train_safety_termination_discards_partial_credit() -> void:
+	var config := _config(20.0, 8, 8, 2.0)
+	config.planning_time_scale_percent = 30
+	var track = TrackSystemScript.new(config)
+	var controller = SessionControllerScript.new(config, track, TrainSystemScript.new(2.0))
+	controller.start()
+	controller.advance_tick(_left([
+		Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0), Vector2i(4, 0),
+		Vector2i(5, 0), Vector2i(6, 0), Vector2i(7, 0),
+	], Vector2i(0, 0)))
+	var endpoint := track.get_endpoint_cell()
+	controller.advance_tick(_held_endpoint(endpoint))
+	assert_true(track.is_runtime_gesture_active(), "Train-safety fixture begins planning before overlap")
+	var before_planning = controller.get_snapshot()
+	for index in range(3):
+		controller.advance_tick(_held_endpoint(endpoint))
+		assert_false(controller.get_snapshot().did_advance_simulation_tick(), "Train-safety partial-credit tick %d is skipped" % (index + 1))
+		assert_true(track.is_runtime_gesture_active(), "Train-safety gesture survives skipped tick %d" % (index + 1))
+	controller.advance_tick(_held_endpoint(endpoint))
+	var terminated = controller.get_snapshot()
+	assert_true(terminated.did_advance_simulation_tick(), "Fourth thirty-percent real tick is due")
+	assert_false(track.is_runtime_gesture_active(), "Due train sampling terminates the overlapping gesture")
+	assert_false(terminated.is_planning_slowdown_active(), "Train-safety termination clears planning")
+	assert_equal(terminated.get_elapsed_ticks(), before_planning.get_elapsed_ticks() + 1, "Train-safety due tick advances once")
+	controller.advance_tick()
+	var resumed = controller.get_snapshot()
+	assert_true(resumed.did_advance_simulation_tick(), "Post-safety real tick resumes normal cadence")
+	assert_equal(resumed.get_elapsed_ticks(), terminated.get_elapsed_ticks() + 1, "Post-safety tick discards residual credit and advances once")
 
 
 func _object_has_property(object: Object, property_name: StringName) -> bool:

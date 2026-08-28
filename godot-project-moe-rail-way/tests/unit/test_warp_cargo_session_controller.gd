@@ -111,6 +111,7 @@ func run() -> PackedStringArray:
 func _test_skipped_planning_snapshot_never_repeats_warp_events() -> void:
     var config := _config(20.0, 0.1, 40, 2)
     config.planning_time_scale_percent = 25
+    config.warp_max_live_pairs = 3
     var fixture := _fixture(config)
     var controller: SessionControllerScript = fixture["controller"]
     var track: ContactTrackSpy = fixture["track"]
@@ -127,6 +128,7 @@ func _test_skipped_planning_snapshot_never_repeats_warp_events() -> void:
     var elapsed_before_skip := due_snapshot.get_elapsed_ticks()
     var distance_before_skip := due_snapshot.get_train_route_distance_cells()
     var anchor_batches_before := track.anchor_batches.size()
+    var anchors_before_planning := _anchor_ids(track._runtime._anchors)
     var expected_did_advance := [false, false, false, true]
     var expected_elapsed := [elapsed_before_skip, elapsed_before_skip, elapsed_before_skip, elapsed_before_skip + 1]
     var expected_distance := [distance_before_skip, distance_before_skip, distance_before_skip, distance_before_skip + 0.1]
@@ -153,15 +155,48 @@ func _test_skipped_planning_snapshot_never_repeats_warp_events() -> void:
             assert_true(tick_events.has("construction"), "Due planning tick advances construction")
             assert_true(tick_events.has("recovery"), "Due planning tick advances recovery")
     assert_not_null(due, "Literal cadence publishes one due Warp snapshot")
+    assert_equal(due.get_warp_pair_records().size(), pairs_before_skip.size() + 1, "Due planning tick successfully generates one new Warp pair")
+    assert_true(_event_count(due.get_warp_cargo_events(), &"FORECASTED") > 0, "Due planning tick publishes the successful generation event")
     var origin: Dictionary = track._runtime.get_gesture_origin_observation()
     assert_false(origin.is_empty(), "Due Warp anchor lifecycle retains the active gesture")
     if not origin.is_empty():
         assert_equal(_anchor_ids(origin["anchors"]), _anchor_ids(track._runtime._anchors), "Due Warp anchors evolve both origin and live candidate")
+    assert_true(_anchor_ids(track._runtime._anchors) != anchors_before_planning, "Due activation changes the authoritative anchor set")
     var authoritative_ids := _anchor_ids(track._runtime._anchors)
+    var alternate_target := track.get_endpoint_cell()
+    for target in origin.get("targets", {}).values():
+        var candidate := Vector2i(target)
+        if candidate != track.get_endpoint_cell() and candidate.x >= 0 and candidate.y >= 0 and candidate.x < 6 and candidate.y < 4:
+            alternate_target = candidate
+            break
+    assert_true(alternate_target != track.get_endpoint_cell(), "Due lifecycle fixture exposes an alternate preview target")
+    var later_preview: Array[Vector2i] = [alternate_target]
+    controller.advance_tick(_held_live(track.get_endpoint_cell(), later_preview))
+    assert_equal(track.get_endpoint_cell(), alternate_target, "Post-transition skipped tick still updates the live preview")
+    assert_equal(_anchor_ids(track._runtime._anchors), authoritative_ids, "Post-transition preview preserves authoritative anchors")
     controller.advance_tick(_right_abort(track.get_endpoint_cell()))
     var aborted: SessionSnapshotScript = controller.get_snapshot()
     assert_false(aborted.did_advance_simulation_tick(), "Warp right abort creates no catch-up tick")
     assert_equal(_anchor_ids(track._runtime._anchors), authoritative_ids, "Abort retains due-tick authoritative Warp anchors")
+
+    var finalize_config := _config(20.0, 0.1, 40, 2)
+    finalize_config.planning_time_scale_percent = 25
+    finalize_config.warp_max_live_pairs = 3
+    var finalize_fixture := _fixture(finalize_config)
+    var finalize_controller: SessionControllerScript = finalize_fixture["controller"]
+    var finalize_track: ContactTrackSpy = finalize_fixture["track"]
+    finalize_controller.start()
+    finalize_controller.advance_tick(_draw_frame([
+        Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0), Vector2i(4, 0),
+    ]))
+    finalize_controller.advance_tick(_held_endpoint(finalize_track.get_endpoint_cell()))
+    for index in range(4):
+        finalize_controller.advance_tick(_held_endpoint(finalize_track.get_endpoint_cell()))
+    var finalize_ids := _anchor_ids(finalize_track._runtime._anchors)
+    assert_true(finalize_track.is_runtime_gesture_active(), "Finalize fixture reaches the due transition with an active gesture")
+    finalize_controller.advance_tick(_release_endpoint(finalize_track.get_endpoint_cell()))
+    assert_false(finalize_track.is_runtime_gesture_active(), "Release finalizes the due-transition gesture")
+    assert_equal(_anchor_ids(finalize_track._runtime._anchors), finalize_ids, "Finalize retains due-tick authoritative Warp anchors")
 
 
 func _verify_partial_dependency_probe() -> void:
@@ -510,6 +545,21 @@ func _held_endpoint(endpoint: Vector2i) -> TrackInputFrameScript:
     return TrackInputFrameScript.new(
         empty, endpoint, true, Vector2i(-1, -1), false,
         true, true, false, false, endpoint, true
+    )
+
+
+func _held_live(endpoint: Vector2i, live_path: Array[Vector2i]) -> TrackInputFrameScript:
+    return TrackInputFrameScript.new(
+        live_path, endpoint, true, Vector2i(-1, -1), false,
+        true, true, false, false, live_path[-1], true, live_path
+    )
+
+
+func _release_endpoint(endpoint: Vector2i) -> TrackInputFrameScript:
+    var empty: Array[Vector2i] = []
+    return TrackInputFrameScript.new(
+        empty, endpoint, true, Vector2i(-1, -1), false,
+        false, false, true, false, endpoint, true
     )
 
 
