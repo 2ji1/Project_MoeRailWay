@@ -198,6 +198,8 @@ Modify only `test_track_geometry_resolver.gd` and `test_grid_track_runtime.gd`.
 - Retain a genuinely irreducible overlap fixture that returns `final_overlap`.
 - Run both focused suites and require only the new side-extension assertions to fail on unchanged production.
 
+If Minimum GREEN makes an existing `final_overlap` runtime fixture publish, inspect rather than automatically preserving or deleting its old expectation. Reclassify it as a positive regression only when the final footprints are pairwise disjoint, every serial has one owner, the locked ledger is unchanged, inventory is conserved, and construction plus train sampling remain valid. Any fixture with a genuine final footprint overlap, locked conflict, duplicate cell, or broken ownership must remain rejected.
+
 ### Minimum GREEN
 
 Modify only `track_geometry_resolver.gd`. In the existing pairwise overlap loop, reject only when both overlapping candidates are already radius `1`. Otherwise decrement each member whose radius is greater than `1` and repeat. Do not change footprint construction, locked conflict rules, anchor rules, sequence validation, or public APIs.
