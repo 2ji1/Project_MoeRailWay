@@ -1,7 +1,8 @@
 # Warp Cargo Windows Manual Verification
 
-- Status: Completed on reviewed feature HEAD `402c9a28913acb24047a35cfcd4d5b8c2bb752f1` and integrated through PR #17 as `prototype-m5`
-- Result: Passed deterministic and mouse-only verification at all four supported window sizes
+- Status: Integrated through PR #17 as `prototype-m5`; complete final-head four-size evidence remains outstanding
+- Recorded evidence: pre-amendment HEAD `b5d33117d08ed3e14269b353f2a84a72c4f24a0c` passed deterministic and mouse-only verification at all four supported sizes; final reviewed HEAD `402c9a28913acb24047a35cfcd4d5b8c2bb752f1` passed the targeted `1280x720` locked-endpoint anchored-turn regression
+- Outstanding evidence: rerun the complete deterministic and mouse-only checklist at `960x540`, `1280x720`, `1600x900`, and `1920x1080` on the current integration candidate
 
 This checklist remains the manual regression procedure for the integrated slice. Run it only after the exact candidate `HEAD` passes every automated gate. Keep screenshots and the completed evidence table outside the repository.
 

@@ -1,10 +1,10 @@
 # Warp Cargo 설계·구현 완료 브리핑
 
 - 날짜: 2026-08-28
-- 상태: 구현·검증·`main` 통합 완료
+- 상태: 구현·`main` 통합 완료, 최종 HEAD 전체 4해상도 수동 재검증 미완료
 - 검토 완료 feature HEAD: `402c9a28913acb24047a35cfcd4d5b8c2bb752f1`
 - 통합 결과: PR #17, merge commit `e42d9a6ccc64c55da44ee8e5fddc6f40e48c2874`, tag `prototype-m5`
-- 검증 결과: 검토 완료 feature HEAD에서 독립 사양·품질 검토와 `960x540`, `1280x720`, `1600x900`, `1920x1080` Windows 수동 검증 통과, 병합 후 `main`에서 등록 테스트 스위트 24개와 별도 통합 러너 5개 재통과
+- 검증 결과: 보정 전 HEAD `b5d3311`에서 전체 4해상도 고정·마우스 검증 통과, 최종 검토 HEAD `402c9a2`에서 독립 사양·품질 검토와 `1280x720` 잠긴 끝점 곡선 대상 회귀 통과, 병합 후 `main`에서 등록 테스트 스위트 24개와 별도 통합 러너 5개 재통과. 최종 상태에서 전체 4해상도 조작감 체크리스트를 다시 실행한 기록은 없습니다.
 - 영어 설계 정본: [`docs/superpowers/specs/2026-08-28-warp-cargo-design.md`](../../superpowers/specs/2026-08-28-warp-cargo-design.md)
 - 영어 구현 계획 정본: [`docs/superpowers/plans/2026-08-28-warp-cargo.md`](../../superpowers/plans/2026-08-28-warp-cargo.md)
 
