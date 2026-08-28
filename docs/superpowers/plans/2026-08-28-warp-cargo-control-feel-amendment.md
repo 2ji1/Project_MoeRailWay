@@ -267,9 +267,35 @@ The expected eligibility transition must be asserted from literal cells, route r
 
 **Reviews:** Specification review checks the pre-recovery prohibition, post-recovery eligibility, immediate predecessor boundary, unchanged distance origin, and exact captured gesture. Quality review checks a single source of truth for eligibility, append/replacement consistency, monotonic identity, inventory conservation, transactional rejection, and absence of train or Warp coupling.
 
-## 9. Final Automated and Manual Evidence Gate
+## 9. Task 5: Stitch an Exact First Turn After a Locked Endpoint
 
-After Task 4 and its reviews, run the complete gate without changing files:
+**Objective:** Fix the reproduced manual-play failure in which an exact Warp cell publishes after a fully locked endpoint but the next held cell is dropped because the anchored first-turn successor is not stitched to that endpoint.
+
+**Modify:**
+
+- `godot-project-moe-rail-way/src/domain/track/track_geometry_resolver.gd`
+- `godot-project-moe-rail-way/tests/unit/test_track_geometry_resolver.gd`
+- `godot-project-moe-rail-way/tests/unit/test_grid_track_runtime.gd`
+- `godot-project-moe-rail-way/tests/manual/warp_cargo_windows.md`
+
+**RED:** Reproduce the observed departure `(5, 2)` route through `(5, 7)`, `(6, 7)`, and the locked vertical endpoint `(7, 3)`, with an exact Warp at `(7, 2)`. Lock every existing piece through the endpoint, begin a legal held gesture, and require the literal live paths `[(7, 2)]`, `[(7, 2), (6, 2)]`, and `[(7, 2), (6, 2), (5, 2)]` to publish in order and finalize with endpoint `(5, 2)`. Capture the complete locked ledger and require it byte-unchanged after every update and finalize. At the resolver layer, require the unlocked anchored `CURVE_1X1` successor to stitch its first point to the locked predecessor endpoint by using its declared entry-heading override while retaining the exact `(7, 2)` center knot, owned serial, footprint, nominal length, and remaining centerline samples. Add the opposite sideways/backward-gap fixture and require it to remain unstitched and invalid. The ordinary locked straight-extension and locked-geometry impossibility fixtures remain unchanged.
+
+**Minimum GREEN:** In the existing locked-predecessor stitch predicate, compare the boundary gap with the predecessor's canonical exit heading and the successor's canonical entry heading so existing heading overrides are honored. Continue changing only the unlocked successor's first centerline point. Do not loosen the tangent epsilon, mutate locked pieces, alter curve construction, move an exact knot, change template selection, bypass overlap validation, or add Warp-specific branching to the geometry resolver.
+
+**Regressions:**
+
+- focused `test_track_geometry_resolver.gd` and `test_grid_track_runtime.gd`;
+- full `run_all.gd`, still exactly `PASS: 24 prototype test suite(s)`;
+- all five integration runners;
+- exact UID audit and `git diff --check`.
+
+**Commit:** `fix: stitch anchored turns after locked endpoints`
+
+**Reviews:** Specification review checks the literal reproduced gesture, immutable locked predecessor, exact Warp knot, full suffix, and non-forward rejection. Quality review checks canonical heading use, epsilon preservation, successor-only mutation, deterministic continuity, and absence of Warp coupling or geometry abstraction.
+
+## 10. Final Automated and Manual Evidence Gate
+
+After Task 5 and its reviews, run the complete gate without changing files:
 
 - full `run_all.gd`, exact `PASS: 24 prototype test suite(s)`;
 - `run_session_shell_integration.gd`;
@@ -280,13 +306,13 @@ After Task 4 and its reviews, run the complete gate without changing files:
 - exit `0`, every required PASS marker, no rejected anchored diagnostics;
 - feature changed-path union audit, `.gd.uid` one-to-one audit, and `git diff --check`.
 
-Then run the Task 3 and Task 4 manual checklist at `960x540`, `1280x720`, `1600x900`, and `1920x1080` on the exact reviewed implementation head. The user verifies each state and reports pass/fail. Keep screenshots and completed evidence outside the repository; the tracked manual file contains instructions only. A failed automated or manual row returns to the owning Task 1, 2, 3, or 4 allowlist through an explicit review finding. The evidence gate itself creates no commit and cannot manufacture a test-only RED.
+Then run the Task 3, Task 4, and Task 5 manual checklist at `960x540`, `1280x720`, `1600x900`, and `1920x1080` on the exact reviewed implementation head. The user verifies each state and reports pass/fail. Keep screenshots and completed evidence outside the repository; the tracked manual file contains instructions only. A failed automated or manual row returns to the owning Task 1, 2, 3, 4, or 5 allowlist through an explicit review finding. The evidence gate itself creates no commit and cannot manufacture a test-only RED.
 
 Integration expected positions, knot distances, tick indices, and four-to-one cadence remain hard-coded fixture facts. Do not derive an expected value by calling the same production method under test. The Windows user observation is the independent visual and control-feel check rather than a substitute for deterministic assertions.
 
-## 10. Task Allowlist Summary
+## 11. Task Allowlist Summary
 
-No task may change a path outside its section. The complete implementation union is the exact union of Task 1 through Task 4 paths. The three planning documents belong only to the focused documentation commit and never enter an implementation task commit.
+No task may change a path outside its section. The complete implementation union is the exact union of Task 1 through Task 5 paths. The three planning documents belong only to the focused documentation commit and never enter an implementation task commit.
 
 Before each task commit:
 
@@ -299,9 +325,9 @@ Before each task commit:
 
 An unexpected path stops the task. Do not absorb it into the nearest allowlist.
 
-## 11. Final Feature Gate and Stop Point
+## 12. Final Feature Gate and Stop Point
 
-After Task 4, the evidence gate, and any reviewed allowlisted fixes:
+After Task 5, the evidence gate, and any reviewed allowlisted fixes:
 
 1. Require clean `feature/warp-cargo` at the reviewed final head and unchanged approved merge base.
 2. Require protected primary `main` to remain clean and exactly equal to current `origin/main`.
@@ -312,7 +338,7 @@ After Task 4, the evidence gate, and any reviewed allowlisted fixes:
    - `docs/superpowers/specs/2026-08-28-warp-cargo-control-feel-amendment-design.md`
    - `docs/superpowers/plans/2026-08-28-warp-cargo-control-feel-amendment.md`
    - `docs/briefings/ko/2026-08-28-warp-cargo-control-feel-amendment-briefing.md`
-4. Require the complete automated and manual evidence from Section 9 to be current for the exact head.
+4. Require the complete automated and manual evidence from Section 10 to be current for the exact head.
 5. Obtain final independent specification and quality approvals against that exact head and evidence.
 6. Report commits, tests, manual result, changed-path audit, and residual risks.
 

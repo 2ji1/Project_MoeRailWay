@@ -77,6 +77,12 @@ If a later recovered route record is itself the departure coordinate, that coord
 
 This rule does not move the route distance origin, recreate the dissolved departure marker, reset train distance, or permit reservation through active or unrecovered geometry. It only removes the permanent historical blacklist after the coordinate is safely behind the train.
 
+### 3.5 Locked-endpoint exact-turn stitching
+
+A running gesture may begin after train sampling has locked the current route endpoint. The locked endpoint remains byte-unchanged, but a newly reserved exact Warp cell immediately beyond it may own the first turn of the unlocked successor. In that case the successor's declared entry-heading override is the authoritative direction for testing whether its boundary gap continues forward from the locked predecessor. The first successor centerline point may then stitch to the locked predecessor endpoint through the existing successor-only stitch; the exact Warp knot, owned span, footprint, nominal length, and remaining centerline samples stay unchanged.
+
+The stitch is legal only when the locked predecessor's exit heading, the boundary-gap heading, and the unlocked successor's authoritative entry heading all agree within the existing tangent epsilon. It never rewrites a locked centerline, relaxes a backward or sideways gap, changes overlap policy, or permits a curve without the player reserving its ordered cells.
+
 ## 4. Exact Cell-Center Anchor Contract
 
 `RouteContactAnchor` gains a concrete contact mode:
@@ -127,6 +133,8 @@ Activation never changes a locked piece. If its existing centerline does not con
 An exact anchor whose cell is neither the departure cell nor an active route record is also `contact_possible = false`. The resolver does not pull the line toward it, append the cell, or modify the request.
 
 Updating or removing anchors may re-resolve only unlocked geometry through the existing atomic candidate contract. A failed reflow preserves the last valid geometry and reports the anchor as impossible.
+
+When the current endpoint itself is locked, the first newly reserved successor remains unlocked. If that successor becomes an exact anchored turn, its explicit entry heading participates in the existing forward-gap stitch. This joins the new curve positionally to the immutable endpoint without treating the anchored curve's first interior sample as its boundary tangent. Locked geometry and its sampling metadata remain byte-unchanged.
 
 If activation, loading, delivery, expiry, or void changes anchors while an endpoint gesture is active, the new authoritative anchor set advances both the evolving gesture origin and the live candidate before later input on that simulation tick. Right-click abort may undo the player's route edit, but it may not discard an anchor that legitimately activated or resurrect an origin anchor that legitimately disappeared while domain time advanced. If either route form cannot re-resolve, it preserves its last valid geometry with the new anchor observation marked impossible.
 
@@ -257,6 +265,7 @@ Warp countdowns, session time, construction, train position, and recovery observ
 18. The departure marker is opaque before departure, partially visible during its 0.75-second dissolve, and absent afterward without changing domain departure facts.
 19. Existing route, cargo, RNG, lifecycle, resize, result-priority, and manual Warp Cargo scenarios remain green after updating only their intended exact-contact tick expectations.
 20. Before rear recovery advances beyond the route origin, the departure cell cannot be reserved as track; afterward, a valid endpoint gesture may reserve the recovered coordinate with fresh identity, exact inventory accounting, normal geometry validation, and no change to route distance origin or departure presentation.
+21. After train sampling locks the current endpoint, a held gesture through an adjacent exact Warp cell and then into a first turn publishes and finalizes the whole ordered suffix; the locked predecessor stays byte-unchanged and non-forward gaps remain rejected.
 
 ## 10. Scope Exclusions
 
@@ -280,6 +289,7 @@ This amendment is complete only when:
 - recovery progresses transactionally during the gesture and never batches on release;
 - departure dissolve and planning feedback pass automated presentation checks and Windows manual play at all supported 16:9 sizes;
 - the recovered departure coordinate is reusable only after the active predecessor advances beyond it, while pre-recovery reservation and immediate predecessor reuse remain rejected;
+- an exact anchored first turn after a locked endpoint stitches through its authoritative entry heading without mutating locked geometry;
 - the complete 24-suite target and every integration runner pass without rejected diagnostics;
 - each implementation task preserves RED, minimum GREEN, regression, explicit allowlist, exact staging, focused commit, independent specification review, and independent quality review;
 - no push, pull request, merge, tag, primary synchronization, or cleanup occurs without separate approval.
