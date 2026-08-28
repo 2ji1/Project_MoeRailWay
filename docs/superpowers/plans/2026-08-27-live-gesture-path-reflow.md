@@ -6,7 +6,7 @@
 
 **Architecture:** `TrackFieldView` owns a loop-erased full-path snapshot for the current physical press and places that detached snapshot in `TrackInputFrame`; the physical press-origin cell is excluded from the array and is explicitly represented as the authoritative implicit prefix immediately before it. `TrackSystem` forwards the snapshot unchanged; `GridTrackRuntime` reconciles record identities against the current path, rebuilds every candidate from the gesture origin, and commits only a completely valid candidate. Completed-head template selection keeps the authoritative current-pointer rule, but its suffix is reconciled against the current full path and the implicit origin prefix instead of append-only history. While capture is active, construction advances only the shared route-serial frontier present in both the gesture origin and current candidate, including editable-template serials, and mirrors their state/progress into both origin and candidate; gesture-added suffix serials remain ghost-only until finalization. Coalesced old-release/fresh-press frames carry detached old-release facts separately from fresh facts and finalize the old runtime before beginning/updating the fresh gesture.
 
-**Current canonical status:** Scoped implementation and manual acceptance are complete; Task 5 evidence is attributed to tested HEAD `6eee5f2f15d586806c3d68d99fd2e0cc87d4c239` and Task 6 evidence to tested HEAD `be18f1fc84b96ce1f1361cb6b9878c1ed8aeda7f`. Current final feature HEAD `e285c9fc9db0a591beac93c169e198c8f80afa89` is clean-gated, with final review pending while the separate leak diagnostic is open and main integration pending.
+**Current canonical status:** Scoped implementation and manual acceptance are complete; Task 5 evidence is attributed to tested HEAD `6eee5f2f15d586806c3d68d99fd2e0cc87d4c239` and Task 6 evidence to tested HEAD `be18f1fc84b96ce1f1361cb6b9878c1ed8aeda7f`. Clean-gated code/test candidate `e285c9fc9db0a591beac93c169e198c8f80afa89` has the leak diagnostic resolved; only final review and main integration remain pending.
 
 **Tech Stack:** Godot `4.7.1.stable.official.a13da4feb`, typed GDScript, existing prototype test harness, PowerShell, Git worktrees.
 
@@ -546,7 +546,7 @@ Require clean feature and primary worktrees, verified `main == origin/main`, and
 
 ### Task 5: Correct coalesced release ordering and template replay idempotence
 
-**Status:** Completed on the feature branch; manual and scoped specification/quality review evidence is recorded. The final clean gate remains pending while the separate leak diagnostic is open.
+**Status:** Completed on the feature branch; manual and scoped specification/quality review evidence is recorded. The leak diagnostic is resolved; only final review and main integration remain pending.
 
 **Exact code/test allowlist:**
 
@@ -626,13 +626,13 @@ git commit -m 'fix: order coalesced release and fresh press'
 
 - [x] **Step 8: Repeat scoped reviews and affected manual evidence**
 
-Specification review checks the coalesced release contract, explicit empty/outside facts, active/inactive/train-terminated ordering, constructor compatibility, and template replay rules. Quality review checks detached ownership, stale-buffer cleanup, legacy synthetic compatibility, signature equality, no early-return cache, exact validation on replay, and exact allowlist scope. This scoped review and affected manual evidence are complete at the reviewed feature HEAD; the separate leak diagnostic keeps the final clean gate and main integration pending.
+Specification review checks the coalesced release contract, explicit empty/outside facts, active/inactive/train-terminated ordering, constructor compatibility, and template replay rules. Quality review checks detached ownership, stale-buffer cleanup, legacy synthetic compatibility, signature equality, no early-return cache, exact validation on replay, and exact allowlist scope. This scoped review and affected manual evidence are complete at the reviewed feature HEAD; the leak diagnostic is resolved, with only final review and main integration pending.
 
 ---
 
 ### Task 6: Continue Origin-Owned Construction During a Held Gesture
 
-**Status:** Completed on the feature branch at tested HEAD `be18f1fc84b96ce1f1361cb6b9878c1ed8aeda7f`; Sol specification/quality approvals and user manual PASS are recorded. Final clean-gate review remains pending while the separate leak diagnostic is open, and main integration remains pending.
+**Status:** Completed on the feature branch at tested HEAD `be18f1fc84b96ce1f1361cb6b9878c1ed8aeda7f`; Sol specification/quality approvals and user manual PASS are recorded. The leak diagnostic is resolved; only final review and main integration remain pending.
 
 **Files:**
 - Modify: `godot-project-moe-rail-way/src/domain/track/grid_track_runtime.gd`
