@@ -167,3 +167,15 @@ reviewed evidence now points to clean-gated code/test candidate
 `e285c9fc9db0a591beac93c169e198c8f80afa89`. The separate leak diagnostic is
 resolved; only final review and main integration, publication, and primary-main
 retest remain pending.
+
+## Final integration record — 2026-08-28
+
+The pending statements above are historical checkpoint status. The reviewed Task 5
+slice is integrated on `main` through PR #15 merge commit
+`92d0823090851aa8608b1a7d7d2e046d4ec6a667`. The primary `main` retest passed with
+Godot `4.7.1.stable.official.a13da4feb`, `PASS: 19 prototype test suite(s)`, and
+all four standalone integrations, with no `WARNING:` or `ERROR:` output. Task 5's
+coalesced-release, template-replay, ordinary-RUNNING, and terminal manual evidence
+remains correctly attributed to tested HEAD
+`6eee5f2f15d586806c3d68d99fd2e0cc87d4c239`; the merged-main retest is integration
+evidence, not a new Task 5 manual run. Feature-worktree cleanup remains pending.

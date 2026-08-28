@@ -6,7 +6,7 @@
 
 **Architecture:** `TrackFieldView` owns a loop-erased full-path snapshot for the current physical press and places that detached snapshot in `TrackInputFrame`; the physical press-origin cell is excluded from the array and is explicitly represented as the authoritative implicit prefix immediately before it. `TrackSystem` forwards the snapshot unchanged; `GridTrackRuntime` reconciles record identities against the current path, rebuilds every candidate from the gesture origin, and commits only a completely valid candidate. Completed-head template selection keeps the authoritative current-pointer rule, but its suffix is reconciled against the current full path and the implicit origin prefix instead of append-only history. While capture is active, construction advances only the shared route-serial frontier present in both the gesture origin and current candidate, including editable-template serials, and mirrors their state/progress into both origin and candidate; gesture-added suffix serials remain ghost-only until finalization. Coalesced old-release/fresh-press frames carry detached old-release facts separately from fresh facts and finalize the old runtime before beginning/updating the fresh gesture.
 
-**Current canonical status:** Scoped implementation and manual acceptance are complete; Task 5 evidence is attributed to tested HEAD `6eee5f2f15d586806c3d68d99fd2e0cc87d4c239` and Task 6 evidence to tested HEAD `be18f1fc84b96ce1f1361cb6b9878c1ed8aeda7f`. Clean-gated code/test candidate `e285c9fc9db0a591beac93c169e198c8f80afa89` has the leak diagnostic resolved; only final review and main integration remain pending.
+**Current canonical status:** Scoped implementation, manual acceptance, final review, and main integration are complete on `main` via PR #15 merge commit `92d0823090851aa8608b1a7d7d2e046d4ec6a667`. Task 5 evidence remains attributed to tested HEAD `6eee5f2f15d586806c3d68d99fd2e0cc87d4c239` and Task 6 evidence to tested HEAD `be18f1fc84b96ce1f1361cb6b9878c1ed8aeda7f`. Clean-gated code/test candidate `e285c9fc9db0a591beac93c169e198c8f80afa89` has the leak diagnostic resolved; the primary `main` retest passed 19 prototype suites plus all four integrations with no `WARNING:` or `ERROR:` output. Feature-worktree cleanup remains pending.
 
 **Tech Stack:** Godot `4.7.1.stable.official.a13da4feb`, typed GDScript, existing prototype test harness, PowerShell, Git worktrees.
 
@@ -534,19 +534,19 @@ if (Compare-Object $Task4Paths $Task4Actual) { throw 'Task 4 staged path set mis
 git commit -m 'docs: record live gesture path acceptance'
 ```
 
-- [ ] **Step 5: Obtain final independent specification and quality reviews**
+- [x] **Step 5: Obtain final independent specification and quality reviews**
 
-Final specification review reads the approved design, this plan, every feature commit after base `1a0cd466287f81c3a413c773fd8974d5dbb72f08`, automated outputs, and manual evidence. Final quality review inspects all production and test diffs for correctness, maintainability, prototype concreteness, test validity, serial/inventory safety, lifecycle cleanup, and absence of unrelated changes. Any finding requires a focused RED/GREEN fix commit, complete regression rerun, affected manual rerun, evidence update, and both final reviews again.
+Final specification review read the approved design, this plan, every feature commit after base `1a0cd466287f81c3a413c773fd8974d5dbb72f08`, automated outputs, and manual evidence. Final quality review inspected all production and test diffs for correctness, maintainability, prototype concreteness, test validity, serial/inventory safety, lifecycle cleanup, and absence of unrelated changes. Both reviews passed before integration.
 
-- [ ] **Step 6: Report the clean reviewed feature HEAD and apply the main-first publication policy**
+- [x] **Step 6: Report the clean reviewed feature HEAD and apply the main-first publication policy**
 
-Require clean feature and primary worktrees, verified `main == origin/main`, and the reviewed full `FEATURE_SHA`. Under the repository's active main-first policy, push `feature/live-gesture-path-reflow`, open a pull request targeting `main`, merge with a merge commit, fast-forward the primary `main`, rerun the complete standard regression gate in `D:\godot\MoeRailWay`, and only then remove the feature worktree and local/remote feature branches. Stop and report evidence on any dirty, divergent, review, CI, merge, or primary-retest mismatch; never clear the mismatch automatically.
+The reviewed feature was integrated under the active main-first policy through PR #15 merge commit `92d0823090851aa8608b1a7d7d2e046d4ec6a667`. The primary `main` retest passed 19 prototype suites plus all four standalone integrations with no `WARNING:` or `ERROR:` output. Feature-worktree and branch cleanup remains pending as a separate gate.
 
 ---
 
 ### Task 5: Correct coalesced release ordering and template replay idempotence
 
-**Status:** Completed on the feature branch; manual and scoped specification/quality review evidence is recorded. The leak diagnostic is resolved; only final review and main integration remain pending.
+**Status:** Completed and integrated on `main` via PR #15 merge commit `92d0823090851aa8608b1a7d7d2e046d4ec6a667`; manual and scoped specification/quality review evidence is recorded at the historical tested HEAD. The primary `main` retest passed 19 prototype suites plus all four integrations with no `WARNING:` or `ERROR:` output. Feature-worktree cleanup remains pending.
 
 **Exact code/test allowlist:**
 
@@ -626,13 +626,13 @@ git commit -m 'fix: order coalesced release and fresh press'
 
 - [x] **Step 8: Repeat scoped reviews and affected manual evidence**
 
-Specification review checks the coalesced release contract, explicit empty/outside facts, active/inactive/train-terminated ordering, constructor compatibility, and template replay rules. Quality review checks detached ownership, stale-buffer cleanup, legacy synthetic compatibility, signature equality, no early-return cache, exact validation on replay, and exact allowlist scope. This scoped review and affected manual evidence are complete at the reviewed feature HEAD; the leak diagnostic is resolved, with only final review and main integration pending.
+Specification review checks the coalesced release contract, explicit empty/outside facts, active/inactive/train-terminated ordering, constructor compatibility, and template replay rules. Quality review checks detached ownership, stale-buffer cleanup, legacy synthetic compatibility, signature equality, no early-return cache, exact validation on replay, and exact allowlist scope. This scoped review and affected manual evidence are complete at the reviewed feature HEAD. PR #15 merged the reviewed slice into `main` at `92d0823090851aa8608b1a7d7d2e046d4ec6a667`, and the primary `main` retest passed 19 prototype suites plus all four integrations with no `WARNING:` or `ERROR:` output. Feature-worktree cleanup remains pending.
 
 ---
 
 ### Task 6: Continue Origin-Owned Construction During a Held Gesture
 
-**Status:** Completed on the feature branch at tested HEAD `be18f1fc84b96ce1f1361cb6b9878c1ed8aeda7f`; Sol specification/quality approvals and user manual PASS are recorded. The leak diagnostic is resolved; only final review and main integration remain pending.
+**Status:** Completed and integrated on `main` via PR #15 merge commit `92d0823090851aa8608b1a7d7d2e046d4ec6a667`; the Task 6 Sol specification/quality approvals and user manual PASS remain attributed to tested HEAD `be18f1fc84b96ce1f1361cb6b9878c1ed8aeda7f`. The primary `main` retest passed 19 prototype suites plus all four integrations with no `WARNING:` or `ERROR:` output. Feature-worktree cleanup remains pending.
 
 **Files:**
 - Modify: `godot-project-moe-rail-way/src/domain/track/grid_track_runtime.gd`
