@@ -9,6 +9,7 @@ const WarpPairSystemScript = preload("res://src/domain/warp/warp_pair_system.gd"
 
 
 func run() -> PackedStringArray:
+    _verify_invalid_contact_probes()
     _test_balance_defaults_and_copy()
     _test_balance_validation()
     _test_row_major_mapping()
@@ -19,6 +20,62 @@ func run() -> PackedStringArray:
     _test_contact_loading_delivery_and_removal()
     _test_fixed_seed_replay_and_detached_observations()
     return finish()
+
+
+func _verify_invalid_contact_probes() -> void:
+    _run_invalid_contact_probe("malformed", "Contact hit must match a well-formed active anchor")
+    _run_invalid_contact_probe("unknown", "Contact hit must match a well-formed active anchor")
+    _run_invalid_contact_probe("duplicate", "Contact hit anchor IDs must be unique per sweep")
+
+
+func _run_invalid_contact_probe(case_name: String, expected_message: String) -> void:
+    var output: Array = []
+    var arguments := PackedStringArray([
+        "--headless",
+        "--path", ProjectSettings.globalize_path("res://"),
+        "--script", "res://tests/run_all.gd",
+        "--quit-after", "1",
+        "--",
+        "--warp-pair-invalid-probe=" + case_name,
+    ])
+    OS.execute(OS.get_executable_path(), arguments, output, true)
+    var output_lines := PackedStringArray()
+    for chunk in output:
+        output_lines.append(str(chunk))
+    var captured_text := "\n".join(output_lines)
+    assert_true(
+        captured_text.contains("WARP_PAIR_INVALID_PROBE_BEGIN:" + case_name),
+        "Warp pair invalid probe starts for " + case_name
+    )
+    assert_true(captured_text.contains(expected_message), expected_message)
+
+
+func run_invalid_probe(case_name: String) -> void:
+    var balance := _make_warp_balance(0.0, 10.0, 5.0, 5.0, 1)
+    var config = _complete_config(balance, 909, Vector2i(2, 2))
+    var system := WarpPairSystemScript.new(config, SessionRngScript.new(909))
+    var cargo := CargoSystemScript.new(1, 37)
+    system.begin_running_tick(1)
+    var records: Array = system.get_pair_records()
+    if records.size() != 1:
+        return
+    if case_name == "malformed":
+        system.resolve_contact_hits(1, [{}], cargo)
+        return
+    if case_name == "unknown":
+        system.resolve_contact_hits(
+            1,
+            [{
+                "anchor_id": &"unknown/origin",
+                "cell": Vector2i.ZERO,
+                "contact_distance_cells": 1.0,
+            }],
+            cargo
+        )
+        return
+    if case_name == "duplicate":
+        var hit := _contact_hit(records[0], "origin", 1.0)
+        system.resolve_contact_hits(1, [hit, hit.duplicate(true)], cargo)
 
 
 func _test_balance_defaults_and_copy() -> void:

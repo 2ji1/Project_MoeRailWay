@@ -4,10 +4,46 @@ const CargoSystemScript = preload("res://src/domain/cargo/cargo_system.gd")
 
 
 func run() -> PackedStringArray:
+    _verify_invalid_configuration_probes()
     _test_empty_full_and_mixed_slot_transitions()
     _test_matching_delivery_and_reward_idempotence()
     _test_removal_clear_all_and_detached_records()
     return finish()
+
+
+func _verify_invalid_configuration_probes() -> void:
+    _run_invalid_probe("slot_count", "Cargo slot count must be between 1 and 8")
+    _run_invalid_probe("delivery_reward", "Cargo delivery reward must be between 0 and 1000000")
+
+
+func _run_invalid_probe(case_name: String, expected_message: String) -> void:
+    var output: Array = []
+    var arguments := PackedStringArray([
+        "--headless",
+        "--path", ProjectSettings.globalize_path("res://"),
+        "--script", "res://tests/run_all.gd",
+        "--quit-after", "1",
+        "--",
+        "--cargo-invalid-probe=" + case_name,
+    ])
+    OS.execute(OS.get_executable_path(), arguments, output, true)
+    var output_lines := PackedStringArray()
+    for chunk in output:
+        output_lines.append(str(chunk))
+    var captured_text := "\n".join(output_lines)
+    assert_true(
+        captured_text.contains("CARGO_INVALID_PROBE_BEGIN:" + case_name),
+        "Cargo invalid probe starts for " + case_name
+    )
+    assert_true(captured_text.contains(expected_message), expected_message)
+
+
+func run_invalid_probe(case_name: String) -> void:
+    if case_name == "slot_count":
+        CargoSystemScript.new(0, 37)
+        return
+    if case_name == "delivery_reward":
+        CargoSystemScript.new(1, -1)
 
 
 func _test_empty_full_and_mixed_slot_transitions() -> void:

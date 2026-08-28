@@ -10,8 +10,16 @@ var _base_delivery_reward_total := 0
 
 
 func _init(base_slot_count: int, base_delivery_reward: int) -> void:
+    assert(
+        base_slot_count >= 1 and base_slot_count <= 8,
+        "Cargo slot count must be between 1 and 8"
+    )
+    assert(
+        base_delivery_reward >= 0 and base_delivery_reward <= 1000000,
+        "Cargo delivery reward must be between 0 and 1000000"
+    )
     _base_delivery_reward = base_delivery_reward
-    for slot_index in range(max(0, base_slot_count)):
+    for slot_index in range(base_slot_count):
         var slot := CargoSlotRecordScript.new()
         slot.slot_index = slot_index
         _slots.append(slot)

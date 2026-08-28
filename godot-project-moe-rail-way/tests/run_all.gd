@@ -25,6 +25,8 @@ const SUITES = [
 ]
 
 const GridTrackRuntimeSuiteScript = preload("res://tests/unit/test_grid_track_runtime.gd")
+const WarpPairSystemSuiteScript = preload("res://tests/unit/test_warp_pair_system.gd")
+const CargoSystemSuiteScript = preload("res://tests/unit/test_cargo_system.gd")
 
 
 func _initialize() -> void:
@@ -32,6 +34,22 @@ func _initialize() -> void:
 
 
 func _run_suites() -> void:
+    var warp_probe_prefix := "--warp-pair-invalid-probe="
+    var cargo_probe_prefix := "--cargo-invalid-probe="
+    for argument in OS.get_cmdline_user_args():
+        if argument.begins_with(warp_probe_prefix):
+            var probe_case := argument.trim_prefix(warp_probe_prefix)
+            print("WARP_PAIR_INVALID_PROBE_BEGIN:" + probe_case)
+            WarpPairSystemSuiteScript.new().run_invalid_probe(probe_case)
+            quit(0)
+            return
+        if argument.begins_with(cargo_probe_prefix):
+            var probe_case := argument.trim_prefix(cargo_probe_prefix)
+            print("CARGO_INVALID_PROBE_BEGIN:" + probe_case)
+            CargoSystemSuiteScript.new().run_invalid_probe(probe_case)
+            quit(0)
+            return
+
     var probe_prefix := "--track-invalid-probe="
     for argument in OS.get_cmdline_user_args():
         if argument.begins_with(probe_prefix):

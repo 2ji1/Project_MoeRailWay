@@ -86,9 +86,17 @@ func resolve_contact_hits(
     var seen_anchor_ids := {}
     for hit in hits:
         var candidate := _contact_candidate(hit)
+        assert(
+            not candidate.is_empty(),
+            "Contact hit must match a well-formed active anchor"
+        )
         if candidate.is_empty():
             continue
         var anchor_id: StringName = candidate["anchor_id"]
+        assert(
+            not seen_anchor_ids.has(anchor_id),
+            "Contact hit anchor IDs must be unique per sweep"
+        )
         if seen_anchor_ids.has(anchor_id):
             continue
         seen_anchor_ids[anchor_id] = true
@@ -280,14 +288,8 @@ func _contact_candidate(hit: Dictionary) -> Dictionary:
     var anchor_id: StringName = hit["anchor_id"]
     var cell: Vector2i = hit["cell"]
     for record in _records:
-        if not _is_live_state(record.state):
-            continue
         var origin_id := StringName("%s/origin" % record.pair_id)
-        if (
-            anchor_id == origin_id
-            and record.state == WarpPairRecordScript.State.ACTIVE_UNLOADED
-            and cell == record.origin_cell
-        ):
+        if anchor_id == origin_id and cell == record.origin_cell:
             return {
                 "anchor_id": anchor_id,
                 "cell": cell,
