@@ -102,8 +102,8 @@ func _verify_supported_layouts() -> void:
         _assert_equal(
             observation.hud_texts,
             PackedStringArray([
-                "TIME", "3:00", "TRACK", "—", "CASH", "—", "DURABILITY", "—",
-                "CONTRACT", "—", "CARGO", "—", "TRACK END", "—",
+                "TIME", "3:00", "TRACK", "—", "BASE REWARD", "0", "DURABILITY", "—",
+                "CONTRACT", "—", "CARGO", "0 / 0", "TRACK END", "—",
             ]),
             "%s must expose approved live and inactive placeholders" % description
         )
@@ -480,8 +480,9 @@ func _verify_app_lifecycle() -> void:
         )
 
     var final_observation: Dictionary = shell.get_layout_observation()
-    _assert_equal(final_observation.hud_texts[5], "—", "CASH must remain an inactive em dash")
+    _assert_equal(final_observation.hud_texts[5], "0", "BASE REWARD must remain zero without cargo delivery")
     _assert_equal(final_observation.hud_texts[9], "—", "CONTRACT must remain an inactive em dash")
+    _assert_equal(final_observation.hud_texts[11], "0 / 2", "CARGO must expose the empty configured slot count")
     _assert_equal(
         final_observation.result_texts,
         PackedStringArray([

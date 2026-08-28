@@ -1,0 +1,21 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://src/app/prototype_app.tscn" id="1_app"]
+[ext_resource type="Resource" path="res://tests/fixtures/warp_cargo_balance.tres" id="2_balance"]
+
+[node name="WarpCargoApp" instance=ExtResource("1_app")]
+balance = ExtResource("2_balance")
+startup_seed = 73013
+
+[node name="LogicalTrackField" parent="SessionShell/OuterMargin/MainColumn/Field/TrackFieldView" index="0"]
+size_preset = 3
+custom_width = 640.0
+custom_height = 320.0
+grid_cell_size_units = 26.666666
+custom_grid_columns = 12
+custom_grid_rows = 12
+
+[node name="Departure08" parent="SessionShell/OuterMargin/MainColumn/Field/TrackFieldView/LogicalTrackField/DepartureCandidates" index="7"]
+position = Vector2(306.666667, 66.666669)
+
+[editable path="SessionShell"]

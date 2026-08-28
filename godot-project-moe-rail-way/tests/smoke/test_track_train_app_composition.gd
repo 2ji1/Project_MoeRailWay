@@ -241,6 +241,7 @@ func _test_render_observations_are_recursively_detached() -> void:
 	var expected_keys := [
 		"logical_size", "grid_rect", "grid_size", "grid_line_color", "grid_lines",
 		"field_draw_order", "valid_start_cell", "valid_start_rect", "cells", "pieces", "contacts", "intervals",
+		"warp_endpoints",
 		"selected_departure_id", "selected_departure_position", "train_active",
 		"train_position", "train_heading", "hover_cancel_cell",
 	]

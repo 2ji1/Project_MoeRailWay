@@ -1,9 +1,10 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://src/presentation/session/session_shell.gd" id="1_shell"]
 [ext_resource type="Theme" path="res://src/presentation/theme/prototype_theme.tres" id="2_theme"]
 [ext_resource type="Script" path="res://src/presentation/track/track_field_view.gd" id="3_track_view"]
 [ext_resource type="PackedScene" path="res://src/presentation/track/logical_track_field.tscn" id="4_logical_field"]
+[ext_resource type="Script" path="res://src/presentation/cargo/cargo_slot_strip.gd" id="5_cargo_strip"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_field"]
 content_margin_left = 0.0
@@ -150,13 +151,13 @@ theme_override_constants/separation = 0
 [node name="CashTitle" type="Label" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/CashItem/CashText"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "CASH"
+text = "BASE REWARD"
 
 [node name="CashValue" type="Label" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/CashItem/CashText"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(48, 0)
 layout_mode = 2
-text = "—"
+text = "0"
 
 [node name="DurabilityItem" type="HBoxContainer" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems"]
 unique_name_in_owner = true
@@ -260,6 +261,14 @@ size_flags_vertical = 4
 mouse_filter = 2
 color = Color(0.38, 0.63, 0.77, 1)
 
+[node name="CargoSlotStrip" type="Control" parent="OuterMargin/MainColumn/BottomHud/BottomContent/BottomItems/CargoItem"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(52, 20)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+script = ExtResource("5_cargo_strip")
+
 [node name="CargoText" type="VBoxContainer" parent="OuterMargin/MainColumn/BottomHud/BottomContent/BottomItems/CargoItem"]
 layout_mode = 2
 theme_override_constants/separation = 0
@@ -273,7 +282,7 @@ text = "CARGO"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(48, 0)
 layout_mode = 2
-text = "—"
+text = "0 / 0"
 
 [node name="TrackEndItem" type="HBoxContainer" parent="OuterMargin/MainColumn/BottomHud/BottomContent/BottomItems"]
 unique_name_in_owner = true
