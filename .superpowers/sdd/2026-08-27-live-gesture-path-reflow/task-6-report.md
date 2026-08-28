@@ -9,9 +9,10 @@ plus all four registered standalone integrations. Sol approved the specification
 quality reviews. The user then manually passed the active-gesture construction case
 at the same tested HEAD.
 
-The feature branch is not yet ready for main integration: the final clean gate and
-remaining review are pending while the separate leak diagnostic is open. This report
-does not claim push, pull request, merge, primary-main retest, or worktree cleanup.
+The clean-gated code/test candidate is `e285c9fc9db0a591beac93c169e198c8f80afa89`.
+The separate leak diagnostic is resolved; only final review and main integration
+remain pending. This report does not claim push, pull request, merge, primary-main
+retest, or worktree cleanup.
 
 ## Diagnosis
 

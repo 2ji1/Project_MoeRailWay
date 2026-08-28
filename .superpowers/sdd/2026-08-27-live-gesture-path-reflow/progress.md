@@ -35,5 +35,5 @@ Task 3: initial Sol review found an absent-target append-only fallback and non-t
 Task 3: Luna fix round 2 removed the ambiguous fallback and updated synthetic fixtures to provide full authoritative paths; scoped Sol re-review approved specification and quality with no Critical, Important, or Minor findings.
 Task 3: complete (commits 8cf591b..22895b3, review clean)
 Task 4: complete (manual acceptance and design status evidence recorded; historical Task 4 commit/report chain retained)
-Task 5: complete (commits 85e579c..6eee5f2, full automated gate, Sol specification/quality approvals, and explicit user manual PASS recorded; final clean gate remains pending while the leak diagnostic is open)
-Task 6: complete (commits 87f63e0..be18f1f, full automated gate, Sol specification/quality approvals, user manual PASS including recovery pause/resume; final clean gate remains pending while the leak diagnostic is open)
+Task 5: complete (commits 85e579c..6eee5f2, full automated gate, Sol specification/quality approvals, and explicit user manual PASS recorded; evidence carried into clean-gated code/test candidate e285c9fc9db0a591beac93c169e198c8f80afa89; leak diagnostic resolved, only final review and main integration pending)
+Task 6: complete (commits 87f63e0..be18f1f, full automated gate, Sol specification/quality approvals, user manual PASS including recovery pause/resume; evidence carried into clean-gated code/test candidate e285c9fc9db0a591beac93c169e198c8f80afa89; leak diagnostic resolved, only final review and main integration pending)

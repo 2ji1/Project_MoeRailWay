@@ -163,5 +163,7 @@ recovery/terminal cases. Existing exact numeric evidence remains authoritative:
 
 Sol approved the final Task 5 specification and quality reviews. The Task 5 scoped
 implementation, review, and manual evidence are complete. The final clean gate and
-any remaining review are still pending while the separate leak diagnostic is open;
-main integration, publication, and primary-main retest remain pending.
+reviewed evidence now points to clean-gated code/test candidate
+`e285c9fc9db0a591beac93c169e198c8f80afa89`. The separate leak diagnostic is
+resolved; only final review and main integration, publication, and primary-main
+retest remain pending.
