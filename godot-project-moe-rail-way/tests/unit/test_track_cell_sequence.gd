@@ -16,7 +16,7 @@ func run() -> PackedStringArray:
 	_test_rollback_and_cancel_guards()
 	_test_serial_and_nominal_distance_continuity()
 	_test_invalid_buffer_stops_immediately()
-	_test_departure_anchor_cannot_be_reserved_again()
+	_test_departure_anchor_reuse_follows_recovery_boundary()
 	_test_start_building_does_not_lock_geometry()
 	_test_endpoint_reshape_replacement_preserves_identity()
 	return finish()
@@ -159,17 +159,69 @@ func _test_invalid_buffer_stops_immediately() -> void:
 	assert_true(route.is_conservation_valid(), "Stopped buffer keeps exact conservation")
 
 
-func _test_departure_anchor_cannot_be_reserved_again() -> void:
+func _test_departure_anchor_reuse_follows_recovery_boundary() -> void:
 	var route = TrackCellSequenceScript.new(Vector2i(0, 0), 10)
 	var buffered: Array[Vector2i] = [
 		Vector2i(1, 0), Vector2i(1, 1), Vector2i(0, 1),
 		Vector2i(0, 0), Vector2i(0, -1),
 	]
-	assert_equal(route.append_candidates(buffered), 3, "Departure anchor stops the buffer")
-	assert_equal(route.get_endpoint_cell(), Vector2i(0, 1), "Cells after departure re-entry are ignored")
-	assert_equal(route.get_available_track_cells(), 7, "Only three route cells are charged")
-	assert_equal(route.get_records().size(), 3, "Departure anchor is never a route record")
-	assert_true(route.is_conservation_valid(), "Rejected departure re-entry keeps conservation")
+	assert_equal(route.append_candidates(buffered), 3, "Departure anchor stops the buffer before recovery")
+	assert_equal(route.get_endpoint_cell(), Vector2i(0, 1), "Cells after pre-recovery departure re-entry are ignored")
+	assert_equal(route.get_available_track_cells(), 7, "Only three pre-recovery route cells are charged")
+	var replacement_through_departure: Array[Vector2i] = [Vector2i(0, 0), Vector2i(0, 1)]
+	assert_false(
+		route.replace_span_in_place(2, 3, replacement_through_departure),
+		"Span replacement cannot reuse departure before recovery"
+	)
+
+	route._records[0].state = TrackCellRecordScript.State.BUILT
+	route._records[0].build_progress = 1.0
+	assert_equal(route.recover_eligible_cells(1.0).size(), 1, "Recovery advances beyond the free origin")
+	assert_equal(route.get_active_predecessor_cell(), Vector2i(1, 0), "Recovered cell becomes the active predecessor")
+	var replacement_succeeded := route.replace_span_in_place(2, 3, replacement_through_departure)
+	assert_true(
+		replacement_succeeded,
+		"Span replacement may reuse departure after recovery advances beyond it"
+	)
+	if replacement_succeeded:
+		assert_equal(route.get_records()[0].cell, Vector2i(0, 0), "Replacement publishes the reused departure coordinate")
+	assert_true(route.is_conservation_valid(), "Replacement keeps exact conservation")
+
+	var reuse_route = TrackCellSequenceScript.new(Vector2i(0, 0), 12)
+	assert_equal(reuse_route.append_candidates([
+		Vector2i(1, 0), Vector2i(1, 1), Vector2i(0, 1),
+	]), 3, "Reuse fixture appends its initial route")
+	reuse_route._records[0].state = TrackCellRecordScript.State.BUILT
+	reuse_route._records[0].build_progress = 1.0
+	assert_equal(reuse_route.recover_eligible_cells(1.0).size(), 1, "Reuse fixture recovers its first cell")
+	var inventory_before_reuse: int = reuse_route.get_available_track_cells()
+	var reused_count := reuse_route.append_candidates([
+		Vector2i(0, 0), Vector2i(0, -1), Vector2i(-1, -1), Vector2i(-1, 0),
+	])
+	assert_equal(reused_count, 4, "Recovered departure accepts an ordinary route through the historical coordinate")
+	if reused_count != 4:
+		return
+	var reused_records = reuse_route.get_records()
+	assert_equal(reused_records[2].cell, Vector2i(0, 0), "Reused departure is an active route record")
+	assert_equal(reused_records[2].route_serial, 4, "Reused departure receives a fresh monotonic serial")
+	assert_equal(reused_records[2].route_distance_start_cells, 3.0, "Reused departure receives a fresh absolute distance")
+	assert_equal(reuse_route.get_available_track_cells(), inventory_before_reuse - 4, "Reused route charges every ordinary cell")
+	assert_true(reuse_route.try_append_candidate(Vector2i(0, 0)) == null, "Active departure occurrence remains unique")
+
+	for record in reuse_route._records:
+		record.state = TrackCellRecordScript.State.BUILT
+		record.build_progress = 1.0
+	assert_equal(reuse_route.recover_eligible_cells(4.0).size(), 3, "Recovery advances through the reused departure record")
+	assert_equal(reuse_route.get_active_predecessor_cell(), Vector2i(0, 0), "Reused departure becomes the active predecessor boundary")
+	assert_true(reuse_route.try_append_candidate(Vector2i(0, 0)) == null, "Immediate predecessor departure cannot be reserved again")
+	assert_equal(reuse_route.recover_eligible_cells(5.0).size(), 1, "Recovery advances beyond the reused departure boundary")
+	assert_equal(reuse_route.get_active_predecessor_cell(), Vector2i(0, -1), "Later recovery clears the departure boundary")
+	var second_reuse = reuse_route.try_append_candidate(Vector2i(0, 0))
+	assert_not_null(second_reuse, "Departure becomes eligible again after recovery advances")
+	if second_reuse != null:
+		assert_equal(second_reuse.route_serial, 8, "Second reuse keeps the serial watermark monotonic")
+		assert_equal(second_reuse.route_distance_start_cells, 7.0, "Second reuse keeps absolute distance monotonic")
+	assert_true(reuse_route.is_conservation_valid(), "Recovered departure reuse keeps exact conservation")
 
 
 func _test_start_building_does_not_lock_geometry() -> void:

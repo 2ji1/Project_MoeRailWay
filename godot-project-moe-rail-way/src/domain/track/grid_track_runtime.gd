@@ -72,7 +72,7 @@ func gesture_has_legal_operation(endpoint: Vector2i = Vector2i(-1, -1)) -> bool:
         return false
     for offset in [Vector2i.RIGHT, Vector2i.LEFT, Vector2i.DOWN, Vector2i.UP]:
         var cell: Vector2i = requested_endpoint + offset
-        if not _cell_in_grid(cell) or cell == _departure_cell:
+        if not _cell_in_grid(cell):
             continue
         var candidate_sequence = _sequence.duplicate_sequence()
         if candidate_sequence.try_append_candidate(cell) == null:
@@ -1292,15 +1292,35 @@ func _resolve_candidate(
     ledger: Array[TrackGeometryPieceScript],
     anchors: Array[RouteContactAnchorScript]
 ) -> RefCounted:
-    return _resolver.resolve(
+    var blocking_ledger = _duplicate_pieces(ledger)
+    for piece in blocking_ledger:
+        var recovered_cells: Dictionary = _recovered_cells_by_piece.get(
+            _piece_key(piece), {}
+        )
+        for cell in recovered_cells:
+            piece.footprint_cells.erase(cell)
+    var resolution = _resolver.resolve(
         sequence.get_active_predecessor_cell(),
         sequence.get_records(),
-        ledger,
+        blocking_ledger,
         anchors,
         _grid_origin_units,
         _grid_size,
         _cell_size_units
     )
+    if resolution.is_valid:
+        for resolved_piece in resolution.pieces:
+            if not resolved_piece.locked:
+                continue
+            for source_piece in ledger:
+                if (
+                    resolved_piece.group_id == source_piece.group_id
+                    and resolved_piece.first_route_serial == source_piece.first_route_serial
+                    and resolved_piece.last_route_serial == source_piece.last_route_serial
+                ):
+                    resolved_piece.footprint_cells = source_piece.footprint_cells.duplicate()
+                    break
+    return resolution
 
 
 func _replace_pieces(source: Array) -> void:
@@ -1720,13 +1740,12 @@ func _exact_anchor_contact_fact(
     recovered_cells_by_piece: Dictionary
 ) -> Dictionary:
     var required_serial := -1
-    if cell != _departure_cell:
-        for record in records:
-            if record.cell == cell:
-                required_serial = record.route_serial
-                break
-        if required_serial < 0:
-            return {"contact_possible": false, "contact_distance_cells": -1.0}
+    for record in records:
+        if record.cell == cell:
+            required_serial = record.route_serial
+            break
+    if required_serial < 0 and cell != _departure_cell:
+        return {"contact_possible": false, "contact_distance_cells": -1.0}
     var target := _grid_origin_units + (Vector2(cell) + Vector2(0.5, 0.5)) * _cell_size_units
     for piece in pieces:
         if required_serial >= 0 and not piece.contains_serial(required_serial):

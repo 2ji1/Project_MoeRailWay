@@ -31,6 +31,7 @@ func run() -> PackedStringArray:
 	_test_endpoint_reshape_target_reentry_rebuilds_from_origin()
 	_test_live_template_suffix_reconciles_from_current_path()
 	_test_recovered_running_endpoint_accepts_direct_extension()
+	_test_recovered_departure_endpoint_gesture_installs_and_owns_exact_anchor()
 	_test_template_origin_suffix_guards_remain_atomic()
 	_test_template_change_does_not_anchor_control_path_at_origin()
 	_test_live_template_suffix_absent_on_first_update()
@@ -1079,6 +1080,110 @@ func _test_recovered_running_endpoint_accepts_direct_extension() -> void:
 	assert_equal(track.get_endpoint_cell(), Vector2i(13, 1), "Recovery extension advances the endpoint")
 	assert_true(track.gesture_is_active(), "Recovery extension remains held before release")
 	track.gesture_abort()
+
+
+func _test_recovered_departure_endpoint_gesture_installs_and_owns_exact_anchor() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(5, 2), 32, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	var initial_route: Array[Vector2i] = [
+		Vector2i(4, 2), Vector2i(3, 2), Vector2i(2, 2), Vector2i(2, 3), Vector2i(2, 4),
+		Vector2i(2, 5), Vector2i(2, 6), Vector2i(2, 7), Vector2i(3, 7), Vector2i(4, 7),
+		Vector2i(5, 7), Vector2i(6, 7), Vector2i(7, 7), Vector2i(7, 6), Vector2i(7, 5),
+		Vector2i(7, 4), Vector2i(7, 3), Vector2i(7, 2), Vector2i(6, 2),
+	]
+	assert_equal(track.append_cells(initial_route), 19, "Captured departure fixture appends its initial route")
+	assert_equal(track.advance_construction(19.0), 19.0, "Captured departure fixture builds its initial route")
+	assert_true(
+		track.prepare_for_train_sampling(0.0, 1.0),
+		"Captured departure fixture locks its running prefix"
+	)
+	var warp_anchor = RouteContactAnchorScript.new(&"reused_departure_exact", Vector2i(5, 2))
+	warp_anchor.contact_mode = RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	track.set_contact_anchors([warp_anchor])
+	var free_origin_observations := track.get_contact_observations()
+	assert_equal(free_origin_observations.size(), 1, "Free-origin departure publishes one exact observation")
+	if free_origin_observations.size() == 1:
+		assert_equal(free_origin_observations[0].get("contact_distance_cells", -1.0), 0.0, "Free-origin departure retains distance zero")
+	assert_equal(track.recover_behind(1.0), 1, "Captured departure fixture recovers beyond the route origin")
+	assert_equal(track.get_endpoint_cell(), Vector2i(6, 2), "Captured departure fixture retains endpoint (6, 2)")
+	assert_equal(track._sequence.get_active_predecessor_cell(), Vector2i(4, 2), "Captured departure fixture advances its predecessor")
+	var locked_before = track._locked_ledger[0]
+	var locked_identity_before := [
+		locked_before.group_id,
+		locked_before.first_route_serial,
+		locked_before.last_route_serial,
+		locked_before.exit_support_route_serial,
+	]
+	var locked_centerline_before: PackedVector2Array = locked_before.centerline.duplicate()
+	var locked_footprint_before: Array[Vector2i] = locked_before.footprint_cells.duplicate()
+	var locked_interval_before := [
+		locked_before.active_local_start_cells,
+		locked_before.active_local_end_cells,
+	]
+	var unrecovered_records: Array[TrackCellRecordScript] = [
+		TrackCellRecordScript.new(20, Vector2i(3, 2), 19.0),
+	]
+	var unrecovered_ledger: Array[TrackGeometryPieceScript] = [locked_before.duplicate_piece()]
+	var no_anchors: Array[RouteContactAnchorScript] = []
+	var unrecovered_overlap = track._resolver.resolve(
+		Vector2i(4, 2),
+		unrecovered_records,
+		unrecovered_ledger,
+		no_anchors,
+		Vector2.ZERO,
+		Vector2i(8, 8),
+		40.0
+	)
+	assert_false(unrecovered_overlap.is_valid, "Unrecovered cell of the partial locked piece remains blocked")
+	assert_equal(unrecovered_overlap.reason, &"locked_overlap", "Unrecovered ownership rejects with locked_overlap")
+
+	var endpoint_piece = _piece_containing(track._pieces, 19)
+	assert_not_null(endpoint_piece, "Captured endpoint has a geometry owner")
+	if endpoint_piece != null:
+		endpoint_piece.locked = true
+		assert_true(
+			track.gesture_has_legal_operation(Vector2i(6, 2)),
+			"Recovered departure is discovered when template alternatives are disabled"
+		)
+		endpoint_piece.locked = false
+	var began = track.gesture_begin(Vector2i(6, 2))
+	assert_false(began.is_empty(), "Captured endpoint begins a gesture through recovered departure")
+	if began.is_empty():
+		return
+	var captured_path: Array[Vector2i] = [Vector2i(5, 2), Vector2i(4, 2)]
+	assert_true(
+		track.gesture_update(captured_path, Vector2i(4, 2)),
+		"Captured live path retains recovered departure and its following cell"
+	)
+	assert_equal(track.get_endpoint_cell(), Vector2i(4, 2), "Captured live candidate advances through both requested cells")
+	assert_true(track.gesture_finalize(), "Captured recovered-departure gesture finalizes")
+	var records = track.get_cell_records()
+	assert_equal(records[-2].cell, Vector2i(5, 2), "Final route owns the reused departure coordinate")
+	assert_equal(records[-2].route_serial, 20, "Reused departure receives the next route serial")
+	assert_equal(records[-2].route_distance_start_cells, 19.0, "Reused departure receives fresh absolute distance")
+	assert_equal(track.get_available_track_cells(), 12, "Two finalized cells consume exact inventory after one refund")
+	var active_occurrence_observations := track.get_contact_observations()
+	assert_equal(active_occurrence_observations.size(), 1, "Reused departure keeps one exact observation")
+	if active_occurrence_observations.size() == 1:
+		assert_true(active_occurrence_observations[0].get("contact_possible", false), "Reused departure exact contact remains possible")
+		assert_equal(active_occurrence_observations[0].get("contact_distance_cells", -1.0), 19.5, "Active departure record midpoint overrides free-origin distance")
+	var locked_after = _piece_containing(track._locked_ledger, locked_before.first_route_serial)
+	assert_not_null(locked_after, "Partial locked source survives recovered-cell reuse")
+	if locked_after != null:
+		assert_equal([
+			locked_after.group_id,
+			locked_after.first_route_serial,
+			locked_after.last_route_serial,
+			locked_after.exit_support_route_serial,
+		], locked_identity_before, "Recovered-cell reuse preserves locked ledger identity")
+		assert_equal(locked_after.centerline, locked_centerline_before, "Recovered-cell reuse preserves the full locked centerline")
+		assert_equal(locked_after.footprint_cells, locked_footprint_before, "Recovered-cell reuse preserves the complete source footprint")
+		assert_equal([
+			locked_after.active_local_start_cells,
+			locked_after.active_local_end_cells,
+		], locked_interval_before, "Recovered-cell reuse preserves the locked sampling interval")
+		assert_true(locked_after.footprint_cells.has(Vector2i(3, 2)), "Recovered-cell reuse preserves unrecovered footprint ownership")
 
 
 func _test_template_origin_suffix_guards_remain_atomic() -> void:

@@ -66,6 +66,7 @@ At every size, also complete these control-feel checks:
 8. Release and repeat with right-click abort; confirm the planning label clears immediately, no simulation catch-up occurs, and neither path resurrects recovered track.
 9. Click invalid cells and merely hold after a rejected press; confirm neither case shows the planning label or slows the simulation.
 10. Confirm the planning label and departure fade remain readable at this window size and that neither primitive intercepts field input.
+11. After rear recovery removes the first route cell and the departure marker has dissolved, guide the active endpoint back beside departure `(5, 2)`. Hold left drag through `(5, 2)` and one following recovered cell, confirm both cells remain in the live preview, then release and confirm both install. If an active Warp occupies `(5, 2)`, confirm the reused track passes through its exact center and the origin marker does not return.
 
 ## Evidence header
 
