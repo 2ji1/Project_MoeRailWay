@@ -7,6 +7,7 @@ const SessionSnapshotScript = preload("res://src/domain/session/session_snapshot
 const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
 const TrackCellRecordScript = preload("res://src/domain/track/track_cell_record.gd")
 const TrackGeometryPieceScript = preload("res://src/domain/track/track_geometry_piece.gd")
+const WarpPairRecordScript = preload("res://src/domain/warp/warp_pair_record.gd")
 const LogicalTrackFieldScript = preload("res://src/presentation/track/logical_track_field.gd")
 const GridPointerRasterizerScript = preload("res://src/presentation/track/grid_pointer_rasterizer.gd")
 
@@ -21,9 +22,18 @@ const EXTEND_HOVER_COLOR := Color(0.29, 0.92, 0.45, 0.82)
 const BUILT_WIDTH := 7.0
 const RESERVED_WIDTH := 4.0
 const DEPARTURE_RADIUS := 9.0
+const DEPARTURE_DISSOLVE_DURATION_SECONDS := 0.75
 const TRAIN_LENGTH := 13.0
 const TRAIN_HALF_WIDTH := 7.0
 const INTERVAL_SAMPLE_COUNT := 9
+const WARP_FORECAST_ALPHA := 0.35
+const PLANNING_BACK_COLOR := Color(0.04, 0.07, 0.08, 0.82)
+const PLANNING_TEXT_COLOR := Color(0.91, 0.73, 0.29, 1.0)
+const WARP_STYLE_COLORS := [
+	Color("2ec4b6"), Color("ff9f1c"), Color("9b5de5"),
+	Color("f4d35e"), Color("3a86ff"), Color("ff5d8f"),
+]
+const WARP_STYLE_SHAPES := [&"circle", &"diamond", &"square", &"circle", &"diamond", &"square"]
 
 @export_color_no_alpha var grid_line_color := Color(0.5, 0.5, 0.5, 1.0):
 	set(value):
@@ -75,6 +85,13 @@ var _current_pointer_cell := INVALID_CELL
 var _current_pointer_inside_grid := false
 var _presented_gesture_active := false
 var _presented_snapshot_has_endpoint_eligibility := false
+var _presented_warp_pairs: Array[WarpPairRecordScript] = []
+var _presented_warp_events: Array[Dictionary] = []
+var _presented_ticks_per_second := 1
+var _departure_marker_alpha := 1.0
+var _departure_dissolve_started := false
+var _planning_indicator_visible := false
+var _planning_indicator_text := ""
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -313,6 +330,11 @@ func configure_session(start_config: SessionStartConfigScript) -> void:
 	_selected_candidate_id = candidate_departure_id
 	_selected_departure_position = candidate_departure_position
 	_selected_departure_cell = candidate_departure_cell
+	_departure_marker_alpha = 1.0
+	_departure_dissolve_started = false
+	_planning_indicator_visible = false
+	_planning_indicator_text = ""
+	set_process(false)
 	_session_configured = true
 	if not Engine.is_editor_hint():
 		var candidate_parent = field.get_node_or_null("DepartureCandidates")
@@ -361,6 +383,21 @@ func present(snapshot: SessionSnapshotScript) -> void:
 	_train_position = snapshot.get_train_position()
 	_train_heading = snapshot.get_train_heading()
 	_presented_snapshot_has_endpoint_eligibility = snapshot.is_endpoint_gesture_eligible()
+	_presented_warp_pairs = snapshot.get_warp_pair_records()
+	_presented_warp_events = snapshot.get_warp_cargo_events()
+	_presented_ticks_per_second = maxi(1, snapshot.get_ticks_per_second())
+	if _presented_state == SessionControllerScript.State.RUNNING and not _departure_dissolve_started:
+		_departure_dissolve_started = true
+		set_process(true)
+	_planning_indicator_visible = (
+		_presented_state == SessionControllerScript.State.RUNNING
+		and snapshot.is_planning_slowdown_active()
+	)
+	_planning_indicator_text = (
+		"PLANNING %d%%" % snapshot.get_planning_time_scale_percent()
+		if _planning_indicator_visible
+		else ""
+	)
 	var snapshot_gesture_active := snapshot.is_endpoint_gesture_active()
 	if _presented_gesture_active and not snapshot_gesture_active:
 		_clear_view_capture_after_termination()
@@ -372,6 +409,19 @@ func present(snapshot: SessionSnapshotScript) -> void:
 		_update_hover_cell(_latest_cursor_local)
 	else:
 		_clear_hover_cell()
+	queue_redraw()
+
+
+func _process(delta: float) -> void:
+	if not _departure_dissolve_started or _departure_marker_alpha <= 0.0:
+		set_process(false)
+		return
+	_departure_marker_alpha = maxf(
+		0.0,
+		_departure_marker_alpha - delta / DEPARTURE_DISSOLVE_DURATION_SECONDS
+	)
+	if _departure_marker_alpha <= 0.0:
+		set_process(false)
 	queue_redraw()
 
 
@@ -423,10 +473,19 @@ func get_render_observation() -> Dictionary:
 		"intervals": _duplicate_intervals(_presented_intervals),
 		"selected_departure_id": StringName(_selected_candidate_id),
 		"selected_departure_position": Vector2(_selected_departure_position),
+		"departure_marker": {
+			"visible": _session_configured and _departure_marker_alpha > 0.0,
+			"alpha": _departure_marker_alpha,
+		},
+		"planning_indicator": {
+			"visible": _planning_indicator_visible,
+			"text": _planning_indicator_text,
+		},
 		"train_active": _train_active,
 		"train_position": Vector2(_train_position),
 		"train_heading": Vector2(_train_heading),
 		"hover_cancel_cell": Vector2i(_hover_cancel_cell),
+		"warp_endpoints": _build_warp_endpoint_observations(),
 	}
 	if _hover_extend_cell != INVALID_CELL:
 		observation["hover_extend_cell"] = Vector2i(_hover_extend_cell)
@@ -482,6 +541,70 @@ func _duplicate_records(source: Array) -> Array:
 	for record in source:
 		copies.append(record.duplicate_record())
 	return copies
+
+
+func _build_warp_endpoint_observations() -> Array[Dictionary]:
+	var endpoints: Array[Dictionary] = []
+	if _grid_size.x <= 0 or _grid_size.y <= 0:
+		return endpoints
+	for pair in _presented_warp_pairs:
+		var style_index := clampi(pair.style_index, 0, WARP_STYLE_COLORS.size() - 1)
+		match pair.state:
+			WarpPairRecordScript.State.FORECAST:
+				var forecast_text := "F %ds" % _whole_seconds(pair.forecast_remaining_ticks)
+				endpoints.append(_warp_endpoint(pair, &"origin", pair.origin_cell, true, WARP_FORECAST_ALPHA, forecast_text, style_index))
+				endpoints.append(_warp_endpoint(pair, &"destination", pair.destination_cell, false, WARP_FORECAST_ALPHA, "", style_index))
+			WarpPairRecordScript.State.ACTIVE_UNLOADED:
+				var active_text := "%ds" % _whole_seconds(pair.lifetime_remaining_ticks)
+				endpoints.append(_warp_endpoint(pair, &"origin", pair.origin_cell, true, 1.0, active_text, style_index))
+				endpoints.append(_warp_endpoint(pair, &"destination", pair.destination_cell, false, 1.0, "", style_index))
+			WarpPairRecordScript.State.IN_TRANSIT:
+				var transit_text := "%ds" % _whole_seconds(pair.lifetime_remaining_ticks)
+				endpoints.append(_warp_endpoint(pair, &"origin", pair.origin_cell, false, 1.0, transit_text, style_index))
+				endpoints.append(_warp_endpoint(pair, &"destination", pair.destination_cell, false, 1.0, "", style_index))
+			WarpPairRecordScript.State.DELIVERED:
+				if _has_warp_event(&"DELIVERED", pair.pair_id):
+					endpoints.append(_warp_endpoint(pair, &"destination", pair.destination_cell, true, 1.0, "", style_index))
+	return endpoints
+
+
+func _warp_endpoint(
+	pair: WarpPairRecordScript,
+	role: StringName,
+	cell: Vector2i,
+	filled: bool,
+	alpha: float,
+	countdown_text: String,
+	style_index: int
+) -> Dictionary:
+	var cell_size := Vector2(
+		_grid_rect.size.x / float(_grid_size.x),
+		_grid_rect.size.y / float(_grid_size.y)
+	)
+	return {
+		"pair_id": StringName(pair.pair_id),
+		"role": role,
+		"state": pair.state,
+		"style_index": style_index,
+		"shape": WARP_STYLE_SHAPES[style_index],
+		"color": Color(WARP_STYLE_COLORS[style_index]),
+		"filled": filled,
+		"alpha": alpha,
+		"cell": Vector2i(cell),
+		"position": _grid_rect.position + (Vector2(cell) + Vector2(0.5, 0.5)) * cell_size,
+		"countdown_text": countdown_text,
+	}
+
+
+func _whole_seconds(remaining_ticks: int) -> int:
+	return maxi(1, int(ceil(float(remaining_ticks) / float(_presented_ticks_per_second))))
+
+
+func _has_warp_event(type: StringName, pair_id: StringName) -> bool:
+	for event in _presented_warp_events:
+		if StringName(event.type) == type and StringName(event.pair_id) == pair_id:
+			return true
+	return false
 
 
 func _duplicate_pieces(source: Array) -> Array:
@@ -550,8 +673,12 @@ func _draw() -> void:
 		)
 		var extend_rect := Rect2(_grid_rect.position + Vector2(_hover_extend_cell) * cell_size, cell_size)
 		draw_rect(extend_rect, EXTEND_HOVER_COLOR, false, 4.0, true)
-	if _session_configured:
-		draw_circle(_selected_departure_position, DEPARTURE_RADIUS, DEPARTURE_COLOR, true)
+	if _session_configured and _departure_marker_alpha > 0.0:
+		var departure_color := Color(DEPARTURE_COLOR)
+		departure_color.a *= _departure_marker_alpha
+		draw_circle(_selected_departure_position, DEPARTURE_RADIUS, departure_color, true)
+	for endpoint in _build_warp_endpoint_observations():
+		_draw_warp_endpoint(endpoint)
 	if _train_active:
 		var heading := _train_heading.normalized()
 		if heading == Vector2.ZERO:
@@ -563,7 +690,74 @@ func _draw() -> void:
 			_train_position - heading * TRAIN_LENGTH * 0.55 - side * TRAIN_HALF_WIDTH,
 		])
 		draw_colored_polygon(triangle, TRAIN_COLOR)
+	if _planning_indicator_visible:
+		_draw_planning_indicator()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_planning_indicator() -> void:
+	var position := _grid_rect.position + Vector2(8.0, 8.0)
+	var text_size := ThemeDB.fallback_font.get_string_size(
+		_planning_indicator_text,
+		HORIZONTAL_ALIGNMENT_LEFT,
+		-1.0,
+		13
+	)
+	draw_rect(Rect2(position, text_size + Vector2(12.0, 8.0)), PLANNING_BACK_COLOR, true)
+	draw_string(
+		ThemeDB.fallback_font,
+		position + Vector2(6.0, text_size.y + 1.0),
+		_planning_indicator_text,
+		HORIZONTAL_ALIGNMENT_LEFT,
+		-1.0,
+		13,
+		PLANNING_TEXT_COLOR
+	)
+
+
+func _draw_warp_endpoint(endpoint: Dictionary) -> void:
+	var cell_size := Vector2(
+		_grid_rect.size.x / float(_grid_size.x),
+		_grid_rect.size.y / float(_grid_size.y)
+	)
+	var radius := clampf(minf(cell_size.x, cell_size.y) * 0.28, 5.0, 10.0)
+	var color: Color = endpoint.color
+	color.a = endpoint.alpha
+	var center: Vector2 = endpoint.position
+	var filled: bool = endpoint.filled
+	match StringName(endpoint.shape):
+		&"circle":
+			draw_circle(center, radius, color, filled, -1.0 if filled else 2.5, true)
+		&"diamond":
+			_draw_warp_polygon(PackedVector2Array([
+				center + Vector2(0.0, -radius), center + Vector2(radius, 0.0),
+				center + Vector2(0.0, radius), center + Vector2(-radius, 0.0),
+			]), color, filled)
+		_:
+			_draw_warp_polygon(PackedVector2Array([
+				center + Vector2(-radius, -radius), center + Vector2(radius, -radius),
+				center + Vector2(radius, radius), center + Vector2(-radius, radius),
+			]), color, filled)
+	var countdown_text: String = endpoint.countdown_text
+	if not countdown_text.is_empty():
+		draw_string(
+			ThemeDB.fallback_font,
+			center + Vector2(radius + 3.0, -radius),
+			countdown_text,
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1.0,
+			12,
+			color
+		)
+
+
+func _draw_warp_polygon(points: PackedVector2Array, color: Color, filled: bool) -> void:
+	if filled:
+		draw_colored_polygon(points, color)
+		return
+	var outline := points.duplicate()
+	outline.append(points[0])
+	draw_polyline(outline, color, 2.5, true)
 
 
 func _polyline_prefix(points: PackedVector2Array, progress: float) -> PackedVector2Array:

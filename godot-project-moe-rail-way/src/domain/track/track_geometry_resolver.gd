@@ -3,6 +3,7 @@ extends RefCounted
 
 const TrackGeometryPieceScript = preload("res://src/domain/track/track_geometry_piece.gd")
 const TrackGeometryResolutionScript = preload("res://src/domain/track/track_geometry_resolution.gd")
+const RouteContactAnchorScript = preload("res://src/domain/track/route_contact_anchor.gd")
 const DISTANCE_EPSILON := 0.0001
 const TANGENT_DOT_EPSILON := 0.0001
 
@@ -82,13 +83,23 @@ func resolve(
             if valid:
                 var preview = _curve_piece(
                     -1, candidate, span.x, span.y,
-                    departure_cell, records, grid_origin_units, cell_size_units
+                    departure_cell, records, grid_origin_units, cell_size_units, anchors
                 )
                 for anchor in anchors:
-                    if footprint.has(anchor.cell) and not preview.contacts_cell(
+                    if anchor.contact_mode == RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER:
+                        if _span_owns_cell(span, records, anchor.cell) and not _piece_contains_exact_center(
+                            preview, anchor.cell, grid_origin_units, cell_size_units
+                        ):
+                            valid = false
+                    elif footprint.has(anchor.cell) and not preview.contacts_cell(
                         anchor.cell, grid_origin_units, cell_size_units
                     ):
                         valid = false
+                if valid and not _anchored_curve_samples_fit_footprint(
+                    preview, anchors, span, records, departure_cell,
+                    grid_origin_units, cell_size_units
+                ):
+                    valid = false
             if valid:
                 break
             candidate.radius -= 1
@@ -112,12 +123,17 @@ func resolve(
                 group_id += 1
         var curve = _curve_piece(
             group_id, candidate, start_index, end_index,
-            departure_cell, records, grid_origin_units, cell_size_units
+            departure_cell, records, grid_origin_units, cell_size_units, anchors
         )
         if _conflicts_with_locked(curve.footprint_cells, blocking_locked):
             return TrackGeometryResolutionScript.rejected(newest_serial, &"locked_overlap")
         for anchor in anchors:
-            if curve.footprint_cells.has(anchor.cell) and not curve.contacts_cell(
+            if anchor.contact_mode == RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER:
+                if _span_owns_cell(desired, records, anchor.cell) and not _piece_contains_exact_center(
+                    curve, anchor.cell, grid_origin_units, cell_size_units
+                ):
+                    return TrackGeometryResolutionScript.rejected(newest_serial, &"anchor_contact")
+            elif curve.footprint_cells.has(anchor.cell) and not curve.contacts_cell(
                 anchor.cell, grid_origin_units, cell_size_units
             ):
                 return TrackGeometryResolutionScript.rejected(newest_serial, &"anchor_contact")
@@ -172,12 +188,10 @@ func _centerline_gap_is_forward(
         return true
     if predecessor.centerline.size() < 2 or successor.centerline.size() < 2:
         return false
-    var predecessor_heading: Vector2 = (
-        predecessor.centerline[-1] - predecessor.centerline[-2]
-    ).normalized()
-    var successor_heading: Vector2 = (
-        successor.centerline[1] - successor.centerline[0]
-    ).normalized()
+    var predecessor_heading: Vector2 = predecessor.sample_nominal(
+        float(predecessor.nominal_length_cells)
+    ).heading
+    var successor_heading: Vector2 = successor.sample_nominal(0.0).heading
     var gap_heading := gap.normalized()
     return (
         gap_heading.dot(predecessor_heading) >= 1.0 - TANGENT_DOT_EPSILON
@@ -250,7 +264,8 @@ func _curve_piece(
     departure_cell: Vector2i,
     records: Array,
     origin: Vector2,
-    cell_size: float
+    cell_size: float,
+    anchors: Array = []
 ) -> RefCounted:
     var piece = TrackGeometryPieceScript.new()
     piece.group_id = group_id
@@ -262,8 +277,16 @@ func _curve_piece(
     piece.footprint_cells = _candidate_footprint(candidate, records)
     piece.centerline = _curve_centerline(
         candidate, start_index, end_index,
-        departure_cell, records, origin, cell_size
+        departure_cell, records, origin, cell_size, anchors
     )
+    var exact_knots := _exact_knots_for_span(
+        anchors, records, start_index, end_index, origin, cell_size
+    )
+    if not exact_knots.is_empty():
+        var turn_index: int = candidate.turn_index
+        var previous: Vector2i = departure_cell if turn_index == 0 else records[turn_index - 1].cell
+        piece.entry_heading_override = Vector2(records[turn_index].cell - previous).normalized()
+        piece.exit_heading_override = Vector2(records[turn_index + 1].cell - records[turn_index].cell).normalized()
     piece.active_local_end_cells = float(piece.nominal_length_cells)
     return piece
 
@@ -331,7 +354,8 @@ func _curve_centerline(
     departure_cell: Vector2i,
     records: Array,
     origin: Vector2,
-    cell_size: float
+    cell_size: float,
+    anchors: Array = []
 ) -> PackedVector2Array:
     var start := _boundary_before(start_index, departure_cell, records, origin, cell_size)
     var finish := _boundary_after(end_index, records, origin, cell_size)
@@ -339,6 +363,18 @@ func _curve_centerline(
     var previous: Vector2i = departure_cell if turn_index == 0 else records[turn_index - 1].cell
     var incoming: Vector2i = records[turn_index].cell - previous
     var outgoing: Vector2i = records[turn_index + 1].cell - records[turn_index].cell
+    var exact_knots := _exact_knots_for_span(
+        anchors, records, start_index, end_index, origin, cell_size
+    )
+    if not exact_knots.is_empty():
+        return _anchored_curve_centerline(
+            start,
+            finish,
+            Vector2(incoming),
+            Vector2(outgoing),
+            exact_knots,
+            end_index - start_index + 1
+        )
     if candidate.radius <= 1:
         var centerline := _quadratic_centerline(
             start,
@@ -384,6 +420,150 @@ func _curve_centerline(
 
 func _cell_center(cell: Vector2i, origin: Vector2, size: float) -> Vector2:
     return origin + (Vector2(cell) + Vector2(0.5, 0.5)) * size
+
+
+func _exact_knots_for_span(
+    anchors: Array,
+    records: Array,
+    start_index: int,
+    end_index: int,
+    origin: Vector2,
+    cell_size: float
+) -> Array[Dictionary]:
+    var knots: Array[Dictionary] = []
+    var seen_cells: Dictionary = {}
+    var ordered_anchors := anchors.duplicate()
+    ordered_anchors.sort_custom(func(first, second) -> bool:
+        return String(first.anchor_id) < String(second.anchor_id)
+    )
+    for record_index in range(start_index, end_index + 1):
+        for anchor in ordered_anchors:
+            if (
+                anchor.contact_mode != RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+                or anchor.cell != records[record_index].cell
+                or seen_cells.has(anchor.cell)
+            ):
+                continue
+            seen_cells[anchor.cell] = true
+            knots.append({
+                "sample_index": (record_index - start_index) * 16 + 8,
+                "position": _cell_center(anchor.cell, origin, cell_size),
+            })
+    return knots
+
+
+func _anchored_curve_centerline(
+    start: Vector2,
+    finish: Vector2,
+    incoming: Vector2,
+    outgoing: Vector2,
+    exact_knots: Array[Dictionary],
+    nominal_length_cells: int
+) -> PackedVector2Array:
+    var hard_points: Array[Vector2] = [start]
+    var hard_indices: Array[int] = [0]
+    for knot in exact_knots:
+        hard_points.append(knot["position"])
+        hard_indices.append(knot["sample_index"])
+    hard_points.append(finish)
+    hard_indices.append(nominal_length_cells * 16)
+
+    var tangents: Array[Vector2] = []
+    for index in range(hard_points.size()):
+        if index == 0:
+            tangents.append(incoming.normalized())
+        elif index == hard_points.size() - 1:
+            tangents.append(outgoing.normalized())
+        else:
+            tangents.append((hard_points[index + 1] - hard_points[index - 1]).normalized())
+
+    var base_handles: Array[float] = []
+    for index in range(hard_points.size()):
+        if index == 0:
+            base_handles.append(hard_points[0].distance_to(hard_points[1]) / 3.0)
+        elif index == hard_points.size() - 1:
+            base_handles.append(hard_points[-2].distance_to(hard_points[-1]) / 3.0)
+        else:
+            base_handles.append(minf(
+                hard_points[index].distance_to(hard_points[index - 1]),
+                hard_points[index].distance_to(hard_points[index + 1])
+            ) / 3.0)
+
+    var points := PackedVector2Array()
+    for segment_index in range(hard_points.size() - 1):
+        var point_a: Vector2 = hard_points[segment_index]
+        var point_b: Vector2 = hard_points[segment_index + 1]
+        var index_a: int = hard_indices[segment_index]
+        var index_b: int = hard_indices[segment_index + 1]
+        var chord := point_a.distance_to(point_b)
+        var handle_a := minf(base_handles[segment_index], chord / 3.0)
+        var handle_b := minf(base_handles[segment_index + 1], chord / 3.0)
+        var control_a := point_a + tangents[segment_index] * handle_a
+        var control_b := point_b - tangents[segment_index + 1] * handle_b
+        for sample_index in range(index_a, index_b + 1):
+            if segment_index > 0 and sample_index == index_a:
+                continue
+            var weight := float(sample_index - index_a) / float(index_b - index_a)
+            var inverse := 1.0 - weight
+            points.append(
+                point_a * inverse * inverse * inverse
+                + control_a * 3.0 * inverse * inverse * weight
+                + control_b * 3.0 * inverse * weight * weight
+                + point_b * weight * weight * weight
+            )
+    return points
+
+
+func _span_owns_cell(span: Vector2i, records: Array, cell: Vector2i) -> bool:
+    for index in range(span.x, span.y + 1):
+        if index >= 0 and index < records.size() and records[index].cell == cell:
+            return true
+    return false
+
+
+func _piece_contains_exact_center(
+    piece,
+    cell: Vector2i,
+    origin: Vector2,
+    cell_size: float
+) -> bool:
+    var target := _cell_center(cell, origin, cell_size)
+    for point in piece.centerline:
+        if point.distance_to(target) <= DISTANCE_EPSILON:
+            return true
+    return false
+
+
+func _anchored_curve_samples_fit_footprint(
+    piece,
+    anchors: Array,
+    span: Vector2i,
+    records: Array,
+    departure_cell: Vector2i,
+    origin: Vector2,
+    cell_size: float
+) -> bool:
+    var has_exact_anchor := false
+    for anchor in anchors:
+        if (
+            anchor.contact_mode == RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+            and _span_owns_cell(span, records, anchor.cell)
+        ):
+            has_exact_anchor = true
+            break
+    if not has_exact_anchor:
+        return true
+    for index in range(1, piece.centerline.size() - 1):
+        var point: Vector2 = piece.centerline[index]
+        var cell := Vector2i(
+            int(floor((point.x - origin.x) / cell_size)),
+            int(floor((point.y - origin.y) / cell_size))
+        )
+        if span.x == 0 and cell == departure_cell:
+            continue
+        if not piece.footprint_cells.has(cell):
+            return false
+    return true
 
 
 func _cell_in_grid(cell: Vector2i, grid_size: Vector2i) -> bool:

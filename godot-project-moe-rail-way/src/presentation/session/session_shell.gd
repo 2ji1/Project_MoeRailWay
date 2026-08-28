@@ -8,6 +8,7 @@ const SessionSnapshotScript = preload("res://src/domain/session/session_snapshot
 const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
 const UILayoutProfileScript = preload("res://src/presentation/layout/ui_layout_profile.gd")
 const TrackFieldViewScript = preload("res://src/presentation/track/track_field_view.gd")
+const CargoSlotStripScript = preload("res://src/presentation/cargo/cargo_slot_strip.gd")
 
 const TRACK_END_NORMAL_COLOR := Color(0.925, 0.945, 0.929, 1.0)
 const TRACK_END_URGENT_COLOR := Color(0.95, 0.35, 0.22, 1.0)
@@ -28,6 +29,9 @@ const TRACK_END_URGENT_COLOR := Color(0.95, 0.35, 0.22, 1.0)
 @onready var _time_value: Label = %TimeValue
 @onready var _track_value: Label = %TrackValue
 @onready var _track_end_value: Label = %TrackEndValue
+@onready var _cash_value: Label = %CashValue
+@onready var _cargo_value: Label = %CargoValue
+@onready var _cargo_slot_strip: CargoSlotStripScript = %CargoSlotStrip
 
 @onready var _top_item_controls: Array[Control] = [
     %TimeItem,
@@ -88,6 +92,13 @@ func present(snapshot: SessionSnapshotScript) -> void:
     var track_field_view = get_track_field_view()
     if track_field_view != null:
         track_field_view.present(snapshot)
+    _cash_value.text = str(snapshot.get_base_delivery_reward_total())
+    _cargo_value.text = "%d / %d" % [
+        snapshot.get_occupied_cargo_slots(),
+        snapshot.get_total_cargo_slots(),
+    ]
+    if _cargo_slot_strip != null:
+        _cargo_slot_strip.present(snapshot)
     if not snapshot.has_track_train_data():
         _track_value.text = "—"
         _track_end_value.text = "—"
@@ -148,6 +159,10 @@ func try_viewport_to_field(viewport_position: Vector2) -> Variant:
 
 func get_track_field_view() -> TrackFieldViewScript:
     return get_node_or_null("OuterMargin/MainColumn/Field/TrackFieldView") as TrackFieldViewScript
+
+
+func get_cargo_slot_strip() -> CargoSlotStripScript:
+    return _cargo_slot_strip
 
 
 func consume_track_input_frame() -> TrackInputFrameScript:

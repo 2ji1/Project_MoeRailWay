@@ -24,7 +24,7 @@ func _init(departure_cell: Vector2i, total_track_cells: int) -> void:
 func try_append_candidate(cell: Vector2i) -> Variant:
     if (
         _available_track_cells <= 0
-        or cell == _departure_cell
+        or _departure_coordinate_is_reserved(cell)
         or _active_cells.has(cell)
     ):
         return null
@@ -93,10 +93,10 @@ func replace_span_in_place(
     for index in range(_records.size()):
         if index < first_index or index > last_index:
             occupied[_records[index].cell] = true
-    var predecessor: Vector2i = _departure_cell if first_index == 0 else _records[first_index - 1].cell
+    var predecessor: Vector2i = _active_predecessor_cell if first_index == 0 else _records[first_index - 1].cell
     for index in range(new_cells.size()):
         var cell: Vector2i = new_cells[index]
-        if cell == _departure_cell or occupied.has(cell):
+        if _departure_coordinate_is_reserved(cell) or occupied.has(cell):
             return false
         if absi(cell.x - predecessor.x) + absi(cell.y - predecessor.y) != 1:
             return false
@@ -112,6 +112,10 @@ func replace_span_in_place(
     for record in _records:
         _active_cells[record.cell] = true
     return true
+
+
+func _departure_coordinate_is_reserved(cell: Vector2i) -> bool:
+    return cell == _departure_cell and _active_predecessor_cell == _departure_cell
 
 
 func cancel_ghost_suffix(cell: Vector2i) -> int:

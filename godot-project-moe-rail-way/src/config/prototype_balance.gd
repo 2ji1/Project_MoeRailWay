@@ -7,12 +7,16 @@ const TrainBalanceScript = preload("res://src/config/train_balance.gd")
 const TrackInventoryBalanceScript = preload("res://src/config/track_inventory_balance.gd")
 const TrackConstructionBalanceScript = preload("res://src/config/track_construction_balance.gd")
 const DepartureBalanceScript = preload("res://src/config/departure_balance.gd")
+const WarpLifecycleBalanceScript = preload("res://src/config/warp_lifecycle_balance.gd")
+const CargoBalanceScript = preload("res://src/config/cargo_balance.gd")
 
 @export var session_balance: SessionBalanceScript = SessionBalanceScript.new()
 @export var train_balance: TrainBalanceScript = TrainBalanceScript.new()
 @export var track_inventory_balance: TrackInventoryBalanceScript = TrackInventoryBalanceScript.new()
 @export var track_construction_balance: TrackConstructionBalanceScript = TrackConstructionBalanceScript.new()
 @export var departure_balance: DepartureBalanceScript = DepartureBalanceScript.new()
+@export var warp_lifecycle_balance: WarpLifecycleBalanceScript = WarpLifecycleBalanceScript.new()
+@export var cargo_balance: CargoBalanceScript = CargoBalanceScript.new()
 
 var session_duration_seconds: float:
     get:
@@ -26,13 +30,44 @@ var simulation_ticks_per_second: int:
     set(value):
         session_balance.simulation_ticks_per_second = value
 
+var planning_time_scale_percent: int:
+    get:
+        return session_balance.planning_time_scale_percent
+    set(value):
+        session_balance.planning_time_scale_percent = value
+
 
 func create_session_start_config(seed_value: int) -> SessionStartConfigScript:
-    return SessionStartConfigScript.new(
+    var config := SessionStartConfigScript.new(
         seed_value,
         session_duration_seconds,
-        simulation_ticks_per_second
+        simulation_ticks_per_second,
+        0.0, 0, 0, 0.0, 0.0, 0,
+        Vector2.ZERO, Vector2i.ZERO, 0.0, Vector2.ZERO,
+        StringName(), Vector2.ZERO, Vector2i(-1, -1),
+        0, 0, 0, 0, 0, 0, 0,
+        planning_time_scale_percent
     )
+    config.warp_forecast_ticks = _seconds_to_ticks(
+        warp_lifecycle_balance.forecast_duration_seconds,
+        false
+    )
+    config.warp_generation_interval_ticks = _seconds_to_ticks(
+        warp_lifecycle_balance.generation_interval_seconds,
+        true
+    )
+    config.warp_lifetime_min_ticks = _seconds_to_ticks(
+        warp_lifecycle_balance.lifetime_min_seconds,
+        true
+    )
+    config.warp_lifetime_max_ticks = _seconds_to_ticks(
+        warp_lifecycle_balance.lifetime_max_seconds,
+        true
+    )
+    config.warp_max_live_pairs = warp_lifecycle_balance.max_live_pairs
+    config.cargo_base_slot_count = cargo_balance.base_slot_count
+    config.cargo_base_delivery_reward = cargo_balance.base_delivery_reward
+    return config
 
 
 func complete_session_start_config(
@@ -61,5 +96,20 @@ func complete_session_start_config(
         grid_origin_value,
         candidate_id,
         departure_position,
-        departure_cell_value
+        departure_cell_value,
+        base_config.warp_forecast_ticks,
+        base_config.warp_generation_interval_ticks,
+        base_config.warp_lifetime_min_ticks,
+        base_config.warp_lifetime_max_ticks,
+        base_config.warp_max_live_pairs,
+        base_config.cargo_base_slot_count,
+        base_config.cargo_base_delivery_reward,
+        base_config.planning_time_scale_percent
     )
+
+
+func _seconds_to_ticks(seconds: float, require_positive: bool) -> int:
+    var ticks := int(ceil(seconds * float(simulation_ticks_per_second)))
+    if require_positive:
+        return max(1, ticks)
+    return ticks

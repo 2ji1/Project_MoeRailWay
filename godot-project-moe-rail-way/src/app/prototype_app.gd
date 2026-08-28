@@ -9,6 +9,8 @@ const SessionSnapshotScript = preload("res://src/domain/session/session_snapshot
 const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
 const TrackSystemScript = preload("res://src/domain/track/track_system.gd")
 const TrainSystemScript = preload("res://src/domain/train/train_system.gd")
+const WarpPairSystemScript = preload("res://src/domain/warp/warp_pair_system.gd")
+const CargoSystemScript = preload("res://src/domain/cargo/cargo_system.gd")
 const SessionShellScript = preload("res://src/presentation/session/session_shell.gd")
 const UILayoutProfileScript = preload("res://src/presentation/layout/ui_layout_profile.gd")
 const UILayoutValidatorScript = preload("res://src/presentation/layout/ui_layout_validator.gd")
@@ -23,6 +25,8 @@ var session_start_config: SessionStartConfigScript
 var session_rng: SessionRngScript
 var track_system: TrackSystemScript
 var train_system: TrainSystemScript
+var warp_pair_system: WarpPairSystemScript
+var cargo_system: CargoSystemScript
 var session_controller: SessionControllerScript
 
 @onready var _session_shell: SessionShellScript = $SessionShell
@@ -64,6 +68,8 @@ func compose_session_dependencies() -> PackedStringArray:
 	session_rng = null
 	track_system = null
 	train_system = null
+	warp_pair_system = null
+	cargo_system = null
 	session_controller = null
 	_session_result_was_presented = false
 
@@ -123,10 +129,17 @@ func compose_session_dependencies() -> PackedStringArray:
 	)
 	track_system = TrackSystemScript.new(session_start_config)
 	train_system = TrainSystemScript.new(session_start_config.train_speed_cells_per_second)
+	warp_pair_system = WarpPairSystemScript.new(session_start_config, session_rng)
+	cargo_system = CargoSystemScript.new(
+		session_start_config.cargo_base_slot_count,
+		session_start_config.cargo_base_delivery_reward
+	)
 	session_controller = SessionControllerScript.new(
 		session_start_config,
 		track_system,
-		train_system
+		train_system,
+		warp_pair_system,
+		cargo_system
 	)
 	return errors
 

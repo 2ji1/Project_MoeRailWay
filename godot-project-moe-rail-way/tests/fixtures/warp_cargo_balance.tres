@@ -1,0 +1,56 @@
+[gd_resource type="Resource" script_class="PrototypeBalance" load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://src/config/prototype_balance.gd" id="1_balance"]
+[ext_resource type="Script" path="res://src/config/session_balance.gd" id="2_session"]
+[ext_resource type="Script" path="res://src/config/train_balance.gd" id="3_train"]
+[ext_resource type="Script" path="res://src/config/track_inventory_balance.gd" id="4_inventory"]
+[ext_resource type="Script" path="res://src/config/track_construction_balance.gd" id="5_construction"]
+[ext_resource type="Script" path="res://src/config/departure_balance.gd" id="6_departure"]
+[ext_resource type="Script" path="res://src/config/warp_lifecycle_balance.gd" id="7_warp"]
+[ext_resource type="Script" path="res://src/config/cargo_balance.gd" id="8_cargo"]
+
+[sub_resource type="Resource" id="Resource_session"]
+script = ExtResource("2_session")
+session_duration_seconds = 13.9
+simulation_ticks_per_second = 10
+
+[sub_resource type="Resource" id="Resource_train"]
+script = ExtResource("3_train")
+speed_cells_per_second = 3.237410072
+
+[sub_resource type="Resource" id="Resource_inventory"]
+script = ExtResource("4_inventory")
+urgent_warning_seconds = 0.5
+total_track_cells = 60
+recovery_lag_cells = 59
+
+[sub_resource type="Resource" id="Resource_construction"]
+script = ExtResource("5_construction")
+build_cells_per_second = 600.0
+
+[sub_resource type="Resource" id="Resource_departure"]
+script = ExtResource("6_departure")
+required_built_cells = 1
+
+[sub_resource type="Resource" id="Resource_warp"]
+script = ExtResource("7_warp")
+forecast_duration_seconds = 0.2
+generation_interval_seconds = 0.5
+lifetime_min_seconds = 1.5
+lifetime_max_seconds = 16.5
+max_live_pairs = 3
+
+[sub_resource type="Resource" id="Resource_cargo"]
+script = ExtResource("8_cargo")
+base_slot_count = 2
+base_delivery_reward = 37
+
+[resource]
+script = ExtResource("1_balance")
+session_balance = SubResource("Resource_session")
+train_balance = SubResource("Resource_train")
+track_inventory_balance = SubResource("Resource_inventory")
+track_construction_balance = SubResource("Resource_construction")
+departure_balance = SubResource("Resource_departure")
+warp_lifecycle_balance = SubResource("Resource_warp")
+cargo_balance = SubResource("Resource_cargo")

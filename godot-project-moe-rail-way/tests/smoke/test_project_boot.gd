@@ -10,11 +10,7 @@ const UILayoutProfileScript = preload("res://src/presentation/layout/ui_layout_p
 
 class OffsetSeedBalance extends PrototypeBalanceScript:
 	func create_session_start_config(seed_value: int) -> SessionStartConfigScript:
-		return SessionStartConfigScript.new(
-			seed_value + 1,
-			session_duration_seconds,
-			simulation_ticks_per_second
-		)
+		return super.create_session_start_config(seed_value + 1)
 
 
 func run() -> PackedStringArray:

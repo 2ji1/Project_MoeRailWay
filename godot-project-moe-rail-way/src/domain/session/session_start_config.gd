@@ -17,6 +17,14 @@ var grid_origin_units: Vector2
 var departure_candidate_id: StringName
 var departure_position: Vector2
 var departure_cell: Vector2i
+var warp_forecast_ticks: int
+var warp_generation_interval_ticks: int
+var warp_lifetime_min_ticks: int
+var warp_lifetime_max_ticks: int
+var warp_max_live_pairs: int
+var cargo_base_slot_count: int
+var cargo_base_delivery_reward: int
+var planning_time_scale_percent: int
 
 
 func _init(
@@ -35,7 +43,15 @@ func _init(
 	grid_origin_value: Vector2 = Vector2.ZERO,
 	departure_candidate_id_value: StringName = StringName(),
 	departure_position_value: Vector2 = Vector2.ZERO,
-	departure_cell_value: Vector2i = Vector2i(-1, -1)
+	departure_cell_value: Vector2i = Vector2i(-1, -1),
+	warp_forecast_ticks_value: int = 0,
+	warp_generation_interval_ticks_value: int = 0,
+	warp_lifetime_min_ticks_value: int = 0,
+	warp_lifetime_max_ticks_value: int = 0,
+	warp_max_live_pairs_value: int = 0,
+	cargo_base_slot_count_value: int = 0,
+	cargo_base_delivery_reward_value: int = 0,
+	planning_time_scale_percent_value: int = 100
 ) -> void:
 	seed = seed_value
 	session_duration_seconds = duration_seconds
@@ -53,3 +69,11 @@ func _init(
 	departure_candidate_id = departure_candidate_id_value
 	departure_position = departure_position_value
 	departure_cell = departure_cell_value
+	warp_forecast_ticks = warp_forecast_ticks_value
+	warp_generation_interval_ticks = warp_generation_interval_ticks_value
+	warp_lifetime_min_ticks = warp_lifetime_min_ticks_value
+	warp_lifetime_max_ticks = warp_lifetime_max_ticks_value
+	warp_max_live_pairs = warp_max_live_pairs_value
+	cargo_base_slot_count = cargo_base_slot_count_value
+	cargo_base_delivery_reward = cargo_base_delivery_reward_value
+	planning_time_scale_percent = planning_time_scale_percent_value

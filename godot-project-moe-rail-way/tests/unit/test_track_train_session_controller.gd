@@ -12,6 +12,11 @@ const TrainSystemScript = preload("res://src/domain/train/train_system.gd")
 
 
 func run() -> PackedStringArray:
+	_test_valid_running_gesture_uses_literal_four_to_one_cadence()
+	_test_planning_exclusions_and_abort_discard_credit()
+	_test_planning_recovery_advances_only_on_due_tick()
+	_test_completion_discards_partial_planning_credit()
+	_test_train_safety_termination_discards_partial_credit()
 	_test_departure_transition_moves_from_departure_center()
 	_test_right_cancellation_wins_before_buffered_left_cells()
 	_test_recovery_refund_is_not_spendable_until_next_tick()
@@ -20,6 +25,224 @@ func run() -> PackedStringArray:
 	_test_held_gesture_defers_work_until_train_termination()
 	_test_active_gesture_controller_tick_preserves_train_sampling_order()
 	return finish()
+
+
+func _test_valid_running_gesture_uses_literal_four_to_one_cadence() -> void:
+	var config := _config(20.0, 8, 8, 0.1)
+	if not _object_has_property(config, &"planning_time_scale_percent"):
+		assert_true(false, "Runtime config exposes planning time scale")
+		return
+	config.set("planning_time_scale_percent", 25)
+	config.build_cells_per_second = 2.0
+	var track = TrackSystemScript.new(config)
+	var controller = SessionControllerScript.new(config, track, TrainSystemScript.new(0.1))
+	controller.start()
+	controller.advance_tick(_left([Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0), Vector2i(4, 0), Vector2i(5, 0)], Vector2i(0, 0)))
+	var endpoint := track.get_endpoint_cell()
+	var press := _held_endpoint(endpoint)
+	controller.advance_tick(press)
+	var press_snapshot = controller.get_snapshot()
+	assert_true(press_snapshot.call("is_planning_slowdown_active"), "Accepted press publishes active planning")
+	assert_equal(press_snapshot.call("get_planning_time_scale_percent"), 25, "Accepted press publishes configured percentage")
+	assert_true(press_snapshot.call("did_advance_simulation_tick"), "Accepted press remains a simulation tick")
+	var elapsed_after_press := press_snapshot.get_elapsed_ticks()
+	var distance_after_press := press_snapshot.get_train_route_distance_cells()
+	var expected_did_advance := [false, false, false, true]
+	var expected_elapsed := [elapsed_after_press, elapsed_after_press, elapsed_after_press, elapsed_after_press + 1]
+	var expected_distance := [distance_after_press, distance_after_press, distance_after_press, distance_after_press + 0.1]
+	var planning_paths: Array = [
+		[Vector2i(5, 1)],
+		[Vector2i(5, 1), Vector2i(5, 2)],
+		[Vector2i(5, 1)],
+		[Vector2i(5, 1), Vector2i(5, 2)],
+	]
+	for index in range(4):
+		var typed_path: Array[Vector2i] = []
+		for cell in planning_paths[index]:
+			typed_path.append(cell)
+		controller.advance_tick(_held_route(typed_path, endpoint))
+		var snapshot = controller.get_snapshot()
+		assert_equal(snapshot.call("did_advance_simulation_tick"), expected_did_advance[index], "Literal planning cadence step %d" % (index + 1))
+		assert_equal(snapshot.get_elapsed_ticks(), expected_elapsed[index], "Elapsed cadence step %d" % (index + 1))
+		assert_equal(snapshot.get_train_route_distance_cells(), expected_distance[index], "Train cadence step %d" % (index + 1))
+		assert_equal(track.get_endpoint_cell(), typed_path[-1], "Live candidate updates on real planning tick %d" % (index + 1))
+		var suffix_record = track.get_cell_records()[-1]
+		var origin_frontier = null
+		for record in track.get_cell_records():
+			if record.cell == Vector2i(5, 0):
+				origin_frontier = record
+				break
+		assert_not_null(origin_frontier, "Planning fixture retains its origin-owned frontier")
+		assert_equal(suffix_record.state, TrackCellRecordScript.State.RESERVED_GHOST, "Held suffix remains preview-only on planning tick %d" % (index + 1))
+		if not expected_did_advance[index]:
+			assert_equal(origin_frontier.state, TrackCellRecordScript.State.RESERVED_GHOST, "Skipped planning tick %d freezes origin construction" % (index + 1))
+			assert_equal(origin_frontier.build_progress, 0.0, "Skipped planning tick %d keeps zero origin progress" % (index + 1))
+		else:
+			assert_equal(origin_frontier.state, TrackCellRecordScript.State.BUILT, "Due planning tick advances origin construction once")
+	var due_snapshot = controller.get_snapshot()
+	controller.advance_tick(_release_endpoint(endpoint))
+	var released = controller.get_snapshot()
+	assert_false(released.is_planning_slowdown_active(), "Release hides planning immediately")
+	assert_false(released.did_advance_simulation_tick(), "Release consumes its slowed real tick without simulation")
+	assert_equal(released.get_elapsed_ticks(), due_snapshot.get_elapsed_ticks(), "Release adds no catch-up simulation")
+	controller.advance_tick()
+	var resumed = controller.get_snapshot()
+	assert_true(resumed.did_advance_simulation_tick(), "First post-release real tick resumes normal simulation")
+	assert_equal(resumed.get_elapsed_ticks(), due_snapshot.get_elapsed_ticks() + 1, "Post-release cadence advances exactly once")
+	assert_equal(resumed.get_train_route_distance_cells(), due_snapshot.get_train_route_distance_cells() + 0.1, "Post-release train movement advances exactly once")
+
+
+func _test_planning_exclusions_and_abort_discard_credit() -> void:
+	var preparing_config := _config(20.0, 8, 8, 0.1)
+	preparing_config.planning_time_scale_percent = 25
+	var preparing_track = TrackSystemScript.new(preparing_config)
+	var preparing_controller = SessionControllerScript.new(
+		preparing_config, preparing_track, TrainSystemScript.new(0.1)
+	)
+	preparing_controller.start()
+	var preparing_path: Array[Vector2i] = [Vector2i(1, 0)]
+	preparing_controller.advance_tick(_held_route(preparing_path, Vector2i(0, 0)))
+	var preparing_snapshot = preparing_controller.get_snapshot()
+	assert_equal(preparing_controller.get_state(), SessionControllerScript.State.PREPARING_DEPARTURE, "Valid pre-departure gesture remains in preparation")
+	assert_true(preparing_track.is_runtime_gesture_active(), "Pre-departure fixture accepts its gesture")
+	assert_false(preparing_snapshot.is_planning_slowdown_active(), "Pre-departure gesture never enables slowdown")
+	assert_true(preparing_snapshot.did_advance_simulation_tick(), "Pre-departure gesture advances normally")
+
+	var config := _config(20.0, 8, 8, 0.1)
+	config.planning_time_scale_percent = 25
+	var track = TrackSystemScript.new(config)
+	var controller = SessionControllerScript.new(config, track, TrainSystemScript.new(0.1))
+	controller.start()
+	controller.advance_tick(_left([Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0), Vector2i(4, 0)], Vector2i(0, 0)))
+	var before_invalid := controller.get_snapshot().get_elapsed_ticks()
+	controller.advance_tick(_invalid_held_press())
+	var invalid = controller.get_snapshot()
+	assert_false(invalid.is_planning_slowdown_active(), "Outside-grid press never enables slowdown")
+	assert_true(invalid.did_advance_simulation_tick(), "Outside-grid press advances normally")
+	assert_equal(invalid.get_elapsed_ticks(), before_invalid + 1, "Outside-grid press advances one simulation tick")
+	controller.advance_tick(_invalid_held_press())
+	var stale = controller.get_snapshot()
+	assert_false(stale.is_planning_slowdown_active(), "Stale held rejected capture never enables slowdown")
+	assert_true(stale.did_advance_simulation_tick(), "Stale held rejected capture advances normally")
+	controller.advance_tick(_release_endpoint(Vector2i(-1, -1)))
+	var before_off_endpoint := controller.get_snapshot().get_elapsed_ticks()
+	controller.advance_tick(_held_endpoint(Vector2i(1, 1)))
+	var off_endpoint = controller.get_snapshot()
+	assert_false(off_endpoint.is_planning_slowdown_active(), "Inside-grid off-endpoint press never enables slowdown")
+	assert_true(off_endpoint.did_advance_simulation_tick(), "Inside-grid off-endpoint press advances normally")
+	assert_equal(off_endpoint.get_elapsed_ticks(), before_off_endpoint + 1, "Inside-grid off-endpoint press advances one simulation tick")
+
+	var abort_config := _config(20.0, 8, 8, 0.1)
+	abort_config.planning_time_scale_percent = 25
+	var abort_track = TrackSystemScript.new(abort_config)
+	var abort_controller = SessionControllerScript.new(
+		abort_config, abort_track, TrainSystemScript.new(0.1)
+	)
+	abort_controller.start()
+	abort_controller.advance_tick(_left([Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0), Vector2i(4, 0)], Vector2i(0, 0)))
+	var abort_endpoint := abort_track.get_endpoint_cell()
+	abort_controller.advance_tick(_held_endpoint(abort_endpoint))
+	abort_controller.advance_tick(_held_endpoint(abort_endpoint))
+	var before_abort = abort_controller.get_snapshot()
+	abort_controller.advance_tick(_right_abort(abort_endpoint))
+	var aborted = abort_controller.get_snapshot()
+	assert_false(aborted.is_planning_slowdown_active(), "Right abort clears planning immediately")
+	assert_false(aborted.did_advance_simulation_tick(), "Right abort consumes no slowed simulation tick")
+	assert_equal(aborted.get_elapsed_ticks(), before_abort.get_elapsed_ticks(), "Right abort adds no catch-up")
+	abort_controller.advance_tick()
+	var after_abort = abort_controller.get_snapshot()
+	assert_true(after_abort.did_advance_simulation_tick(), "First post-abort tick resumes normal cadence")
+	assert_equal(after_abort.get_elapsed_ticks(), before_abort.get_elapsed_ticks() + 1, "Post-abort tick advances exactly once")
+
+
+func _test_planning_recovery_advances_only_on_due_tick() -> void:
+	var config := _config(20.0, 12, 0, 1.0)
+	config.planning_time_scale_percent = 25
+	var track = TrackSystemScript.new(config)
+	var controller = SessionControllerScript.new(config, track, TrainSystemScript.new(1.0))
+	controller.start()
+	controller.advance_tick(_left([
+		Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0), Vector2i(4, 0),
+		Vector2i(5, 0), Vector2i(6, 0), Vector2i(7, 0),
+	], Vector2i(0, 0)))
+	var endpoint := track.get_endpoint_cell()
+	controller.advance_tick(_held_endpoint(endpoint))
+	assert_true(track.is_runtime_gesture_active(), "Recovery cadence fixture begins planning")
+	var records_after_press := track.get_cell_records().size()
+	var inventory_after_press := controller.get_snapshot().get_available_track_cells()
+	for skipped_index in range(3):
+		controller.advance_tick(_held_endpoint(endpoint))
+		var skipped = controller.get_snapshot()
+		assert_false(skipped.did_advance_simulation_tick(), "Recovery cadence skipped tick %d is input-only" % (skipped_index + 1))
+		assert_equal(track.get_cell_records().size(), records_after_press, "Skipped planning tick %d freezes recovery" % (skipped_index + 1))
+		assert_equal(skipped.get_available_track_cells(), inventory_after_press, "Skipped planning tick %d freezes recovery refund" % (skipped_index + 1))
+	controller.advance_tick(_held_endpoint(endpoint))
+	var due = controller.get_snapshot()
+	assert_true(due.did_advance_simulation_tick(), "Fourth planning real tick advances recovery")
+	assert_equal(track.get_cell_records().size(), records_after_press - 1, "Due planning tick recovers exactly one route cell")
+	assert_equal(due.get_available_track_cells(), inventory_after_press + 1, "Due planning tick refunds recovery exactly once")
+	assert_true(track.is_runtime_gesture_active(), "Transactional recovery preserves the active gesture")
+	controller.advance_tick(_right_abort(endpoint))
+	assert_equal(track.get_cell_records().size(), records_after_press - 1, "Abort cannot resurrect cadence recovery")
+
+
+func _test_completion_discards_partial_planning_credit() -> void:
+	var config := _config(3.0, 8, 8, 0.1)
+	config.planning_time_scale_percent = 30
+	var track = TrackSystemScript.new(config)
+	var controller = SessionControllerScript.new(config, track, TrainSystemScript.new(0.1))
+	controller.start()
+	controller.advance_tick(_left([
+		Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0), Vector2i(4, 0),
+	], Vector2i(0, 0)))
+	var endpoint := track.get_endpoint_cell()
+	controller.advance_tick(_held_endpoint(endpoint))
+	var literal_due := [false, false, false, true]
+	for index in range(4):
+		controller.advance_tick(_held_endpoint(endpoint))
+		assert_equal(controller.get_snapshot().did_advance_simulation_tick(), literal_due[index], "Thirty-percent completion cadence step %d" % (index + 1))
+	assert_equal(controller.get_state(), SessionControllerScript.State.COMPLETED, "Due planning tick completes the three-tick session")
+	var completed = controller.get_snapshot()
+	assert_equal(completed.get_elapsed_ticks(), 3, "Completion advances only the one due simulation tick")
+	controller.advance_tick(_held_endpoint(endpoint))
+	assert_equal(controller.get_snapshot().get_elapsed_ticks(), 3, "Post-completion input cannot spend leftover planning credit")
+
+
+func _test_train_safety_termination_discards_partial_credit() -> void:
+	var config := _config(20.0, 8, 8, 2.0)
+	config.planning_time_scale_percent = 30
+	var track = TrackSystemScript.new(config)
+	var controller = SessionControllerScript.new(config, track, TrainSystemScript.new(2.0))
+	controller.start()
+	controller.advance_tick(_left([
+		Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0), Vector2i(4, 0),
+		Vector2i(5, 0), Vector2i(6, 0), Vector2i(7, 0),
+	], Vector2i(0, 0)))
+	var endpoint := track.get_endpoint_cell()
+	controller.advance_tick(_held_endpoint(endpoint))
+	assert_true(track.is_runtime_gesture_active(), "Train-safety fixture begins planning before overlap")
+	var before_planning = controller.get_snapshot()
+	for index in range(3):
+		controller.advance_tick(_held_endpoint(endpoint))
+		assert_false(controller.get_snapshot().did_advance_simulation_tick(), "Train-safety partial-credit tick %d is skipped" % (index + 1))
+		assert_true(track.is_runtime_gesture_active(), "Train-safety gesture survives skipped tick %d" % (index + 1))
+	controller.advance_tick(_held_endpoint(endpoint))
+	var terminated = controller.get_snapshot()
+	assert_true(terminated.did_advance_simulation_tick(), "Fourth thirty-percent real tick is due")
+	assert_false(track.is_runtime_gesture_active(), "Due train sampling terminates the overlapping gesture")
+	assert_false(terminated.is_planning_slowdown_active(), "Train-safety termination clears planning")
+	assert_equal(terminated.get_elapsed_ticks(), before_planning.get_elapsed_ticks() + 1, "Train-safety due tick advances once")
+	controller.advance_tick()
+	var resumed = controller.get_snapshot()
+	assert_true(resumed.did_advance_simulation_tick(), "Post-safety real tick resumes normal cadence")
+	assert_equal(resumed.get_elapsed_ticks(), terminated.get_elapsed_ticks() + 1, "Post-safety tick discards residual credit and advances once")
+
+
+func _object_has_property(object: Object, property_name: StringName) -> bool:
+	for property in object.get_property_list():
+		if property.get("name", StringName()) == property_name:
+			return true
+	return false
 
 
 func _config(
@@ -63,6 +286,22 @@ func _release_endpoint(endpoint: Vector2i) -> TrackInputFrameScript:
 	return TrackInputFrameScript.new(
 		empty, endpoint, true, Vector2i(-1, -1), false,
 		false, false, true, false, endpoint, true
+	)
+
+
+func _invalid_held_press() -> TrackInputFrameScript:
+	var empty: Array[Vector2i] = []
+	return TrackInputFrameScript.new(
+		empty, Vector2i(-1, -1), false, Vector2i(-1, -1), false,
+		true, true, false, false, Vector2i(-1, -1), false
+	)
+
+
+func _right_abort(cell: Vector2i) -> TrackInputFrameScript:
+	var empty: Array[Vector2i] = []
+	return TrackInputFrameScript.new(
+		empty, Vector2i(-1, -1), false, cell, true,
+		false, true, false, true, cell, true
 	)
 
 
@@ -197,13 +436,13 @@ func _test_held_gesture_defers_work_until_train_termination() -> void:
 	assert_true(track.is_runtime_gesture_active(), "Held-gesture fixture remains active without release")
 	assert_equal(track.advance_construction(0.5), 0.5, "Origin-owned construction advances while the gesture is held")
 	assert_equal(track.get_cell_records()[-1].build_progress, 1.0, "Held gesture completes the shared origin serial")
-	assert_equal(track.recover_behind(1.0), 0, "Recovery defers while the gesture is held")
+	assert_equal(track.recover_behind(1.0), 1, "Recovery advances transactionally while the gesture is held")
 	var controller = SessionControllerScript.new(config, track, TrainSystemScript.new(config.train_speed_cells_per_second))
 	controller.start()
 	controller.advance_tick()
 	assert_false(track.is_runtime_gesture_active(), "Overlapping train preparation terminates the held gesture")
 	assert_equal(track.advance_construction(0.5), 0.0, "No construction budget remains after the origin frontier completes")
-	assert_equal(track.recover_behind(1.0), 1, "Recovery resumes after train termination")
+	assert_equal(track.recover_behind(1.0), 0, "Train termination does not repeat already committed recovery")
 
 
 func _test_active_gesture_controller_tick_preserves_train_sampling_order() -> void:

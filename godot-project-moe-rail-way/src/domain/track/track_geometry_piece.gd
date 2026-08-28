@@ -15,6 +15,8 @@ var locked := false
 var exit_support_route_serial: int = -1
 var active_local_start_cells := 0.0
 var active_local_end_cells := 0.0
+var entry_heading_override := Vector2.ZERO
+var exit_heading_override := Vector2.ZERO
 
 
 func contains_serial(route_serial: int) -> bool:
@@ -49,13 +51,19 @@ func sample_nominal(local_distance_cells: float) -> Dictionary:
     if centerline.size() == 1:
         return {"position": Vector2(centerline[0]), "heading": Vector2.RIGHT}
     var fraction := 0.0
+    var bounded_distance := 0.0
     if nominal_length_cells > 0:
-        fraction = clampf(local_distance_cells, 0.0, float(nominal_length_cells)) / float(nominal_length_cells)
+        bounded_distance = clampf(local_distance_cells, 0.0, float(nominal_length_cells))
+        fraction = bounded_distance / float(nominal_length_cells)
     var scaled := fraction * float(centerline.size() - 1)
     var segment := mini(int(floor(scaled)), centerline.size() - 2)
     var weight := scaled - float(segment)
     var position: Vector2 = centerline[segment].lerp(centerline[segment + 1], weight)
     var heading: Vector2 = (centerline[segment + 1] - centerline[segment]).normalized()
+    if is_zero_approx(bounded_distance) and not entry_heading_override.is_zero_approx():
+        heading = entry_heading_override.normalized()
+    elif is_equal_approx(bounded_distance, float(nominal_length_cells)) and not exit_heading_override.is_zero_approx():
+        heading = exit_heading_override.normalized()
     if heading.is_zero_approx():
         for offset in range(1, centerline.size()):
             var fallback_index := mini(segment + offset, centerline.size() - 2)
@@ -91,4 +99,6 @@ func duplicate_piece() -> RefCounted:
     copy.exit_support_route_serial = exit_support_route_serial
     copy.active_local_start_cells = active_local_start_cells
     copy.active_local_end_cells = active_local_end_cells
+    copy.entry_heading_override = Vector2(entry_heading_override)
+    copy.exit_heading_override = Vector2(exit_heading_override)
     return copy

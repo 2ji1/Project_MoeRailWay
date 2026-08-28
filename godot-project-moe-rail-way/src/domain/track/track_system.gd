@@ -206,5 +206,12 @@ func get_contact_observations() -> Array[Dictionary]:
 	return _runtime.get_contact_observations()
 
 
+func get_contact_hits_between(
+	previous_distance_cells: float,
+	through_distance_cells: float
+) -> Array[Dictionary]:
+	return _runtime.get_contact_hits_between(previous_distance_cells, through_distance_cells)
+
+
 func _cell_is_inside(cell: Vector2i, grid_size: Vector2i) -> bool:
 	return cell.x >= 0 and cell.y >= 0 and cell.x < grid_size.x and cell.y < grid_size.y

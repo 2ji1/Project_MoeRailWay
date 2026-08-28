@@ -20,15 +20,179 @@ func run() -> PackedStringArray:
 	_test_curve_growth_reclassifies_without_changing_cell_count()
 	_test_overlapping_curves_downgrade_both()
 	_test_anchor_forces_centerline_contact()
+	_test_exact_anchor_knots_preserve_template_contracts()
 	_test_nonzero_grid_origin_translates_every_centerline()
 	_test_nominal_lengths_sampling_and_grid_bounds()
 	_test_non_final_curve_continuity_and_one_cell_tangents()
 	_test_non_owned_route_cell_in_curve_footprint()
 	_test_locked_piece_identity_and_determinism()
+	_test_locked_predecessor_stitches_anchored_turn_by_declared_heading()
 	_test_empty_acceptance_and_final_conflict_rejection()
 	_test_detached_duplicates()
 	_test_exit_support_metadata_copies_with_active_slices()
 	return finish()
+
+
+func _test_exact_anchor_knots_preserve_template_contracts() -> void:
+	var exact_anchor = RouteContactAnchorScript.new(&"warp_exact", Vector2i(0, 0))
+	var has_mode := _object_has_property(exact_anchor, &"contact_mode")
+	assert_true(has_mode, "Route anchors expose a concrete contact mode")
+	if not has_mode:
+		return
+	exact_anchor.set(&"contact_mode", 1)
+	var straight_records := _records_for([Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0)])
+	exact_anchor.cell = Vector2i(1, 0)
+	var straight_result = _resolver.resolve(
+		DEPARTURE, straight_records, [], [exact_anchor],
+		Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_true(straight_result.is_valid, "Exact anchored straight resolves")
+	if straight_result.is_valid:
+		var straight = _piece_covering_serial(straight_result.pieces, straight_records[1].route_serial)
+		assert_equal(straight.centerline.size(), 2, "Exact anchored straight preserves two-point geometry")
+		assert_true(
+			straight.sample_nominal(0.5).position.distance_to(Vector2(60.0, 20.0)) <= 0.0001,
+			"Exact anchored straight passes its literal cell center at nominal midpoint"
+		)
+
+	_assert_exact_curve_orientations(
+		[Vector2i(0, 0), Vector2i(0, 1)], 0, CURVE_1X1, "1x1"
+	)
+	_assert_exact_curve_orientations(
+		[Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1)], 1, CURVE_2X2, "2x2"
+	)
+	_assert_exact_curve_orientations(
+		[Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2)],
+		2, CURVE_3X3, "3x3"
+	)
+
+
+func _assert_exact_curve_orientations(
+	base_cells: Array,
+	anchor_offset: int,
+	expected_kind: int,
+	label: String
+) -> void:
+	var bases := [
+		[Vector2i(1, 0), Vector2i(0, 1)],
+		[Vector2i(0, 1), Vector2i(-1, 0)],
+		[Vector2i(-1, 0), Vector2i(0, -1)],
+		[Vector2i(0, -1), Vector2i(1, 0)],
+		[Vector2i(-1, 0), Vector2i(0, 1)],
+		[Vector2i(0, 1), Vector2i(1, 0)],
+		[Vector2i(1, 0), Vector2i(0, -1)],
+		[Vector2i(0, -1), Vector2i(-1, 0)],
+	]
+	for orientation in range(bases.size()):
+		var basis_x: Vector2i = bases[orientation][0]
+		var basis_y: Vector2i = bases[orientation][1]
+		var offset := Vector2i(5, 5)
+		var departure := _transform_cell(DEPARTURE, basis_x, basis_y) + offset
+		var cells: Array[Vector2i] = []
+		for base_cell in base_cells:
+			cells.append(_transform_cell(base_cell, basis_x, basis_y) + offset)
+		_assert_exact_curve_fixture(
+			cells, anchor_offset, expected_kind,
+			"%s orientation %d" % [label, orientation], departure
+		)
+
+
+func _transform_cell(cell: Vector2i, basis_x: Vector2i, basis_y: Vector2i) -> Vector2i:
+	return basis_x * cell.x + basis_y * cell.y
+
+
+func _assert_exact_curve_fixture(
+	cells: Array,
+	anchor_offset: int,
+	expected_kind: int,
+	label: String,
+	departure: Vector2i = DEPARTURE
+) -> void:
+	var records := _records_for(cells, departure)
+	var anchor_cell: Vector2i = records[anchor_offset].cell
+	var baseline = _resolver.resolve(
+		departure, records, [], [], Vector2.ZERO, Vector2i(12, 12), 40.0
+	)
+	var baseline_piece = _piece_covering_serial(
+		baseline.pieces, records[anchor_offset].route_serial
+	) if baseline.is_valid else null
+	var anchor = RouteContactAnchorScript.new(&"warp_exact", anchor_cell)
+	anchor.set(&"contact_mode", 1)
+	var result = _resolver.resolve(
+		departure, records, [], [anchor], Vector2.ZERO, Vector2i(12, 12), 40.0
+	)
+	assert_true(result.is_valid, "%s exact anchored curve resolves" % label)
+	if not result.is_valid:
+		return
+	var piece = _piece_covering_serial(result.pieces, records[anchor_offset].route_serial)
+	assert_not_null(piece, "%s exact anchor has one owning piece" % label)
+	if piece == null:
+		return
+	assert_equal(piece.kind, expected_kind, "%s retains its accepted template kind" % label)
+	assert_not_null(baseline_piece, "%s has a pre-anchor accepted owner" % label)
+	if baseline_piece != null:
+		assert_equal(
+			piece.footprint_cells, baseline_piece.footprint_cells,
+			"%s exact anchor preserves the accepted footprint byte-for-byte" % label
+		)
+	assert_false(
+		piece.footprint_cells.has(departure),
+		"%s departure lead-in never becomes route footprint ownership" % label
+	)
+	assert_equal(
+		piece.centerline.size(), piece.nominal_length_cells * 16 + 1,
+		"%s anchored curve uses fixed nominal sampling" % label
+	)
+	var expected_center := (Vector2(anchor_cell) + Vector2(0.5, 0.5)) * 40.0
+	var local_offset: float = float(records[anchor_offset].route_distance_start_cells) \
+		- piece.absolute_start_distance_cells + 0.5
+	assert_true(
+		piece.sample_nominal(local_offset).position.distance_to(expected_center) <= 0.0001,
+		"%s passes the literal cell center at its nominal knot" % label
+	)
+	var turn_index := _first_turn_index(departure, records)
+	var previous: Vector2i = departure if turn_index == 0 else records[turn_index - 1].cell
+	var incoming := Vector2(records[turn_index].cell - previous).normalized()
+	var outgoing := Vector2(records[turn_index + 1].cell - records[turn_index].cell).normalized()
+	assert_true(piece.sample_nominal(0.0).heading.is_equal_approx(incoming), "%s preserves operational entry heading" % label)
+	assert_true(piece.sample_nominal(float(piece.nominal_length_cells)).heading.is_equal_approx(outgoing), "%s preserves operational exit heading" % label)
+	var first_chord_heading: Vector2 = (piece.centerline[1] - piece.centerline[0]).normalized()
+	var last_chord_heading: Vector2 = (piece.centerline[-1] - piece.centerline[-2]).normalized()
+	assert_true(
+		piece.sample_nominal(1.0 / 32.0).heading.is_equal_approx(first_chord_heading),
+		"%s entry heading override applies only at the exact boundary" % label
+	)
+	assert_true(
+		piece.sample_nominal(float(piece.nominal_length_cells) - 1.0 / 32.0).heading.is_equal_approx(last_chord_heading),
+		"%s exit heading override applies only at the exact boundary" % label
+	)
+	for sample_index in range(1, piece.centerline.size() - 1):
+		var point: Vector2 = piece.centerline[sample_index]
+		var cell := Vector2i(int(floor(point.x / 40.0)), int(floor(point.y / 40.0)))
+		assert_true(
+			piece.footprint_cells.has(cell) or cell == departure,
+			"%s interior sample %d remains inside footprint or the departure lead-in" % [label, sample_index]
+		)
+	var replay = _resolver.resolve(
+		departure, records, [], [anchor], Vector2.ZERO, Vector2i(12, 12), 40.0
+	)
+	var replay_piece = _piece_covering_serial(replay.pieces, records[anchor_offset].route_serial)
+	assert_equal(replay_piece.centerline, piece.centerline, "%s exact geometry replays deterministically" % label)
+
+
+func _first_turn_index(departure: Vector2i, records: Array) -> int:
+	for index in range(records.size() - 1):
+		var previous: Vector2i = departure if index == 0 else records[index - 1].cell
+		if records[index].cell - previous != records[index + 1].cell - records[index].cell:
+			return index
+	return -1
+
+
+func _object_has_property(object: Object, property_name: StringName) -> bool:
+	for property in object.get_property_list():
+		if property.get("name", StringName()) == property_name:
+			return true
+	return false
 
 
 func _test_route_zero_starts_at_departure_center() -> void:
@@ -208,6 +372,79 @@ func _test_locked_piece_identity_and_determinism() -> void:
 	assert_true(not blocked.is_valid, "Unlocked suffix cannot enter active locked footprint")
 
 
+func _test_locked_predecessor_stitches_anchored_turn_by_declared_heading() -> void:
+	var departure := Vector2i(7, 4)
+	var records := _records_for([
+		Vector2i(7, 3), Vector2i(7, 2), Vector2i(6, 2),
+	], departure)
+	var locked = TrackGeometryPieceScript.new()
+	locked.group_id = 90
+	locked.kind = STRAIGHT
+	locked.first_route_serial = records[0].route_serial
+	locked.last_route_serial = records[0].route_serial
+	locked.nominal_length_cells = 1
+	locked.absolute_start_distance_cells = 0.0
+	var locked_footprint: Array[Vector2i] = [Vector2i(7, 3)]
+	locked.footprint_cells = locked_footprint
+	locked.centerline = PackedVector2Array([Vector2(300.0, 180.0), Vector2(300.0, 140.0)])
+	locked.locked = true
+	locked.active_local_end_cells = 1.0
+	var locked_before := _piece_signature(locked)
+	var anchor = RouteContactAnchorScript.new(
+		&"warp_exact", Vector2i(7, 2), RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var result = _resolver.resolve(
+		departure, records, [locked], [anchor], Vector2.ZERO, Vector2i(16, 10), 40.0
+	)
+	assert_true(result.is_valid, "Locked endpoint anchored-turn fixture resolves")
+	if not result.is_valid:
+		return
+	assert_equal(_piece_signature(locked), locked_before, "Resolver never mutates the source locked predecessor")
+	assert_equal(result.pieces.size(), 3, "Locked endpoint fixture retains one predecessor, one curve, and one suffix")
+	if result.pieces.size() != 3:
+		return
+	var predecessor = result.pieces[0]
+	var curve = result.pieces[1]
+	assert_equal(curve.kind, CURVE_1X1, "First unlocked successor remains an anchored 1x1 curve")
+	assert_equal(curve.first_route_serial, records[1].route_serial, "Anchored curve owns only the Warp route record")
+	assert_equal(curve.footprint_cells, [Vector2i(7, 2)], "Anchored turn preserves its one-cell footprint")
+	assert_true(
+		predecessor.centerline[-1].is_equal_approx(curve.centerline[0]),
+		"Declared entry heading stitches the anchored curve to the immutable predecessor"
+	)
+	assert_true(
+		curve.sample_nominal(0.5).position.is_equal_approx(Vector2(300.0, 100.0)),
+		"Stitched successor retains the exact Warp center knot"
+	)
+	var sideways = curve.duplicate_piece()
+	sideways.centerline[0] = Vector2(300.0, 120.0)
+	sideways.entry_heading_override = Vector2.LEFT
+	assert_false(
+		_resolver._centerline_gap_is_forward(predecessor, sideways),
+		"A sideways declared entry remains ineligible for locked-boundary stitching"
+	)
+	var nonforward_locked = locked.duplicate_piece()
+	nonforward_locked.centerline[-1] = Vector2(340.0, 140.0)
+	var nonforward_before: PackedVector2Array = nonforward_locked.centerline.duplicate()
+	var nonforward_result = _resolver.resolve(
+		departure, records, [nonforward_locked], [anchor],
+		Vector2.ZERO, Vector2i(16, 10), 40.0
+	)
+	assert_true(nonforward_result.is_valid, "Resolver leaves final continuity ownership to the runtime")
+	if nonforward_result.is_valid and nonforward_result.pieces.size() >= 2:
+		assert_false(
+			nonforward_result.pieces[0].centerline[-1].is_equal_approx(
+				nonforward_result.pieces[1].centerline[0]
+			),
+			"Non-forward locked boundary remains unstitched"
+		)
+	assert_equal(
+		nonforward_locked.centerline,
+		nonforward_before,
+		"Rejected stitch attempt never mutates its locked source"
+	)
+
+
 func _test_empty_acceptance_and_final_conflict_rejection() -> void:
 	var empty = _resolver.resolve(DEPARTURE, [], [], [], Vector2.ZERO, Vector2i(8, 8), 40.0)
 	assert_true(empty.is_valid, "Empty route is accepted")
@@ -260,11 +497,11 @@ func _test_exit_support_metadata_copies_with_active_slices() -> void:
 	assert_equal(piece.exit_support_route_serial, 6, "Active slice support metadata is detached")
 
 
-func _records_for(source_cells: Array) -> Array:
+func _records_for(source_cells: Array, departure: Vector2i = DEPARTURE) -> Array:
 	var cells: Array[Vector2i] = []
 	for cell in source_cells:
 		cells.append(cell)
-	var sequence = TrackCellSequenceScript.new(DEPARTURE, 32)
+	var sequence = TrackCellSequenceScript.new(departure, 32)
 	assert_equal(sequence.append_candidates(cells), cells.size(), "Fixture cells accepted")
 	return sequence.get_records()
 
