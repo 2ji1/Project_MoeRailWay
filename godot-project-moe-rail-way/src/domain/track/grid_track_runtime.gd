@@ -10,6 +10,7 @@ const TrackGeometryResolutionScript = preload("res://src/domain/track/track_geom
 
 const NOMINAL_BOUNDARY_EPSILON := 0.0001
 const CONTACT_SAMPLES_PER_CELL := 8
+const EXACT_CONTACT_POSITION_EPSILON_UNITS := 0.0001
 
 var _departure_cell: Vector2i
 var _grid_origin_units: Vector2
@@ -1808,34 +1809,21 @@ func _exact_anchor_contact_fact(
         if required_serial >= 0 and not piece.contains_serial(required_serial):
             continue
         var recovered_cells: Dictionary = recovered_cells_by_piece.get(_piece_key(piece), {})
-        if recovered_cells.has(cell) or piece.centerline.size() < 2:
+        if recovered_cells.has(cell):
             continue
-        var segment_count := piece.centerline.size() - 1
-        for segment_index in range(segment_count):
-            var start: Vector2 = piece.centerline[segment_index]
-            var finish: Vector2 = piece.centerline[segment_index + 1]
-            var delta := finish - start
-            var length_squared := delta.length_squared()
-            var weight := 0.0
-            if length_squared > 0.0:
-                weight = clampf((target - start).dot(delta) / length_squared, 0.0, 1.0)
-            var projection := start + delta * weight
-            if projection.distance_to(target) > NOMINAL_BOUNDARY_EPSILON:
-                continue
-            var local_distance := (
-                (float(segment_index) + weight)
-                / float(segment_count)
-                * float(piece.nominal_length_cells)
-            )
-            if (
-                local_distance < piece.active_local_start_cells - NOMINAL_BOUNDARY_EPSILON
-                or local_distance > piece.active_local_end_cells + NOMINAL_BOUNDARY_EPSILON
-            ):
-                continue
-            return {
-                "contact_possible": true,
-                "contact_distance_cells": piece.absolute_start_distance_cells + local_distance,
-            }
+        var local_distance: float = piece.find_nominal_distance_at_position(
+            target, EXACT_CONTACT_POSITION_EPSILON_UNITS
+        )
+        if (
+            local_distance < 0.0
+            or local_distance < piece.active_local_start_cells - NOMINAL_BOUNDARY_EPSILON
+            or local_distance > piece.active_local_end_cells + NOMINAL_BOUNDARY_EPSILON
+        ):
+            continue
+        return {
+            "contact_possible": true,
+            "contact_distance_cells": piece.absolute_start_distance_cells + local_distance,
+        }
     return {"contact_possible": false, "contact_distance_cells": -1.0}
 
 
@@ -1847,19 +1835,14 @@ func _active_piece_contacts_cell(
     var recovered_cells: Dictionary = recovered_cells_by_piece.get(_piece_key(piece), {})
     if recovered_cells.has(cell):
         return false
-    var local_start: float = piece.active_local_start_cells
-    var local_end: float = piece.active_local_end_cells
-    if local_end < local_start:
-        return false
-    var steps := maxi(1, int(ceil((local_end - local_start) * 8.0)))
-    for step in range(steps + 1):
-        var weight := float(step) / float(steps)
-        var local_distance := lerpf(local_start, local_end, weight)
-        var position: Vector2 = piece.sample_nominal(local_distance).position
-        var mapped := _map_position_to_cell(position)
-        if mapped == cell:
-            return true
-    return false
+    return piece.contacts_cell_in_nominal_range(
+        cell,
+        _grid_origin_units,
+        _cell_size_units,
+        piece.active_local_start_cells,
+        piece.active_local_end_cells,
+        CONTACT_SAMPLES_PER_CELL
+    )
 
 
 func _active_route_cell_at_distance(route_distance_cells: float) -> Dictionary:

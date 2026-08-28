@@ -1,6 +1,7 @@
 extends "res://tests/support/prototype_test.gd"
 
 const TrackCellSequenceScript = preload("res://src/domain/track/track_cell_sequence.gd")
+const TrackCellRecordScript = preload("res://src/domain/track/track_cell_record.gd")
 const RouteContactAnchorScript = preload("res://src/domain/track/route_contact_anchor.gd")
 const TrackGeometryPieceScript = preload("res://src/domain/track/track_geometry_piece.gd")
 const TrackGeometryResolutionScript = preload("res://src/domain/track/track_geometry_resolution.gd")
@@ -11,16 +12,28 @@ const CURVE_1X1 := 1
 const CURVE_2X2 := 2
 const CURVE_3X3 := 3
 const DEPARTURE := Vector2i(-1, 0)
+const MAX_LOCAL_CORNER_NONLINEAR_RUN := 9
+const MAX_LOCAL_REVERSE_SEGMENT_RUN := 8
+const MIN_STRAIGHT_SEGMENT_RUN := 4
+const CENTERLINE_SEGMENTS_PER_NOMINAL_CELL := 16
+const ENDPOINT_SUPPORT_MAX_SAMPLES := 8
+const LOCAL_CORNER_HALF_WINDOW_SAMPLES := 4
+const TEST_CELL_SIZE := 40.0
 
 var _resolver = TrackGeometryResolverScript.new()
 
 
 func run() -> PackedStringArray:
+	_test_track_geometry_piece_owns_centerline_queries()
 	_test_route_zero_starts_at_departure_center()
 	_test_curve_growth_reclassifies_without_changing_cell_count()
 	_test_overlapping_curves_downgrade_both()
+	_test_adjacent_turn_overlap_downgrades_only_larger_candidate()
+	_test_irreducible_duplicate_turn_footprints_still_reject()
 	_test_anchor_forces_centerline_contact()
+	_test_unanchored_curve_orientations_use_local_corners()
 	_test_exact_anchor_knots_preserve_template_contracts()
+	_test_multiple_exact_knots_remain_literal_and_deterministic()
 	_test_nonzero_grid_origin_translates_every_centerline()
 	_test_nominal_lengths_sampling_and_grid_bounds()
 	_test_non_final_curve_continuity_and_one_cell_tangents()
@@ -31,6 +44,56 @@ func run() -> PackedStringArray:
 	_test_detached_duplicates()
 	_test_exit_support_metadata_copies_with_active_slices()
 	return finish()
+
+
+func _test_track_geometry_piece_owns_centerline_queries() -> void:
+	var piece = TrackGeometryPieceScript.new()
+	piece.nominal_length_cells = 2
+	piece.centerline = PackedVector2Array([
+		Vector2(20.0, 20.0),
+		Vector2(60.0, 20.0),
+		Vector2(60.0, 20.0),
+		Vector2(100.0, 20.0),
+	])
+	var has_projection_query := piece.has_method("find_nominal_distance_at_position")
+	var has_nominal_cell_query := piece.has_method("contacts_cell_in_nominal_range")
+	assert_true(
+		has_projection_query,
+		"TrackGeometryPiece owns continuous point-to-nominal projection"
+	)
+	assert_true(
+		has_nominal_cell_query,
+		"TrackGeometryPiece owns nominal-range cell coverage"
+	)
+	if not has_projection_query or not has_nominal_cell_query:
+		return
+	assert_true(
+		absf(piece.find_nominal_distance_at_position(Vector2(40.0, 20.0), 0.0001) - 1.0 / 3.0)
+			<= 0.0001,
+		"Interior segment projection uses uniform stored-index nominal distance"
+	)
+	assert_true(
+		absf(piece.find_nominal_distance_at_position(Vector2(60.0, 20.0), 0.0001) - 2.0 / 3.0)
+			<= 0.0001,
+		"Repeated points preserve the earliest matching projection"
+	)
+	assert_equal(
+		piece.find_nominal_distance_at_position(Vector2(40.0, 21.0), 0.0001),
+		-1.0,
+		"A target outside the logical-unit epsilon has no nominal projection"
+	)
+	assert_false(
+		piece.contacts_cell_in_nominal_range(
+			Vector2i(2, 0), Vector2.ZERO, 40.0, 0.0, 0.75, 8
+		),
+		"An inactive nominal prefix cannot report a later cell"
+	)
+	assert_true(
+		piece.contacts_cell_in_nominal_range(
+			Vector2i(2, 0), Vector2.ZERO, 40.0, 1.0, 2.0, 8
+		),
+		"The active nominal suffix reports its sampled cell"
+	)
 
 
 func _test_exact_anchor_knots_preserve_template_contracts() -> void:
@@ -64,6 +127,193 @@ func _test_exact_anchor_knots_preserve_template_contracts() -> void:
 	_assert_exact_curve_orientations(
 		[Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2)],
 		2, CURVE_3X3, "3x3"
+	)
+
+
+func _test_unanchored_curve_orientations_use_local_corners() -> void:
+	_assert_unanchored_curve_orientations(
+		[Vector2i(0, 0), Vector2i(0, 1)], CURVE_1X1, "unanchored 1x1"
+	)
+	_assert_unanchored_curve_orientations(
+		[Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1)],
+		CURVE_2X2,
+		"unanchored 2x2"
+	)
+	_assert_unanchored_curve_orientations(
+		[Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2)],
+		CURVE_3X3,
+		"unanchored 3x3"
+	)
+
+
+func _assert_unanchored_curve_orientations(
+	base_cells: Array,
+	expected_kind: int,
+	label: String
+) -> void:
+	var bases := [
+		[Vector2i(1, 0), Vector2i(0, 1)],
+		[Vector2i(0, 1), Vector2i(-1, 0)],
+		[Vector2i(-1, 0), Vector2i(0, -1)],
+		[Vector2i(0, -1), Vector2i(1, 0)],
+		[Vector2i(-1, 0), Vector2i(0, 1)],
+		[Vector2i(0, 1), Vector2i(1, 0)],
+		[Vector2i(1, 0), Vector2i(0, -1)],
+		[Vector2i(0, -1), Vector2i(-1, 0)],
+	]
+	for orientation in range(bases.size()):
+		var basis_x: Vector2i = bases[orientation][0]
+		var basis_y: Vector2i = bases[orientation][1]
+		var offset := Vector2i(5, 5)
+		var departure := _transform_cell(DEPARTURE, basis_x, basis_y) + offset
+		var cells: Array[Vector2i] = []
+		for base_cell in base_cells:
+			cells.append(_transform_cell(base_cell, basis_x, basis_y) + offset)
+		_assert_unanchored_curve_fixture(
+			cells,
+			expected_kind,
+			"%s orientation %d" % [label, orientation],
+			departure
+		)
+
+
+func _assert_unanchored_curve_fixture(
+	cells: Array,
+	expected_kind: int,
+	label: String,
+	departure: Vector2i
+) -> void:
+	var origin := Vector2(17.0, 23.0)
+	var records := _records_for(cells, departure)
+	var result = _resolver.resolve(
+		departure, records, [], [], origin, Vector2i(12, 12), 40.0
+	)
+	assert_true(result.is_valid, "%s resolves without a Warp" % label)
+	if not result.is_valid:
+		return
+	var turn_index := _first_turn_index(departure, records)
+	var piece = _piece_covering_serial(result.pieces, records[turn_index].route_serial)
+	assert_not_null(piece, "%s has one curve owner" % label)
+	if piece == null:
+		return
+	var span_offset := expected_kind - 1
+	var expected_start := turn_index - span_offset
+	var expected_end := mini(turn_index + span_offset, records.size() - 1)
+	assert_equal(piece.kind, expected_kind, "%s retains its selected ownership kind" % label)
+	assert_equal(
+		piece.first_route_serial,
+		records[expected_start].route_serial,
+		"%s retains the selected owner span start" % label
+	)
+	assert_equal(
+		piece.last_route_serial,
+		records[expected_end].route_serial,
+		"%s retains the selected owner span end" % label
+	)
+	assert_equal(
+		piece.nominal_length_cells,
+		expected_end - expected_start + 1,
+		"%s retains nominal ownership length" % label
+	)
+	assert_equal(
+		piece.centerline.size(),
+		piece.nominal_length_cells * 16 + 1,
+		"%s uses fixed-count local-corner samples" % label
+	)
+	assert_false(
+		piece.footprint_cells.has(departure),
+		"%s departure lead-in never becomes footprint ownership" % label
+	)
+	_assert_each_serial_owned_once(result.pieces, records)
+	var previous: Vector2i = departure if turn_index == 0 else records[turn_index - 1].cell
+	var incoming := Vector2(records[turn_index].cell - previous).normalized()
+	var outgoing := Vector2(records[turn_index + 1].cell - records[turn_index].cell).normalized()
+	assert_true(
+		piece.sample_nominal(0.0).heading.is_equal_approx(incoming),
+		"%s preserves the operational entry heading" % label
+	)
+	assert_true(
+		piece.sample_nominal(float(piece.nominal_length_cells)).heading.is_equal_approx(outgoing),
+		"%s preserves the operational exit heading" % label
+	)
+	assert_true(
+		_longest_straight_segment_run(piece.centerline) >= MIN_STRAIGHT_SEGMENT_RUN,
+		"%s keeps a visible straight run outside local bends" % label
+	)
+	var nonlinear_run := _longest_nonlinear_vertex_run(piece.centerline)
+	assert_true(
+		nonlinear_run <= MAX_LOCAL_CORNER_NONLINEAR_RUN,
+		"%s confines nonlinear samples to local windows (run=%d)" % [label, nonlinear_run]
+	)
+	_assert_unanchored_samples_match_linear_skeleton(piece, incoming, outgoing, label)
+	_assert_centerline_never_reverses(piece.centerline, incoming, outgoing)
+	for sample_index in range(1, piece.centerline.size() - 1):
+		var point: Vector2 = piece.centerline[sample_index]
+		var cell := Vector2i(
+			int(floor((point.x - origin.x) / 40.0)),
+			int(floor((point.y - origin.y) / 40.0))
+		)
+		assert_true(
+			piece.footprint_cells.has(cell) or cell == departure,
+			"%s interior sample %d stays inside its footprint or departure lead-in"
+				% [label, sample_index]
+		)
+	var replay = _resolver.resolve(
+		departure, records, [], [], origin, Vector2i(12, 12), 40.0
+	)
+	assert_true(replay.is_valid, "%s deterministic replay resolves" % label)
+	if replay.is_valid:
+		assert_equal(
+			_resolution_signature(replay),
+			_resolution_signature(result),
+			"%s deterministic replay is byte-identical" % label
+		)
+
+
+func _test_multiple_exact_knots_remain_literal_and_deterministic() -> void:
+	var records := _records_for([
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+		Vector2i(2, 1), Vector2i(2, 2),
+	])
+	var first = RouteContactAnchorScript.new(&"warp_first", records[1].cell)
+	var duplicate = RouteContactAnchorScript.new(&"warp_duplicate", records[1].cell)
+	var second = RouteContactAnchorScript.new(&"warp_second", records[2].cell)
+	for anchor in [first, duplicate, second]:
+		anchor.set(&"contact_mode", 1)
+	var result = _resolver.resolve(
+		DEPARTURE, records, [], [second, duplicate, first],
+		Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_true(result.is_valid, "Distinct and duplicate exact anchors resolve together")
+	if not result.is_valid:
+		return
+	var piece = _piece_covering_serial(result.pieces, records[1].route_serial)
+	assert_not_null(piece, "Multiple exact anchors share the accepted curve owner")
+	if piece == null:
+		return
+	assert_equal(piece.kind, CURVE_3X3, "Multiple exact anchors retain 3x3 ownership")
+	for record_offset in [1, 2]:
+		var local_offset: float = (
+			records[record_offset].route_distance_start_cells
+			- piece.absolute_start_distance_cells
+			+ 0.5
+		)
+		var exact_index := int(round(local_offset * 16.0))
+		var expected_center := (Vector2(records[record_offset].cell) + Vector2(0.5, 0.5)) * 40.0
+		assert_true(
+			piece.centerline[exact_index].distance_to(expected_center) <= 0.0001,
+			"Exact anchor at offset %d remains at its fixed sample" % record_offset
+		)
+	_assert_each_serial_owned_once(result.pieces, records)
+	var replay = _resolver.resolve(
+		DEPARTURE, records, [], [first, second],
+		Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	var replay_piece = _piece_covering_serial(replay.pieces, records[1].route_serial)
+	assert_equal(
+		replay_piece.centerline,
+		piece.centerline,
+		"Anchor ordering and same-cell duplicates do not change generated geometry"
 	)
 
 
@@ -131,6 +381,19 @@ func _assert_exact_curve_fixture(
 	assert_equal(piece.kind, expected_kind, "%s retains its accepted template kind" % label)
 	assert_not_null(baseline_piece, "%s has a pre-anchor accepted owner" % label)
 	if baseline_piece != null:
+		assert_equal(baseline_piece.kind, expected_kind, "%s baseline template kind" % label)
+		assert_equal(
+			piece.first_route_serial, baseline_piece.first_route_serial,
+			"%s exact anchor preserves the owner span start" % label
+		)
+		assert_equal(
+			piece.last_route_serial, baseline_piece.last_route_serial,
+			"%s exact anchor preserves the owner span end" % label
+		)
+		assert_equal(
+			piece.nominal_length_cells, baseline_piece.nominal_length_cells,
+			"%s exact anchor preserves nominal ownership length" % label
+		)
 		assert_equal(
 			piece.footprint_cells, baseline_piece.footprint_cells,
 			"%s exact anchor preserves the accepted footprint byte-for-byte" % label
@@ -139,6 +402,7 @@ func _assert_exact_curve_fixture(
 		piece.footprint_cells.has(departure),
 		"%s departure lead-in never becomes route footprint ownership" % label
 	)
+	_assert_each_serial_owned_once(result.pieces, records)
 	assert_equal(
 		piece.centerline.size(), piece.nominal_length_cells * 16 + 1,
 		"%s anchored curve uses fixed nominal sampling" % label
@@ -146,6 +410,11 @@ func _assert_exact_curve_fixture(
 	var expected_center := (Vector2(anchor_cell) + Vector2(0.5, 0.5)) * 40.0
 	var local_offset: float = float(records[anchor_offset].route_distance_start_cells) \
 		- piece.absolute_start_distance_cells + 0.5
+	var exact_sample_index := int(round(local_offset * 16.0))
+	assert_true(
+		piece.centerline[exact_sample_index].distance_to(expected_center) <= 0.0001,
+		"%s stores the exact center at its literal fixed sample index" % label
+	)
 	assert_true(
 		piece.sample_nominal(local_offset).position.distance_to(expected_center) <= 0.0001,
 		"%s passes the literal cell center at its nominal knot" % label
@@ -156,6 +425,21 @@ func _assert_exact_curve_fixture(
 	var outgoing := Vector2(records[turn_index + 1].cell - records[turn_index].cell).normalized()
 	assert_true(piece.sample_nominal(0.0).heading.is_equal_approx(incoming), "%s preserves operational entry heading" % label)
 	assert_true(piece.sample_nominal(float(piece.nominal_length_cells)).heading.is_equal_approx(outgoing), "%s preserves operational exit heading" % label)
+	assert_true(
+		_longest_straight_segment_run(piece.centerline) >= MIN_STRAIGHT_SEGMENT_RUN,
+		"%s retains a visible straight run outside local corner blends" % label
+	)
+	var nonlinear_run := _longest_nonlinear_vertex_run(piece.centerline)
+	assert_true(
+		nonlinear_run <= MAX_LOCAL_CORNER_NONLINEAR_RUN,
+		"%s confines each nonlinear run to one local half-cell window (run=%d)"
+			% [label, nonlinear_run]
+	)
+	assert_true(
+		_longest_reverse_segment_run(piece.centerline, incoming, outgoing)
+			<= MAX_LOCAL_REVERSE_SEGMENT_RUN,
+		"%s confines any exact-knot reverse travel to one local window" % label
+	)
 	var first_chord_heading: Vector2 = (piece.centerline[1] - piece.centerline[0]).normalized()
 	var last_chord_heading: Vector2 = (piece.centerline[-1] - piece.centerline[-2]).normalized()
 	assert_true(
@@ -239,6 +523,99 @@ func _test_overlapping_curves_downgrade_both() -> void:
 	_assert_each_serial_owned_once(result.pieces, _close_double_turn_records())
 
 
+func _test_adjacent_turn_overlap_downgrades_only_larger_candidate() -> void:
+	var cells: Array[Vector2i] = [
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+		Vector2i(2, 1), Vector2i(3, 1),
+	]
+	var records := _records_for(cells)
+	var unanchored = _resolve(records)
+	assert_true(
+		unanchored.is_valid,
+		"Adjacent turns try the remaining 2x2-to-1x1 downgrade without an anchor"
+	)
+	if unanchored.is_valid:
+		_assert_adjacent_one_by_one_turns(unanchored.pieces, records, "Unanchored")
+
+	var anchor = RouteContactAnchorScript.new(
+		&"adjacent_exact",
+		cells[-1],
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var anchored = _resolver.resolve(
+		DEPARTURE, records, [], [anchor],
+		Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_true(
+		anchored.is_valid,
+		"Adjacent turns try the same remaining downgrade with an exact outgoing anchor"
+	)
+	if anchored.is_valid:
+		_assert_adjacent_one_by_one_turns(anchored.pieces, records, "Exact anchored")
+		var target := (Vector2(cells[-1]) + Vector2(0.5, 0.5)) * 40.0
+		var owner = _piece_covering_serial(anchored.pieces, records[-1].route_serial)
+		assert_not_null(owner, "Exact outgoing cell retains one owner")
+		if owner != null:
+			assert_true(
+				owner.find_nominal_distance_at_position(target, 0.0001) >= 0.0,
+				"Exact outgoing anchor remains on the accepted centerline"
+			)
+	var replay = _resolve(records)
+	if unanchored.is_valid and replay.is_valid:
+		assert_equal(
+			_resolution_signature(replay),
+			_resolution_signature(unanchored),
+			"Adjacent asymmetric downgrade replays deterministically"
+		)
+
+
+func _assert_adjacent_one_by_one_turns(
+	pieces: Array,
+	records: Array,
+	label: String
+) -> void:
+	var curves: Array = []
+	for piece in pieces:
+		if piece.kind != STRAIGHT:
+			curves.append(piece)
+	assert_equal(curves.size(), 2, "%s adjacent route retains both turns" % label)
+	if curves.size() != 2:
+		return
+	assert_equal(curves[0].kind, CURVE_1X1, "%s first turn reaches 1x1" % label)
+	assert_equal(curves[1].kind, CURVE_1X1, "%s second turn remains 1x1" % label)
+	assert_equal(
+		curves[0].footprint_cells,
+		[Vector2i(2, 0)],
+		"%s first turn owns only its turn cell" % label
+	)
+	assert_equal(
+		curves[1].footprint_cells,
+		[Vector2i(2, 1)],
+		"%s second turn owns only its distinct turn cell" % label
+	)
+	for cell in curves[0].footprint_cells:
+		assert_false(
+			curves[1].footprint_cells.has(cell),
+			"%s final curve footprints do not overlap" % label
+		)
+	_assert_each_serial_owned_once(pieces, records)
+
+
+func _test_irreducible_duplicate_turn_footprints_still_reject() -> void:
+	var cells: Array[Vector2i] = [
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1),
+		Vector2i(0, 1), Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1),
+	]
+	var records: Array = []
+	for index in range(cells.size()):
+		records.append(TrackCellRecordScript.new(index + 1, cells[index], float(index)))
+	var result = _resolver.resolve(
+		DEPARTURE, records, [], [], Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_false(result.is_valid, "Duplicate turn cells remain an irreducible overlap")
+	assert_equal(result.reason, &"final_overlap", "Irreducible 1x1 overlap keeps final_overlap")
+
+
 func _test_anchor_forces_centerline_contact() -> void:
 	var anchor = RouteContactAnchorScript.new(&"warp_d", Vector2i(2, 1))
 	var anchors: Array = [anchor]
@@ -251,7 +628,11 @@ func _test_anchor_forces_centerline_contact() -> void:
 	assert_not_null(piece, "Turn serial has one geometry piece")
 	if piece != null:
 		assert_true(piece.contacts_cell(anchor.cell, Vector2.ZERO, 40.0), "Centerline contacts anchor")
-		assert_equal(piece.kind, CURVE_2X2, "Anchor selects the largest contacting curve")
+		assert_equal(
+			piece.kind,
+			CURVE_3X3,
+			"Common local-corner centerline retains the largest curve that contacts the anchor"
+		)
 		_assert_centerline_never_reverses(piece.centerline, Vector2.RIGHT, Vector2.DOWN)
 
 
@@ -586,6 +967,130 @@ func _assert_each_serial_owned_once(pieces: Array, records: Array) -> void:
 			if piece.contains_serial(record.route_serial):
 				owner_count += 1
 		assert_equal(owner_count, 1, "Every route serial has exactly one geometry owner")
+
+
+func _assert_unanchored_samples_match_linear_skeleton(
+	piece,
+	incoming: Vector2,
+	outgoing: Vector2,
+	label: String
+) -> void:
+	var final_index: int = piece.centerline.size() - 1
+	var entry_index: int = mini(ENDPOINT_SUPPORT_MAX_SAMPLES, final_index / 2)
+	var start: Vector2 = piece.centerline[0]
+	var finish: Vector2 = piece.centerline[-1]
+	var entry_gap: Vector2 = finish - start
+	var entry_units: float = minf(
+		TEST_CELL_SIZE * float(entry_index) / float(CENTERLINE_SEGMENTS_PER_NOMINAL_CELL),
+		minf(entry_gap.dot(incoming) * 0.5, entry_gap.length() * 0.5)
+	)
+	var entry_support: Vector2 = start + incoming * entry_units
+	var exit_offset: int = mini(
+		ENDPOINT_SUPPORT_MAX_SAMPLES,
+		(final_index - entry_index) / 2
+	)
+	var exit_index: int = final_index - exit_offset
+	var exit_gap: Vector2 = finish - entry_support
+	var exit_units: float = minf(
+		TEST_CELL_SIZE * float(exit_offset) / float(CENTERLINE_SEGMENTS_PER_NOMINAL_CELL),
+		minf(exit_gap.dot(outgoing) * 0.5, exit_gap.length() * 0.5)
+	)
+	var exit_support: Vector2 = finish - outgoing * exit_units
+	var entry_half_window: int = mini(
+		LOCAL_CORNER_HALF_WINDOW_SAMPLES,
+		mini(entry_index / 2, (exit_index - entry_index) / 2)
+	)
+	var exit_half_window: int = mini(
+		LOCAL_CORNER_HALF_WINDOW_SAMPLES,
+		mini((exit_index - entry_index) / 2, (final_index - exit_index) / 2)
+	)
+	for sample_index in range(final_index + 1):
+		var inside_entry_window: bool = (
+			sample_index > entry_index - entry_half_window
+			and sample_index < entry_index + entry_half_window
+		)
+		var inside_exit_window: bool = (
+			sample_index > exit_index - exit_half_window
+			and sample_index < exit_index + exit_half_window
+		)
+		if inside_entry_window or inside_exit_window:
+			continue
+		var expected: Vector2
+		if sample_index <= entry_index:
+			expected = start.lerp(entry_support, float(sample_index) / float(entry_index))
+		elif sample_index <= exit_index:
+			expected = entry_support.lerp(
+				exit_support,
+				float(sample_index - entry_index) / float(exit_index - entry_index)
+			)
+		else:
+			expected = exit_support.lerp(
+				finish,
+				float(sample_index - exit_index) / float(final_index - exit_index)
+			)
+		assert_true(
+			piece.centerline[sample_index].distance_to(expected) <= 0.0001,
+			"%s sample %d exactly matches the linear skeleton outside corner windows"
+				% [label, sample_index]
+		)
+
+
+func _longest_straight_segment_run(centerline: PackedVector2Array) -> int:
+	var longest := 0
+	var current := 0
+	var previous_heading := Vector2.ZERO
+	for index in range(centerline.size() - 1):
+		var delta: Vector2 = centerline[index + 1] - centerline[index]
+		if delta.is_zero_approx():
+			current = 0
+			previous_heading = Vector2.ZERO
+			continue
+		var heading := delta.normalized()
+		if (
+			not previous_heading.is_zero_approx()
+			and absf(previous_heading.cross(heading)) <= 0.000001
+			and previous_heading.dot(heading) > 0.0
+		):
+			current += 1
+		else:
+			current = 1
+		previous_heading = heading
+		longest = maxi(longest, current)
+	return longest
+
+
+func _longest_nonlinear_vertex_run(centerline: PackedVector2Array) -> int:
+	var longest := 0
+	var current := 0
+	for index in range(1, centerline.size() - 1):
+		var second_difference: Vector2 = (
+			centerline[index + 1]
+			- centerline[index] * 2.0
+			+ centerline[index - 1]
+		)
+		if second_difference.length() > 0.0001:
+			current += 1
+			longest = maxi(longest, current)
+		else:
+			current = 0
+	return longest
+
+
+func _longest_reverse_segment_run(
+	centerline: PackedVector2Array,
+	incoming: Vector2,
+	outgoing: Vector2
+) -> int:
+	var longest := 0
+	var current := 0
+	for index in range(centerline.size() - 1):
+		var delta: Vector2 = centerline[index + 1] - centerline[index]
+		if delta.dot(incoming) < -0.0001 or delta.dot(outgoing) < -0.0001:
+			current += 1
+			longest = maxi(longest, current)
+		else:
+			current = 0
+	return longest
 
 
 func _assert_centerline_never_reverses(

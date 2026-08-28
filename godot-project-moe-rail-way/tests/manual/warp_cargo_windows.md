@@ -73,6 +73,38 @@ At every size, also complete these control-feel checks:
 11. After rear recovery removes the first route cell and the departure marker has dissolved, guide the active endpoint back beside departure `(5, 2)`. Hold left drag through `(5, 2)` and one following recovered cell, confirm both cells remain in the live preview, then release and confirm both install. If an active Warp occupies `(5, 2)`, confirm the reused track passes through its exact center and the origin marker does not return.
 12. Let the train approach closely enough to lock the current endpoint, then start one held drag straight into an adjacent active Warp and turn on the following cell. Continue for at least one more cell before release. Confirm the Warp cell, first turn, and remaining suffix all stay in the live preview and install together without moving the locked track behind them.
 
+## Track local-corner visual addendum
+
+This addendum applies to the `feature/warp-exact-center-local-corners` candidate. Local-corner geometry is Warp-independent: exact-center anchors add literal hard knots to the same curve construction but do not enable it. The user owns the visual and control-feel verdict; automated geometry and presentation tests cannot complete this section.
+
+- Candidate commit: record the exact tested `HEAD`
+- Manual owner: user
+- Overall result: `PENDING (user-owned)`
+- Evidence location: record absolute screenshot paths outside this repository
+
+At every supported window size, first draw Warp-free turns representing the visible `1x1`, `2x2`, and `3x3` ownership scales, then inspect exact-center turns when the fixed-seed run or mouse route makes them available. Confirm all of the following:
+
+1. Every Warp-free `1x1`, `2x2`, and `3x3` owner uses the same straight-spine and local-corner visual rule.
+2. Long portions of the owner remain visually straight.
+3. Curvature is limited to the actual direction-change neighborhoods.
+4. Reproduce the screenshot-reported Warp-free `3x3`: its long diagonal middle run remains straight, with rounding only near the two endpoint transitions.
+5. No owner-wide S-shaped excursion remains, whether or not a Warp exists on the owner.
+6. An exact-anchored turn crosses the literal center of the Warp marker without changing the ordinary local-corner rule elsewhere.
+7. The accepted ownership scale does not visibly shrink merely to satisfy the exact anchor.
+8. Finalization locks exactly the displayed geometry, and later Warp lifecycle changes do not rewrite it.
+9. Loading and delivery each occur once at the exact marker center without changing route cells.
+10. Dragging, backtracking, rebranching, release, and right-click cancellation retain the same control feel around the locally rounded track.
+11. Reproduce a `2x2` tail that enters its endpoint vertically, then begin separate drags to the left and right neighbors. Confirm both previews publish, their two adjacent unlocked turns settle into visibly separate local corners, locked track does not move, and an exact Warp marker on the right target is crossed through its literal center.
+
+Record the user-owned result for the exact candidate in this table. Leave a row `PENDING` until that exact size and candidate commit have been checked.
+
+| Window size | 1x1 observed | 2x2 observed | 3x3 observed | Warp-free 3x3 spine | Exact center | Local bends only | Adjacent side turns | Lock stable | Control feel | User result |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `960x540` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING (user-owned)` |
+| `1280x720` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING (user-owned)` |
+| `1600x900` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING (user-owned)` |
+| `1920x1080` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING (user-owned)` |
+
 ## Evidence header
 
 Record the exact tested commit, its branch or ref context, tester, UTC timestamp, Godot version, startup seed, observed tick trace, every tested window size, pass/fail result, and absolute screenshot paths in task-owned evidence outside this repository.

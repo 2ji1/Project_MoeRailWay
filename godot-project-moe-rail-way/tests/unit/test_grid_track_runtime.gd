@@ -40,7 +40,8 @@ func run() -> PackedStringArray:
 	_test_template_selection_signature_replay_is_idempotent()
 	_test_live_template_suffix_absent_after_rejected_target()
 	_test_endpoint_reshape_invalid_bounds_preserve_last_valid()
-	_test_endpoint_reshape_invalid_overlap_preserve_last_valid()
+	_test_endpoint_reshape_tight_overlap_exhausts_local_fallback()
+	_test_adjacent_turn_side_extensions_use_remaining_downgrade()
 	_test_endpoint_reshape_anchor_compatible_downgrade_preserves_observations()
 	_test_endpoint_reshape_duplicate_preserves_last_valid()
 	_test_endpoint_reshape_insufficient_inventory_preserves_last_valid()
@@ -80,6 +81,7 @@ func run() -> PackedStringArray:
 	_test_recovered_interval_is_not_reported_as_contacted()
 	_test_recovered_cell_can_be_contacted_by_new_geometry()
 	_test_swept_contacts_follow_active_centerlines()
+	_test_cell_entry_observations_match_full_sweeps()
 	_test_exact_center_observation_and_hit_distance()
 	_test_swept_contact_order_boundaries_and_detachment()
 	_test_swept_contacts_respect_recovery_and_invalid_ranges()
@@ -106,7 +108,8 @@ func run() -> PackedStringArray:
 	_test_departure_forward_boundary_and_route_end_ownership()
 	_test_two_sided_outside_epsilon_stitch_continuity()
 	_test_prepared_built_curve_recovers_same_serials_without_ledger_mutation()
-	_test_unfinalizable_tight_turn_is_not_published()
+	_test_unanchored_three_by_three_runtime_uses_local_corners()
+	_test_tight_turn_suffix_resolves_with_disjoint_local_footprints()
 	return finish()
 
 
@@ -1460,7 +1463,7 @@ func _test_endpoint_reshape_invalid_bounds_preserve_last_valid() -> void:
 	track.call("gesture_finalize")
 
 
-func _test_endpoint_reshape_invalid_overlap_preserve_last_valid() -> void:
+func _test_endpoint_reshape_tight_overlap_exhausts_local_fallback() -> void:
 	var track = GridTrackRuntimeScript.new(
 		Vector2i(-1, 2), 18, Vector2.ZERO, Vector2i(8, 8), 40.0
 	)
@@ -1475,8 +1478,6 @@ func _test_endpoint_reshape_invalid_overlap_preserve_last_valid() -> void:
 		return
 	var valid_cells: Array[Vector2i] = [began["targets"]["left"], Vector2i(4, 4)]
 	assert_true(track.call("gesture_update", valid_cells), "Overlap fixture publishes a valid candidate")
-	var records_before := _record_values(track.get_cell_records())
-	var pieces_before := _piece_values(track.get_geometry_pieces())
 	var inventory_before: int = track.get_available_track_cells()
 	var ledger_before := _piece_values(track._locked_ledger)
 	var contacts_before := track.get_contact_observations().duplicate(true)
@@ -1488,7 +1489,7 @@ func _test_endpoint_reshape_invalid_overlap_preserve_last_valid() -> void:
 		began["targets"]["left"], Vector2i(4, 4), Vector2i(4, 5),
 		Vector2i(5, 5), Vector2i(5, 4),
 	]
-	print("Endpoint reshape: invalid overlap preserve last valid")
+	print("Endpoint reshape: tight overlap exhausts local fallback")
 	assert_true(track.has_method("gesture_update"), "Gesture update overlap contract exists")
 	if not track.has_method("gesture_update"):
 		return
@@ -1516,18 +1517,116 @@ func _test_endpoint_reshape_invalid_overlap_preserve_last_valid() -> void:
 		track._grid_size,
 		track._cell_size_units
 	)
-	assert_false(overlap_resolution.is_valid, "Production resolver rejects the overlapping footprint")
-	assert_equal(overlap_resolution.reason, &"final_overlap", "Production resolver reports final overlap")
-	assert_false(track.call("gesture_update", invalid_cells), "Overlapping candidate is rejected")
-	assert_equal(_record_values(track.get_cell_records()), records_before, "Overlap rejection preserves last-valid records")
-	assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before, "Overlap rejection preserves last-valid pieces")
-	assert_equal(track.get_available_track_cells(), inventory_before, "Overlap rejection preserves last-valid inventory")
-	assert_equal(_piece_values(track._locked_ledger), ledger_before, "Overlap rejection preserves last-valid ledger")
-	assert_equal(track.get_contact_observations(), contacts_before, "Overlap rejection preserves last-valid observations")
+	assert_true(overlap_resolution.is_valid, "Production resolver accepts disjoint final 1x1 footprints")
+	assert_true(
+		track.call("gesture_update", invalid_cells),
+		"Tight candidate publishes after exhausting the remaining local downgrade"
+	)
+	assert_equal(track.get_endpoint_cell(), Vector2i(5, 4), "Tight candidate reaches its final target")
+	assert_equal(track.get_cell_records().size(), 10, "Tight candidate owns all ten route cells")
+	assert_equal(
+		track.get_available_track_cells(), inventory_before - 3,
+		"Tight candidate consumes only its three additional route cells"
+	)
+	assert_equal(_piece_values(track._locked_ledger), ledger_before, "Tight fallback preserves the locked ledger")
+	assert_equal(track.get_contact_observations(), contacts_before, "Tight fallback preserves observations")
 	var origin_after: Dictionary = track.call("get_gesture_origin_observation")
-	assert_equal(_record_values(origin_after["route_records"]), origin_records_before, "Overlap rejection preserves origin records")
-	assert_equal(_piece_values(origin_after["pieces"]), origin_pieces_before, "Overlap rejection preserves origin pieces")
-	track.call("gesture_finalize")
+	assert_equal(_record_values(origin_after["route_records"]), origin_records_before, "Tight fallback preserves origin records")
+	assert_equal(_piece_values(origin_after["pieces"]), origin_pieces_before, "Tight fallback preserves origin pieces")
+	_assert_record_piece_sync(track)
+	_assert_pairwise_disjoint_footprints(track.get_geometry_pieces(), "Tight endpoint reshape")
+	_assert_conservation(track, "Tight endpoint reshape conserves inventory")
+	assert_true(track.call("gesture_finalize"), "Tight endpoint reshape finalizes")
+
+
+func _adjacent_turn_side_extension_runtime() -> GridTrackRuntimeScript:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(4, 6), 60, Vector2.ZERO, Vector2i(12, 12), 40.0
+	)
+	assert_equal(track.append_cells([
+		Vector2i(5, 6), Vector2i(6, 6), Vector2i(7, 6),
+		Vector2i(8, 6), Vector2i(9, 6), Vector2i(10, 6),
+		Vector2i(10, 7),
+	]), 7, "Adjacent-turn fixture appends the reported 2x2 tail")
+	var anchor = RouteContactAnchorScript.new(
+		&"adjacent_right_exact",
+		Vector2i(11, 7),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var anchors: Array[RouteContactAnchorScript] = [anchor]
+	track.set_contact_anchors(anchors)
+	return track
+
+
+func _test_adjacent_turn_side_extensions_use_remaining_downgrade() -> void:
+	var cases := [
+		{"label": "left", "offset": Vector2i.LEFT, "expected_contact": false},
+		{"label": "right exact", "offset": Vector2i.RIGHT, "expected_contact": true},
+		{"label": "forward", "offset": Vector2i.DOWN, "expected_contact": false},
+	]
+	for case in cases:
+		var track := _adjacent_turn_side_extension_runtime()
+		var endpoint := track.get_endpoint_cell()
+		assert_equal(endpoint, Vector2i(10, 7), "%s fixture starts at the reported endpoint" % case.label)
+		var target: Vector2i = endpoint + Vector2i(case.offset)
+		var inventory_before := track.get_available_track_cells()
+		var began: Dictionary = track.gesture_begin(endpoint)
+		assert_false(began.is_empty(), "%s gesture begins at the eligible endpoint" % case.label)
+		if began.is_empty():
+			continue
+		var path: Array[Vector2i] = [target]
+		var published := track.gesture_update(path, target)
+		assert_true(
+			published,
+			"%s extension publishes after exhausting the remaining overlap downgrade" % case.label
+		)
+		if not published:
+			continue
+		assert_equal(track.get_endpoint_cell(), target, "%s extension reaches its target" % case.label)
+		assert_equal(
+			track.get_available_track_cells(), inventory_before - 1,
+			"%s extension consumes exactly one inventory cell" % case.label
+		)
+		var records := track.get_cell_records()
+		var pieces := track.get_geometry_pieces()
+		for record in records:
+			var owner_count := 0
+			for piece in pieces:
+				if piece.contains_serial(record.route_serial):
+					owner_count += 1
+			assert_equal(owner_count, 1, "%s keeps one owner for serial %d" % [case.label, record.route_serial])
+		if case.label != "forward":
+			var curves: Array = []
+			for piece in pieces:
+				if piece.kind != TrackGeometryPieceScript.Kind.STRAIGHT:
+					curves.append(piece)
+			assert_equal(curves.size(), 2, "%s retains both adjacent turns" % case.label)
+			if curves.size() == 2:
+				assert_equal(curves[0].kind, TrackGeometryPieceScript.Kind.CURVE_1X1, "%s first turn reaches 1x1" % case.label)
+				assert_equal(curves[1].kind, TrackGeometryPieceScript.Kind.CURVE_1X1, "%s second turn reaches 1x1" % case.label)
+				for cell in curves[0].footprint_cells:
+					assert_false(curves[1].footprint_cells.has(cell), "%s final footprints stay disjoint" % case.label)
+		var observations := track.get_contact_observations()
+		assert_equal(observations.size(), 1, "%s retains the exact anchor observation" % case.label)
+		if observations.size() == 1:
+			assert_equal(
+				observations[0].contact_possible,
+				case.expected_contact,
+				"%s exact contact follows the final ordered route" % case.label
+			)
+		_assert_conservation(track, "%s adjacent-turn extension" % case.label)
+		if case.label == "right exact":
+			var replay := _adjacent_turn_side_extension_runtime()
+			var replay_begin: Dictionary = replay.gesture_begin(replay.get_endpoint_cell())
+			assert_false(replay_begin.is_empty(), "Right exact replay begins")
+			if not replay_begin.is_empty():
+				var replay_path: Array[Vector2i] = [Vector2i(11, 7)]
+				assert_true(replay.gesture_update(replay_path, replay_path[-1]), "Right exact replay publishes")
+				assert_equal(
+					_piece_values(replay.get_geometry_pieces()),
+					_piece_values(pieces),
+					"Right exact adjacent-turn geometry replays deterministically"
+				)
 
 
 func _test_endpoint_reshape_anchor_compatible_downgrade_preserves_observations() -> void:
@@ -3228,6 +3327,56 @@ func _test_swept_contacts_follow_active_centerlines() -> void:
 	)
 
 
+func _test_cell_entry_observations_match_full_sweeps() -> void:
+	var fixtures := [
+		_make_contact_runtime(
+			Vector2i(-1, 0),
+			[Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0)]
+		),
+		_make_contact_runtime(
+			Vector2i(-1, 0),
+			[Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2)]
+		),
+		_make_contact_runtime(
+			Vector2i(-1, 0),
+			[Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1), Vector2i(1, 2)]
+		),
+		_make_contact_runtime(
+			Vector2i(-1, 0),
+			[
+				Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+				Vector2i(2, 1), Vector2i(2, 2), Vector2i(2, 3),
+			]
+		),
+	]
+	for fixture_index in range(fixtures.size()):
+		var track: GridTrackRuntimeScript = fixtures[fixture_index]
+		assert_true(
+			track.prepare_for_train_sampling(0.0, track.get_built_end_distance_cells()),
+			"CELL_ENTRY parity fixture %d locks its accepted centerline" % fixture_index
+		)
+		var anchors: Array[RouteContactAnchorScript] = []
+		for record in track.get_cell_records():
+			anchors.append(RouteContactAnchorScript.new(
+				StringName("cell_%d" % record.route_serial), record.cell
+			))
+		track.set_contact_anchors(anchors)
+		var possible_ids: Array[StringName] = []
+		for observation in track.get_contact_observations():
+			if observation.contact_possible:
+				possible_ids.append(observation.anchor_id)
+		var hit_ids: Array[StringName] = []
+		for hit in track.get_contact_hits_between(0.0, track.get_built_end_distance_cells()):
+			hit_ids.append(hit.anchor_id)
+		possible_ids.sort()
+		hit_ids.sort()
+		assert_equal(
+			hit_ids,
+			possible_ids,
+			"CELL_ENTRY observations and full one-eighth sweep agree for fixture %d" % fixture_index
+		)
+
+
 func _test_swept_contact_order_boundaries_and_detachment() -> void:
 	var track := _make_contact_runtime(
 		Vector2i(0, 0),
@@ -3430,6 +3579,49 @@ func _test_built_head_reflows_without_geometry_lock() -> void:
 		assert_equal(record.state, TrackCellRecordScript.State.BUILT, "Reclassification keeps built state")
 
 
+func _test_unanchored_three_by_three_runtime_uses_local_corners() -> void:
+	var track = _make_three_by_three_curve_runtime()
+	var records = track.get_cell_records()
+	var piece = _piece_containing(track.get_geometry_pieces(), records[2].route_serial)
+	assert_not_null(piece, "Warp-free 3x3 runtime fixture has one owner")
+	if piece == null:
+		return
+	assert_equal(piece.kind, TrackGeometryPieceScript.Kind.CURVE_3X3, "Warp-free runtime retains 3x3 ownership")
+	assert_equal(piece.first_route_serial, records[0].route_serial, "Warp-free runtime owner begins at B")
+	assert_equal(piece.last_route_serial, records[4].route_serial, "Warp-free runtime owner ends at F")
+	assert_equal(piece.nominal_length_cells, 5, "Warp-free runtime owner keeps five nominal cells")
+	assert_equal(piece.centerline.size(), 81, "Warp-free runtime owner uses sixteen samples per nominal cell")
+	var first_spine: Vector2 = piece.sample_nominal(1.5).position
+	var middle_spine: Vector2 = piece.sample_nominal(2.5).position
+	var last_spine: Vector2 = piece.sample_nominal(3.5).position
+	assert_true(
+		absf((middle_spine - first_spine).cross(last_spine - middle_spine)) <= 0.0001
+			and (middle_spine - first_spine).dot(last_spine - middle_spine) > 0.0,
+		"Warp-free runtime keeps the long 3x3 interior spine straight"
+	)
+	assert_equal(track.get_contact_observations(), [], "Warp-free local corners do not synthesize anchors")
+	var unlocked_centerline: PackedVector2Array = piece.centerline
+	assert_equal(track.advance_construction(5.0), 5.0, "Warp-free local-corner route fully constructs")
+	var built_piece = _piece_containing(track.get_geometry_pieces(), records[2].route_serial)
+	assert_equal(built_piece.centerline, unlocked_centerline, "Construction does not rewrite local-corner geometry")
+	assert_true(track.prepare_for_train_sampling(0.0, 5.0), "Warp-free local-corner route prepares for train sampling")
+	var locked_piece = _piece_containing(track.get_geometry_pieces(), records[2].route_serial)
+	assert_true(locked_piece.locked, "Preparation locks the complete Warp-free owner")
+	assert_equal(locked_piece.centerline, unlocked_centerline, "Locking preserves local-corner bytes")
+	assert_true(
+		locked_piece.sample_nominal(2.5).position.is_equal_approx(middle_spine),
+		"Locked train sampling uses the same straight spine"
+	)
+	var inventory_before: int = track.get_available_track_cells()
+	assert_equal(track.recover_behind(1.0), 1, "Warp-free local-corner route recovers one nominal cell")
+	var recovered_piece = _piece_containing(track.get_geometry_pieces(), records[1].route_serial)
+	assert_not_null(recovered_piece, "Recovered Warp-free route retains its locked owner")
+	if recovered_piece != null:
+		assert_equal(recovered_piece.centerline, unlocked_centerline, "Recovery preserves locked local-corner bytes")
+	assert_equal(track.get_available_track_cells(), inventory_before + 1, "Recovery refunds exactly one track cell")
+	_assert_conservation(track, "Warp-free local-corner runtime conserves route inventory")
+
+
 func _test_twenty_construction_steps_keep_completed_head_reflowable() -> void:
 	var track = GridTrackRuntimeScript.new(
 		Vector2i(-1, 0), 18, Vector2.ZERO, Vector2i(8, 8), 40.0
@@ -3501,7 +3693,7 @@ func _test_prepared_built_curve_recovers_same_serials_without_ledger_mutation() 
 		_assert_conservation(track, "Cutoff %d conserves the B through F route inventory" % cutoff)
 
 
-func _test_unfinalizable_tight_turn_is_not_published() -> void:
+func _test_tight_turn_suffix_resolves_with_disjoint_local_footprints() -> void:
 	var track = GridTrackRuntimeScript.new(
 		Vector2i(15, 2), 18, Vector2.ZERO, Vector2i(30, 14), 40.0
 	)
@@ -3521,24 +3713,45 @@ func _test_unfinalizable_tight_turn_is_not_published() -> void:
 	assert_true(track.gesture_finalize(), "Recovery stall fixture finalizes the first route section")
 	var records_before := _record_values(track.get_cell_records())
 	var inventory_before := track.get_available_track_cells()
-	var pieces_before := _piece_values(track.get_geometry_pieces())
 	var ledger_before := _piece_values(track._locked_ledger)
 	assert_false(track.gesture_begin(Vector2i(13, 5)).is_empty(), "Recovery stall fixture begins at the first endpoint")
-	assert_false(track.gesture_update(second_gesture), "Unfinalizable tight-turn suffix is rejected before publication")
-	assert_equal(_record_values(track.get_cell_records()), records_before, "Rejected update retains the last valid route")
-	assert_equal(track.get_available_track_cells(), inventory_before, "Rejected update retains inventory")
-	assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before, "Rejected update retains resolved geometry")
-	assert_equal(_piece_values(track._locked_ledger), ledger_before, "Rejected update retains the locked ledger")
-	assert_true(track.gesture_finalize(), "Release finalizes the unchanged last valid candidate")
+	assert_true(
+		track.gesture_update(second_gesture),
+		"Tight-turn suffix publishes after each reducible overlap reaches a disjoint footprint"
+	)
+	assert_equal(track.get_endpoint_cell(), Vector2i(10, 3), "Tight-turn suffix reaches its final target")
+	assert_equal(track.get_cell_records().size(), 16, "Tight-turn suffix owns all sixteen route cells")
+	assert_equal(
+		track.get_available_track_cells(), inventory_before - second_gesture.size(),
+		"Tight-turn suffix consumes exactly its nine added cells"
+	)
+	for index in range(6):
+		assert_equal(
+			_record_values(track.get_cell_records())[index], records_before[index],
+			"Tight-turn suffix preserves locked prefix record %d" % (index + 1)
+		)
+	assert_equal(_piece_values(track._locked_ledger), ledger_before, "Tight-turn suffix preserves the locked ledger")
+	var pieces := track.get_geometry_pieces()
+	var penultimate_turn = _piece_containing(pieces, 14)
+	var final_turn = _piece_containing(pieces, 15)
+	assert_not_null(penultimate_turn, "Penultimate tight turn retains an owner")
+	assert_not_null(final_turn, "Final tight turn retains an owner")
+	if penultimate_turn != null and final_turn != null:
+		assert_equal(penultimate_turn.kind, TrackGeometryPieceScript.Kind.CURVE_1X1, "Penultimate tight turn reaches 1x1")
+		assert_equal(final_turn.kind, TrackGeometryPieceScript.Kind.CURVE_1X1, "Final tight turn reaches 1x1")
+	_assert_record_piece_sync(track)
+	_assert_pairwise_disjoint_footprints(pieces, "Tight-turn suffix")
+	_assert_conservation(track, "Tight-turn suffix conserves inventory before finalization")
+	assert_true(track.gesture_finalize(), "Release finalizes the accepted tight-turn suffix")
 	assert_false(track.gesture_is_active(), "Release clears only transient gesture state")
-	assert_equal(track.advance_construction(7.0), 7.0, "Last valid route remains constructible")
+	assert_equal(track.advance_construction(16.0), 16.0, "Accepted tight-turn route remains constructible")
 	var distance := 0.0
-	while distance < 7.0 - 0.0001:
-		var through := minf(distance + 0.025, 7.0)
-		assert_true(track.prepare_for_train_sampling(distance, through), "Last valid route remains train-lockable")
+	while distance < 16.0 - 0.0001:
+		var through := minf(distance + 0.025, 16.0)
+		assert_true(track.prepare_for_train_sampling(distance, through), "Accepted tight-turn route remains train-lockable")
 		track.recover_behind(through - 6.0)
 		distance = through
-	_assert_conservation(track, "Rejected update preserves conservation through train locking and recovery")
+	_assert_conservation(track, "Accepted tight-turn route preserves conservation through train locking and recovery")
 
 
 func _geometry_values(piece: TrackGeometryPieceScript) -> Dictionary:
@@ -3681,7 +3894,9 @@ func _test_prepare_transaction_rejects_after_staging_without_mutation() -> void:
 
 func _test_two_sided_outside_epsilon_stitch_continuity() -> void:
 	var track = _boundary_runtime()
-	var predecessor = track.get_geometry_pieces()[0]
+	var initial_pieces = track.get_geometry_pieces()
+	var predecessor = initial_pieces[0]
+	var successor = initial_pieces[1]
 	var boundary: float = predecessor.absolute_start_distance_cells + float(predecessor.nominal_length_cells)
 	var epsilon := GridTrackRuntimeScript.NOMINAL_BOUNDARY_EPSILON
 	var before_distance := boundary - epsilon * 1.01
@@ -3692,9 +3907,25 @@ func _test_two_sided_outside_epsilon_stitch_continuity() -> void:
 	var after = track.get_pose_sample_at_distance(after_distance)
 	assert_true(before.heading.is_equal_approx(after.heading), "Two-sided stitch heading remains approximately continuous")
 	var separation: float = before.position.distance_to(after.position)
-	var nominal_travel_upper_bound := epsilon * 2.02 * 40.0
+	var predecessor_rate: float = (
+		predecessor.centerline[-1].distance_to(predecessor.centerline[-2])
+		* float(predecessor.centerline.size() - 1)
+		/ float(predecessor.nominal_length_cells)
+	)
+	var successor_rate: float = (
+		successor.centerline[1].distance_to(successor.centerline[0])
+		* float(successor.centerline.size() - 1)
+		/ float(successor.nominal_length_cells)
+	)
+	var nominal_travel_upper_bound: float = (
+		epsilon * 1.01 * (predecessor_rate + successor_rate) + 0.000001
+	)
 	assert_true(separation > 0.0, "Two-sided samples remain spatially distinct")
-	assert_true(separation <= nominal_travel_upper_bound, "Two-sided samples stay within their known nominal travel bound")
+	assert_true(
+		separation <= nominal_travel_upper_bound,
+		"Two-sided samples stay within their known nominal travel bound (separation=%.9f bound=%.9f)"
+			% [separation, nominal_travel_upper_bound]
+	)
 
 
 func _test_zero_extent_internal_wait_does_not_lock_successor_reflow() -> void:
@@ -4024,6 +4255,21 @@ func _assert_record_piece_sync(track: GridTrackRuntimeScript) -> void:
 			var owner = owners[0]
 			assert_equal(record.geometry_group_id, owner.group_id, "Record group matches owning piece")
 			assert_equal(record.geometry_locked, owner.locked, "Record lock matches owning piece")
+
+
+func _assert_pairwise_disjoint_footprints(pieces: Array, message: String) -> void:
+	for first_index in range(pieces.size()):
+		for second_index in range(first_index + 1, pieces.size()):
+			for cell in pieces[first_index].footprint_cells:
+				assert_false(
+					pieces[second_index].footprint_cells.has(cell),
+					"%s keeps groups %d and %d disjoint at %s" % [
+						message,
+						pieces[first_index].group_id,
+						pieces[second_index].group_id,
+						cell,
+					]
+				)
 
 
 func _assert_locked_prefix_through(pieces: Array, target_serial: int) -> void:

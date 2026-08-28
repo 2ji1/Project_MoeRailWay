@@ -45,6 +45,86 @@ func contacts_cell(
     return false
 
 
+func find_nominal_distance_at_position(
+    target_position: Vector2,
+    position_epsilon_units: float
+) -> float:
+    if (
+        centerline.size() < 2
+        or nominal_length_cells < 0
+        or not is_finite(position_epsilon_units)
+        or position_epsilon_units < 0.0
+    ):
+        return -1.0
+    var segment_count := centerline.size() - 1
+    for segment_index in range(segment_count):
+        var start: Vector2 = centerline[segment_index]
+        var finish: Vector2 = centerline[segment_index + 1]
+        var delta := finish - start
+        var length_squared := delta.length_squared()
+        var weight := 0.0
+        if length_squared > 0.0:
+            weight = clampf(
+                (target_position - start).dot(delta) / length_squared,
+                0.0,
+                1.0
+            )
+        var projection := start + delta * weight
+        if projection.distance_to(target_position) <= position_epsilon_units:
+            return (
+                (float(segment_index) + weight)
+                / float(segment_count)
+                * float(nominal_length_cells)
+            )
+    return -1.0
+
+
+func contacts_cell_in_nominal_range(
+    cell: Vector2i,
+    grid_origin_units: Vector2,
+    cell_size_units: float,
+    local_start_cells: float,
+    local_end_cells: float,
+    subdivisions_per_nominal_cell: int
+) -> bool:
+    if (
+        cell_size_units <= 0.0
+        or centerline.is_empty()
+        or nominal_length_cells < 0
+        or subdivisions_per_nominal_cell <= 0
+        or not is_finite(local_start_cells)
+        or not is_finite(local_end_cells)
+        or local_end_cells < local_start_cells
+    ):
+        return false
+    var bounded_start := clampf(
+        local_start_cells, 0.0, float(nominal_length_cells)
+    )
+    var bounded_end := clampf(
+        local_end_cells, 0.0, float(nominal_length_cells)
+    )
+    if bounded_end < bounded_start:
+        return false
+    var steps := maxi(
+        1,
+        int(ceil(
+            (bounded_end - bounded_start)
+            * float(subdivisions_per_nominal_cell)
+        ))
+    )
+    for step in range(steps + 1):
+        var weight := float(step) / float(steps)
+        var local_distance := lerpf(bounded_start, bounded_end, weight)
+        var position: Vector2 = sample_nominal(local_distance).position
+        var mapped := Vector2i(
+            int(floor((position.x - grid_origin_units.x) / cell_size_units)),
+            int(floor((position.y - grid_origin_units.y) / cell_size_units))
+        )
+        if mapped == cell:
+            return true
+    return false
+
+
 func sample_nominal(local_distance_cells: float) -> Dictionary:
     if centerline.is_empty():
         return {"position": Vector2.ZERO, "heading": Vector2.RIGHT}
