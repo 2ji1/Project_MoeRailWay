@@ -306,6 +306,7 @@ Modify only `track_geometry_resolver.gd`.
 - Keep entry and exit boundary knots and the fixed `16` segments per nominal cell.
 - Apply the existing bounded quadratic cut-corner to ordinary orthogonal route turns; keep collinear runs linear and preserve nonzero endpoint travel.
 - Mark only exact-anchor centers as position-preserving hard knots and apply the existing bounded local cubic halves there.
+- When a terminal exact hard knot coincides with the exit boundary, add one bounded support inside the terminal cell on the negative exit-heading ray so the final stored chord remains nonzero without changing ownership, footprint, or either endpoint.
 - Do not modify route records, active-cell uniqueness, footprint construction, overlap fallback, locked ledger reuse, inventory, construction, recovery, train sampling, Warp generation, or public APIs.
 
 Run the three focused suites, complete registered suite, and all five standalone integrations. Audit the exact changed-path union, UID sidecars, `git diff --check`, primary cleanliness, merge-base, and ahead/behind state. Stage exact paths and commit:
