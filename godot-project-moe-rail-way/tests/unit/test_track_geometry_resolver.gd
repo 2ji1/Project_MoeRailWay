@@ -16,6 +16,7 @@ const MAX_LOCAL_CORNER_NONLINEAR_RUN := 9
 const MAX_LOCAL_REVERSE_SEGMENT_RUN := 8
 const MIN_STRAIGHT_SEGMENT_RUN := 4
 const CENTERLINE_SEGMENTS_PER_NOMINAL_CELL := 16
+const EXACT_KNOT_OFFSET_SAMPLES := CENTERLINE_SEGMENTS_PER_NOMINAL_CELL / 2
 const LOCAL_CORNER_HALF_WINDOW_SAMPLES := 4
 const TEST_CELL_SIZE := 40.0
 
@@ -33,6 +34,7 @@ func run() -> PackedStringArray:
 	_test_unanchored_curve_orientations_use_local_corners()
 	_test_right_edge_owned_turn_center_is_visible()
 	_test_exact_anchor_knots_preserve_template_contracts()
+	_test_terminal_exact_anchor_preserves_nonzero_exit_travel()
 	_test_multiple_exact_knots_remain_literal_and_deterministic()
 	_test_nonzero_grid_origin_translates_every_centerline()
 	_test_nominal_lengths_sampling_and_grid_bounds()
@@ -127,6 +129,58 @@ func _test_exact_anchor_knots_preserve_template_contracts() -> void:
 	_assert_exact_curve_orientations(
 		[Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(2, 1), Vector2i(2, 2)],
 		2, CURVE_3X3, "3x3"
+	)
+
+
+func _test_terminal_exact_anchor_preserves_nonzero_exit_travel() -> void:
+	var records := _records_for([Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1)])
+	var anchor = RouteContactAnchorScript.new(
+		&"terminal_exact",
+		records[-1].cell,
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var result = _resolver.resolve(
+		DEPARTURE, records, [], [anchor], Vector2.ZERO, Vector2i(8, 8), TEST_CELL_SIZE
+	)
+	assert_true(result.is_valid, "Terminal exact anchored curve resolves")
+	if not result.is_valid:
+		return
+	var piece = _piece_covering_serial(result.pieces, records[-1].route_serial)
+	assert_not_null(piece, "Terminal exact anchor keeps one curve owner")
+	if piece == null:
+		return
+	var exact_index := (
+		(records.size() - 1) * CENTERLINE_SEGMENTS_PER_NOMINAL_CELL
+		+ EXACT_KNOT_OFFSET_SAMPLES
+	)
+	var expected_center := (Vector2(records[-1].cell) + Vector2(0.5, 0.5)) * TEST_CELL_SIZE
+	assert_true(
+		piece.centerline[exact_index].distance_to(expected_center) <= 0.0001,
+		"Terminal exact anchor remains at its fixed midpoint sample"
+	)
+	assert_true(
+		piece.centerline[-1].distance_to(piece.centerline[-2]) > 0.0001,
+		"Terminal exact anchor preserves nonzero stored exit travel"
+	)
+	assert_true(
+		(piece.centerline[-1] - piece.centerline[-2]).normalized().is_equal_approx(Vector2.DOWN),
+		"Terminal exact support preserves the route exit heading"
+	)
+	for sample_index in range(exact_index + 1, piece.centerline.size()):
+		var point: Vector2 = piece.centerline[sample_index]
+		var cell := Vector2i(
+			int(floor(point.x / TEST_CELL_SIZE)),
+			int(floor(point.y / TEST_CELL_SIZE))
+		)
+		assert_equal(cell, records[-1].cell, "Terminal exact support stays in its owned cell")
+	var replay = _resolver.resolve(
+		DEPARTURE, records, [], [anchor], Vector2.ZERO, Vector2i(8, 8), TEST_CELL_SIZE
+	)
+	var replay_piece = _piece_covering_serial(replay.pieces, records[-1].route_serial)
+	assert_equal(
+		replay_piece.centerline,
+		piece.centerline,
+		"Terminal exact support replays deterministically"
 	)
 
 

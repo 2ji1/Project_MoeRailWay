@@ -118,7 +118,7 @@ Record the exact tested commit, its branch or ref context, tester, UTC timestamp
 2. Confirm active origins are filled, destinations are outlined, and lifetime countdowns remain readable.
 3. Confirm exact-center loading changes the origin to outline-only and fills the matching cargo slot without stealing mouse input from track drawing.
 4. Confirm empty, full, and mixed cargo-slot states are distinguishable and the HUD reads `occupied / total`.
-5. Confirm the fixed-seed exact-contact trace loads pair 2 into slot 0 and pair 4 into slot 1.
+5. Confirm the fixed-seed exact-contact trace loads pair 2 into slot 0, loads pair 3 into slot 1 at tick `67`, and leaves pair 4 active but unloaded while capacity is full.
 6. Confirm expiry clears matching cargo without reward, fine, or failure text.
 7. Confirm an origin behind the train is not rerolled or corrected, and locked impossible contact remains visible as a missed opportunity until expiry.
 8. Confirm regular expiry removes every live field endpoint, clears all cargo slots, retains earned delivery/reward totals, and adds no penalty text.

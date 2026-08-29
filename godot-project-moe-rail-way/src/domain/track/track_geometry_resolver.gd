@@ -356,11 +356,17 @@ func _curve_centerline(
         records, start_index, end_index, origin, cell_size,
         anchors, start, finish
     )
+    var previous_exit_cell: Vector2i = (
+        departure_cell if end_index == 0 else records[end_index - 1].cell
+    )
+    var exit_heading := Vector2(records[end_index].cell - previous_exit_cell).normalized()
     return _ordered_route_curve_centerline(
         start,
         finish,
         route_knots,
-        end_index - start_index + 1
+        end_index - start_index + 1,
+        exit_heading,
+        cell_size
     )
 
 
@@ -441,7 +447,9 @@ func _ordered_route_curve_centerline(
     start: Vector2,
     finish: Vector2,
     route_knots: Array[Dictionary],
-    nominal_length_cells: int
+    nominal_length_cells: int,
+    exit_heading: Vector2,
+    cell_size: float
 ) -> PackedVector2Array:
     var skeleton: Array[Dictionary] = [{
         "sample_index": 0,
@@ -454,8 +462,12 @@ func _ordered_route_curve_centerline(
             "position": knot["position"],
             "exact": knot["exact"],
         })
+    var finish_index := nominal_length_cells * CENTERLINE_SEGMENTS_PER_NOMINAL_CELL
+    _insert_terminal_exact_exit_support(
+        skeleton, finish, finish_index, exit_heading, cell_size
+    )
     skeleton.append({
-        "sample_index": nominal_length_cells * CENTERLINE_SEGMENTS_PER_NOMINAL_CELL,
+        "sample_index": finish_index,
         "position": finish,
         "exact": false,
     })
@@ -465,6 +477,35 @@ func _ordered_route_curve_centerline(
     )
     _round_local_skeleton_corners(points, skeleton)
     return points
+
+
+func _insert_terminal_exact_exit_support(
+    skeleton: Array[Dictionary],
+    finish: Vector2,
+    finish_index: int,
+    exit_heading: Vector2,
+    cell_size: float
+) -> void:
+    if skeleton.size() < 2 or exit_heading.is_zero_approx() or cell_size <= 0.0:
+        return
+    var terminal: Dictionary = skeleton[-1]
+    if not terminal["exact"] or not Vector2(terminal["position"]).is_equal_approx(finish):
+        return
+    var terminal_index: int = terminal["sample_index"]
+    var support_sample_offset := (finish_index - terminal_index) / 2
+    if support_sample_offset <= 0:
+        return
+    skeleton.append({
+        "sample_index": terminal_index + support_sample_offset,
+        "position": (
+            finish
+            - exit_heading
+            * cell_size
+            * float(support_sample_offset)
+            / float(CENTERLINE_SEGMENTS_PER_NOMINAL_CELL)
+        ),
+        "exact": false,
+    })
 
 
 func _linear_centerline_from_knots(
