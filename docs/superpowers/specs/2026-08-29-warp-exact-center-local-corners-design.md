@@ -266,8 +266,21 @@ An active Warp contact accepted during a held gesture is a gesture-local latch:
 Latch-owned suffix rebuilding preserves the complete press-origin ledger,
 including recovered historical pieces that no longer have active route records.
 It also preserves any additional current-candidate ledger piece whose complete
-serial span remains in the latched prefix. Every retained ledger piece remains
-byte-for-byte unchanged.
+serial span and nonnegative exit-support serial remain in the latched prefix.
+Every retained ledger piece remains byte-for-byte unchanged.
+
+Anchor lifecycle refresh may retire provisional current-candidate pieces while
+the button remains held. A later latched update must derive its retained ledger
+from the prefix through the latch before it appends or reuses any suffix serial.
+The mere reappearance of the same serial in the replacement suffix cannot revive
+a retired candidate-local lock. A candidate-local piece whose span or required
+exit support crosses the cut is re-resolved with the editable suffix; a piece
+fully contained by the prefix stays byte-stable. Press-origin locks remain
+authoritative and continue to reject mutation when their immutable ownership
+crosses the requested cut. This ordering prevents stale candidate-local ledger
+entries from producing `candidate_invariant` or `piece_discontinuity` while
+preserving every ordinary collision, footprint, continuity, ownership, and
+finalization check.
 
 This section supersedes the current-pointer authority rule only for the mutable
 suffix before an active gesture-local latch expires. It also narrows Section 11's

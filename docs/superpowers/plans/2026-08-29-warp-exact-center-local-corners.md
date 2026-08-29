@@ -377,6 +377,13 @@ Also require:
 - multiple IDs and later contacts advance only the active editing floor;
 - locked geometry bytes, footprint rejection, one owner per serial, nominal
   sampling, construction, recovery, and deterministic replay remain unchanged.
+- after an accepted long suffix passes through a live Warp, refresh the same
+  anchor set so stable retirement records candidate-local locked pieces after the
+  latch; then backtrack first to a reused suffix serial and finally to the Warp
+  occurrence itself. Unchanged production must reproduce
+  `candidate_validation / candidate_invariant`, preserve the stale endpoint, and
+  expose the retired piece's missing exit support without parser or unrelated
+  failures.
 
 ### Minimum GREEN
 
@@ -396,6 +403,10 @@ Modify only `grid_track_runtime.gd`.
 - If records after an already valid latch later become immutable, preserve the
   latch and report a template-mutation rejection; do not silently delete it and
   retry the same frame under ordinary editing.
+- Build the retained candidate ledger from the latch prefix before appending the
+  reconciled suffix. Preserve a candidate-local locked piece only when its full
+  serial span and nonnegative exit-support serial are already present in that
+  prefix. Reused suffix serials must not resurrect pieces retired by the cut.
 - Do not add Warp-ID parsing, change anchor production, weaken rejection, or
   mutate locked geometry.
 

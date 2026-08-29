@@ -40,6 +40,7 @@ func run() -> PackedStringArray:
 	_test_swept_contact_api_exists()
 	_test_exact_anchor_lifecycle_evolves_active_gesture_forms()
 	_test_active_warp_contact_latches_until_expiry_or_abort()
+	_test_active_warp_latch_rebranches_after_candidate_retirement()
 	_test_anchored_endpoint_routes_diagonal_suffix_around_owned_tail()
 	_test_exact_anchor_impossible_locked_and_removal_contracts()
 	_test_endpoint_reshape_legal_operation_requires_concrete_candidate()
@@ -1011,6 +1012,100 @@ func _test_active_warp_contact_latches_until_expiry_or_abort() -> void:
 			"Same-ID latch records the fresh route occurrence rather than the historical one"
 		)
 	assert_true(revisited.gesture_abort(), "Revisited-ID fixture aborts to its exact origin")
+
+
+func _test_active_warp_latch_rebranches_after_candidate_retirement() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(0, 1), 20, Vector2.ZERO, Vector2i(12, 6), 40.0
+	)
+	track.set_gesture_rejection_diagnostics_enabled(true)
+	var anchor = RouteContactAnchorScript.new(
+		&"warp_latch/retired_suffix",
+		Vector2i(2, 1),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var anchors: Array[RouteContactAnchorScript] = [anchor]
+	track.set_contact_anchors(anchors)
+	assert_false(
+		track.gesture_begin(track.get_endpoint_cell()).is_empty(),
+		"Retired-suffix fixture begins one held gesture"
+	)
+	var contacted_path: Array[Vector2i] = [
+		Vector2i(1, 1), Vector2i(2, 1), Vector2i(3, 1),
+		Vector2i(4, 1), Vector2i(5, 1), Vector2i(6, 1),
+		Vector2i(7, 1), Vector2i(8, 1), Vector2i(9, 1),
+		Vector2i(10, 1),
+	]
+	assert_true(
+		track.gesture_update(contacted_path, contacted_path[-1]),
+		"Held input accepts a long route through the exact Warp"
+	)
+	assert_true(
+		track.gesture_update(contacted_path, contacted_path[-1]),
+		"The live Warp becomes the editing latch for the accepted suffix"
+	)
+	track.set_contact_anchors(anchors)
+	var latched_serial := int(track._gesture_live_warp_latches[-1]["route_serial"])
+	var locked_prefix_before := _piece_values(
+		track._locked_ledger.filter(
+			func(piece): return (
+				piece.last_route_serial <= latched_serial
+				and (
+					piece.exit_support_route_serial < 0
+					or piece.exit_support_route_serial <= latched_serial
+				)
+			)
+		)
+	)
+	assert_true(
+		track._locked_ledger.any(
+			func(piece): return piece.first_route_serial > latched_serial
+		),
+		"Lifecycle refresh retires at least one candidate-local piece after the latch"
+	)
+	var backtracked_path: Array[Vector2i] = [
+		Vector2i(1, 1), Vector2i(2, 1), Vector2i(3, 1), Vector2i(4, 1),
+	]
+	assert_true(
+		track.gesture_update(backtracked_path, backtracked_path[-1]),
+		"A held gesture can retire and reuse its suffix serials after the active Warp"
+	)
+	assert_equal(
+		track.get_endpoint_cell(),
+		Vector2i(4, 1),
+		"The accepted preview follows the pointer instead of preserving a stale endpoint"
+	)
+	assert_equal(
+		_piece_values(track._locked_ledger),
+		locked_prefix_before,
+		"Rebranching preserves only candidate locks fully contained by the latch prefix"
+	)
+	assert_equal(
+		track.get_available_track_cells(),
+		16,
+		"Backtracking refunds exactly the six retired suffix cells"
+	)
+	assert_equal(
+		track.get_last_gesture_rejection(),
+		{},
+		"The repaired latch update leaves no candidate invariant or continuity rejection"
+	)
+	var anchor_only_path: Array[Vector2i] = [Vector2i(1, 1), Vector2i(2, 1)]
+	assert_true(
+		track.gesture_update(anchor_only_path, anchor_only_path[-1]),
+		"The held route may settle exactly on the active Warp after candidate retirement"
+	)
+	assert_equal(
+		track.get_last_gesture_rejection(),
+		{},
+		"Anchor-only retirement leaves no stale locked support rejection"
+	)
+	assert_equal(track.get_endpoint_cell(), Vector2i(2, 1), "The exact Warp remains the last accepted endpoint")
+	assert_equal(track.get_available_track_cells(), 18, "Anchor-only backtracking refunds two more cells")
+	_assert_conservation(track, "Candidate-retirement rebranch preserves inventory conservation")
+	assert_true(track.gesture_abort(), "Retired-suffix fixture aborts exactly")
+	assert_equal(track.get_cell_records(), [], "Abort restores the pre-gesture empty route")
+	assert_equal(track.get_available_track_cells(), 20, "Abort restores exact inventory")
 
 
 func _test_anchored_endpoint_routes_diagonal_suffix_around_owned_tail() -> void:

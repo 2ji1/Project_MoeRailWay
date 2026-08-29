@@ -1320,6 +1320,72 @@ func _test_live_warp_latch_diagonal_actual_input(shell, view, config) -> void:
 	await _consume_view(shell, mid_track)
 	view.present(_track_snapshot(mid_track))
 	_assert_true(not view._left_capture_active, "Actual-input Warp latch abort cleanup clears view capture")
+
+	var retired_track := TrackSystemScript.new(config)
+	var retired_anchor = RouteContactAnchorScript.new(
+		&"actual_latch/retired_suffix", Vector2i(4, 2),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var retired_anchors: Array[RouteContactAnchorScript] = [retired_anchor]
+	retired_track.set_contact_anchors(retired_anchors)
+	view.present(_track_snapshot(retired_track))
+	var retired_departure_position := _logical_to_viewport(view, Vector2(100.0, 100.0))
+	var retired_long_position := _logical_to_viewport(view, Vector2(500.0, 100.0))
+	var retired_suffix_position := _logical_to_viewport(view, Vector2(260.0, 100.0))
+	var retired_anchor_position := _logical_to_viewport(view, Vector2(180.0, 100.0))
+	await _deliver(_button(retired_departure_position, MOUSE_BUTTON_LEFT, true))
+	await _deliver(_motion(retired_long_position, MOUSE_BUTTON_MASK_LEFT))
+	var retired_contact_frame: TrackInputFrameScript = await _consume_view(shell, retired_track)
+	_assert_true(
+		retired_contact_frame.left_pressed and retired_contact_frame.left_held,
+		"Actual candidate-retirement route remains one held press"
+	)
+	await _deliver(_motion(retired_long_position + Vector2(1.0, 0.0), MOUSE_BUTTON_MASK_LEFT))
+	await _consume_view(shell, retired_track)
+	retired_track.set_contact_anchors(retired_anchors)
+	var retired_latch_serial := int(
+		retired_track._runtime._gesture_live_warp_latches[-1]["route_serial"]
+	)
+	_assert_true(
+		retired_track._runtime._locked_ledger.any(
+			func(piece): return piece.first_route_serial > retired_latch_serial
+		),
+		"Actual lifecycle refresh retires candidate-local suffix pieces"
+	)
+	await _deliver(_motion(retired_suffix_position, MOUSE_BUTTON_MASK_LEFT))
+	var retired_suffix_frame: TrackInputFrameScript = await _consume_view(shell, retired_track)
+	_assert_equal(
+		retired_suffix_frame.live_gesture_path,
+		[Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2), Vector2i(6, 2)],
+		"Actual held motion backtracks onto previously retired suffix serials"
+	)
+	_assert_equal(
+		retired_track.get_endpoint_cell(),
+		Vector2i(6, 2),
+		"Candidate-local retirement cannot preserve the stale long endpoint"
+	)
+	_assert_equal(retired_track.get_available_track_cells(), 6, "Actual suffix backtrack refunds six cells")
+	await _deliver(_motion(retired_anchor_position, MOUSE_BUTTON_MASK_LEFT))
+	var retired_anchor_frame: TrackInputFrameScript = await _consume_view(shell, retired_track)
+	_assert_equal(
+		retired_anchor_frame.live_gesture_path,
+		[Vector2i(3, 2), Vector2i(4, 2)],
+		"Actual held motion may settle exactly on the live Warp"
+	)
+	_assert_equal(retired_track.get_endpoint_cell(), Vector2i(4, 2), "The live Warp becomes the accepted endpoint")
+	_assert_equal(retired_track.get_available_track_cells(), 8, "Actual anchor-only backtrack refunds exactly")
+	await _deliver(_button(retired_anchor_position, MOUSE_BUTTON_RIGHT, true))
+	await _consume_view(shell, retired_track)
+	_assert_equal(_record_cells(retired_track.get_cell_records()), [], "Actual candidate-retirement abort restores origin")
+	_assert_equal(
+		retired_track.get_available_track_cells(),
+		retired_track.get_total_track_cells(),
+		"Actual candidate-retirement abort restores inventory"
+	)
+	await _release_view(shell, retired_anchor_position)
+	await _consume_view(shell, retired_track)
+	view.present(_track_snapshot(retired_track))
+	_assert_true(not view._left_capture_active, "Actual candidate-retirement cleanup clears view capture")
 	print("PASS: actual-input live Warp latch routes from exact contact")
 
 

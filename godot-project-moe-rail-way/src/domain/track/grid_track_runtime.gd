@@ -648,6 +648,7 @@ func _gesture_update_from_live_warp_latch(
             live_path, current_pointer_cell, -1, _sequence
         )
         return false
+    var candidate_ledger = _locked_ledger_retained_by_sequence(candidate_sequence)
     var suffix_cells: Array[Vector2i] = []
     var anchor_path_index := live_path.rfind(Vector2i(latch["cell"]))
     if anchor_path_index >= 0:
@@ -676,7 +677,6 @@ func _gesture_update_from_live_warp_latch(
             live_path, current_pointer_cell, -1, candidate_sequence
         )
         return false
-    var candidate_ledger = _locked_ledger_retained_by_sequence(candidate_sequence)
     var candidate_anchors = _duplicate_anchors(_gesture_origin_anchors)
     var resolution = _resolve_candidate(
         candidate_sequence,
@@ -773,6 +773,10 @@ func _locked_ledger_retained_by_sequence(
         if (
             not retained_serials.has(piece.first_route_serial)
             or not retained_serials.has(piece.last_route_serial)
+            or (
+                piece.exit_support_route_serial >= 0
+                and not retained_serials.has(piece.exit_support_route_serial)
+            )
         ):
             continue
         retained.append(piece.duplicate_piece())
