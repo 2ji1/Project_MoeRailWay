@@ -2,6 +2,7 @@ class_name GridPointerRasterizer
 extends RefCounted
 
 const CROSSING_EPSILON := 0.0000001
+const GRID_BOUNDARY_EPSILON := 0.000001
 
 
 func rasterize_motion(
@@ -27,12 +28,18 @@ func rasterize_motion(
 		return crossed_cells
 	var clipped_start: Vector2 = clipped_points[0]
 	var clipped_end: Vector2 = clipped_points[1]
-	var motion := clipped_end - clipped_start
 
 	var cell_size := Vector2(
 		grid_rect.size.x / float(grid_size.x),
 		grid_rect.size.y / float(grid_size.y)
 	)
+	clipped_start = _snap_point_to_grid_boundaries(
+		clipped_start, grid_rect, cell_size
+	)
+	clipped_end = _snap_point_to_grid_boundaries(
+		clipped_end, grid_rect, cell_size
+	)
+	var motion := clipped_end - clipped_start
 	var entering_from_outside := not grid_rect.has_point(from_logical)
 	var current_cell := _cell_at_clipped_entry(
 		clipped_start, original_motion, grid_rect, cell_size, grid_size,
@@ -143,6 +150,24 @@ func _clamp_point_to_rect(point: Vector2, rect: Rect2) -> Vector2:
 	)
 
 
+func _snap_point_to_grid_boundaries(
+	point: Vector2,
+	grid_rect: Rect2,
+	cell_size: Vector2
+) -> Vector2:
+	var grid_point := Vector2(
+		(point.x - grid_rect.position.x) / cell_size.x,
+		(point.y - grid_rect.position.y) / cell_size.y
+	)
+	var boundary_x := roundf(grid_point.x)
+	var boundary_y := roundf(grid_point.y)
+	if absf(grid_point.x - boundary_x) <= GRID_BOUNDARY_EPSILON:
+		grid_point.x = boundary_x
+	if absf(grid_point.y - boundary_y) <= GRID_BOUNDARY_EPSILON:
+		grid_point.y = boundary_y
+	return grid_rect.position + grid_point * cell_size
+
+
 func _clip_axis(
 	start: float,
 	delta: float,
@@ -179,11 +204,11 @@ func _cell_at_clipped_entry(
 	var cell := Vector2i(int(floor(grid_point.x)), int(floor(grid_point.y)))
 	if entering_from_outside and motion.x < 0.0:
 		var boundary_x := roundf(grid_point.x)
-		if absf(grid_point.x - boundary_x) <= CROSSING_EPSILON:
+		if absf(grid_point.x - boundary_x) <= GRID_BOUNDARY_EPSILON:
 			cell.x = int(boundary_x) - 1
 	if entering_from_outside and motion.y < 0.0:
 		var boundary_y := roundf(grid_point.y)
-		if absf(grid_point.y - boundary_y) <= CROSSING_EPSILON:
+		if absf(grid_point.y - boundary_y) <= GRID_BOUNDARY_EPSILON:
 			cell.y = int(boundary_y) - 1
 	return cell
 
@@ -221,7 +246,7 @@ func _clipped_corner_entry_prefix(
 
 func _grid_boundary_index(value: float) -> int:
 	var boundary := roundf(value)
-	if absf(value - boundary) <= CROSSING_EPSILON:
+	if absf(value - boundary) <= GRID_BOUNDARY_EPSILON:
 		return int(boundary)
 	return -1
 
