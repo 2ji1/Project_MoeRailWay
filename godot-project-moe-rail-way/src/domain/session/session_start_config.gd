@@ -25,6 +25,7 @@ var warp_max_live_pairs: int
 var cargo_base_slot_count: int
 var cargo_base_delivery_reward: int
 var planning_time_scale_percent: int
+var starting_session_cash: int
 
 
 func _init(
@@ -51,7 +52,8 @@ func _init(
 	warp_max_live_pairs_value: int = 0,
 	cargo_base_slot_count_value: int = 0,
 	cargo_base_delivery_reward_value: int = 0,
-	planning_time_scale_percent_value: int = 100
+	planning_time_scale_percent_value: int = 100,
+	starting_session_cash_value: int = 0
 ) -> void:
 	seed = seed_value
 	session_duration_seconds = duration_seconds
@@ -77,3 +79,4 @@ func _init(
 	cargo_base_slot_count = cargo_base_slot_count_value
 	cargo_base_delivery_reward = cargo_base_delivery_reward_value
 	planning_time_scale_percent = planning_time_scale_percent_value
+	starting_session_cash = starting_session_cash_value

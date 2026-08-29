@@ -147,4 +147,14 @@ static func validate(balance: PrototypeBalanceScript) -> PackedStringArray:
                 "prototype_balance.cargo_balance.base_delivery_reward must be between 0 and 1000000"
             )
 
+    if balance.session_cash_balance == null:
+        errors.append("prototype_balance.session_cash_balance.resource is required")
+    elif (
+        balance.session_cash_balance.starting_session_cash < 0
+        or balance.session_cash_balance.starting_session_cash > 1000000
+    ):
+        errors.append(
+            "prototype_balance.session_cash_balance.starting_session_cash must be between 0 and 1000000"
+        )
+
     return errors

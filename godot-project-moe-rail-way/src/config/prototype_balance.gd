@@ -9,6 +9,7 @@ const TrackConstructionBalanceScript = preload("res://src/config/track_construct
 const DepartureBalanceScript = preload("res://src/config/departure_balance.gd")
 const WarpLifecycleBalanceScript = preload("res://src/config/warp_lifecycle_balance.gd")
 const CargoBalanceScript = preload("res://src/config/cargo_balance.gd")
+const SessionCashBalanceScript = preload("res://src/config/session_cash_balance.gd")
 
 @export var session_balance: SessionBalanceScript = SessionBalanceScript.new()
 @export var train_balance: TrainBalanceScript = TrainBalanceScript.new()
@@ -17,6 +18,7 @@ const CargoBalanceScript = preload("res://src/config/cargo_balance.gd")
 @export var departure_balance: DepartureBalanceScript = DepartureBalanceScript.new()
 @export var warp_lifecycle_balance: WarpLifecycleBalanceScript = WarpLifecycleBalanceScript.new()
 @export var cargo_balance: CargoBalanceScript = CargoBalanceScript.new()
+@export var session_cash_balance: SessionCashBalanceScript = SessionCashBalanceScript.new()
 
 var session_duration_seconds: float:
     get:
@@ -46,7 +48,8 @@ func create_session_start_config(seed_value: int) -> SessionStartConfigScript:
         Vector2.ZERO, Vector2i.ZERO, 0.0, Vector2.ZERO,
         StringName(), Vector2.ZERO, Vector2i(-1, -1),
         0, 0, 0, 0, 0, 0, 0,
-        planning_time_scale_percent
+        planning_time_scale_percent,
+        session_cash_balance.starting_session_cash
     )
     config.warp_forecast_ticks = _seconds_to_ticks(
         warp_lifecycle_balance.forecast_duration_seconds,
@@ -104,7 +107,8 @@ func complete_session_start_config(
         base_config.warp_max_live_pairs,
         base_config.cargo_base_slot_count,
         base_config.cargo_base_delivery_reward,
-        base_config.planning_time_scale_percent
+        base_config.planning_time_scale_percent,
+        base_config.starting_session_cash
     )
 
 

@@ -47,6 +47,11 @@ func run() -> PackedStringArray:
 
 	var default_balance := PrototypeBalanceScript.new()
 	assert_equal(
+		default_balance.session_cash_balance.starting_session_cash,
+		300,
+		"Default starting_session_cash must be 300"
+	)
+	assert_equal(
 		default_balance.track_inventory_balance.total_track_cells,
 		18,
         "Default total_track_cells must be 18"
@@ -103,6 +108,27 @@ func run() -> PackedStringArray:
 		invalid_large_departure.track_inventory_balance.total_track_cells + 1
 	)
 	_assert_contains(Validator.validate(invalid_large_departure), "required_built_cells")
+
+	var invalid_negative_cash := PrototypeBalanceScript.new()
+	invalid_negative_cash.session_cash_balance.starting_session_cash = -1
+	_assert_contains(
+		Validator.validate(invalid_negative_cash),
+		"prototype_balance.session_cash_balance.starting_session_cash"
+	)
+
+	var invalid_large_cash := PrototypeBalanceScript.new()
+	invalid_large_cash.session_cash_balance.starting_session_cash = 1000001
+	_assert_contains(
+		Validator.validate(invalid_large_cash),
+		"prototype_balance.session_cash_balance.starting_session_cash"
+	)
+
+	var missing_cash_resource := PrototypeBalanceScript.new()
+	missing_cash_resource.session_cash_balance = null
+	_assert_contains(
+		Validator.validate(missing_cash_resource),
+		"prototype_balance.session_cash_balance.resource"
+	)
 
 	return finish()
 

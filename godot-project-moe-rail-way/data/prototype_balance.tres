@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="PrototypeBalance" load_steps=9 format=3]
+[gd_resource type="Resource" script_class="PrototypeBalance" load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://src/config/prototype_balance.gd" id="1_balance"]
 [ext_resource type="Resource" path="res://data/session_balance.tres" id="2_session"]
@@ -8,6 +8,7 @@
 [ext_resource type="Resource" path="res://data/departure_balance.tres" id="6_departure"]
 [ext_resource type="Resource" path="res://data/warp_lifecycle_balance.tres" id="7_warp"]
 [ext_resource type="Resource" path="res://data/cargo_balance.tres" id="8_cargo"]
+[ext_resource type="Resource" path="res://data/session_cash_balance.tres" id="9_cash"]
 
 [resource]
 script = ExtResource("1_balance")
@@ -18,3 +19,4 @@ track_construction_balance = ExtResource("5_construction")
 departure_balance = ExtResource("6_departure")
 warp_lifecycle_balance = ExtResource("7_warp")
 cargo_balance = ExtResource("8_cargo")
+session_cash_balance = ExtResource("9_cash")
