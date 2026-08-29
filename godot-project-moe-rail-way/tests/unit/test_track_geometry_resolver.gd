@@ -41,6 +41,7 @@ func run() -> PackedStringArray:
 	_test_non_final_curve_continuity_and_one_cell_tangents()
 	_test_non_owned_route_cell_in_curve_footprint()
 	_test_locked_piece_identity_and_determinism()
+	_test_locked_aabb_empty_corner_uses_geometric_collision_occupancy()
 	_test_locked_predecessor_stitches_anchored_turn_by_declared_heading()
 	_test_empty_acceptance_and_final_conflict_rejection()
 	_test_detached_duplicates()
@@ -838,8 +839,85 @@ func _test_locked_piece_identity_and_determinism() -> void:
 		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
 		Vector2i(2, 1), Vector2i(2, 2), Vector2i(1, 2), Vector2i(1, 1),
 	])
-	var blocked = _resolver.resolve(DEPARTURE, reentry_records, locked_pieces, [], Vector2.ZERO, Vector2i(8, 8), 40.0)
-	assert_true(not blocked.is_valid, "Unlocked suffix cannot enter active locked footprint")
+	var empty_corner := Vector2i(1, 1)
+	assert_true(locked.footprint_cells.has(empty_corner), "Locked curve AABB contains the reentry corner")
+	assert_false(
+		locked.contacts_cell(empty_corner, Vector2.ZERO, TEST_CELL_SIZE),
+		"Locked curve centerline leaves the reentry corner geometrically empty"
+	)
+	var reentered = _resolver.resolve(DEPARTURE, reentry_records, locked_pieces, [], Vector2.ZERO, Vector2i(8, 8), 40.0)
+	assert_true(reentered.is_valid, "Unlocked suffix may enter a geometrically empty locked AABB corner")
+
+
+func _test_locked_aabb_empty_corner_uses_geometric_collision_occupancy() -> void:
+	var departure := Vector2i(2, 3)
+	var locked_records := _records_for([
+		Vector2i(2, 2), Vector2i(2, 1), Vector2i(3, 1),
+	], departure)
+	var locked_resolution = _resolver.resolve(
+		departure, locked_records, [], [], Vector2.ZERO, Vector2i(8, 8), TEST_CELL_SIZE
+	)
+	assert_true(locked_resolution.is_valid, "Locked empty-corner fixture resolves its initial route")
+	if not locked_resolution.is_valid:
+		return
+	var locked = _first_curve(locked_resolution.pieces)
+	assert_not_null(locked, "Locked empty-corner fixture owns a curve")
+	if locked == null:
+		return
+	locked = locked.duplicate_piece()
+	locked.locked = true
+	var empty_corner := Vector2i(3, 2)
+	assert_equal(locked.kind, CURVE_2X2, "Locked empty-corner fixture retains its 2x2 AABB")
+	assert_true(locked.footprint_cells.has(empty_corner), "Locked AABB contains the later route cell")
+	assert_false(
+		locked.contacts_cell(empty_corner, Vector2.ZERO, TEST_CELL_SIZE),
+		"Locked centerline does not geometrically occupy the AABB empty corner"
+	)
+	var locked_before := _piece_signature(locked)
+	var route_cells := [
+		Vector2i(2, 2), Vector2i(2, 1), Vector2i(3, 1),
+		Vector2i(4, 1), Vector2i(5, 1), Vector2i(5, 2),
+		Vector2i(4, 2), empty_corner,
+	]
+	var records := _records_for(route_cells, departure)
+	var no_anchor = _resolver.resolve(
+		departure, records, [locked], [], Vector2.ZERO, Vector2i(8, 8), TEST_CELL_SIZE
+	)
+	assert_true(
+		no_anchor.is_valid,
+		"Unlocked route may enter a locked AABB cell that neither centerline occupies"
+	)
+	if not no_anchor.is_valid:
+		assert_equal(no_anchor.reason, &"locked_overlap", "RED identifies the AABB false positive")
+	var anchor = RouteContactAnchorScript.new(
+		&"empty_corner_exact", empty_corner,
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var anchored = _resolver.resolve(
+		departure, records, [locked], [anchor], Vector2.ZERO, Vector2i(8, 8), TEST_CELL_SIZE
+	)
+	assert_true(
+		anchored.is_valid,
+		"An accepted empty-corner route may add an exact-center hard knot"
+	)
+	if not anchored.is_valid:
+		assert_equal(anchored.reason, &"locked_overlap", "Exact anchoring occurs only after collision acceptance")
+	else:
+		var owner = _piece_covering_serial(anchored.pieces, records[-1].route_serial)
+		assert_not_null(owner, "Exact empty-corner route retains a concrete geometry owner")
+		if owner != null:
+			assert_true(
+				_resolver._piece_contains_exact_center(owner, empty_corner, Vector2.ZERO, TEST_CELL_SIZE),
+				"Exact empty-corner contact remains a literal center knot"
+			)
+	var repeated = _resolver.resolve(
+		departure, records, [locked], [anchor], Vector2.ZERO, Vector2i(8, 8), TEST_CELL_SIZE
+	)
+	assert_equal(
+		_resolution_signature(repeated), _resolution_signature(anchored),
+		"Geometric locked occupancy resolves deterministically"
+	)
+	assert_equal(_piece_signature(locked), locked_before, "Collision queries keep locked bytes unchanged")
 
 
 func _test_locked_predecessor_stitches_anchored_turn_by_declared_heading() -> void:
@@ -920,20 +998,21 @@ func _test_empty_acceptance_and_final_conflict_rejection() -> void:
 	assert_true(empty.is_valid, "Empty route is accepted")
 	assert_equal(empty.pieces.size(), 0, "Empty route has no pieces")
 	assert_equal(empty.rejected_route_serial, -1, "Accepted empty route rejects no serial")
-	var records = _records_for([Vector2i(0, 0), Vector2i(0, 1)])
+	var records = _records_for([Vector2i(0, 0), Vector2i(1, 0)])
 	var blocker = TrackGeometryPieceScript.new()
 	blocker.group_id = 99
 	blocker.kind = CURVE_1X1
 	blocker.first_route_serial = 99
 	blocker.last_route_serial = 99
 	blocker.nominal_length_cells = 1
-	var blocker_footprint: Array[Vector2i] = [Vector2i(0, 0)]
+	var blocker_footprint: Array[Vector2i] = [Vector2i(1, 0)]
 	blocker.footprint_cells = blocker_footprint
-	blocker.centerline = PackedVector2Array([Vector2(20, 20), Vector2(20, 60)])
+	blocker.centerline = PackedVector2Array([Vector2(60, 20), Vector2(60, 30)])
 	blocker.locked = true
 	var locked: Array = [blocker]
 	var rejected = _resolver.resolve(DEPARTURE, records, locked, [], Vector2.ZERO, Vector2i(8, 8), 40.0)
 	assert_true(not rejected.is_valid, "Unresolved final 1x1 conflict rejects")
+	assert_equal(rejected.reason, &"locked_overlap", "Real shared centerline contact remains a locked collision")
 	assert_equal(rejected.rejected_route_serial, records[-1].route_serial, "Newest serial is rejected")
 	assert_true(not rejected.reason.is_empty(), "Rejection names a reason")
 

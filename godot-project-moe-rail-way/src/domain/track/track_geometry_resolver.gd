@@ -74,6 +74,7 @@ func resolve(
         while candidate.radius > 0:
             var span := _candidate_span(candidate, records.size())
             var footprint := _candidate_footprint(candidate, records)
+            var preview = null
             var valid := span.x >= 0 and span.y < records.size()
             if valid:
                 for cell in footprint:
@@ -84,13 +85,16 @@ func resolve(
                         valid = false
             if valid and _footprint_contains_non_owned_record(candidate, records):
                 valid = false
-            if valid and _conflicts_with_locked(footprint, blocking_locked):
-                valid = false
             if valid:
-                var preview = _curve_piece(
+                preview = _curve_piece(
                     -1, candidate, span.x, span.y,
                     departure_cell, records, grid_origin_units, cell_size_units, anchors
                 )
+                if _conflicts_with_locked(
+                    preview, blocking_locked, grid_origin_units, cell_size_units
+                ):
+                    valid = false
+            if valid:
                 for anchor in anchors:
                     if anchor.contact_mode == RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER:
                         if _span_owns_cell(span, records, anchor.cell) and not _piece_contains_exact_center(
@@ -131,7 +135,9 @@ func resolve(
             group_id, candidate, start_index, end_index,
             departure_cell, records, grid_origin_units, cell_size_units, anchors
         )
-        if _conflicts_with_locked(curve.footprint_cells, blocking_locked):
+        if _conflicts_with_locked(
+            curve, blocking_locked, grid_origin_units, cell_size_units
+        ):
             return TrackGeometryResolutionScript.rejected(newest_serial, &"locked_overlap")
         for anchor in anchors:
             if anchor.contact_mode == RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER:
@@ -150,7 +156,9 @@ func resolve(
         if covered.has(index):
             continue
         var straight = _straight_piece(group_id, index, departure_cell, records, grid_origin_units, cell_size_units)
-        if _conflicts_with_locked(straight.footprint_cells, blocking_locked):
+        if _conflicts_with_locked(
+            straight, blocking_locked, grid_origin_units, cell_size_units
+        ):
             return TrackGeometryResolutionScript.rejected(newest_serial, &"locked_overlap")
         pieces.append(straight)
         group_id += 1
@@ -700,8 +708,19 @@ func _intersection_count(first: Array, second: Array) -> int:
     return count
 
 
-func _conflicts_with_locked(footprint: Array, locked_pieces: Array) -> bool:
-    for locked in locked_pieces:
-        if _intersection_count(footprint, locked.footprint_cells) > 0:
-            return true
+func _conflicts_with_locked(
+    piece: TrackGeometryPieceScript,
+    locked_pieces: Array,
+    grid_origin_units: Vector2,
+    cell_size_units: float
+) -> bool:
+    for cell in piece.footprint_cells:
+        if not piece.contacts_cell(cell, grid_origin_units, cell_size_units):
+            continue
+        for locked in locked_pieces:
+            if (
+                locked.footprint_cells.has(cell)
+                and locked.contacts_cell(cell, grid_origin_units, cell_size_units)
+            ):
+                return true
     return false

@@ -7,6 +7,7 @@ const SessionControllerScript = preload("res://src/domain/session/session_contro
 const TrackCellRecordScript = preload("res://src/domain/track/track_cell_record.gd")
 const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
 const TrackGeometryPieceScript = preload("res://src/domain/track/track_geometry_piece.gd")
+const RouteContactAnchorScript = preload("res://src/domain/track/route_contact_anchor.gd")
 const TrackSystemScript = preload("res://src/domain/track/track_system.gd")
 const TrainSystemScript = preload("res://src/domain/train/train_system.gd")
 const UILayoutProfileScript = preload("res://src/presentation/layout/ui_layout_profile.gd")
@@ -308,6 +309,7 @@ func _run() -> void:
 	await process_frame
 	var view = shell.get_track_field_view()
 	var departure := _logical_to_viewport(view, Vector2(100.0, 100.0))
+	await _test_locked_aabb_empty_corner_actual_input(shell, view, config)
 
 	var reentry_track := TrackSystemScript.new(config)
 	view.present(_track_snapshot(reentry_track))
@@ -1135,6 +1137,63 @@ func _run() -> void:
 	await process_frame
 	_assert_equal(horizontal_track.get_cell_records().size(), domain_before_resize.size(), "Resize does not change domain cells")
 	await _finish(shell)
+
+
+func _test_locked_aabb_empty_corner_actual_input(shell, view, config) -> void:
+	for exact_anchor in [false, true]:
+		var label := "exact" if exact_anchor else "ordinary"
+		var track := TrackSystemScript.new(config)
+		_assert_equal(
+			track._runtime.append_cells([Vector2i(2, 1), Vector2i(2, 0), Vector2i(3, 0)]),
+			3,
+			"Actual-input locked empty-corner %s fixture appends its curve" % label
+		)
+		_assert_equal(
+			track.advance_construction(3.0), 3.0,
+			"Actual-input locked empty-corner %s fixture builds its curve" % label
+		)
+		_assert_true(
+			track.prepare_for_train_sampling(0.0, 3.0),
+			"Actual-input locked empty-corner %s fixture locks its curve" % label
+		)
+		_assert_equal(
+			track._runtime.append_cells([
+				Vector2i(4, 0), Vector2i(5, 0), Vector2i(5, 1), Vector2i(4, 1),
+			]),
+			4,
+			"Actual-input locked empty-corner %s fixture reaches its endpoint" % label
+		)
+		var empty_corner := Vector2i(3, 1)
+		if exact_anchor:
+			var anchor = RouteContactAnchorScript.new(
+				&"actual_input_empty_corner", empty_corner,
+				RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+			)
+			track.set_contact_anchors([anchor])
+		var records_before := _record_facts(track.get_cell_records())
+		var locked_before := _piece_facts(track._runtime._locked_ledger)
+		var inventory_before: int = track.get_available_track_cells()
+		view.present(_track_snapshot(track))
+		var endpoint_position := _logical_to_viewport(view, Vector2(180.0, 60.0))
+		var target_position := _logical_to_viewport(view, Vector2(140.0, 60.0))
+		await _deliver(_button(endpoint_position, MOUSE_BUTTON_LEFT, true))
+		await _deliver(_motion(target_position, MOUSE_BUTTON_MASK_LEFT))
+		var frame: TrackInputFrameScript = await _consume_view(shell, track)
+		_assert_true(frame.left_held, "Actual-input empty-corner %s drag remains held" % label)
+		_assert_equal(frame.live_gesture_path, [empty_corner], "Actual-input empty-corner %s drag captures its adjacent cell" % label)
+		_assert_equal(track.get_endpoint_cell(), empty_corner, "Actual-input empty-corner %s drag publishes" % label)
+		_assert_equal(track.get_cell_records().size(), records_before.size() + 1, "Actual-input empty-corner %s drag appends once" % label)
+		_assert_equal(track.get_available_track_cells(), inventory_before - 1, "Actual-input empty-corner %s drag charges once" % label)
+		_assert_equal(_piece_facts(track._runtime._locked_ledger), locked_before, "Actual-input empty-corner %s drag keeps locked bytes" % label)
+		if exact_anchor:
+			var observations: Array = track.get_contact_observations()
+			_assert_equal(observations.size(), 1, "Actual-input exact empty-corner publishes one contact")
+			if observations.size() == 1:
+				_assert_true(observations[0].contact_possible, "Actual-input exact empty-corner contact is possible")
+		await _release_view(shell, target_position)
+		var release: TrackInputFrameScript = await _consume_view(shell, track)
+		_assert_true(release.left_released, "Actual-input empty-corner %s drag releases" % label)
+		_assert_true(not track.is_runtime_gesture_active(), "Actual-input empty-corner %s drag finalizes" % label)
 
 
 func _test_recovered_running_endpoint_accepts_direct_drag(shell, view, config) -> void:

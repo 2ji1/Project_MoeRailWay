@@ -104,6 +104,7 @@ func run() -> PackedStringArray:
 	_test_full_prune_then_relock_uses_fresh_owner_group_ids()
 	_test_locked_endpoint_rejects_disconnected_rebranch()
 	_test_runtime_applies_nonzero_grid_origin_to_sampling()
+	_test_locked_aabb_empty_corner_accepts_ordinary_and_exact_routes()
 	_test_recovered_interval_is_not_reported_as_contacted()
 	_test_recovered_cell_can_be_contacted_by_new_geometry()
 	_test_swept_contacts_follow_active_centerlines()
@@ -2493,6 +2494,60 @@ func _test_running_locked_curve_endpoint_remains_extendable() -> void:
 		track.gesture_update([Vector2i(2, 5)]),
 		"Running locked curve endpoint accepts its legal adjacent extension"
 	)
+
+
+func _test_locked_aabb_empty_corner_accepts_ordinary_and_exact_routes() -> void:
+	for exact_anchor in [false, true]:
+		var label := "exact" if exact_anchor else "ordinary"
+		var track = GridTrackRuntimeScript.new(
+			Vector2i(2, 3), 20, Vector2.ZERO, Vector2i(8, 8), 40.0
+		)
+		assert_equal(
+			track.append_cells([Vector2i(2, 2), Vector2i(2, 1), Vector2i(3, 1)]),
+			3,
+			"Locked empty-corner %s fixture appends its initial curve" % label
+		)
+		assert_equal(
+			track.advance_construction(3.0), 3.0,
+			"Locked empty-corner %s fixture completes construction" % label
+		)
+		assert_true(
+			track.prepare_for_train_sampling(0.0, 3.0),
+			"Locked empty-corner %s fixture locks its curve" % label
+		)
+		assert_equal(
+			track.append_cells([
+				Vector2i(4, 1), Vector2i(5, 1), Vector2i(5, 2), Vector2i(4, 2),
+			]),
+			4,
+			"Locked empty-corner %s fixture reaches the adjacent endpoint" % label
+		)
+		var empty_corner := Vector2i(3, 2)
+		if exact_anchor:
+			var anchor = RouteContactAnchorScript.new(
+				&"empty_corner_exact", empty_corner,
+				RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+			)
+			track.set_contact_anchors([anchor])
+		var records_before := _record_values(track.get_cell_records())
+		var pieces_before := _piece_values(track.get_geometry_pieces())
+		var locked_before := _piece_values(track._locked_ledger)
+		var inventory_before: int = track.get_available_track_cells()
+		var accepted := track.append_cells([empty_corner])
+		assert_equal(
+			accepted, 1,
+			"Locked AABB empty corner accepts the %s route cell" % label
+		)
+		if accepted == 1:
+			assert_equal(track.get_endpoint_cell(), empty_corner, "Accepted %s route advances the endpoint" % label)
+			assert_equal(track.get_available_track_cells(), inventory_before - 1, "Accepted %s route charges one cell" % label)
+			assert_equal(_piece_values(track._locked_ledger), locked_before, "Accepted %s route keeps locked ledger bytes" % label)
+		else:
+			assert_equal(_record_values(track.get_cell_records()), records_before, "RED preserves last-valid %s records" % label)
+			assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before, "RED preserves last-valid %s pieces" % label)
+			assert_equal(_piece_values(track._locked_ledger), locked_before, "RED preserves %s locked ledger bytes" % label)
+			assert_equal(track.get_available_track_cells(), inventory_before, "RED preserves %s inventory" % label)
+		_assert_conservation(track, "Locked empty-corner %s route preserves conservation" % label)
 
 
 func _test_endpoint_reshape_gesture_rejects_illegal_starts() -> void:
