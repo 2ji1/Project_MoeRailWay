@@ -17,6 +17,7 @@ func run() -> PackedStringArray:
 	_test_horizontal_and_l_shaped_physical_events()
 	_test_corner_order_and_consume_once()
 	_test_outside_and_right_cell_mapping()
+	_test_held_reentry_preserves_intermediate_cells_across_frames()
 	_test_resize_and_nonzero_canvas_offset_preserve_cells()
 	_test_grid_render_observation_reports_inclusive_nonzero_origin_geometry()
 	_test_valid_start_render_observation_tracks_empty_route_endpoint_and_completion()
@@ -1174,6 +1175,37 @@ func _test_outside_and_right_cell_mapping() -> void:
 	assert_false(outside_right_release.right_pressed, "Outside right release does not create a duplicate edge")
 	assert_equal(outside_right_release.current_pointer_cell, Vector2i(-1, -1), "Outside right release keeps an invalid pointer cell")
 	assert_false(outside_right_release.current_pointer_inside_grid, "Outside right release keeps a false inside-grid fact")
+	fixture.parent.free()
+
+
+func _test_held_reentry_preserves_intermediate_cells_across_frames() -> void:
+	var fixture := _fixture(
+		Vector2.ZERO,
+		Vector2(1000.0, 700.0),
+		_config(Vector2i(4, 4), 40.0, Vector2.ZERO, Vector2i(3, 1))
+	)
+	var view = fixture.view
+	var start := _local_for_logical(view, Vector2(140.0, 60.0))
+	_deliver(view, _button(start, MOUSE_BUTTON_LEFT, true))
+	_deliver(view, _motion(_local_for_logical(view, Vector2(180.0, 60.0))))
+	var outside_frame = view.consume_input_frame()
+	assert_equal(outside_frame.crossed_cells, [], "Leaving the grid emits no outside cell")
+	assert_false(outside_frame.current_pointer_inside_grid, "The held pointer reports its outside state")
+
+	_deliver(view, _motion(_local_for_logical(view, Vector2(140.0, 140.0))))
+	var reentry_frame = view.consume_input_frame()
+	assert_equal(
+		reentry_frame.crossed_cells,
+		[Vector2i(3, 2), Vector2i(3, 3)],
+		"A held outside-to-inside segment preserves intermediate cells after a frame boundary"
+	)
+	assert_equal(
+		reentry_frame.live_gesture_path,
+		[Vector2i(3, 2), Vector2i(3, 3)],
+		"The live candidate receives the same continuous reentry path"
+	)
+	_deliver(view, _button(_local_for_logical(view, Vector2(140.0, 140.0)), MOUSE_BUTTON_LEFT, false))
+	view.consume_input_frame()
 	fixture.parent.free()
 
 

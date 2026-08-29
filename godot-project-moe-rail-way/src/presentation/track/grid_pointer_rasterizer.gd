@@ -16,23 +16,31 @@ func rasterize_motion(
 		return crossed_cells
 	if grid_rect.size.x <= 0.0 or grid_rect.size.y <= 0.0:
 		return crossed_cells
-	if not grid_rect.has_point(from_logical):
-		return crossed_cells
 
-	var motion := to_logical - from_logical
-	if motion.is_zero_approx():
+	var original_motion := to_logical - from_logical
+	if original_motion.is_zero_approx():
 		return crossed_cells
+	var clipped_points := _clip_motion_to_grid(
+		from_logical, to_logical, grid_rect
+	)
+	if clipped_points.is_empty():
+		return crossed_cells
+	var clipped_start: Vector2 = clipped_points[0]
+	var clipped_end: Vector2 = clipped_points[1]
+	var motion := clipped_end - clipped_start
 
 	var cell_size := Vector2(
 		grid_rect.size.x / float(grid_size.x),
 		grid_rect.size.y / float(grid_size.y)
 	)
-	var local_start := from_logical - grid_rect.position
-	var current_cell := Vector2i(
-		int(floor(local_start.x / cell_size.x)),
-		int(floor(local_start.y / cell_size.y))
+	var current_cell := _cell_at_clipped_entry(
+		clipped_start, original_motion, grid_rect, cell_size, grid_size
 	)
 	if not _is_cell_inside(current_cell, grid_size):
+		return crossed_cells
+	if not grid_rect.has_point(from_logical):
+		_append_if_new(crossed_cells, current_cell, grid_size, previous_cell)
+	if motion.is_zero_approx():
 		return crossed_cells
 
 	var step := Vector2i(_axis_step(motion.x), _axis_step(motion.y))
@@ -44,13 +52,13 @@ func rasterize_motion(
 		var next_x_boundary := grid_rect.position.x + cell_size.x * float(
 			current_cell.x + (1 if step.x > 0 else 0)
 		)
-		next_x_time = (next_x_boundary - from_logical.x) / motion.x
+		next_x_time = (next_x_boundary - clipped_start.x) / motion.x
 		x_time_step = cell_size.x / absf(motion.x)
 	if step.y != 0:
 		var next_y_boundary := grid_rect.position.y + cell_size.y * float(
 			current_cell.y + (1 if step.y > 0 else 0)
 		)
-		next_y_time = (next_y_boundary - from_logical.y) / motion.y
+		next_y_time = (next_y_boundary - clipped_start.y) / motion.y
 		y_time_step = cell_size.y / absf(motion.y)
 
 	var crossing_limit := grid_size.x + grid_size.y + 2
@@ -83,6 +91,81 @@ func rasterize_motion(
 			break
 
 	return crossed_cells
+
+
+func _clip_motion_to_grid(
+	from_logical: Vector2,
+	to_logical: Vector2,
+	grid_rect: Rect2
+) -> Array[Vector2]:
+	var motion := to_logical - from_logical
+	var interval := Vector2(0.0, 1.0)
+	interval = _clip_axis(
+		from_logical.x,
+		motion.x,
+		grid_rect.position.x,
+		grid_rect.end.x,
+		interval
+	)
+	if interval.x > interval.y + CROSSING_EPSILON:
+		return []
+	interval = _clip_axis(
+		from_logical.y,
+		motion.y,
+		grid_rect.position.y,
+		grid_rect.end.y,
+		interval
+	)
+	if interval.x > interval.y + CROSSING_EPSILON:
+		return []
+	if (
+		interval.y - interval.x <= CROSSING_EPSILON
+		and not grid_rect.has_point(to_logical)
+	):
+		return []
+	var clipped: Array[Vector2] = []
+	clipped.append(from_logical + motion * interval.x)
+	clipped.append(from_logical + motion * interval.y)
+	return clipped
+
+
+func _clip_axis(
+	start: float,
+	delta: float,
+	minimum: float,
+	maximum: float,
+	interval: Vector2
+) -> Vector2:
+	if is_zero_approx(delta):
+		if start < minimum or start >= maximum:
+			return Vector2(1.0, 0.0)
+		return interval
+	var first := (minimum - start) / delta
+	var second := (maximum - start) / delta
+	if first > second:
+		var swap := first
+		first = second
+		second = swap
+	return Vector2(maxf(interval.x, first), minf(interval.y, second))
+
+
+func _cell_at_clipped_entry(
+	point: Vector2,
+	motion: Vector2,
+	grid_rect: Rect2,
+	cell_size: Vector2,
+	grid_size: Vector2i
+) -> Vector2i:
+	var local_point := point - grid_rect.position
+	var cell := Vector2i(
+		int(floor(local_point.x / cell_size.x)),
+		int(floor(local_point.y / cell_size.y))
+	)
+	if cell.x == grid_size.x and motion.x < 0.0:
+		cell.x = grid_size.x - 1
+	if cell.y == grid_size.y and motion.y < 0.0:
+		cell.y = grid_size.y - 1
+	return cell
 
 
 func _axis_step(value: float) -> int:

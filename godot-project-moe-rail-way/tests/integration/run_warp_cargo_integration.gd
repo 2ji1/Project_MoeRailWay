@@ -77,6 +77,7 @@ var _manual_panel: PanelContainer
 var _manual_scroll: ScrollContainer
 var _manual_label: Label
 var _manual_button: Button
+var _last_mouse_gesture_rejection: Dictionary = {}
 
 
 func _initialize() -> void:
@@ -101,6 +102,10 @@ func _run() -> void:
     root.add_child(app)
     if _mouse_manual_mode:
         await process_frame
+        app.track_system._runtime.set_gesture_rejection_diagnostics_enabled(true)
+        app.session_controller.snapshot_published.connect(
+            _on_mouse_manual_snapshot.bind(app)
+        )
         _assert_equal(app.session_start_config.session_duration_seconds, 90.0, "Mouse manual session lasts 90 seconds")
         _assert_equal(app.session_start_config.train_speed_cells_per_second, 1.5, "Mouse manual train speed is reduced")
         _assert_equal(app.session_start_config.recovery_lag_cells, 2, "Mouse manual recovery begins two cells behind")
@@ -326,6 +331,30 @@ func _configure_mouse_manual_balance(app) -> void:
     manual_balance.warp_lifecycle_balance.lifetime_min_seconds = 3.0
     manual_balance.warp_lifecycle_balance.lifetime_max_seconds = 33.0
     app.balance = manual_balance
+
+
+func _on_mouse_manual_snapshot(_snapshot, app) -> void:
+    var rejection: Dictionary = app.track_system._runtime.get_last_gesture_rejection()
+    if rejection.is_empty() or rejection == _last_mouse_gesture_rejection:
+        return
+    _last_mouse_gesture_rejection = rejection.duplicate(true)
+    var candidate_cells: Array[String] = []
+    for record in rejection.get("candidate_records", []):
+        candidate_cells.append("%d:%s:L%s" % [
+            record.get("serial", -1),
+            record.get("cell", Vector2i(-1, -1)),
+            record.get("locked", false),
+        ])
+    print("GESTURE_REJECT | stage=%s | reason=%s | pointer=%s | live_path=%s | accepted_endpoint=%s | candidate=%s | locked=%s | anchors=%s" % [
+        rejection.get("stage", StringName()),
+        rejection.get("reason", StringName()),
+        rejection.get("pointer_cell", Vector2i(-1, -1)),
+        rejection.get("live_path", []),
+        rejection.get("accepted_endpoint", Vector2i(-1, -1)),
+        candidate_cells,
+        rejection.get("locked_pieces", []),
+        rejection.get("anchors", []),
+    ])
 
 
 func _event_signatures(snapshot) -> Array[String]:

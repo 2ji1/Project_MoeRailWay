@@ -40,6 +40,9 @@ var _gesture_ordinary_input_facts: Array[Dictionary] = []
 var _gesture_template_selection_signature_valid := false
 var _gesture_template_selection_signature_path: Array[Vector2i] = []
 var _gesture_template_selection_signature_pointer := Vector2i(-1, -1)
+var _gesture_rejection_diagnostics_enabled := false
+var _last_gesture_rejection: Dictionary = {}
+var _last_stage_rejection_reason := StringName()
 
 
 func _init(
@@ -58,6 +61,16 @@ func _init(
 
 func gesture_is_active() -> bool:
     return _gesture_active
+
+
+func get_last_gesture_rejection() -> Dictionary:
+    return _last_gesture_rejection.duplicate(true)
+
+
+func set_gesture_rejection_diagnostics_enabled(enabled: bool) -> void:
+    _gesture_rejection_diagnostics_enabled = enabled
+    if not enabled:
+        _last_gesture_rejection.clear()
 
 
 func gesture_has_legal_operation(endpoint: Vector2i = Vector2i(-1, -1)) -> bool:
@@ -113,6 +126,7 @@ func gesture_begin(endpoint: Vector2i) -> Dictionary:
     _gesture_template_selection_signature_valid = false
     _gesture_template_selection_signature_path.clear()
     _gesture_template_selection_signature_pointer = Vector2i(-1, -1)
+    _last_gesture_rejection.clear()
     _gesture_active = true
     return _gesture_origin_observation()
 
@@ -200,6 +214,10 @@ func gesture_update(
     elif _gesture_selected_template_index >= 0:
         next_ordinary_input_facts.clear()
     elif not _gesture_editable_span.is_empty() and not templates.is_empty():
+        _record_gesture_rejection(
+            &"template_selection", &"no_selected_template",
+            live_path, current_pointer_cell
+        )
         return false
     else:
         next_ordinary_input_facts = _reconcile_gesture_input_facts(
@@ -242,21 +260,37 @@ func gesture_update(
         )
     var candidate_sequence = _gesture_origin_sequence.duplicate_sequence()
     if next_template_index >= 0:
-        if not _gesture_template_mutation_is_safe():
-            return false
         var template_cells: Array[Vector2i] = []
         for cell in templates[next_template_index]:
             template_cells.append(cell)
+        if not _gesture_template_mutation_is_safe(template_cells):
+            _record_gesture_rejection(
+                &"template_mutation", &"unsafe_template_mutation",
+                live_path, current_pointer_cell, candidate_sequence
+            )
+            return false
         if not candidate_sequence.replace_span_in_place(
             _gesture_editable_span["first_route_serial"],
             _gesture_editable_span["last_route_serial"],
             template_cells
         ):
+            _record_gesture_rejection(
+                &"candidate_sequence", &"replace_span_rejected",
+                live_path, current_pointer_cell, candidate_sequence
+            )
             return false
         if not _append_gesture_input_facts(candidate_sequence, next_suffix_input_facts):
+            _record_gesture_rejection(
+                &"candidate_sequence", &"append_suffix_rejected",
+                live_path, current_pointer_cell, candidate_sequence
+            )
             return false
     else:
         if not _append_gesture_input_facts(candidate_sequence, next_ordinary_input_facts):
+            _record_gesture_rejection(
+                &"candidate_sequence", &"append_path_rejected",
+                live_path, current_pointer_cell, candidate_sequence
+            )
             return false
     var candidate_ledger = _duplicate_pieces(_gesture_origin_locked_ledger)
     var candidate_anchors = _duplicate_anchors(_gesture_origin_anchors)
@@ -266,13 +300,38 @@ func gesture_update(
         candidate_anchors,
         _gesture_origin_recovered_cells_by_piece
     )
-    if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
+    if not resolution.is_valid:
+        _record_gesture_rejection(
+            &"candidate_resolution", resolution.reason,
+            live_path, current_pointer_cell,
+            candidate_sequence, candidate_ledger, candidate_anchors
+        )
+        return false
+    if not _pieces_are_continuous(resolution.pieces):
+        _record_gesture_rejection(
+            &"candidate_continuity", &"piece_discontinuity",
+            live_path, current_pointer_cell,
+            candidate_sequence, candidate_ledger, candidate_anchors
+        )
         return false
     _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
     candidate_sequence.apply_resolved_geometry(resolution.pieces)
     if not _validate_candidate(candidate_sequence, candidate_ledger, resolution):
+        _record_gesture_rejection(
+            &"candidate_validation", &"candidate_invariant",
+            live_path, current_pointer_cell,
+            candidate_sequence, candidate_ledger, candidate_anchors
+        )
         return false
     if not _gesture_candidate_can_finalize(candidate_sequence, candidate_ledger, candidate_anchors):
+        var final_reason := _last_stage_rejection_reason
+        if final_reason == StringName():
+            final_reason = &"candidate_cannot_finalize"
+        _record_gesture_rejection(
+            &"candidate_finalization", final_reason,
+            live_path, current_pointer_cell,
+            candidate_sequence, candidate_ledger, candidate_anchors
+        )
         return false
     var candidate_contacts := _build_contact_observations(
         resolution.pieces,
@@ -308,7 +367,61 @@ func gesture_update(
             _gesture_template_selection_signature_path = live_path.duplicate()
             _gesture_template_selection_signature_pointer = current_pointer_cell
     _contact_observations = candidate_contacts.duplicate(true)
+    _last_gesture_rejection.clear()
     return true
+
+
+func _record_gesture_rejection(
+    stage: StringName,
+    reason: StringName,
+    live_path: Array[Vector2i],
+    pointer_cell: Vector2i,
+    candidate_sequence = null,
+    candidate_ledger: Array = [],
+    candidate_anchors: Array = []
+) -> void:
+    if not _gesture_rejection_diagnostics_enabled:
+        return
+    var candidate_records: Array[Dictionary] = []
+    if candidate_sequence != null:
+        for record in candidate_sequence.get_records():
+            candidate_records.append({
+                "serial": record.route_serial,
+                "cell": record.cell,
+                "distance": record.route_distance_start_cells,
+                "state": record.state,
+                "group": record.geometry_group_id,
+                "locked": record.geometry_locked,
+            })
+    var locked_pieces: Array[Dictionary] = []
+    for piece in candidate_ledger:
+        locked_pieces.append({
+            "group": piece.group_id,
+            "kind": piece.kind,
+            "first_serial": piece.first_route_serial,
+            "last_serial": piece.last_route_serial,
+            "footprint": piece.footprint_cells.duplicate(),
+        })
+    var anchor_facts: Array[Dictionary] = []
+    for anchor in candidate_anchors:
+        anchor_facts.append({
+            "id": anchor.anchor_id,
+            "cell": anchor.cell,
+            "mode": anchor.contact_mode,
+        })
+    _last_gesture_rejection = {
+        "stage": stage,
+        "reason": reason,
+        "live_path": live_path.duplicate(),
+        "pointer_cell": pointer_cell,
+        "accepted_endpoint": get_endpoint_cell(),
+        "selected_template_index": _gesture_selected_template_index,
+        "editable_span": _gesture_editable_span.duplicate(true),
+        "targets": _gesture_target_endpoints.duplicate(true),
+        "candidate_records": candidate_records,
+        "locked_pieces": locked_pieces,
+        "anchors": anchor_facts,
+    }
 
 
 func _reconcile_gesture_input_facts(
@@ -1245,24 +1358,42 @@ func _piece_containing_serial(route_serial: int):
     return null
 
 
-func _gesture_template_mutation_is_safe() -> bool:
-    if _gesture_editable_span.is_empty():
+func _gesture_record_is_immutable(record: TrackCellRecordScript) -> bool:
+    if record.geometry_locked:
+        return true
+    var owner = _piece_containing_serial(record.route_serial)
+    if owner != null and owner.locked:
+        return true
+    for locked in _locked_ledger:
+        if locked.contains_serial(record.route_serial):
+            return true
+    return false
+
+
+func _gesture_template_mutation_is_safe(template_cells: Array[Vector2i] = []) -> bool:
+    if (
+        _gesture_editable_span.is_empty()
+        or template_cells.size() != int(_gesture_editable_span["record_count"])
+    ):
         return false
     var first_serial: int = _gesture_editable_span["first_route_serial"]
     var last_serial: int = _gesture_editable_span["last_route_serial"]
+    var template_index := 0
     for record in _sequence.get_records():
         if record.route_serial < first_serial or record.route_serial > last_serial:
             continue
-        if record.geometry_locked:
+        if template_index >= template_cells.size():
             return false
         var owner = _piece_containing_serial(record.route_serial)
-        if owner == null or owner.locked:
-            return false
-    for locked in _locked_ledger:
-        if locked.last_route_serial < first_serial or locked.first_route_serial > last_serial:
+        if _gesture_record_is_immutable(record):
+            if record.cell != template_cells[template_index]:
+                return false
+            template_index += 1
             continue
-        return false
-    return true
+        if owner == null:
+            return false
+        template_index += 1
+    return template_index == template_cells.size()
 
 
 func _gesture_origin_observation() -> Dictionary:
@@ -1447,10 +1578,15 @@ func _stage_stable_retirement(
     anchors: Array[RouteContactAnchorScript],
     recovered_cells_by_piece: Dictionary
 ) -> RefCounted:
+    _last_stage_rejection_reason = StringName()
     var resolution = _resolve_candidate(
         sequence, ledger, anchors, recovered_cells_by_piece
     )
-    if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
+    if not resolution.is_valid:
+        _last_stage_rejection_reason = resolution.reason
+        return TrackGeometryResolutionScript.rejected(-1, &"candidate_resolution")
+    if not _pieces_are_continuous(resolution.pieces):
+        _last_stage_rejection_reason = &"candidate_continuity"
         return TrackGeometryResolutionScript.rejected(-1, &"candidate_resolution")
     var records: Array[TrackCellRecordScript] = sequence.get_records()
     while true:
@@ -1465,12 +1601,17 @@ func _stage_stable_retirement(
             ledger_piece.exit_support_route_serial >= 0
             and ledger_piece.exit_support_route_serial <= ledger_piece.last_route_serial
         ):
+            _last_stage_rejection_reason = &"invalid_exit_support"
             return TrackGeometryResolutionScript.rejected(-1, &"invalid_exit_support")
         ledger.append(ledger_piece)
         resolution = _resolve_candidate(
             sequence, ledger, anchors, recovered_cells_by_piece
         )
-        if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
+        if not resolution.is_valid:
+            _last_stage_rejection_reason = resolution.reason
+            return TrackGeometryResolutionScript.rejected(-1, &"retirement_resolution")
+        if not _pieces_are_continuous(resolution.pieces):
+            _last_stage_rejection_reason = &"retirement_continuity"
             return TrackGeometryResolutionScript.rejected(-1, &"retirement_resolution")
     return resolution
 

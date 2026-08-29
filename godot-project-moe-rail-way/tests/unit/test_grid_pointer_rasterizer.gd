@@ -11,6 +11,11 @@ func run() -> PackedStringArray:
 	_test_vertical_fast_motion()
 	_test_l_shape_uses_two_physical_events()
 	_test_outside_grid_motion()
+	_test_outside_reentry_preserves_intermediate_cells()
+	_test_outside_to_outside_crossing_preserves_in_grid_cells()
+	_test_reverse_outside_crossing_preserves_in_grid_cells()
+	_test_corner_touch_does_not_invent_a_cell()
+	_test_reentry_does_not_pathfind_across_an_unobserved_gap()
 	_test_repeated_cell_is_suppressed()
 	_test_reverse_axis_crossings()
 	_test_exact_boundary_and_reverse_suppression()
@@ -104,6 +109,86 @@ func _test_outside_grid_motion() -> void:
 		),
 		[Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)],
 		"Motion leaving the grid preserves only its in-grid crossings"
+	)
+
+
+func _test_outside_reentry_preserves_intermediate_cells() -> void:
+	var rasterizer = GridPointerRasterizerScript.new()
+	var result: Array[Vector2i] = rasterizer.rasterize_motion(
+		Vector2(180.0, 60.0),
+		Vector2(140.0, 140.0),
+		Rect2(Vector2.ZERO, Vector2(160.0, 160.0)),
+		Vector2i(4, 4),
+		Vector2i(3, 1)
+	)
+	assert_equal(
+		result,
+		[Vector2i(3, 2), Vector2i(3, 3)],
+		"Reentry from outside preserves every in-grid cell between the accepted endpoint and pointer"
+	)
+
+
+func _test_outside_to_outside_crossing_preserves_in_grid_cells() -> void:
+	var rasterizer = GridPointerRasterizerScript.new()
+	var result: Array[Vector2i] = rasterizer.rasterize_motion(
+		Vector2(-20.0, 20.0),
+		Vector2(180.0, 20.0),
+		Rect2(Vector2.ZERO, Vector2(160.0, 160.0)),
+		Vector2i(4, 4),
+		Vector2i(-1, -1)
+	)
+	assert_equal(
+		result,
+		[Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)],
+		"A physical segment with outside endpoints preserves the complete in-grid crossing"
+	)
+
+
+func _test_reverse_outside_crossing_preserves_in_grid_cells() -> void:
+	var rasterizer = GridPointerRasterizerScript.new()
+	var result: Array[Vector2i] = rasterizer.rasterize_motion(
+		Vector2(180.0, 20.0),
+		Vector2(-20.0, 20.0),
+		Rect2(Vector2.ZERO, Vector2(160.0, 160.0)),
+		Vector2i(4, 4),
+		Vector2i(-1, -1)
+	)
+	assert_equal(
+		result,
+		[Vector2i(3, 0), Vector2i(2, 0), Vector2i(1, 0), Vector2i(0, 0)],
+		"A reverse outside crossing preserves the same physical order"
+	)
+
+
+func _test_corner_touch_does_not_invent_a_cell() -> void:
+	var rasterizer = GridPointerRasterizerScript.new()
+	var result: Array[Vector2i] = rasterizer.rasterize_motion(
+		Vector2(-20.0, 20.0),
+		Vector2(20.0, -20.0),
+		Rect2(Vector2.ZERO, Vector2(160.0, 160.0)),
+		Vector2i(4, 4),
+		Vector2i(-1, -1)
+	)
+	assert_equal(
+		result,
+		[],
+		"A segment touching only the outer corner does not claim an in-grid cell"
+	)
+
+
+func _test_reentry_does_not_pathfind_across_an_unobserved_gap() -> void:
+	var rasterizer = GridPointerRasterizerScript.new()
+	var result: Array[Vector2i] = rasterizer.rasterize_motion(
+		Vector2(180.0, 140.0),
+		Vector2(140.0, 140.0),
+		Rect2(Vector2.ZERO, Vector2(160.0, 160.0)),
+		Vector2i(4, 4),
+		Vector2i(3, 0)
+	)
+	assert_equal(
+		result,
+		[Vector2i(3, 3)],
+		"Reentry reports its observed cell without inventing a path from the prior endpoint"
 	)
 
 

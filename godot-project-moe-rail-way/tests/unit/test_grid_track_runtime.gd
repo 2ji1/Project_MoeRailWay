@@ -9,7 +9,31 @@ const TrackGeometryResolverScript = preload("res://src/domain/track/track_geomet
 const TrackGeometryResolutionScript = preload("res://src/domain/track/track_geometry_resolution.gd")
 
 
+class _GestureDiagnosticRejectResolver extends TrackGeometryResolverScript:
+	var reject_gesture_candidate := false
+
+	func resolve(
+		departure_cell: Vector2i,
+		records: Array,
+		locked_pieces: Array,
+		anchors: Array,
+		grid_origin_units: Vector2,
+		grid_size: Vector2i,
+		cell_size_units: float
+	) -> RefCounted:
+		if reject_gesture_candidate:
+			var rejected_serial: int = -1 if records.is_empty() else records[-1].route_serial
+			return TrackGeometryResolutionScript.rejected(rejected_serial, &"injected_gesture_reject")
+		return super.resolve(
+			departure_cell, records, locked_pieces, anchors,
+			grid_origin_units, grid_size, cell_size_units
+		)
+
+
 func run() -> PackedStringArray:
+	_test_gesture_rejection_diagnostic_is_detached()
+	_test_locked_selected_template_allows_suffix_extension()
+	_test_selected_template_suffix_continues_after_train_lock()
 	_test_active_gesture_recovery_evolves_origin_and_candidate()
 	_test_active_recovery_failure_asserts_and_preserves_transaction()
 	_test_swept_contact_api_exists()
@@ -111,6 +135,137 @@ func run() -> PackedStringArray:
 	_test_unanchored_three_by_three_runtime_uses_local_corners()
 	_test_tight_turn_suffix_resolves_with_disjoint_local_footprints()
 	return finish()
+
+
+func _test_gesture_rejection_diagnostic_is_detached() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(0, 0), 8, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	track.set_gesture_rejection_diagnostics_enabled(true)
+	var resolver = _GestureDiagnosticRejectResolver.new()
+	track._resolver = resolver
+	assert_false(track.gesture_begin(Vector2i(0, 0)).is_empty(), "Diagnostic fixture begins a legal gesture")
+	resolver.reject_gesture_candidate = true
+	var live_path: Array[Vector2i] = [Vector2i(1, 0)]
+	assert_false(track.gesture_update(live_path, Vector2i(1, 0)), "Injected resolver rejects the live candidate")
+	assert_true(track.has_method("get_last_gesture_rejection"), "Runtime exposes the last live-candidate rejection")
+	if not track.has_method("get_last_gesture_rejection"):
+		return
+	var observation: Dictionary = track.call("get_last_gesture_rejection")
+	assert_equal(observation.get("stage", StringName()), &"candidate_resolution", "Diagnostic identifies the preview resolution stage")
+	assert_equal(observation.get("reason", StringName()), &"injected_gesture_reject", "Diagnostic retains the resolver reason")
+	assert_equal(observation.get("live_path", []), live_path, "Diagnostic retains the exact live path")
+	assert_equal(observation.get("pointer_cell", Vector2i(-1, -1)), Vector2i(1, 0), "Diagnostic retains the pointer cell")
+	observation["live_path"].append(Vector2i(2, 0))
+	assert_equal(track.call("get_last_gesture_rejection").get("live_path", []), live_path, "Diagnostic observation is detached")
+	resolver.reject_gesture_candidate = false
+	assert_true(track.gesture_update(live_path, Vector2i(1, 0)), "A later valid update publishes normally")
+	assert_equal(track.call("get_last_gesture_rejection"), {}, "A successful update clears stale rejection state")
+
+
+func _test_selected_template_suffix_continues_after_train_lock() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(5, 2), 60, Vector2.ZERO, Vector2i(12, 12), 40.0
+	)
+	var observed_route: Array[Vector2i] = [
+		Vector2i(5, 3), Vector2i(5, 4), Vector2i(5, 5), Vector2i(5, 6),
+		Vector2i(6, 6), Vector2i(7, 6), Vector2i(8, 6), Vector2i(8, 5),
+		Vector2i(8, 4), Vector2i(8, 3), Vector2i(8, 2), Vector2i(7, 2),
+		Vector2i(6, 2), Vector2i(5, 2), Vector2i(4, 2), Vector2i(3, 2),
+		Vector2i(3, 3), Vector2i(3, 4), Vector2i(3, 5), Vector2i(3, 6),
+		Vector2i(3, 7), Vector2i(3, 8), Vector2i(3, 9), Vector2i(4, 9),
+		Vector2i(5, 9), Vector2i(6, 9), Vector2i(7, 9), Vector2i(8, 9),
+		Vector2i(9, 9), Vector2i(10, 9), Vector2i(11, 9),
+	]
+	var initial_route: Array[Vector2i] = []
+	for cell in observed_route.slice(0, 13):
+		initial_route.append(cell)
+	assert_equal(track.append_cells(initial_route), 13, "Observed route reaches the cell beside the recovered departure")
+	assert_equal(track.advance_construction(13.0), 13.0, "Observed prefix is fully built")
+	assert_true(track.prepare_for_train_sampling(0.0, 13.0), "Observed prefix is locked for train sampling")
+	assert_equal(track.recover_behind(5.0), 5, "Observed prefix recovery retains serial six at the live rejection boundary")
+	var continued_route: Array[Vector2i] = []
+	for cell in observed_route.slice(13):
+		continued_route.append(cell)
+	assert_equal(track.append_cells(continued_route), continued_route.size(), "Observed route reuses departure and reaches the reported endpoint")
+	assert_equal(track.advance_construction(float(continued_route.size())), float(continued_route.size()), "Observed continued route is fully built before later sampling locks it")
+	var began: Dictionary = track.gesture_begin(track.get_endpoint_cell())
+	assert_false(began.is_empty(), "Locked suffix fixture begins from the active endpoint")
+	if began.is_empty():
+		return
+	var selected_path: Array[Vector2i] = [Vector2i(11, 8), Vector2i(11, 7), Vector2i(11, 6)]
+	assert_true(track.gesture_update(selected_path, Vector2i(11, 6)), "Observed vertical template publishes before train locking reaches it")
+	assert_equal(track.get_endpoint_cell(), Vector2i(11, 6), "Observed template selects the reported last-valid endpoint")
+	assert_true(track.gesture_is_active(), "Observed gesture remains active after publishing its first candidate")
+	assert_equal(track.recover_behind(6.0), 1, "Observed live recovery removes one prefix cell while the gesture remains held")
+	assert_true(track.gesture_is_active(), "Observed live recovery preserves the held gesture")
+	var locked_ledger_before := _piece_values(track._locked_ledger)
+	var inventory_before: int = track.get_available_track_cells()
+	var extended_path: Array[Vector2i] = selected_path.duplicate()
+	extended_path.append(Vector2i(11, 5))
+	var extended := track.gesture_update(extended_path, Vector2i(11, 5))
+	assert_true(extended, "A held gesture keeps its selected locked template and appends only the unlocked suffix")
+	assert_equal(track._gesture_selected_template_index, 0, "Immutable selected template remains selected while the pointer advances")
+	assert_equal(track._gesture_suffix_input_facts.size(), 4, "Selected template retains the full implicit suffix path")
+	if track._gesture_suffix_input_facts.size() == 4:
+		assert_equal(track._gesture_suffix_input_facts[-1]["cell"], Vector2i(11, 5), "Selected template records the new suffix cell")
+	assert_equal(_piece_values(track._locked_ledger), locked_ledger_before, "Suffix extension keeps the selected locked owner byte-unchanged")
+	assert_equal(track.get_endpoint_cell(), Vector2i(11, 5), "Suffix extension publishes the new endpoint")
+	assert_equal(track.get_available_track_cells(), inventory_before - 1, "Suffix extension charges exactly one cell")
+	_assert_conservation(track, "Suffix extension preserves exact inventory conservation")
+
+
+func _test_locked_selected_template_allows_suffix_extension() -> void:
+	var track = _make_three_by_three_curve_runtime()
+	var began: Dictionary = track.gesture_begin(track.get_endpoint_cell())
+	assert_false(began.is_empty(), "Locked replay fixture begins from the curve endpoint")
+	if began.is_empty():
+		return
+	var templates: Array[Array] = track._template_cells(began["editable_span"])
+	var current_cells: Array[Vector2i] = []
+	for record in track.get_cell_records():
+		if (
+			record.route_serial >= began["editable_span"]["first_route_serial"]
+			and record.route_serial <= began["editable_span"]["last_route_serial"]
+		):
+			current_cells.append(record.cell)
+	var selected_template_index := -1
+	for index in range(templates.size()):
+		if templates[index] == current_cells:
+			selected_template_index = index
+			break
+	assert_true(selected_template_index >= 0, "Locked replay fixture identifies the exact current template")
+	if selected_template_index < 0:
+		return
+	track._gesture_selected_template_index = selected_template_index
+	var endpoint_piece = track._piece_containing_serial(began["editable_span"]["first_route_serial"])
+	assert_true(endpoint_piece != null, "Locked replay fixture has an endpoint owner")
+	if endpoint_piece == null:
+		return
+	var locked_owner = endpoint_piece.duplicate_piece()
+	locked_owner.locked = true
+	endpoint_piece.locked = true
+	track._locked_ledger.append(locked_owner)
+	track._gesture_origin_locked_ledger.append(locked_owner.duplicate_piece())
+	for origin_piece in track._gesture_origin_pieces:
+		if (
+			origin_piece.first_route_serial == locked_owner.first_route_serial
+			and origin_piece.last_route_serial == locked_owner.last_route_serial
+		):
+			origin_piece.locked = true
+	track._sequence.apply_resolved_geometry(track._pieces)
+	track._gesture_origin_sequence.apply_resolved_geometry(track._gesture_origin_pieces)
+	var template_names: Array[StringName] = [&"straight", &"left", &"right"]
+	var selected_target: Vector2i = began["targets"][template_names[selected_template_index]]
+	var suffix_cell: Vector2i = track.get_endpoint_cell() + Vector2i(0, 1)
+	var live_path: Array[Vector2i] = [selected_target, suffix_cell]
+	var locked_before := _piece_values(track._locked_ledger)
+	var inventory_before: int = track.get_available_track_cells()
+	assert_true(track.gesture_update(live_path, suffix_cell), "Exact locked template replay appends an unlocked suffix")
+	assert_equal(_piece_values(track._locked_ledger), locked_before, "Exact locked template replay preserves locked geometry byte-for-byte")
+	assert_equal(track.get_endpoint_cell(), suffix_cell, "Exact locked template replay publishes the suffix endpoint")
+	assert_equal(track.get_available_track_cells(), inventory_before - 1, "Exact locked template replay charges only the suffix cell")
+	_assert_conservation(track, "Exact locked template replay preserves inventory conservation")
 
 
 func _test_active_recovery_failure_asserts_and_preserves_transaction() -> void:
