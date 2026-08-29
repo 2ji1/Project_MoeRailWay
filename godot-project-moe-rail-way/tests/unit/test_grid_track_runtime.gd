@@ -2827,6 +2827,8 @@ func _test_endpoint_reshape_locked_boundary_rejects_template_mutation() -> void:
 	var recovery_before := _recovery_observation_values(track)
 	var contacts_before: Array = track.get_contact_observations().duplicate(true)
 	var anchors_before := _anchor_values(track._anchors)
+	var origin_before := _abort_origin_values(track.get_gesture_origin_observation())
+	var origin_watermark_before: int = track._gesture_origin_sequence._next_route_serial
 	print("Endpoint reshape: locked boundary rejects template mutation")
 	var target_cells: Array[Vector2i] = [began["targets"]["straight"]]
 	assert_false(track.call("gesture_update", target_cells), "Locked boundary rejects template mutation")
@@ -2837,6 +2839,16 @@ func _test_endpoint_reshape_locked_boundary_rejects_template_mutation() -> void:
 	assert_equal(_recovery_observation_values(track), recovery_before, "Locked boundary preserves construction and recovery")
 	assert_equal(track.get_contact_observations(), contacts_before, "Locked boundary preserves contact observations")
 	assert_equal(_anchor_values(track._anchors), anchors_before, "Locked boundary preserves anchors")
+	assert_equal(
+		_abort_origin_values(track.get_gesture_origin_observation()),
+		origin_before,
+		"Locked boundary rejection preserves the authoritative gesture origin"
+	)
+	assert_equal(
+		track._gesture_origin_sequence._next_route_serial,
+		origin_watermark_before,
+		"Locked boundary rejection preserves the origin serial watermark"
+	)
 	track.call("gesture_abort")
 
 
