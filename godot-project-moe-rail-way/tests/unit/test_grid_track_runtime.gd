@@ -222,6 +222,7 @@ func _test_bounded_reentry_connection_requires_real_view_authority() -> void:
 		rejected.gesture_begin(Vector2i(1, 1)).is_empty(),
 		"Unauthorized reentry fixture begins a legal gesture"
 	)
+	var rejected_before := _reentry_transaction_values(rejected)
 	assert_false(
 		rejected.gesture_update(raw_path, raw_path[-1]),
 		"The raw remote jump remains invalid without real-view authority"
@@ -231,8 +232,11 @@ func _test_bounded_reentry_connection_requires_real_view_authority() -> void:
 		&"append_path_rejected",
 		"Unauthorized reentry retains the ordinary append rejection"
 	)
-	assert_equal(rejected.get_endpoint_cell(), Vector2i(1, 1), "Unauthorized reentry preserves the last valid endpoint")
-	assert_equal(rejected.get_available_track_cells(), 20, "Unauthorized reentry preserves inventory")
+	assert_equal(
+		_reentry_transaction_values(rejected),
+		rejected_before,
+		"Unauthorized reentry preserves route, ownership, locks, sampling, anchors, contacts, recovery, inventory, and serial watermarks"
+	)
 
 	var gesture_update_argument_count := _method_argument_count(rejected, &"gesture_update")
 	assert_true(
@@ -287,6 +291,7 @@ func _test_bounded_reentry_connection_requires_real_view_authority() -> void:
 	insufficient.set_gesture_rejection_diagnostics_enabled(true)
 	insufficient.gesture_begin(Vector2i(1, 1))
 	var insufficient_path: Array[Vector2i] = [Vector2i(2, 1), Vector2i(4, 1)]
+	var insufficient_before := _reentry_transaction_values(insufficient)
 	assert_false(
 		insufficient.gesture_update(insufficient_path, insufficient_path[-1], true),
 		"Authorized connector cannot exceed available inventory"
@@ -296,8 +301,46 @@ func _test_bounded_reentry_connection_requires_real_view_authority() -> void:
 		&"bounded_reentry_connection_rejected",
 		"Inventory-bounded search reports its specific rejection"
 	)
-	assert_equal(insufficient.get_cell_records(), [], "Rejected inventory-bounded search is atomic")
-	assert_equal(insufficient.get_available_track_cells(), 2, "Rejected inventory-bounded search preserves inventory")
+	assert_equal(
+		_reentry_transaction_values(insufficient),
+		insufficient_before,
+		"Inventory-bounded rejection preserves the complete transaction state"
+	)
+
+	var blocked = GridTrackRuntimeScript.new(
+		Vector2i(3, 4), 20, Vector2.ZERO, Vector2i(7, 7), 40.0
+	)
+	var blocked_sequence = TrackCellSequenceScript.new(Vector2i(3, 4), 20)
+	assert_equal(
+		blocked_sequence.append_candidates([
+			Vector2i(4, 4), Vector2i(4, 3), Vector2i(4, 2), Vector2i(3, 2),
+			Vector2i(2, 2), Vector2i(2, 3), Vector2i(3, 3),
+		]),
+		7,
+		"Blocked connector fixture surrounds the endpoint with three active cells and its departure"
+	)
+	var blocked_before := {
+		"records": _record_values(blocked_sequence.get_records()),
+		"inventory": blocked_sequence.get_available_track_cells(),
+		"next_route_serial": blocked_sequence._next_route_serial,
+		"next_nominal_start": blocked_sequence._next_nominal_start_cells,
+		"active_predecessor": blocked_sequence.get_active_predecessor_cell(),
+	}
+	var blocked_connector: Array[Vector2i] = blocked.call(
+		"_find_bounded_reentry_connector", blocked_sequence, Vector2i(6, 6)
+	)
+	assert_equal(blocked_connector, [], "Bounded search returns no connector when every first step is blocked")
+	assert_equal(
+		{
+			"records": _record_values(blocked_sequence.get_records()),
+			"inventory": blocked_sequence.get_available_track_cells(),
+			"next_route_serial": blocked_sequence._next_route_serial,
+			"next_nominal_start": blocked_sequence._next_nominal_start_cells,
+			"active_predecessor": blocked_sequence.get_active_predecessor_cell(),
+		},
+		blocked_before,
+		"Fully blocked search does not mutate sequence ownership, inventory, or watermarks"
+	)
 
 	var occupied = GridTrackRuntimeScript.new(
 		Vector2i(0, 0), 10, Vector2.ZERO, Vector2i(5, 5), 40.0
@@ -349,6 +392,58 @@ func _test_bounded_reentry_connection_requires_real_view_authority() -> void:
 		],
 		"Template suffix connector leaves the selected template authoritative"
 	)
+
+	var waypoint = GridTrackRuntimeScript.new(
+		Vector2i(1, 1), 10, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	waypoint.gesture_begin(Vector2i(1, 1))
+	var waypoint_path: Array[Vector2i] = [Vector2i(5, 0), Vector2i(5, 1)]
+	assert_true(
+		waypoint.gesture_update(waypoint_path, waypoint_path[-1], true),
+		"Connector reserves later authoritative waypoints while filling an earlier gap"
+	)
+	var waypoint_cells: Array[Vector2i] = []
+	for record in waypoint.get_cell_records():
+		waypoint_cells.append(record.cell)
+	assert_equal(
+		waypoint_cells,
+		[
+			Vector2i(2, 1), Vector2i(3, 1), Vector2i(4, 1),
+			Vector2i(4, 0), Vector2i(5, 0), Vector2i(5, 1),
+		],
+		"Waypoint reservation chooses the deterministic shortest non-consuming connector"
+	)
+
+	var recovered = GridTrackRuntimeScript.new(
+		Vector2i(1, 1), 10, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(
+		recovered.append_cells([Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2)]),
+		3,
+		"Recovered-departure fixture creates a legal origin route"
+	)
+	assert_equal(recovered.advance_construction(3.0), 3.0, "Recovered-departure route is fully built")
+	assert_true(recovered.prepare_for_train_sampling(0.0, 3.0), "Recovered-departure route is locked for sampling")
+	assert_equal(recovered.recover_behind(2.0), 2, "Recovered-departure fixture removes its rear prefix")
+	assert_equal(
+		recovered._sequence.get_active_predecessor_cell(),
+		Vector2i(2, 2),
+		"Recovery advances the active predecessor beyond the original departure"
+	)
+	var recovered_connector: Array[Vector2i] = recovered.call(
+		"_find_bounded_reentry_connector", recovered._sequence, Vector2i(1, 1)
+	)
+	assert_false(recovered_connector.is_empty(), "Bounded search may reconnect to the recovered departure cell")
+	if not recovered_connector.is_empty():
+		assert_equal(recovered_connector[-1], Vector2i(1, 1), "Recovered connector ends at the original departure")
+		var recovered_active_cells: Dictionary = {}
+		for record in recovered._sequence.get_records():
+			recovered_active_cells[record.cell] = true
+		for step in recovered_connector:
+			assert_false(
+				recovered_active_cells.has(step),
+				"Recovered connector does not cross an active route cell"
+			)
 
 
 func _method_argument_count(object: Object, method_name: StringName) -> int:
@@ -4573,6 +4668,27 @@ func _anchor_values(anchors: Array) -> Array[Dictionary]:
 	for anchor in anchors:
 		values.append({"anchor_id": anchor.anchor_id, "cell": anchor.cell})
 	return values
+
+
+func _reentry_transaction_values(track: GridTrackRuntimeScript) -> Dictionary:
+	var origin: Dictionary = track.call("get_gesture_origin_observation")
+	return {
+		"records": _record_values(track.get_cell_records()),
+		"pieces": _piece_values(track.get_geometry_pieces()),
+		"ledger": _piece_values(track._locked_ledger),
+		"construction": _construction_values(track.get_cell_records()),
+		"inventory": track.get_available_track_cells(),
+		"endpoint": track.get_endpoint_cell(),
+		"built_end": track.get_built_end_distance_cells(),
+		"next_route_serial": track._sequence._next_route_serial,
+		"next_nominal_start": track._sequence._next_nominal_start_cells,
+		"active_predecessor": track._sequence.get_active_predecessor_cell(),
+		"anchors": _anchor_values(track._anchors),
+		"contacts": track.get_contact_observations().duplicate(true),
+		"recovered_cells": track._recovered_cells_by_piece.duplicate(true),
+		"recovered_frontier": track._recovered_end_distance_cells,
+		"origin": _abort_origin_values(origin) if not origin.is_empty() else {},
+	}
 
 
 func _abort_origin_values(origin: Dictionary) -> Dictionary:

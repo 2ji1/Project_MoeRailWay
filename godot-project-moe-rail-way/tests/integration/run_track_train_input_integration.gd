@@ -352,6 +352,72 @@ func _run() -> void:
 		]:
 		print("PASS: held outside reentry connects deterministically")
 
+	var release_reentry_track := TrackSystemScript.new(config)
+	view.present(_track_snapshot(release_reentry_track))
+	await _deliver(_button(departure, MOUSE_BUTTON_LEFT, true))
+	var release_begin: TrackInputFrameScript = await _consume_view(shell, release_reentry_track)
+	_assert_true(release_begin.left_pressed, "Release-only reentry begins capture before motion")
+	await _deliver(_motion(reentry_first, MOUSE_BUTTON_MASK_LEFT))
+	await _deliver(_motion(reentry_exit, MOUSE_BUTTON_MASK_LEFT))
+	await _deliver(_motion(reentry_outside, MOUSE_BUTTON_MASK_LEFT))
+	await _deliver(_motion(reentry_target, MOUSE_BUTTON_MASK_LEFT))
+	await _deliver(_button(reentry_target, MOUSE_BUTTON_LEFT, false))
+	var release_only_frame: TrackInputFrameScript = await _consume_view(shell, release_reentry_track)
+	_assert_true(release_only_frame.has_explicit_release_snapshot, "Release-only reentry carries detached release facts")
+	_assert_true(release_only_frame.allows_bounded_reentry_connection, "Release-only reentry carries detached authority")
+	_assert_equal(
+		_record_cells(release_reentry_track.get_cell_records()),
+		[
+			Vector2i(3, 2), Vector2i(3, 1), Vector2i(3, 0),
+			Vector2i(4, 0), Vector2i(5, 0), Vector2i(6, 0),
+		],
+		"Detached release is the first frame to connect and finalize the reentry gap"
+	)
+	_assert_true(not release_reentry_track.is_runtime_gesture_active(), "Release-only connector finalizes in the release branch")
+
+	var coalesced_reentry_track := TrackSystemScript.new(config)
+	view.present(_track_snapshot(coalesced_reentry_track))
+	await _deliver(_button(departure, MOUSE_BUTTON_LEFT, true))
+	await _consume_view(shell, coalesced_reentry_track)
+	await _deliver(_motion(reentry_first, MOUSE_BUTTON_MASK_LEFT))
+	await _deliver(_motion(reentry_exit, MOUSE_BUTTON_MASK_LEFT))
+	await _deliver(_motion(reentry_outside, MOUSE_BUTTON_MASK_LEFT))
+	await _deliver(_motion(reentry_target, MOUSE_BUTTON_MASK_LEFT))
+	await _deliver(_button(reentry_target, MOUSE_BUTTON_LEFT, false))
+	await _deliver(_button(reentry_target, MOUSE_BUTTON_LEFT, true))
+	var fresh_target := _logical_to_viewport(view, Vector2(260.0, 60.0))
+	await _deliver(_motion(fresh_target, MOUSE_BUTTON_MASK_LEFT))
+	var coalesced_reentry_frame: TrackInputFrameScript = await _consume_view(
+		shell, coalesced_reentry_track
+	)
+	_assert_true(
+		coalesced_reentry_frame.left_released \
+			and coalesced_reentry_frame.left_pressed \
+			and coalesced_reentry_frame.left_held,
+		"Coalesced reentry frame retains old release and fresh press facts"
+	)
+	_assert_equal(
+		coalesced_reentry_frame.release_live_gesture_path,
+		[
+			Vector2i(3, 2), Vector2i(3, 1), Vector2i(3, 0),
+			Vector2i(6, 0),
+		],
+		"Coalesced reentry keeps the old raw release gap detached"
+	)
+	_assert_equal(coalesced_reentry_frame.live_gesture_path, [Vector2i(6, 1)], "Coalesced reentry keeps the fresh path independent")
+	_assert_equal(
+		_record_cells(coalesced_reentry_track.get_cell_records()),
+		[
+			Vector2i(3, 2), Vector2i(3, 1), Vector2i(3, 0),
+			Vector2i(4, 0), Vector2i(5, 0), Vector2i(6, 0),
+			Vector2i(6, 1),
+		],
+		"Coalesced reentry finalizes the connected old route before fresh ownership"
+	)
+	_assert_true(coalesced_reentry_track.is_runtime_gesture_active(), "Coalesced reentry leaves only the fresh gesture active")
+	await _release_view(shell, fresh_target)
+	await _consume_view(shell, coalesced_reentry_track)
+
 	var held_construction_config := _config()
 	held_construction_config.departure_required_built_cells = 99
 	var held_construction_track := ConstructionRecordingTrackSystem.new(held_construction_config)

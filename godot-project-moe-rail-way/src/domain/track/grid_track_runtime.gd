@@ -483,14 +483,22 @@ func _expand_bounded_reentry_path(
         return cells.duplicate()
     var working := base_sequence.duplicate_sequence()
     var expanded: Array[Vector2i] = []
-    for cell in cells:
+    for cell_index in range(cells.size()):
+        var cell: Vector2i = cells[cell_index]
         var endpoint: Vector2i = working.get_endpoint_cell()
         var distance := absi(cell.x - endpoint.x) + absi(cell.y - endpoint.y)
         var steps: Array[Vector2i] = []
         if distance == 1:
             steps.append(cell)
         else:
-            steps = _find_bounded_reentry_connector(working, cell)
+            var reserved_waypoints: Dictionary = {}
+            for later_index in range(cell_index + 1, cells.size()):
+                reserved_waypoints[cells[later_index]] = true
+            steps = _find_bounded_reentry_connector(
+                working,
+                cell,
+                reserved_waypoints
+            )
             if steps.is_empty():
                 return null
         for step in steps:
@@ -514,7 +522,8 @@ func _path_has_nonadjacent_edge(
 
 func _find_bounded_reentry_connector(
     sequence: TrackCellSequenceScript,
-    target: Vector2i
+    target: Vector2i,
+    reserved_waypoints: Dictionary = {}
 ) -> Array[Vector2i]:
     var empty: Array[Vector2i] = []
     if not _cell_in_grid(target):
@@ -527,36 +536,51 @@ func _find_bounded_reentry_connector(
     var blocked: Dictionary = {}
     for record in sequence.get_records():
         blocked[record.cell] = true
+    for waypoint in reserved_waypoints:
+        blocked[waypoint] = true
     if sequence.get_active_predecessor_cell() == _departure_cell:
         blocked[_departure_cell] = true
     if blocked.has(target):
         return empty
-    var visited: Dictionary = {start: true}
-    var queue: Array[Dictionary] = [{"cell": start, "path": empty}]
+    var predecessors: Dictionary = {start: start}
+    var depths: Dictionary = {start: 0}
+    var queue: Array[Vector2i] = [start]
     var read_index := 0
     var directions: Array[Vector2i] = [
         Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP,
     ]
     while read_index < queue.size():
-        var node: Dictionary = queue[read_index]
+        var current: Vector2i = queue[read_index]
         read_index += 1
-        var path: Array[Vector2i] = []
-        for path_cell in node["path"]:
-            path.append(path_cell)
-        if path.size() >= available:
+        var depth: int = depths[current]
+        if depth >= available:
             continue
-        var current: Vector2i = node["cell"]
         for direction in directions:
             var neighbor := current + direction
-            if not _cell_in_grid(neighbor) or blocked.has(neighbor) or visited.has(neighbor):
+            if not _cell_in_grid(neighbor) or blocked.has(neighbor) or predecessors.has(neighbor):
                 continue
-            var next_path := path.duplicate()
-            next_path.append(neighbor)
+            predecessors[neighbor] = current
+            depths[neighbor] = depth + 1
             if neighbor == target:
-                return next_path
-            visited[neighbor] = true
-            queue.append({"cell": neighbor, "path": next_path})
+                return _reconstruct_bounded_connector(predecessors, start, target)
+            queue.append(neighbor)
     return empty
+
+
+func _reconstruct_bounded_connector(
+    predecessors: Dictionary,
+    start: Vector2i,
+    target: Vector2i
+) -> Array[Vector2i]:
+    var reversed: Array[Vector2i] = []
+    var current := target
+    while current != start:
+        if not predecessors.has(current):
+            return []
+        reversed.append(current)
+        current = predecessors[current]
+    reversed.reverse()
+    return reversed
 
 
 func _template_index_from_pointer(
