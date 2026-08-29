@@ -105,6 +105,7 @@ func run() -> PackedStringArray:
 	_test_locked_endpoint_rejects_disconnected_rebranch()
 	_test_runtime_applies_nonzero_grid_origin_to_sampling()
 	_test_locked_aabb_empty_corner_accepts_ordinary_and_exact_routes()
+	_test_locked_shared_centerline_runtime_rejection_is_atomic()
 	_test_recovered_interval_is_not_reported_as_contacted()
 	_test_recovered_cell_can_be_contacted_by_new_geometry()
 	_test_swept_contacts_follow_active_centerlines()
@@ -2499,55 +2500,120 @@ func _test_running_locked_curve_endpoint_remains_extendable() -> void:
 func _test_locked_aabb_empty_corner_accepts_ordinary_and_exact_routes() -> void:
 	for exact_anchor in [false, true]:
 		var label := "exact" if exact_anchor else "ordinary"
-		var track = GridTrackRuntimeScript.new(
-			Vector2i(2, 3), 20, Vector2.ZERO, Vector2i(8, 8), 40.0
-		)
-		assert_equal(
-			track.append_cells([Vector2i(2, 2), Vector2i(2, 1), Vector2i(3, 1)]),
-			3,
-			"Locked empty-corner %s fixture appends its initial curve" % label
-		)
-		assert_equal(
-			track.advance_construction(3.0), 3.0,
-			"Locked empty-corner %s fixture completes construction" % label
-		)
-		assert_true(
-			track.prepare_for_train_sampling(0.0, 3.0),
-			"Locked empty-corner %s fixture locks its curve" % label
-		)
-		assert_equal(
-			track.append_cells([
-				Vector2i(4, 1), Vector2i(5, 1), Vector2i(5, 2), Vector2i(4, 2),
-			]),
-			4,
-			"Locked empty-corner %s fixture reaches the adjacent endpoint" % label
-		)
+		var track := _locked_aabb_empty_corner_runtime(exact_anchor, label)
 		var empty_corner := Vector2i(3, 2)
-		if exact_anchor:
-			var anchor = RouteContactAnchorScript.new(
-				&"empty_corner_exact", empty_corner,
-				RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+		var before_begin := _reentry_transaction_values(track)
+		assert_false(track.gesture_begin(track.get_endpoint_cell()).is_empty(), "Locked empty-corner %s gesture begins" % label)
+		assert_true(track.gesture_update([empty_corner], empty_corner), "Locked AABB empty corner accepts the %s held route" % label)
+		var accepted := _reentry_transaction_values(track)
+		assert_equal(track.get_endpoint_cell(), empty_corner, "Accepted %s route advances the endpoint" % label)
+		assert_equal(track.get_available_track_cells(), before_begin["inventory"] - 1, "Accepted %s route charges one cell" % label)
+		assert_equal(_piece_values(track._locked_ledger), before_begin["ledger"], "Accepted %s route keeps locked ledger bytes" % label)
+		assert_equal(track.get_built_end_distance_cells(), before_begin["built_end"], "Accepted %s route keeps construction frontier" % label)
+		assert_equal(track._recovered_cells_by_piece, before_begin["recovered_cells"], "Accepted %s route keeps recovery cells" % label)
+		assert_equal(track._recovered_end_distance_cells, before_begin["recovered_frontier"], "Accepted %s route keeps recovery frontier" % label)
+		assert_equal(track._sequence._next_route_serial, before_begin["next_route_serial"] + 1, "Accepted %s route advances one serial" % label)
+		assert_equal(track._sequence._next_nominal_start_cells, before_begin["next_nominal_start"] + 1.0, "Accepted %s route advances one nominal cell" % label)
+		_assert_record_piece_sync(track)
+		assert_true(track._pieces_are_continuous(track.get_geometry_pieces()), "Accepted %s route remains fully continuous" % label)
+		var owner = _piece_containing(track.get_geometry_pieces(), track.get_cell_records()[-1].route_serial)
+		assert_not_null(owner, "Accepted %s route has one concrete final owner" % label)
+		if owner != null:
+			var local_start: float = track.get_cell_records()[-1].route_distance_start_cells - owner.absolute_start_distance_cells
+			assert_true(
+				owner.contacts_cell_in_nominal_range(
+					empty_corner, Vector2.ZERO, 40.0, local_start, local_start + 1.0, 8
+				),
+				"Accepted %s owner samples through its nominal route cell" % label
 			)
-			track.set_contact_anchors([anchor])
-		var records_before := _record_values(track.get_cell_records())
-		var pieces_before := _piece_values(track.get_geometry_pieces())
-		var locked_before := _piece_values(track._locked_ledger)
-		var inventory_before: int = track.get_available_track_cells()
-		var accepted := track.append_cells([empty_corner])
+			for locked in track._locked_ledger:
+				for cell in owner.footprint_cells:
+					if locked.footprint_cells.has(cell):
+						assert_false(
+							owner.contacts_cell(cell, Vector2.ZERO, 40.0)
+							and locked.contacts_cell(cell, Vector2.ZERO, 40.0),
+							"Accepted %s route has no shared geometric collision at %s" % [label, cell]
+						)
+			if exact_anchor:
+				var exact_center := (Vector2(empty_corner) + Vector2(0.5, 0.5)) * 40.0
+				assert_true(
+					owner.find_nominal_distance_at_position(exact_center, 0.0001) >= 0.0,
+					"Accepted exact route retains its literal center in nominal sampling"
+				)
+		var replay := _locked_aabb_empty_corner_runtime(exact_anchor, label + " replay")
+		assert_false(replay.gesture_begin(replay.get_endpoint_cell()).is_empty(), "Locked empty-corner %s replay begins" % label)
+		assert_true(replay.gesture_update([empty_corner], empty_corner), "Locked empty-corner %s replay publishes" % label)
+		assert_equal(_reentry_transaction_values(replay), accepted, "Locked empty-corner %s replay is deterministic" % label)
+		assert_true(replay.gesture_abort(), "Locked empty-corner %s replay aborts" % label)
+		assert_true(track.gesture_abort(), "Locked empty-corner %s route aborts" % label)
+		var expected_abort: Dictionary = before_begin.duplicate(true)
+		expected_abort["next_route_serial"] = accepted["next_route_serial"]
 		assert_equal(
-			accepted, 1,
-			"Locked AABB empty corner accepts the %s route cell" % label
+			_reentry_transaction_values(track), expected_abort,
+			"Locked empty-corner %s abort restores the deep origin and preserves the monotonic serial watermark" % label
 		)
-		if accepted == 1:
-			assert_equal(track.get_endpoint_cell(), empty_corner, "Accepted %s route advances the endpoint" % label)
-			assert_equal(track.get_available_track_cells(), inventory_before - 1, "Accepted %s route charges one cell" % label)
-			assert_equal(_piece_values(track._locked_ledger), locked_before, "Accepted %s route keeps locked ledger bytes" % label)
-		else:
-			assert_equal(_record_values(track.get_cell_records()), records_before, "RED preserves last-valid %s records" % label)
-			assert_equal(_piece_values(track.get_geometry_pieces()), pieces_before, "RED preserves last-valid %s pieces" % label)
-			assert_equal(_piece_values(track._locked_ledger), locked_before, "RED preserves %s locked ledger bytes" % label)
-			assert_equal(track.get_available_track_cells(), inventory_before, "RED preserves %s inventory" % label)
 		_assert_conservation(track, "Locked empty-corner %s route preserves conservation" % label)
+
+
+func _locked_aabb_empty_corner_runtime(exact_anchor: bool, label: String) -> GridTrackRuntimeScript:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(2, 3), 20, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(
+		track.append_cells([Vector2i(2, 2), Vector2i(2, 1), Vector2i(3, 1)]),
+		3,
+		"Locked empty-corner %s fixture appends its initial curve" % label
+	)
+	assert_equal(track.advance_construction(3.0), 3.0, "Locked empty-corner %s fixture builds" % label)
+	assert_true(track.prepare_for_train_sampling(0.0, 3.0), "Locked empty-corner %s fixture locks" % label)
+	assert_equal(
+		track.append_cells([
+			Vector2i(4, 1), Vector2i(5, 1), Vector2i(5, 2), Vector2i(4, 2),
+		]),
+		4,
+		"Locked empty-corner %s fixture reaches the adjacent endpoint" % label
+	)
+	if exact_anchor:
+		var anchor = RouteContactAnchorScript.new(
+			&"empty_corner_exact", Vector2i(3, 2),
+			RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+		)
+		track.set_contact_anchors([anchor])
+	return track
+
+
+func _test_locked_shared_centerline_runtime_rejection_is_atomic() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 5, Vector2.ZERO, Vector2i(4, 4), 40.0
+	)
+	assert_equal(track.append_cells([Vector2i(0, 0)]), 1, "Shared-centerline fixture appends its locked owner")
+	assert_equal(track.advance_construction(1.0), 1.0, "Shared-centerline fixture builds its locked owner")
+	assert_true(track.prepare_for_train_sampling(0.0, 1.0), "Shared-centerline fixture locks its owner")
+	var anchor = RouteContactAnchorScript.new(
+		&"blocked_exact", Vector2i(1, 0),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	track.set_contact_anchors([anchor])
+	track.set_gesture_rejection_diagnostics_enabled(true)
+	assert_false(track.gesture_begin(track.get_endpoint_cell()).is_empty(), "Shared-centerline rejection gesture begins")
+	var blocker = track._locked_ledger[0].duplicate_piece()
+	blocker.footprint_cells.append(Vector2i(1, 0))
+	blocker.centerline = PackedVector2Array([Vector2(-20.0, 20.0), Vector2(60.0, 20.0)])
+	track._locked_ledger[0] = blocker.duplicate_piece()
+	track._pieces[0] = blocker.duplicate_piece()
+	track._gesture_origin_locked_ledger[0] = blocker.duplicate_piece()
+	track._gesture_origin_pieces[0] = blocker.duplicate_piece()
+	var before_rejection := _reentry_transaction_values(track)
+	assert_false(track.gesture_update([Vector2i(1, 0)], Vector2i(1, 0)), "True shared-centerline cell remains rejected")
+	var rejection := track.get_last_gesture_rejection()
+	assert_equal(rejection.get("stage", StringName()), &"candidate_resolution", "True shared-centerline rejection names resolution")
+	assert_equal(rejection.get("reason", StringName()), &"locked_overlap", "True shared-centerline rejection retains locked_overlap")
+	assert_equal(_reentry_transaction_values(track), before_rejection, "True shared-centerline rejection preserves the deep transaction")
+	assert_true(track.gesture_abort(), "Shared-centerline rejection aborts")
+	var expected_abort: Dictionary = before_rejection.duplicate(true)
+	expected_abort["origin"] = {}
+	assert_equal(_reentry_transaction_values(track), expected_abort, "Shared-centerline abort restores the deep origin")
+	_assert_conservation(track, "Shared-centerline rejection preserves conservation")
 
 
 func _test_endpoint_reshape_gesture_rejects_illegal_starts() -> void:
