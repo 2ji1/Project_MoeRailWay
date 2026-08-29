@@ -345,12 +345,14 @@ func _on_mouse_manual_snapshot(_snapshot, app) -> void:
             record.get("cell", Vector2i(-1, -1)),
             record.get("locked", false),
         ])
-    print("GESTURE_REJECT | stage=%s | reason=%s | pointer=%s | live_path=%s | accepted_endpoint=%s | candidate=%s | locked=%s | anchors=%s" % [
+    print("GESTURE_REJECT | stage=%s | reason=%s | pointer=%s | live_path=%s | accepted_endpoint=%s | selected_template=%s | attempted_template=%s | candidate=%s | locked=%s | anchors=%s" % [
         rejection.get("stage", StringName()),
         rejection.get("reason", StringName()),
         rejection.get("pointer_cell", Vector2i(-1, -1)),
         rejection.get("live_path", []),
         rejection.get("accepted_endpoint", Vector2i(-1, -1)),
+        rejection.get("selected_template_index", -1),
+        rejection.get("attempted_template_index", -1),
         candidate_cells,
         rejection.get("locked_pieces", []),
         rejection.get("anchors", []),
