@@ -237,7 +237,9 @@ func _append_if_new(
 	grid_size: Vector2i,
 	previous_cell: Vector2i
 ) -> void:
-	if not _is_cell_inside(cell, grid_size) or cell == previous_cell:
+	if not _is_cell_inside(cell, grid_size):
+		return
+	if cells.is_empty() and cell == previous_cell:
 		return
 	if not cells.is_empty() and cells[-1] == cell:
 		return

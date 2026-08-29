@@ -18,6 +18,7 @@ func run() -> PackedStringArray:
 	_test_outer_edge_corner_entry_uses_inward_cell()
 	_test_outer_axis_first_corner_entry_preserves_two_cells()
 	_test_equal_axis_corner_entry_uses_horizontal_first()
+	_test_corner_entry_can_return_to_historical_previous_cell()
 	_test_outer_edge_corner_exit_keeps_deterministic_inside_step()
 	_test_reentry_does_not_pathfind_across_an_unobserved_gap()
 	_test_repeated_cell_is_suppressed()
@@ -237,6 +238,26 @@ func _test_equal_axis_corner_entry_uses_horizontal_first() -> void:
 			),
 			entry_case["expected"],
 			"%s-edge equal-axis entry applies the horizontal-first tie rule" % entry_case["label"]
+		)
+
+
+func _test_corner_entry_can_return_to_historical_previous_cell() -> void:
+	var rasterizer = GridPointerRasterizerScript.new()
+	var grid_rect := Rect2(Vector2.ZERO, Vector2(160.0, 160.0))
+	var cases := [
+		{"label": "right", "from": Vector2(180.0, 70.0), "to": Vector2(140.0, 90.0), "previous": Vector2i(3, 2), "expected": [Vector2i(3, 1), Vector2i(3, 2)]},
+		{"label": "left", "from": Vector2(-20.0, 70.0), "to": Vector2(20.0, 90.0), "previous": Vector2i(0, 2), "expected": [Vector2i(0, 1), Vector2i(0, 2)]},
+		{"label": "top", "from": Vector2(70.0, -20.0), "to": Vector2(90.0, 20.0), "previous": Vector2i(2, 0), "expected": [Vector2i(1, 0), Vector2i(2, 0)]},
+		{"label": "bottom", "from": Vector2(70.0, 180.0), "to": Vector2(90.0, 140.0), "previous": Vector2i(2, 3), "expected": [Vector2i(1, 3), Vector2i(2, 3)]},
+	]
+	for entry_case in cases:
+		assert_equal(
+			rasterizer.rasterize_motion(
+				entry_case["from"], entry_case["to"], grid_rect,
+				Vector2i(4, 4), entry_case["previous"]
+			),
+			entry_case["expected"],
+			"%s-edge entry may return to the historical cell after a new corner cell" % entry_case["label"]
 		)
 
 
