@@ -914,3 +914,88 @@ remain invalid.
   allowlist through focused RED/GREEN commits and repeat both reviews. Then repeat
   `960x540`, `1280x720`, `1600x900`, and `1920x1080`; no row becomes PASS without
   direct user confirmation on the exact reviewed HEAD.
+
+---
+
+### Task 9: Separate Locked AABB Metadata from Geometric Collision Occupancy
+
+**Status:** User-approved after the `1280x720` mouse gate failed at
+`6ba9a9fde5eb241533ca8aff0db90ba22341aaeb`.
+
+**Documentation allowlist:**
+
+- `docs/superpowers/specs/2026-08-27-live-gesture-path-reflow-design.md`
+- `docs/superpowers/plans/2026-08-27-live-gesture-path-reflow.md`
+
+Commit this documentation pair before changing behavior.
+
+**Implementation allowlist:**
+
+- `godot-project-moe-rail-way/src/domain/track/track_geometry_resolver.gd`
+- `godot-project-moe-rail-way/tests/unit/test_track_geometry_resolver.gd`
+- `godot-project-moe-rail-way/tests/unit/test_grid_track_runtime.gd`
+- `godot-project-moe-rail-way/tests/integration/run_track_train_input_integration.gd`
+- `godot-project-moe-rail-way/tests/manual/warp_cargo_windows.md`
+
+No other path may be modified. In particular, do not change stored piece fields,
+ordered route uniqueness, pointer rasterization, bounded reentry search, Warp
+lifecycle, train sampling, construction, recovery, or HUD behavior.
+
+**Purpose:** Preserve inclusive AABB footprints as immutable geometry and ownership
+metadata, but derive locked-piece collision occupancy from actual stored centerline
+cell contact. Permit a later route through an AABB-only empty corner while keeping
+real centerline conflicts, duplicate route cells, and every unlocked `final_overlap`
+gate strict.
+
+- [ ] **Step 1: Commit the amended English contract before behavior**
+
+  Record the exact video/log evidence, the two distinct footprint meanings, preserved
+  unlocked-overlap semantics, exact-anchor ordering, recovery filtering, and the
+  implementation allowlist. Leave every unresolved manual row pending or failed.
+
+- [ ] **Step 2: Add deterministic RED before production changes**
+
+  Reproduce the locked route `(2, 2) -> (2, 1) -> (3, 1)` whose immutable
+  `CURVE_2X2` AABB also contains unowned corner `(3, 2)`. From adjacent endpoint
+  `(4, 2)`, require an accepted route occurrence at `(3, 2)` first without an anchor
+  and then with an exact-center anchor. Before GREEN, both must reject only as
+  `locked_overlap`. Assert that the locked centerline does not contact `(3, 2)` and
+  preserve an exact ledger-byte oracle.
+
+  Add paired negatives where the shared cell is contacted by the locked centerline,
+  where sequence ownership already contains the route cell, and where two unlocked
+  radius-1 AABBs retain `final_overlap`. Capture route records, pieces, ledger,
+  centerline bytes, footprint, nominal sampling, anchors, contacts, construction,
+  recovery, inventory, and serial watermarks around rejection and abort.
+
+- [ ] **Step 3: Implement the minimum locked-collision correction**
+
+  In `TrackGeometryResolver`, derive each piece's collision occupancy by iterating its
+  currently blocking `footprint_cells` and calling its existing deterministic
+  `contacts_cell()` query. Compare the prospective unlocked piece occupancy with each
+  locked piece occupancy. Use that comparison in both candidate fallback and final
+  straight/curve locked-conflict checks. Do not store occupancy, mutate pieces, or
+  change unlocked candidate AABB overlap/downgrade/final-overlap logic.
+
+- [ ] **Step 4: Run GREEN and regression gates**
+
+  Run focused resolver and runtime suites plus actual-input integration. Then run all
+  `24` registered prototype suites, all five standalone integrations, UID sidecar
+  audit, and `git diff --check`. Require deterministic replay, exact locked bytes,
+  preserved Warp tick trace, and no warning/error output.
+
+- [ ] **Step 5: Stage exact implementation paths and commit**
+
+  Compare unstaged, staged, and untracked paths with the five-path implementation
+  allowlist. Stage only changed exact paths, inspect the full staged diff and
+  `git diff --cached --check`, and create one focused implementation commit.
+
+- [ ] **Step 6: Obtain independent reviews and repeat user-owned mouse gates**
+
+  Specification review checks Section 13's split authority and preserved
+  `final_overlap`, exact-anchor, recovery, and immutable-ledger contracts. Quality
+  review checks spatial cell-contact determinism, boundary sampling, candidate/final
+  parity, performance bounds, negative collision coverage, and exact allowlist scope.
+  Resolve findings only through focused RED/GREEN commits. Then restart the failed
+  `1280x720` row before continuing `1600x900` and `1920x1080`; no mouse-only row
+  becomes PASS without direct user confirmation on the exact reviewed HEAD.

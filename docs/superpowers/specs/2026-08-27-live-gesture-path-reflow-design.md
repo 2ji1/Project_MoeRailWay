@@ -380,3 +380,56 @@ same gap without real-view authority is rejected, blocked/no-inventory connector
 remain rejected, existing active cells are not reused, selected-template suffix
 connection preserves template authority, release uses its detached authority, and
 abort restores the exact origin.
+
+## 13. Locked AABB Footprint and Geometric Collision Occupancy
+
+The `1280x720` mouse gate at feature candidate
+`6ba9a9fde5eb241533ca8aff0db90ba22341aaeb` exposed a separate locked-collision
+ambiguity. The accepted endpoint was `(4, 2)` and the user dragged into active mint
+Warp origin cell `(3, 2)`. The input path was adjacent and complete, but resolution
+rejected it as `locked_overlap`. An earlier locked `CURVE_2X2` owned ordered cells
+`(2, 2) -> (2, 1) -> (3, 1)` and retained the required inclusive AABB footprint
+`[(2, 1), (3, 1), (2, 2), (3, 2)]`. Its centerline did not enter the unowned corner
+`(3, 2)`, so the rejection appeared to target an empty cell. The Warp did not consume
+input, and its exact-center anchor never became an accepted ordered-route constraint.
+
+This amendment separates two existing meanings without changing either stored route
+or geometry bytes:
+
+1. `footprint_cells` remains the inclusive AABB of a curve's owned route cells. It
+   remains authoritative for geometry containment, ownership metadata, locked-ledger
+   identity, recovery bookkeeping, bounds, unlocked candidate overlap/downgrade, and
+   irreducible `final_overlap` rejection.
+2. Collision occupancy against an already locked piece is derived on demand from the
+   cells in its currently blocking footprint that its stored centerline actually
+   contacts. Use the existing deterministic `TrackGeometryPiece.contacts_cell()`
+   spatial query and the current grid origin and cell size. Do not add a mutable or
+   separately stored occupancy field.
+3. A prospective unlocked straight or curve conflicts with a locked piece only when
+   both centerlines contact at least one common currently blocking footprint cell.
+   A shared AABB-only corner with no locked centerline contact is not a collision.
+4. Existing recovered-cell filtering runs before occupancy derivation. A recovered
+   footprint cell remains nonblocking exactly as before; the complete source ledger
+   footprint and centerline remain byte-for-byte unchanged.
+5. Unlocked-versus-unlocked candidate selection remains unchanged and continues to use
+   AABB overlap, symmetric `3x3 -> 2x2 -> 1x1` downgrade, and `final_overlap`. This
+   correction must not reinterpret or globally relax that gate.
+6. Active ordered route cells remain unique. Geometric occupancy does not permit a
+   duplicate route cell, branch, merge, self-crossing, discontinuity, or remote route
+   insertion. Sequence validation still runs before resolution.
+7. An `EXACT_CELL_CENTER` anchor does not override collision. It constrains the common
+   local-corner geometry only after its cell is accepted as an owned active route
+   occurrence. Warp-free and Warp-occupied cells use the identical collision rule.
+8. Locked kind, serial span, footprint, centerline, group, nominal length, active
+   slice, construction, recovery, sampling, contact observations, and inventory remain
+   unchanged. Identical inputs must derive identical occupancy and resolution.
+
+Required deterministic evidence must reproduce the literal locked `CURVE_2X2` fixture,
+show that `(3, 2)` is in its AABB but not its geometric collision occupancy, and prove
+that an adjacent suffix through `(3, 2)` resolves with or without an exact-center
+anchor. The anchored result must contain the literal center knot. Paired negative
+fixtures must still reject when the locked centerline truly contacts the shared cell,
+when the route cell is already active, and when two unlocked final AABBs irreducibly
+overlap. Every accepted fixture must prove pairwise geometric collision separation,
+one owner per serial, locked-ledger byte identity, deterministic replay, inventory and
+construction/recovery conservation, continuity, nominal sampling, and exact abort.
