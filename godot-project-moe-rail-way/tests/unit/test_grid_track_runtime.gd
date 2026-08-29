@@ -55,6 +55,7 @@ func run() -> PackedStringArray:
 	_test_endpoint_reshape_control_cells_are_omitted()
 	_test_endpoint_reshape_target_reentry_rebuilds_from_origin()
 	_test_live_template_suffix_reconciles_from_current_path()
+	_test_candidate_retirement_does_not_revoke_origin_template()
 	_test_recovered_running_endpoint_accepts_direct_extension()
 	_test_recovered_departure_endpoint_gesture_installs_and_owns_exact_anchor()
 	_test_locked_endpoint_exact_warp_turn_retains_same_gesture_suffix()
@@ -1194,6 +1195,83 @@ func _test_live_template_suffix_reconciles_from_current_path() -> void:
 	assert_equal(shorter_records[-1].route_serial, surviving_serial, "Backtracking preserves surviving suffix identity")
 	assert_true(track.gesture_is_active(), "Backtracking keeps capture active")
 	track.gesture_abort()
+
+
+func _test_candidate_retirement_does_not_revoke_origin_template() -> void:
+	var track = _make_three_by_three_curve_runtime()
+	track.set_gesture_rejection_diagnostics_enabled(true)
+	var began: Dictionary = track.gesture_begin(track.get_endpoint_cell())
+	assert_false(began.is_empty(), "Candidate-retirement fixture begins an unlocked template gesture")
+	if began.is_empty():
+		return
+	var straight_target: Vector2i = began["targets"]["straight"]
+	var long_path: Array[Vector2i] = [
+		straight_target, Vector2i(5, 0), Vector2i(6, 0), Vector2i(7, 0),
+	]
+	assert_true(
+		track.gesture_update(long_path, long_path[-1]),
+		"Long held suffix publishes before candidate-local retirement"
+	)
+	var anchor = RouteContactAnchorScript.new(
+		&"candidate_retirement_exact",
+		Vector2i(6, 0),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var anchors: Array[RouteContactAnchorScript] = [anchor]
+	track.set_contact_anchors(anchors)
+	var first_serial: int = began["editable_span"]["first_route_serial"]
+	var last_serial: int = began["editable_span"]["last_route_serial"]
+	var current_span_locked := false
+	for record in track.get_cell_records():
+		if record.route_serial >= first_serial and record.route_serial <= last_serial:
+			current_span_locked = current_span_locked or record.geometry_locked
+	var origin: Dictionary = track.get_gesture_origin_observation()
+	var origin_span_locked := false
+	for record in origin["route_records"]:
+		if record.route_serial >= first_serial and record.route_serial <= last_serial:
+			origin_span_locked = origin_span_locked or record.geometry_locked
+	assert_true(
+		current_span_locked,
+		"Anchor refresh retires the long live candidate's original template"
+	)
+	assert_false(
+		origin_span_locked,
+		"The authoritative gesture origin keeps the editable template unlocked"
+	)
+	assert_equal(
+		origin["locked_ledger"],
+		[],
+		"Candidate-local retirement does not contaminate the origin ledger"
+	)
+	var shorter_path: Array[Vector2i] = [straight_target, Vector2i(5, 0)]
+	var updated: bool = track.gesture_update(shorter_path, shorter_path[-1])
+	var rejection: Dictionary = track.get_last_gesture_rejection()
+	if updated:
+		assert_equal(rejection, {}, "Successful origin-authorized reflow clears rejection diagnostics")
+	else:
+		assert_equal(
+			rejection.get("stage", StringName()),
+			&"template_mutation",
+			"RED identifies the candidate-local safety stage"
+		)
+		assert_equal(
+			rejection.get("reason", StringName()),
+			&"unsafe_template_mutation",
+			"RED identifies candidate-local retirement as the rejection reason"
+		)
+	assert_true(
+		updated,
+		"Same-press backtrack remains authorized by the unlocked gesture origin"
+	)
+	if updated:
+		assert_equal(track.get_endpoint_cell(), Vector2i(5, 0), "Backtrack publishes the shorter endpoint")
+		assert_false(
+			track.get_cell_records().any(
+				func(record): return record.cell == Vector2i(6, 0) or record.cell == Vector2i(7, 0)
+			),
+			"Backtrack removes the retired live suffix"
+		)
+	_assert_conservation(track, "Candidate-retirement reflow preserves exact inventory")
 
 
 func _test_recovered_running_endpoint_accepts_direct_extension() -> void:
@@ -2737,6 +2815,11 @@ func _test_endpoint_reshape_locked_boundary_rejects_template_mutation() -> void:
 	track._pieces[-1].locked = true
 	track._locked_ledger.append(locked_boundary)
 	track._sequence.apply_resolved_geometry(track._pieces)
+	var origin_locked_boundary = track._gesture_origin_pieces[-1].duplicate_piece()
+	origin_locked_boundary.locked = true
+	track._gesture_origin_pieces[-1].locked = true
+	track._gesture_origin_locked_ledger.append(origin_locked_boundary)
+	track._gesture_origin_sequence.apply_resolved_geometry(track._gesture_origin_pieces)
 	var records_before := _record_values(track.get_cell_records())
 	var pieces_before := _piece_values(track.get_geometry_pieces())
 	var ledger_before := _piece_values(track._locked_ledger)

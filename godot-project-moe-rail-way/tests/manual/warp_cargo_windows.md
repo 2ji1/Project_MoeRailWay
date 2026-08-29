@@ -74,6 +74,7 @@ At every size, also complete these control-feel checks:
 11. After rear recovery removes the first route cell and the departure marker has dissolved, guide the active endpoint back beside departure `(5, 2)`. Hold left drag through `(5, 2)` and one following recovered cell, confirm both cells remain in the live preview, then release and confirm both install. If an active Warp occupies `(5, 2)`, confirm the reused track passes through its exact center and the origin marker does not return.
 12. Let the train approach closely enough to lock the current endpoint, then start one held drag straight into an adjacent active Warp and turn on the following cell. Continue for at least one more cell before release. Confirm the Warp cell, first turn, and remaining suffix all stay in the live preview and install together without moving the locked track behind them.
 13. Build a long orthogonal turn, later route the active endpoint beside one of that curve's owned cells, and attempt to drag back into it. Confirm the earlier curve is visibly present inside the rejected cell; no duplicate-cell rejection may appear to come from empty space.
+14. During one completed-head gesture, keep left held while drawing a long suffix and allow a Warp activation, expiry, or other anchor refresh to occur. Backtrack through the published suffix and continue along a new branch without releasing. Confirm the live preview replaces the retired suffix immediately; candidate-local retirement must not freeze the gesture, while track already locked before the press remains unchanged.
 
 ## Track local-corner visual addendum
 
@@ -98,6 +99,7 @@ At every supported window size, first draw Warp-free turns representing the visi
 10. Dragging, backtracking, rebranching, release, and right-click cancellation retain the same control feel around the locally rounded track.
 11. Reproduce a `2x2` tail that enters its endpoint vertically, then begin separate drags to the left and right neighbors. Confirm both previews publish, their two adjacent unlocked turns settle into visibly separate local corners, locked track does not move, and an exact Warp marker on the right target is crossed through its literal center.
 12. Reproduce the `960x540` hidden-ownership report: approach the active endpoint from above while an earlier curve already owns the cell immediately below it. Confirm that earlier curve is visibly present in the owned cell and the rejected downward duplicate no longer appears to target an empty cell.
+13. Reproduce the completed-head freeze report: in one held press, publish a long suffix, wait through a Warp anchor refresh, then backtrack and rebranch. Confirm the preview remains editable until release or explicit cancellation; only a lock already authoritative at the gesture origin may reject template mutation.
 
 Record the user-owned result for the exact candidate in this table. Leave a row `PENDING` until that exact size and candidate commit have been checked.
 

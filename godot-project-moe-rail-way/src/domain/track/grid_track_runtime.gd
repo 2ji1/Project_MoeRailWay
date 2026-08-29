@@ -1365,17 +1365,26 @@ func _piece_containing_serial(route_serial: int):
 
 
 func _gesture_template_mutation_is_safe() -> bool:
-    if _gesture_editable_span.is_empty():
+    if _gesture_editable_span.is_empty() or _gesture_origin_sequence == null:
         return false
     var first_serial: int = _gesture_editable_span["first_route_serial"]
     var last_serial: int = _gesture_editable_span["last_route_serial"]
-    for record in _sequence.get_records():
+    var saw_origin_record := false
+    for record in _gesture_origin_sequence.get_records():
         if record.route_serial < first_serial or record.route_serial > last_serial:
             continue
-        var owner = _piece_containing_serial(record.route_serial)
-        if record.geometry_locked or owner == null or owner.locked:
+        saw_origin_record = true
+        var owner = null
+        var owner_count := 0
+        for piece in _gesture_origin_pieces:
+            if piece.contains_serial(record.route_serial):
+                owner = piece
+                owner_count += 1
+        if record.geometry_locked or owner_count != 1 or owner == null or owner.locked:
             return false
-    for locked in _locked_ledger:
+    if not saw_origin_record:
+        return false
+    for locked in _gesture_origin_locked_ledger:
         if locked.last_route_serial < first_serial or locked.first_route_serial > last_serial:
             continue
         return false
