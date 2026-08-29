@@ -90,6 +90,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
+    _test_mouse_gesture_rejection_deduplication()
     var packed := load(SCENE_PATH) as PackedScene
     _assert_true(packed != null, "Warp Cargo app scene loads")
     if packed == null:
@@ -335,9 +336,8 @@ func _configure_mouse_manual_balance(app) -> void:
 
 func _on_mouse_manual_snapshot(_snapshot, app) -> void:
     var rejection: Dictionary = app.track_system._runtime.get_last_gesture_rejection()
-    if rejection.is_empty() or rejection == _last_mouse_gesture_rejection:
+    if not _accept_new_mouse_gesture_rejection(rejection):
         return
-    _last_mouse_gesture_rejection = rejection.duplicate(true)
     var candidate_cells: Array[String] = []
     for record in rejection.get("candidate_records", []):
         candidate_cells.append("%d:%s:L%s" % [
@@ -357,6 +357,26 @@ func _on_mouse_manual_snapshot(_snapshot, app) -> void:
         rejection.get("locked_pieces", []),
         rejection.get("anchors", []),
     ])
+
+
+func _accept_new_mouse_gesture_rejection(rejection: Dictionary) -> bool:
+    if rejection.is_empty():
+        _last_mouse_gesture_rejection.clear()
+        return false
+    if rejection == _last_mouse_gesture_rejection:
+        return false
+    _last_mouse_gesture_rejection = rejection.duplicate(true)
+    return true
+
+
+func _test_mouse_gesture_rejection_deduplication() -> void:
+    var rejection := {"stage": &"candidate_sequence", "reason": &"append_path_rejected"}
+    _last_mouse_gesture_rejection.clear()
+    _assert_true(_accept_new_mouse_gesture_rejection(rejection), "First gesture rejection episode is logged")
+    _assert_true(not _accept_new_mouse_gesture_rejection(rejection), "Consecutive duplicate rejection is suppressed")
+    _assert_true(not _accept_new_mouse_gesture_rejection({}), "Successful empty diagnostic clears the rejection episode")
+    _assert_true(_accept_new_mouse_gesture_rejection(rejection), "The same rejection is logged again after a successful interval")
+    _last_mouse_gesture_rejection.clear()
 
 
 func _event_signatures(snapshot) -> Array[String]:

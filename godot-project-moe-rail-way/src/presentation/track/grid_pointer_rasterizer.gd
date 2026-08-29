@@ -34,7 +34,8 @@ func rasterize_motion(
 		grid_rect.size.y / float(grid_size.y)
 	)
 	var current_cell := _cell_at_clipped_entry(
-		clipped_start, original_motion, grid_rect, cell_size, grid_size
+		clipped_start, original_motion, grid_rect, cell_size, grid_size,
+		not grid_rect.has_point(from_logical)
 	)
 	if not _is_cell_inside(current_cell, grid_size):
 		return crossed_cells
@@ -154,17 +155,23 @@ func _cell_at_clipped_entry(
 	motion: Vector2,
 	grid_rect: Rect2,
 	cell_size: Vector2,
-	grid_size: Vector2i
+	grid_size: Vector2i,
+	entering_from_outside: bool
 ) -> Vector2i:
 	var local_point := point - grid_rect.position
-	var cell := Vector2i(
-		int(floor(local_point.x / cell_size.x)),
-		int(floor(local_point.y / cell_size.y))
+	var grid_point := Vector2(
+		local_point.x / cell_size.x,
+		local_point.y / cell_size.y
 	)
-	if cell.x == grid_size.x and motion.x < 0.0:
-		cell.x = grid_size.x - 1
-	if cell.y == grid_size.y and motion.y < 0.0:
-		cell.y = grid_size.y - 1
+	var cell := Vector2i(int(floor(grid_point.x)), int(floor(grid_point.y)))
+	if entering_from_outside and motion.x < 0.0:
+		var boundary_x := roundf(grid_point.x)
+		if absf(grid_point.x - boundary_x) <= CROSSING_EPSILON:
+			cell.x = int(boundary_x) - 1
+	if entering_from_outside and motion.y < 0.0:
+		var boundary_y := roundf(grid_point.y)
+		if absf(grid_point.y - boundary_y) <= CROSSING_EPSILON:
+			cell.y = int(boundary_y) - 1
 	return cell
 
 

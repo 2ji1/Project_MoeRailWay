@@ -15,6 +15,8 @@ func run() -> PackedStringArray:
 	_test_outside_to_outside_crossing_preserves_in_grid_cells()
 	_test_reverse_outside_crossing_preserves_in_grid_cells()
 	_test_corner_touch_does_not_invent_a_cell()
+	_test_outer_edge_corner_entry_uses_inward_cell()
+	_test_outer_edge_corner_exit_keeps_deterministic_inside_step()
 	_test_reentry_does_not_pathfind_across_an_unobserved_gap()
 	_test_repeated_cell_is_suppressed()
 	_test_reverse_axis_crossings()
@@ -174,6 +176,46 @@ func _test_corner_touch_does_not_invent_a_cell() -> void:
 		[],
 		"A segment touching only the outer corner does not claim an in-grid cell"
 	)
+
+
+func _test_outer_edge_corner_entry_uses_inward_cell() -> void:
+	var rasterizer = GridPointerRasterizerScript.new()
+	var grid_rect := Rect2(Vector2.ZERO, Vector2(160.0, 160.0))
+	var cases := [
+		{"label": "right", "from": Vector2(180.0, 110.0), "to": Vector2(140.0, 50.0), "expected": [Vector2i(3, 1)]},
+		{"label": "left", "from": Vector2(-20.0, 110.0), "to": Vector2(20.0, 50.0), "expected": [Vector2i(0, 1)]},
+		{"label": "top", "from": Vector2(110.0, -20.0), "to": Vector2(50.0, 20.0), "expected": [Vector2i(1, 0)]},
+		{"label": "bottom", "from": Vector2(110.0, 180.0), "to": Vector2(50.0, 140.0), "expected": [Vector2i(1, 3)]},
+	]
+	for entry_case in cases:
+		assert_equal(
+			rasterizer.rasterize_motion(
+				entry_case["from"], entry_case["to"], grid_rect,
+				Vector2i(4, 4), Vector2i(-1, -1)
+			),
+			entry_case["expected"],
+			"%s-edge corner entry begins in the directionally inward cell" % entry_case["label"]
+		)
+
+
+func _test_outer_edge_corner_exit_keeps_deterministic_inside_step() -> void:
+	var rasterizer = GridPointerRasterizerScript.new()
+	var grid_rect := Rect2(Vector2.ZERO, Vector2(160.0, 160.0))
+	var cases := [
+		{"label": "right", "from": Vector2(140.0, 50.0), "to": Vector2(180.0, 110.0), "previous": Vector2i(3, 1), "expected": [Vector2i(3, 2)]},
+		{"label": "left", "from": Vector2(20.0, 50.0), "to": Vector2(-20.0, 110.0), "previous": Vector2i(0, 1), "expected": [Vector2i(0, 2)]},
+		{"label": "top", "from": Vector2(50.0, 20.0), "to": Vector2(110.0, -20.0), "previous": Vector2i(1, 0), "expected": [Vector2i(2, 0)]},
+		{"label": "bottom", "from": Vector2(50.0, 140.0), "to": Vector2(110.0, 180.0), "previous": Vector2i(1, 3), "expected": [Vector2i(2, 3)]},
+	]
+	for exit_case in cases:
+		assert_equal(
+			rasterizer.rasterize_motion(
+				exit_case["from"], exit_case["to"], grid_rect,
+				Vector2i(4, 4), exit_case["previous"]
+			),
+			exit_case["expected"],
+			"%s-edge corner exit keeps the deterministic in-grid corner step" % exit_case["label"]
+		)
 
 
 func _test_reentry_does_not_pathfind_across_an_unobserved_gap() -> void:
