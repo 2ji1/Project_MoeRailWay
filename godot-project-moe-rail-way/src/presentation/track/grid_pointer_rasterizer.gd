@@ -33,13 +33,19 @@ func rasterize_motion(
 		grid_rect.size.x / float(grid_size.x),
 		grid_rect.size.y / float(grid_size.y)
 	)
+	var entering_from_outside := not grid_rect.has_point(from_logical)
 	var current_cell := _cell_at_clipped_entry(
 		clipped_start, original_motion, grid_rect, cell_size, grid_size,
-		not grid_rect.has_point(from_logical)
+		entering_from_outside
 	)
 	if not _is_cell_inside(current_cell, grid_size):
 		return crossed_cells
-	if not grid_rect.has_point(from_logical):
+	if entering_from_outside:
+		for entry_cell in _clipped_corner_entry_prefix(
+			clipped_start, original_motion, grid_rect, cell_size,
+			grid_size, current_cell
+		):
+			_append_if_new(crossed_cells, entry_cell, grid_size, previous_cell)
 		_append_if_new(crossed_cells, current_cell, grid_size, previous_cell)
 	if motion.is_zero_approx():
 		return crossed_cells
@@ -173,6 +179,44 @@ func _cell_at_clipped_entry(
 		if absf(grid_point.y - boundary_y) <= CROSSING_EPSILON:
 			cell.y = int(boundary_y) - 1
 	return cell
+
+
+func _clipped_corner_entry_prefix(
+	point: Vector2,
+	motion: Vector2,
+	grid_rect: Rect2,
+	cell_size: Vector2,
+	grid_size: Vector2i,
+	inward_cell: Vector2i
+) -> Array[Vector2i]:
+	var prefix: Array[Vector2i] = []
+	var local_point := point - grid_rect.position
+	var grid_point := Vector2(
+		local_point.x / cell_size.x,
+		local_point.y / cell_size.y
+	)
+	var boundary_x := _grid_boundary_index(grid_point.x)
+	var boundary_y := _grid_boundary_index(grid_point.y)
+	var x_is_outer := boundary_x == 0 or boundary_x == grid_size.x
+	var y_is_outer := boundary_y == 0 or boundary_y == grid_size.y
+	var x_is_internal := boundary_x > 0 and boundary_x < grid_size.x
+	var y_is_internal := boundary_y > 0 and boundary_y < grid_size.y
+	var horizontal_first := absf(motion.x) >= absf(motion.y)
+	var intermediate := Vector2i(-1, -1)
+	if x_is_outer and y_is_internal and horizontal_first and motion.y != 0.0:
+		intermediate = inward_cell - Vector2i(0, _axis_step(motion.y))
+	elif y_is_outer and x_is_internal and not horizontal_first and motion.x != 0.0:
+		intermediate = inward_cell - Vector2i(_axis_step(motion.x), 0)
+	if _is_cell_inside(intermediate, grid_size):
+		prefix.append(intermediate)
+	return prefix
+
+
+func _grid_boundary_index(value: float) -> int:
+	var boundary := roundf(value)
+	if absf(value - boundary) <= CROSSING_EPSILON:
+		return int(boundary)
+	return -1
 
 
 func _axis_step(value: float) -> int:
