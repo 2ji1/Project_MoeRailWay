@@ -182,3 +182,109 @@ The user clarified twice that local-corner geometry was always intended for ordi
 The correction must reuse one deterministic local-corner builder for every unlocked curve. An empty exact-knot list produces the ordinary straight-spine shape; one or more exact knots constrain that same construction. No Warp-ID or anchor-presence branch may select between a legacy curve and the common local-corner curve.
 
 The user also approved publication and integration after the required tests and independent reviews: push this feature branch, open a pull request to `main`, merge with a merge commit, fast-forward the clean primary `main`, rerun the complete automated gate there, and clean up the feature worktree and local and remote feature branches. Manual visual rows remain `PENDING` unless the user directly confirms them; publication does not convert them to PASS.
+
+## 11. Approved Ordered-Route Spine Correction
+
+The `960x540` mouse gate exposed a mismatch between logical route ownership and visible geometry. The active endpoint was `(11, 2)`. A downward gesture correctly observed `(11, 3)`, but the candidate sequence rejected it as a duplicate because an earlier locked record already owned `(11, 3)`. The visible diagonal spine did not enter that cell, so the rejection appeared to come from empty space. This is not a pointer-rasterization failure, Warp-anchor constraint, or `final_overlap` result.
+
+This section supersedes the Section 5 rule that uses one visible diagonal between endpoint supports. Every newly resolved unlocked curve must instead use the ordered route itself as its visible skeleton:
+
+1. Preserve the entry boundary at sample `0` and exit boundary at sample `nominal_length_cells * 16`.
+2. Add every nonterminal owned route-record center in order at sample `(record_offset * 16) + 8`. Omit a non-exact center knot only when it is position-identical to an existing entry or exit boundary; the adjacent segment still visibly enters that record's cell.
+3. Keep collinear record-center knots on straight runs. At an ordinary orthogonal direction change, apply the existing bounded quadratic cut-corner fillet around the record center. The fillet may move the sharp midpoint sample but must remain inside the same owned nominal interval and visibly enter that record's cell.
+4. When an `EXACT_CELL_CENTER` anchor owns the record occurrence, mark its center as a position-preserving hard knot and use the existing bounded two-half local cubic construction. Both halves meet at the literal center with the accepted local reverse-travel allowance.
+5. If a terminal exact hard knot is position-identical to the exit boundary, insert one bounded exit-support knot between their sample indices. The support stays inside the terminal route cell on the negative exit-heading ray and restores nonzero stored exit travel; it does not add ownership or move either exact endpoint.
+6. Exact-anchor presence changes only the coincident knot's contact constraint. It does not select a different owner, move route records, or alter topology.
+7. Preserve exactly `nominal_length_cells * 16 + 1` samples, uniform-index nominal sampling, nonzero endpoint travel, entry and exit headings, footprint containment, candidate fallback, one owner per serial, and deterministic replay.
+
+For every owned record, the centerline samples inside that record's own nominal interval must enter the record cell. Hidden ownership is invalid. An active duplicate cell remains rejected; after this correction, that rejection is supported by visible track in the same cell. The correction does not permit branches, merges, loops, automatic pathfinding, route insertion, or reuse of an active route cell.
+
+Already locked geometry remains byte-for-byte unchanged within a running session. Inventory, construction, recovery, train timing, Warp generation, contact ordering, cargo, reward, and lifecycle contracts remain unchanged.
+
+The fixed-seed Warp integration has one approved geometric consequence. Pair 3's origin lies on an ordered route record that the former diagonal spine skipped. The aligned spine reaches that origin at tick `67`, so pair 3 now loads into cargo slot `1`; pair 4 later remains unloaded because both slots are occupied. Pair positions, forecast and activation ticks, lifetimes, capacity rules, event ordering, and end-of-session void behavior do not change. The deterministic integration trace must record this consequence rather than preserving the obsolete hidden-ownership outcome.
+
+## 12. Approved Gesture-Local Live Warp Latch
+
+The `960x540` mouse recording exposed an interaction contract that the existing
+exact-center implementation does not represent. During one held left-button
+gesture, a candidate can reach an active Warp cell and then lose that occurrence
+when the next pointer frame reselects a completed-head template or backtracks the
+normalized path. The exact hard knot is valid while the cell is present, but the
+accepted Warp contact is not retained as a gesture editing boundary. The visible
+route therefore appears to detach from the Warp even though exact-center geometry
+itself resolved correctly.
+
+An active Warp contact accepted during a held gesture is a gesture-local latch:
+
+1. If the press begins on an endpoint that already has a possible active exact
+   Warp contact, latch that endpoint immediately. Otherwise, latch the first
+   accepted ordered-route occurrence whose active exact anchor is contact-possible,
+   including an anchor that activates on a suffix occurrence added by the current
+   held gesture. Lifecycle activation on an unchanged pre-gesture nonendpoint
+   occurrence is not, by itself, a new gesture contact.
+2. The ordered candidate prefix through the latched occurrence becomes the
+   gesture editing floor. Later pointer updates may retire or rebranch only the
+   suffix after that occurrence. They cannot remove, relocate, or reinterpret the
+   latched prefix while the anchor ID remains active. If records after a valid
+   latch later become built or origin-locked, retain the latch and reject mutation
+   across that immutable suffix; never discard the latch as a fallback to ordinary
+   editing.
+3. A later accepted active Warp advances the editing floor through that later
+   occurrence. Latches are identified by stable anchor ID and route occurrence;
+   same-cell IDs remain independently lifecycle-controlled.
+4. Pointer input after the latch is interpreted from the latched cell. When the
+   normalized pointer path has backtracked before the latch and therefore no
+   longer contains the Warp cell, occupied prefix cells are discarded and the
+   remaining free waypoints are still interpreted from the latched cell. When the
+   raw orthogonal rasterization first re-enters an already owned cell but a free,
+   in-bounds shortest connector to the later pointer waypoint exists, use the
+   existing deterministic bounded search from the latched endpoint. This is a
+   suffix connection rule, not general route insertion or Warp-aware generation.
+5. When the Warp lifecycle removes an anchor ID during the held gesture, release
+   only that latch. Preserve the complete last accepted candidate, serial
+   watermark, inventory, construction, recovery, locked ledger, and contact state
+   produced by the ordinary anchor refresh. The next pointer update may edit
+   through the former latch under the existing gesture rules.
+6. Left release finalizes the current candidate. Right-click abort retains its
+   existing priority and restores the authoritative pre-gesture origin, including
+   exact inventory conservation; it clears every gesture-local latch.
+7. A latch is not a geometry lock. It never changes `geometry_locked`, never moves
+   a locked piece, never bypasses collision, footprint, continuity, ownership, or
+   finalization validation, and never makes an inactive or merely nearby Warp
+   constrain a route. A lifecycle refresh that merely activates a Warp on a
+   pre-gesture nonendpoint route occurrence is not a contact accepted by the
+   current gesture and therefore does not latch or freeze live preview. The same
+   anchor may constrain ordinary geometry while active, and it becomes a gesture
+   latch only after the current gesture newly accepts its contact or when it was
+   already active at the press endpoint. Historical classification requires both
+   the same anchor ID, route serial, and cell. Completed-head reflow may retain a
+   serial while relocating it, and exact contact at that new cell is gesture-local.
+   Likewise, if the gesture removes the press-time occurrence and later reaches
+   the same active Warp ID at a fresh serial, that newly accepted occurrence
+   latches; the anchor ID alone is never a permanent exclusion.
+
+Latch-owned suffix rebuilding preserves the complete press-origin ledger,
+including recovered historical pieces that no longer have active route records.
+It also preserves any additional current-candidate ledger piece whose complete
+serial span and nonnegative exit-support serial remain in the latched prefix.
+Every retained ledger piece remains byte-for-byte unchanged.
+
+Anchor lifecycle refresh may retire provisional current-candidate pieces while
+the button remains held. A later latched update must derive its retained ledger
+from the prefix through the latch before it appends or reuses any suffix serial.
+The mere reappearance of the same serial in the replacement suffix cannot revive
+a retired candidate-local lock. A candidate-local piece whose span or required
+exit support crosses the cut is re-resolved with the editable suffix; a piece
+fully contained by the prefix stays byte-stable. Press-origin locks remain
+authoritative and continue to reject mutation when their immutable ownership
+crosses the requested cut. This ordering prevents stale candidate-local ledger
+entries from producing `candidate_invariant` or `piece_discontinuity` while
+preserving every ordinary collision, footprint, continuity, ownership, and
+finalization check.
+
+This section supersedes the current-pointer authority rule only for the mutable
+suffix before an active gesture-local latch expires. It also narrows Section 11's
+topology-neutral exact-anchor statement: exact anchors still do not create route
+cells, but an accepted active Warp occurrence temporarily defines the gesture's
+editing floor. Warp generation, sampling, train contact, cargo, reward, and
+lifetime rules remain unchanged.

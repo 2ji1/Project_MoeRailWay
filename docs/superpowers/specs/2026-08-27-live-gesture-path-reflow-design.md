@@ -306,3 +306,130 @@ recovery pause/resume. The historical manual evidence remains attributed to Task
 tested HEAD `6eee5f2f15d586806c3d68d99fd2e0cc87d4c239` and Task 6 tested HEAD
 `be18f1fc84b96ce1f1361cb6b9878c1ed8aeda7f`; cleanup of the feature worktree and
 branches remains pending.
+
+## 11. Held-Candidate Retirement Does Not Revoke Origin Editability
+
+The `960x540` Warp Cargo mouse gate at feature candidate `1550012a43e4e7ee7c45fc87e2be78df95b376a9` exposed a separate completed-head reflow defect. A valid held update could append enough suffix cells for stable retirement to lock the editable template in the currently published candidate. The next backtrack or rebranch still carried a valid live path, but `_gesture_template_mutation_is_safe()` inspected that published candidate and rejected every replacement as `unsafe_template_mutation`. Diagnostic evidence showed no pre-gesture locked ledger even though the candidate records had acquired retirement locks.
+
+Within one active press, template-mutation authority comes from the latest authoritative gesture-origin snapshot, not from retirement decisions made only by a published live candidate. The runtime must evaluate the editable span against `_gesture_origin_sequence`, `_gesture_origin_pieces`, and `_gesture_origin_locked_ledger`:
+
+1. Every origin record in the editable span must exist and remain geometry-unlocked.
+2. Every such serial must have exactly one unlocked owner in the origin pieces.
+3. No origin locked-ledger entry may overlap the editable span.
+4. Stable retirement performed while validating or publishing a held candidate may lock that candidate's earlier pieces, but it must not retroactively revoke the origin span's editability during the same press.
+5. Construction-state mirroring may advance origin-owned records but does not create geometry locks.
+6. Train preparation or another existing train-safety transition may update or terminate the gesture origin before immutable sampling; locks present in that authoritative origin remain strict and byte-preserving.
+
+The correction changes only the source snapshot used by the existing template-mutation safety predicate. It does not unlock or rewrite any piece, weaken ledger validation, permit mutation across a pre-gesture locked boundary, alter retirement rules for finalized candidates, or bypass candidate resolution, footprint, continuity, inventory, construction, recovery, contact, or finalization checks.
+
+Required deterministic evidence must begin an unlocked completed-head template gesture, publish a long suffix that retires the live candidate's original template, prove the current candidate now contains a lock absent from the gesture origin, and then backtrack or rebranch while the same press remains held. The second update must publish successfully from the origin snapshot. A paired prepared/locked-origin fixture must continue to reject the same template mutation with records, geometry bytes, ledger, inventory, recovery, anchors, and contacts unchanged.
+
+## 12. Bounded Held-Reentry Connection
+
+The `960x540` Warp Cargo mouse gate at feature candidate
+`d2c055a4b93fd4773b97e6f8b8e08480ef70eb0f` exposed a separate input gap.
+The left-button capture and pointer continued updating and the route retained spare
+inventory, but an outside-grid interval followed by reentry produced live-path edges
+such as `(9, 3) -> (10, 4)`, `(7, 9) -> (7, 11)`, and
+`(9, 10) -> (11, 10)`. `TrackCellSequence` correctly rejected those non-orthogonal
+or skipped-cell appends, and last-valid preview preservation made the held gesture
+appear frozen. This finding is independent of Warp anchors and curve geometry.
+
+The input adapter may now mark its own detached live/release snapshot as eligible
+for bounded reentry connection. That authority has all of these limits:
+
+1. Only a frame created by the real `TrackFieldView` capture may grant the
+   authority. Constructor-compatible synthetic frames and direct runtime calls
+   default to no authority, so an arbitrary remote pointer jump remains rejected.
+2. The runtime considers a connector only when two consecutive cells in the
+   authorized normalized path are not Manhattan-adjacent. Adjacent observed cells
+   remain byte-for-byte authoritative and are never rerouted.
+3. The connector starts at the current candidate endpoint and ends at the next
+   observed reentry cell. It searches only the finite configured grid, uses only
+   orthogonal cells, and is bounded by current integer inventory.
+4. The chosen connector is a shortest available cell path. Search expansion and
+   tie-breaking use a fixed cardinal order, making identical origin, inventory,
+   grid, and input facts produce the same ordered route cells.
+5. Active route cells remain blocked. Departure reuse remains governed by the
+   existing recovered-departure rule. Every inserted cell is appended through the
+   existing sequence transaction, so duplicate cells, discontinuity, and inventory
+   exhaustion still fail closed.
+6. Connection does not bypass resolver or publication authority. The complete
+   candidate must still pass geometry resolution, rectangular footprint collision,
+   locked-ledger preservation, continuity, one-owner validation, construction and
+   recovery conservation, anchor/contact handling, and finalization checks.
+7. If no bounded cell connector exists, or if the connected candidate fails any
+   later gate, the runtime preserves the last valid preview and records a specific
+   rejection. It never permits the invalid raw jump.
+8. Template reselection remains authoritative. Connection applies only to the
+   suffix after the selected template endpoint; it does not synthesize a template
+   selection or mutate an authoritative locked template.
+
+This is not a route graph, reachability correction, Warp routing, or a general
+point-to-point construction command. It is a capture-local normalization of a
+single observed outside/reentry discontinuity during one held endpoint gesture.
+It preserves one train, one ordered nonbranching route, endpoint-only construction,
+monotonic route serials, nominal sampling, and locked geometry bytes.
+
+Required deterministic evidence must reproduce a real held press that leaves the
+field, traverses outside, and reenters at a nonadjacent boundary cell while inventory
+remains available. The view snapshot must retain the raw nonadjacent observation and
+the detached connection-authority fact; the runtime must publish the same fixed
+orthogonal shortest connector on repeated runs. Paired evidence must prove that the
+same gap without real-view authority is rejected, blocked/no-inventory connectors
+remain rejected, existing active cells are not reused, selected-template suffix
+connection preserves template authority, release uses its detached authority, and
+abort restores the exact origin.
+
+## 13. Locked AABB Footprint and Geometric Collision Occupancy
+
+The `1280x720` mouse gate at feature candidate
+`6ba9a9fde5eb241533ca8aff0db90ba22341aaeb` exposed a separate locked-collision
+ambiguity. The accepted endpoint was `(4, 2)` and the user dragged into active mint
+Warp origin cell `(3, 2)`. The input path was adjacent and complete, but resolution
+rejected it as `locked_overlap`. An earlier locked `CURVE_2X2` owned ordered cells
+`(2, 2) -> (2, 1) -> (3, 1)` and retained the required inclusive AABB footprint
+`[(2, 1), (3, 1), (2, 2), (3, 2)]`. Its centerline did not enter the unowned corner
+`(3, 2)`, so the rejection appeared to target an empty cell. The Warp did not consume
+input, and its exact-center anchor never became an accepted ordered-route constraint.
+
+This amendment separates two existing meanings without changing either stored route
+or geometry bytes:
+
+1. `footprint_cells` remains the inclusive AABB of a curve's owned route cells. It
+   remains authoritative for geometry containment, ownership metadata, locked-ledger
+   identity, recovery bookkeeping, bounds, unlocked candidate overlap/downgrade, and
+   irreducible `final_overlap` rejection.
+2. Collision occupancy against an already locked piece is derived on demand from the
+   cells in its currently blocking footprint that its stored centerline actually
+   contacts. Use the existing deterministic `TrackGeometryPiece.contacts_cell()`
+   spatial query and the current grid origin and cell size. Do not add a mutable or
+   separately stored occupancy field.
+3. A prospective unlocked straight or curve conflicts with a locked piece only when
+   both centerlines contact at least one common currently blocking footprint cell.
+   A shared AABB-only corner with no locked centerline contact is not a collision.
+4. Existing recovered-cell filtering runs before occupancy derivation. A recovered
+   footprint cell remains nonblocking exactly as before; the complete source ledger
+   footprint and centerline remain byte-for-byte unchanged.
+5. Unlocked-versus-unlocked candidate selection remains unchanged and continues to use
+   AABB overlap, symmetric `3x3 -> 2x2 -> 1x1` downgrade, and `final_overlap`. This
+   correction must not reinterpret or globally relax that gate.
+6. Active ordered route cells remain unique. Geometric occupancy does not permit a
+   duplicate route cell, branch, merge, self-crossing, discontinuity, or remote route
+   insertion. Sequence validation still runs before resolution.
+7. An `EXACT_CELL_CENTER` anchor does not override collision. It constrains the common
+   local-corner geometry only after its cell is accepted as an owned active route
+   occurrence. Warp-free and Warp-occupied cells use the identical collision rule.
+8. Locked kind, serial span, footprint, centerline, group, nominal length, active
+   slice, construction, recovery, sampling, contact observations, and inventory remain
+   unchanged. Identical inputs must derive identical occupancy and resolution.
+
+Required deterministic evidence must reproduce the literal locked `CURVE_2X2` fixture,
+show that `(3, 2)` is in its AABB but not its geometric collision occupancy, and prove
+that an adjacent suffix through `(3, 2)` resolves with or without an exact-center
+anchor. The anchored result must contain the literal center knot. Paired negative
+fixtures must still reject when the locked centerline truly contacts the shared cell,
+when the route cell is already active, and when two unlocked final AABBs irreducibly
+overlap. Every accepted fixture must prove pairwise geometric collision separation,
+one owner per serial, locked-ledger byte identity, deterministic replay, inventory and
+construction/recovery conservation, continuity, nominal sampling, and exact abort.

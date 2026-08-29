@@ -78,7 +78,8 @@ func apply_left_input(input_frame: TrackInputFrameScript) -> void:
 					if input_frame.left_release_pointer_inside_grid else Vector2i(-1, -1)
 				_runtime.gesture_update(
 					input_frame.release_live_gesture_path,
-					release_pointer_cell
+					release_pointer_cell,
+					input_frame.allows_bounded_reentry_connection
 				)
 			elif not coalesced_release_before_press and not (
 				input_frame.live_gesture_path.is_empty()
@@ -86,7 +87,11 @@ func apply_left_input(input_frame: TrackInputFrameScript) -> void:
 			):
 				var legacy_pointer_cell := input_frame.current_pointer_cell \
 					if input_frame.current_pointer_inside_grid else Vector2i(-1, -1)
-				_runtime.gesture_update(input_frame.live_gesture_path, legacy_pointer_cell)
+				_runtime.gesture_update(
+					input_frame.live_gesture_path,
+					legacy_pointer_cell,
+					input_frame.allows_bounded_reentry_connection
+				)
 			_runtime.gesture_finalize()
 		_left_capture_active = false
 		_left_press_latched = false
@@ -107,7 +112,11 @@ func apply_left_input(input_frame: TrackInputFrameScript) -> void:
 			and input_frame.live_gesture_path.is_empty()
 			and input_frame.crossed_cells.is_empty()
 		):
-			_runtime.gesture_update(input_frame.live_gesture_path, pointer_cell)
+			_runtime.gesture_update(
+				input_frame.live_gesture_path,
+				pointer_cell,
+				input_frame.allows_bounded_reentry_connection
+			)
 		if input_frame.left_released and not coalesced_release_before_press:
 			_runtime.gesture_finalize()
 			_left_capture_active = false

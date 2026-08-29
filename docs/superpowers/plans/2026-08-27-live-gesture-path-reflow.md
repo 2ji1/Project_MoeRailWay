@@ -771,3 +771,231 @@ git commit -m 'fix: continue origin-owned construction during gestures'
   abort/finalize timing, paused recovery, and preservation of locks, inventory, and
   train sampling. Any finding must be resolved with a new focused RED/GREEN commit
   inside the six-path allowlist, followed by the full regression gate.
+
+---
+
+### Task 7: Keep a Held Template Editable After Candidate Retirement
+
+**Status:** Approved after the `960x540` Warp Cargo mouse gate failed at `1550012a43e4e7ee7c45fc87e2be78df95b376a9`.
+
+**Exact allowlist:**
+
+- `docs/superpowers/specs/2026-08-27-live-gesture-path-reflow-design.md`
+- `docs/superpowers/plans/2026-08-27-live-gesture-path-reflow.md`
+- `godot-project-moe-rail-way/src/domain/track/grid_track_runtime.gd`
+- `godot-project-moe-rail-way/tests/unit/test_grid_track_runtime.gd`
+- `godot-project-moe-rail-way/tests/manual/warp_cargo_windows.md`
+
+No other path may be modified for this correction.
+
+**Purpose:** A successful long held candidate may retire and lock the origin template in the published candidate. That candidate-local retirement must not make a later same-press backtrack or rebranch fail as `unsafe_template_mutation`. Real locks present in the authoritative gesture origin remain immutable.
+
+- [ ] **Step 1: Commit the amended English contract before behavior**
+
+  Record the candidate-local retirement failure and specify origin-snapshot safety authority without changing any code or manual PASS state.
+
+- [ ] **Step 2: Add deterministic RED before production changes**
+
+  In `test_grid_track_runtime.gd`, create an unlocked completed-head template and begin one gesture. Publish a template plus enough suffix cells for `_stage_stable_retirement` to lock the selected template in the current candidate while the corresponding gesture-origin span and origin ledger remain unlocked. Backtrack or rebranch under the same held gesture and require a successful replacement. Before the fix, this exact update must fail only as `template_mutation / unsafe_template_mutation`.
+
+  Capture the current candidate, origin, ledger, inventory, recovery, anchors, contacts, and serial watermark. Add a paired real-lock case proving that a lock synchronized into the authoritative origin still rejects and preserves every captured value, including locked geometry bytes.
+
+- [ ] **Step 3: Implement the minimum safety-source correction**
+
+  Change only `_gesture_template_mutation_is_safe()`. Resolve each editable-span serial against `_gesture_origin_sequence` and `_gesture_origin_pieces`, and check overlap against `_gesture_origin_locked_ledger`. Do not inspect candidate-local retirement state when deciding whether the origin template may be replaced. Do not clear lock flags, mutate either snapshot, or bypass any later resolver, ledger, continuity, validation, finalization, inventory, construction, recovery, anchor, or contact gate.
+
+- [ ] **Step 4: Run GREEN and regression gates**
+
+  Run the focused runtime suite, then the three affected focused suites, all `24` registered prototype suites, all five standalone integrations, UID sidecar audit, and `git diff --check`. Preserve the deterministic Warp tick trace.
+
+- [ ] **Step 5: Commit only the exact implementation allowlist**
+
+  Update the Windows manual checklist while leaving every resolution row `PENDING`. Stage exact paths, verify the staged path set and whitespace, and create one focused correction commit.
+
+- [ ] **Step 6: Repeat independent reviews and user-owned mouse gates**
+
+  Specification review checks origin-snapshot authority and real-lock preservation. Quality review checks missing/duplicate owners, stale origin state, candidate-local retirement, prepared/locked transitions, deep-value preservation, and exact allowlist scope. After both pass, repeat `960x540`, `1280x720`, `1600x900`, and `1920x1080`; no row becomes PASS without direct user confirmation on the exact reviewed HEAD.
+
+---
+
+### Task 8: Connect Only Authorized Held-Reentry Gaps
+
+**Status:** Approved after the `960x540` Warp Cargo mouse gate failed at
+`d2c055a4b93fd4773b97e6f8b8e08480ef70eb0f` with spare inventory and active
+left capture.
+
+**Documentation allowlist:**
+
+- `docs/superpowers/specs/2026-08-27-live-gesture-path-reflow-design.md`
+- `docs/superpowers/plans/2026-08-27-live-gesture-path-reflow.md`
+
+Commit this documentation pair before changing behavior.
+
+**Implementation allowlist:**
+
+- `godot-project-moe-rail-way/src/domain/track/track_input_frame.gd`
+- `godot-project-moe-rail-way/src/domain/track/track_system.gd`
+- `godot-project-moe-rail-way/src/domain/track/grid_track_runtime.gd`
+- `godot-project-moe-rail-way/src/presentation/track/track_field_view.gd`
+- `godot-project-moe-rail-way/tests/unit/test_track_field_view_input.gd`
+- `godot-project-moe-rail-way/tests/unit/test_track_system_reservation.gd`
+- `godot-project-moe-rail-way/tests/unit/test_grid_track_runtime.gd`
+- `godot-project-moe-rail-way/tests/integration/run_track_train_input_integration.gd`
+- `godot-project-moe-rail-way/tests/manual/warp_cargo_windows.md`
+
+No other path may be modified for this correction. In particular, do not change the
+pointer rasterizer's physical crossing order, the geometry resolver, sequence
+collision rules, Warp lifecycle, train sampling, construction, recovery, or HUD.
+
+**Purpose:** A real held capture may leave the grid and reenter at a boundary cell
+that is not adjacent to the retained live-path endpoint. Preserve the raw observed
+snapshot, but grant the runtime explicit real-view authority to fill only that gap
+with a deterministic, inventory-bounded orthogonal connector. Synthetic/direct gaps
+remain invalid.
+
+- [ ] **Step 1: Commit the amended English contract before behavior**
+
+  Record the exact mouse evidence, authority boundary, deterministic connector,
+  preserved validation gates, implementation allowlist, and user-owned manual state.
+
+- [ ] **Step 2: Add deterministic RED before production changes**
+
+  Deliver real `InputEventMouseButton` and `InputEventMouseMotion` instances to a
+  configured `TrackFieldView`: press the endpoint, create a valid live suffix, leave
+  the field, move outside, and reenter at a nonadjacent boundary cell. Assert that
+  the view preserves the raw gap and publishes a detached real-view connection fact;
+  before GREEN the frame cannot carry that fact and the runtime remains at the last
+  valid endpoint with `candidate_sequence / append_path_rejected`.
+
+  Add paired runtime fixtures for repeated deterministic connection, no-authority
+  rejection, active-cell blocking, insufficient inventory, completed-template suffix
+  connection, detached release facts, and exact abort restoration. Capture route
+  records, serial watermark, inventory, locked pieces and bytes, anchors, contacts,
+  construction state, and recovery facts around every rejected case.
+
+- [ ] **Step 3: Implement the minimum authority and connector**
+
+  Add one constructor-compatible boolean fact to `TrackInputFrame`, defaulting to
+  false. `TrackFieldView` sets it only on frames produced from its real capture and
+  preserves it in a coalesced release snapshot. `TrackSystem` forwards it without
+  inferring geometry.
+
+  In `GridTrackRuntime`, keep raw adjacent cells unchanged. When and only when the
+  authority is true, expand a nonadjacent ordinary or selected-template suffix edge
+  through a finite deterministic breadth-first search over grid cells. Use fixed
+  cardinal expansion order, block active cells, obey recovered-departure reuse, and
+  stop at available inventory. Reconcile serial facts from the expanded cells, then
+  run the unchanged append, resolver, footprint, ledger, continuity, validation,
+  conservation, anchor/contact, and finalization gates. A failed search records a
+  specific rejection and preserves the last valid candidate.
+
+- [ ] **Step 4: Run focused GREEN and regressions**
+
+  Run the four affected unit suites and the actual-input integration. Then run all
+  `24` registered prototype suites, all five standalone integrations, the UID
+  sidecar audit, and `git diff --check`. Require the fixed Warp tick-67 trace and no
+  warning/error output. Repeat the connector fixture to prove identical route cells
+  and serials.
+
+- [ ] **Step 5: Stage exact implementation paths and commit**
+
+  Compare unstaged, staged, and untracked paths with the nine-path implementation
+  allowlist. Stage only changed exact paths, inspect the full staged diff and
+  `git diff --cached --check`, then create one focused implementation commit. Leave
+  every Windows manual row `PENDING`.
+
+- [ ] **Step 6: Obtain independent reviews and user-owned mouse evidence**
+
+  Specification review checks real-view-only authority, ordinary/template/release
+  composition, deterministic shortest connection, and every preserved gate in
+  design Section 12. Quality review checks constructor compatibility, detached
+  snapshots, BFS bounds/tie order, serial reconciliation, active/departure handling,
+  failure atomicity, and exact allowlist scope. Resolve findings only within this
+  allowlist through focused RED/GREEN commits and repeat both reviews. Then repeat
+  `960x540`, `1280x720`, `1600x900`, and `1920x1080`; no row becomes PASS without
+  direct user confirmation on the exact reviewed HEAD.
+
+---
+
+### Task 9: Separate Locked AABB Metadata from Geometric Collision Occupancy
+
+**Status:** User-approved after the `1280x720` mouse gate failed at
+`6ba9a9fde5eb241533ca8aff0db90ba22341aaeb`.
+
+**Documentation allowlist:**
+
+- `docs/superpowers/specs/2026-08-27-live-gesture-path-reflow-design.md`
+- `docs/superpowers/plans/2026-08-27-live-gesture-path-reflow.md`
+
+Commit this documentation pair before changing behavior.
+
+**Implementation allowlist:**
+
+- `godot-project-moe-rail-way/src/domain/track/track_geometry_resolver.gd`
+- `godot-project-moe-rail-way/tests/unit/test_track_geometry_resolver.gd`
+- `godot-project-moe-rail-way/tests/unit/test_grid_track_runtime.gd`
+- `godot-project-moe-rail-way/tests/integration/run_track_train_input_integration.gd`
+- `godot-project-moe-rail-way/tests/manual/warp_cargo_windows.md`
+
+No other path may be modified. In particular, do not change stored piece fields,
+ordered route uniqueness, pointer rasterization, bounded reentry search, Warp
+lifecycle, train sampling, construction, recovery, or HUD behavior.
+
+**Purpose:** Preserve inclusive AABB footprints as immutable geometry and ownership
+metadata, but derive locked-piece collision occupancy from actual stored centerline
+cell contact. Permit a later route through an AABB-only empty corner while keeping
+real centerline conflicts, duplicate route cells, and every unlocked `final_overlap`
+gate strict.
+
+- [ ] **Step 1: Commit the amended English contract before behavior**
+
+  Record the exact video/log evidence, the two distinct footprint meanings, preserved
+  unlocked-overlap semantics, exact-anchor ordering, recovery filtering, and the
+  implementation allowlist. Leave every unresolved manual row pending or failed.
+
+- [ ] **Step 2: Add deterministic RED before production changes**
+
+  Reproduce the locked route `(2, 2) -> (2, 1) -> (3, 1)` whose immutable
+  `CURVE_2X2` AABB also contains unowned corner `(3, 2)`. From adjacent endpoint
+  `(4, 2)`, require an accepted route occurrence at `(3, 2)` first without an anchor
+  and then with an exact-center anchor. Before GREEN, both must reject only as
+  `locked_overlap`. Assert that the locked centerline does not contact `(3, 2)` and
+  preserve an exact ledger-byte oracle.
+
+  Add paired negatives where the shared cell is contacted by the locked centerline,
+  where sequence ownership already contains the route cell, and where two unlocked
+  radius-1 AABBs retain `final_overlap`. Capture route records, pieces, ledger,
+  centerline bytes, footprint, nominal sampling, anchors, contacts, construction,
+  recovery, inventory, and serial watermarks around rejection and abort.
+
+- [ ] **Step 3: Implement the minimum locked-collision correction**
+
+  In `TrackGeometryResolver`, derive each piece's collision occupancy by iterating its
+  currently blocking `footprint_cells` and calling its existing deterministic
+  `contacts_cell()` query. Compare the prospective unlocked piece occupancy with each
+  locked piece occupancy. Use that comparison in both candidate fallback and final
+  straight/curve locked-conflict checks. Do not store occupancy, mutate pieces, or
+  change unlocked candidate AABB overlap/downgrade/final-overlap logic.
+
+- [ ] **Step 4: Run GREEN and regression gates**
+
+  Run focused resolver and runtime suites plus actual-input integration. Then run all
+  `24` registered prototype suites, all five standalone integrations, UID sidecar
+  audit, and `git diff --check`. Require deterministic replay, exact locked bytes,
+  preserved Warp tick trace, and no warning/error output.
+
+- [ ] **Step 5: Stage exact implementation paths and commit**
+
+  Compare unstaged, staged, and untracked paths with the five-path implementation
+  allowlist. Stage only changed exact paths, inspect the full staged diff and
+  `git diff --cached --check`, and create one focused implementation commit.
+
+- [ ] **Step 6: Obtain independent reviews and repeat user-owned mouse gates**
+
+  Specification review checks Section 13's split authority and preserved
+  `final_overlap`, exact-anchor, recovery, and immutable-ledger contracts. Quality
+  review checks spatial cell-contact determinism, boundary sampling, candidate/final
+  parity, performance bounds, negative collision coverage, and exact allowlist scope.
+  Resolve findings only through focused RED/GREEN commits. Then restart the failed
+  `1280x720` row before continuing `1600x900` and `1920x1080`; no mouse-only row
+  becomes PASS without direct user confirmation on the exact reviewed HEAD.

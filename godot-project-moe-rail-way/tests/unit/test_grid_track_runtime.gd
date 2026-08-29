@@ -9,11 +9,39 @@ const TrackGeometryResolverScript = preload("res://src/domain/track/track_geomet
 const TrackGeometryResolutionScript = preload("res://src/domain/track/track_geometry_resolution.gd")
 
 
+class _GestureDiagnosticRejectResolver extends TrackGeometryResolverScript:
+	var reject_gesture_candidate := false
+
+	func resolve(
+		departure_cell: Vector2i,
+		records: Array,
+		locked_pieces: Array,
+		anchors: Array,
+		grid_origin_units: Vector2,
+		grid_size: Vector2i,
+		cell_size_units: float
+	) -> RefCounted:
+		if reject_gesture_candidate:
+			var rejected_serial: int = -1 if records.is_empty() else records[-1].route_serial
+			return TrackGeometryResolutionScript.rejected(rejected_serial, &"injected_gesture_reject")
+		return super.resolve(
+			departure_cell, records, locked_pieces, anchors,
+			grid_origin_units, grid_size, cell_size_units
+		)
+
+
 func run() -> PackedStringArray:
+	_test_gesture_rejection_diagnostic_is_detached()
+	_test_gesture_rejection_reports_attempted_template()
+	_test_bounded_reentry_connection_requires_real_view_authority()
+	_test_selected_template_suffix_continues_after_recovery()
 	_test_active_gesture_recovery_evolves_origin_and_candidate()
 	_test_active_recovery_failure_asserts_and_preserves_transaction()
 	_test_swept_contact_api_exists()
 	_test_exact_anchor_lifecycle_evolves_active_gesture_forms()
+	_test_active_warp_contact_latches_until_expiry_or_abort()
+	_test_active_warp_latch_rebranches_after_candidate_retirement()
+	_test_anchored_endpoint_routes_diagonal_suffix_around_owned_tail()
 	_test_exact_anchor_impossible_locked_and_removal_contracts()
 	_test_endpoint_reshape_legal_operation_requires_concrete_candidate()
 	_test_endpoint_reshape_identical_template_is_not_a_legal_operation()
@@ -31,6 +59,7 @@ func run() -> PackedStringArray:
 	_test_endpoint_reshape_control_cells_are_omitted()
 	_test_endpoint_reshape_target_reentry_rebuilds_from_origin()
 	_test_live_template_suffix_reconciles_from_current_path()
+	_test_candidate_retirement_does_not_revoke_origin_template()
 	_test_recovered_running_endpoint_accepts_direct_extension()
 	_test_recovered_departure_endpoint_gesture_installs_and_owns_exact_anchor()
 	_test_locked_endpoint_exact_warp_turn_retains_same_gesture_suffix()
@@ -78,6 +107,8 @@ func run() -> PackedStringArray:
 	_test_full_prune_then_relock_uses_fresh_owner_group_ids()
 	_test_locked_endpoint_rejects_disconnected_rebranch()
 	_test_runtime_applies_nonzero_grid_origin_to_sampling()
+	_test_locked_aabb_empty_corner_accepts_ordinary_and_exact_routes()
+	_test_locked_shared_centerline_runtime_rejection_is_atomic()
 	_test_recovered_interval_is_not_reported_as_contacted()
 	_test_recovered_cell_can_be_contacted_by_new_geometry()
 	_test_swept_contacts_follow_active_centerlines()
@@ -111,6 +142,372 @@ func run() -> PackedStringArray:
 	_test_unanchored_three_by_three_runtime_uses_local_corners()
 	_test_tight_turn_suffix_resolves_with_disjoint_local_footprints()
 	return finish()
+
+
+func _test_gesture_rejection_diagnostic_is_detached() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(0, 0), 8, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	track.set_gesture_rejection_diagnostics_enabled(true)
+	var resolver = _GestureDiagnosticRejectResolver.new()
+	track._resolver = resolver
+	assert_false(track.gesture_begin(Vector2i(0, 0)).is_empty(), "Diagnostic fixture begins a legal gesture")
+	resolver.reject_gesture_candidate = true
+	var live_path: Array[Vector2i] = [Vector2i(1, 0)]
+	assert_false(track.gesture_update(live_path, Vector2i(1, 0)), "Injected resolver rejects the live candidate")
+	assert_true(track.has_method("get_last_gesture_rejection"), "Runtime exposes the last live-candidate rejection")
+	if not track.has_method("get_last_gesture_rejection"):
+		return
+	var observation: Dictionary = track.call("get_last_gesture_rejection")
+	assert_equal(observation.get("stage", StringName()), &"candidate_resolution", "Diagnostic identifies the preview resolution stage")
+	assert_equal(observation.get("reason", StringName()), &"injected_gesture_reject", "Diagnostic retains the resolver reason")
+	assert_equal(observation.get("live_path", []), live_path, "Diagnostic retains the exact live path")
+	assert_equal(observation.get("pointer_cell", Vector2i(-1, -1)), Vector2i(1, 0), "Diagnostic retains the pointer cell")
+	observation["live_path"].append(Vector2i(2, 0))
+	assert_equal(track.call("get_last_gesture_rejection").get("live_path", []), live_path, "Diagnostic observation is detached")
+	resolver.reject_gesture_candidate = false
+	assert_true(track.gesture_update(live_path, Vector2i(1, 0)), "A later valid update publishes normally")
+	assert_equal(track.call("get_last_gesture_rejection"), {}, "A successful update clears stale rejection state")
+	resolver.reject_gesture_candidate = true
+	assert_false(track.gesture_update(live_path, Vector2i(1, 0)), "A second injected update rejection is observable")
+	assert_true(track.gesture_abort(), "Diagnostic fixture aborts its rejected active gesture")
+	assert_equal(track.call("get_last_gesture_rejection"), {}, "Gesture abort clears stale rejection state")
+
+	resolver.reject_gesture_candidate = false
+	assert_false(track.gesture_begin(track.get_endpoint_cell()).is_empty(), "Diagnostic fixture begins again for finalization")
+	resolver.reject_gesture_candidate = true
+	assert_false(track.gesture_update(live_path, Vector2i(1, 0)), "A third injected update rejection is observable")
+	resolver.reject_gesture_candidate = false
+	assert_true(track.gesture_finalize(), "Diagnostic fixture finalizes its last valid candidate")
+	assert_equal(track.call("get_last_gesture_rejection"), {}, "Gesture finalization clears stale rejection state")
+
+
+func _test_gesture_rejection_reports_attempted_template() -> void:
+	var track = _make_three_by_three_curve_runtime()
+	track.set_gesture_rejection_diagnostics_enabled(true)
+	var resolver = _GestureDiagnosticRejectResolver.new()
+	track._resolver = resolver
+	var began: Dictionary = track.gesture_begin(track.get_endpoint_cell())
+	assert_false(began.is_empty(), "Attempted-template diagnostic fixture begins")
+	if began.is_empty():
+		return
+	var selected_index: int = track._gesture_selected_template_index
+	var attempted_index := (selected_index + 1) % 3
+	var template_name: StringName = [&"straight", &"left", &"right"][attempted_index]
+	var attempted_target: Vector2i = began["targets"][template_name]
+	resolver.reject_gesture_candidate = true
+	var attempted_path: Array[Vector2i] = [attempted_target]
+	assert_false(
+		track.gesture_update(attempted_path, attempted_target),
+		"Injected resolver rejects the attempted template switch"
+	)
+	assert_equal(
+		track.get_last_gesture_rejection().get("attempted_template_index", -1),
+		attempted_index,
+		"Diagnostic reports the attempted template rather than the last committed selection"
+	)
+	assert_equal(
+		track.get_last_gesture_rejection().get("selected_template_index", -1),
+		selected_index,
+		"Diagnostic also preserves the last committed template selection"
+	)
+
+
+func _test_bounded_reentry_connection_requires_real_view_authority() -> void:
+	var raw_path: Array[Vector2i] = [
+		Vector2i(2, 1), Vector2i(3, 1), Vector2i(4, 1),
+		Vector2i(5, 1), Vector2i(6, 1), Vector2i(7, 1),
+		Vector2i(7, 5),
+	]
+	var rejected = GridTrackRuntimeScript.new(
+		Vector2i(1, 1), 20, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	rejected.set_gesture_rejection_diagnostics_enabled(true)
+	assert_false(
+		rejected.gesture_begin(Vector2i(1, 1)).is_empty(),
+		"Unauthorized reentry fixture begins a legal gesture"
+	)
+	var rejected_before := _reentry_transaction_values(rejected)
+	assert_false(
+		rejected.gesture_update(raw_path, raw_path[-1]),
+		"The raw remote jump remains invalid without real-view authority"
+	)
+	assert_equal(
+		rejected.get_last_gesture_rejection().get("reason", StringName()),
+		&"append_path_rejected",
+		"Unauthorized reentry retains the ordinary append rejection"
+	)
+	assert_equal(
+		_reentry_transaction_values(rejected),
+		rejected_before,
+		"Unauthorized reentry preserves route, ownership, locks, sampling, anchors, contacts, recovery, inventory, and serial watermarks"
+	)
+
+	var gesture_update_argument_count := _method_argument_count(rejected, &"gesture_update")
+	assert_true(
+		gesture_update_argument_count >= 3,
+		"Runtime accepts explicit bounded reentry authority"
+	)
+	if gesture_update_argument_count < 3:
+		return
+	var connected = GridTrackRuntimeScript.new(
+		Vector2i(1, 1), 20, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_false(
+		connected.gesture_begin(Vector2i(1, 1)).is_empty(),
+		"Authorized reentry fixture begins a legal gesture"
+	)
+	assert_true(
+		bool(connected.callv(&"gesture_update", [raw_path, raw_path[-1], true])),
+		"Authorized reentry publishes a bounded deterministic connector"
+	)
+	var expected_cells: Array[Vector2i] = [
+		Vector2i(2, 1), Vector2i(3, 1), Vector2i(4, 1), Vector2i(5, 1),
+		Vector2i(6, 1), Vector2i(7, 1), Vector2i(7, 2), Vector2i(7, 3),
+		Vector2i(7, 4), Vector2i(7, 5),
+	]
+	var first_facts := _record_values(connected.get_cell_records())
+	var first_cells: Array[Vector2i] = []
+	for fact in first_facts:
+		first_cells.append(fact["cell"])
+	assert_equal(first_cells, expected_cells, "Authorized reentry chooses the fixed shortest orthogonal connector")
+	assert_equal(connected.get_available_track_cells(), 10, "Authorized connector consumes exactly its visible route cells")
+	assert_true(connected.gesture_abort(), "Authorized reentry abort restores its origin")
+	assert_equal(connected.get_cell_records(), [], "Authorized reentry abort removes the complete connector")
+	assert_equal(connected.get_available_track_cells(), 20, "Authorized reentry abort restores exact inventory")
+
+	var replay = GridTrackRuntimeScript.new(
+		Vector2i(1, 1), 20, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	replay.gesture_begin(Vector2i(1, 1))
+	assert_true(
+		bool(replay.callv(&"gesture_update", [raw_path, raw_path[-1], true])),
+		"Repeated authorized reentry publishes"
+	)
+	assert_equal(
+		_record_values(replay.get_cell_records()),
+		first_facts,
+		"Repeated authorized reentry preserves cells, serials, ownership, and state"
+	)
+
+	var insufficient = GridTrackRuntimeScript.new(
+		Vector2i(1, 1), 2, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	insufficient.set_gesture_rejection_diagnostics_enabled(true)
+	insufficient.gesture_begin(Vector2i(1, 1))
+	var insufficient_path: Array[Vector2i] = [Vector2i(2, 1), Vector2i(4, 1)]
+	var insufficient_before := _reentry_transaction_values(insufficient)
+	assert_false(
+		insufficient.gesture_update(insufficient_path, insufficient_path[-1], true),
+		"Authorized connector cannot exceed available inventory"
+	)
+	assert_equal(
+		insufficient.get_last_gesture_rejection().get("reason", StringName()),
+		&"bounded_reentry_connection_rejected",
+		"Inventory-bounded search reports its specific rejection"
+	)
+	assert_equal(
+		_reentry_transaction_values(insufficient),
+		insufficient_before,
+		"Inventory-bounded rejection preserves the complete transaction state"
+	)
+
+	var blocked = GridTrackRuntimeScript.new(
+		Vector2i(3, 4), 20, Vector2.ZERO, Vector2i(7, 7), 40.0
+	)
+	var blocked_sequence = TrackCellSequenceScript.new(Vector2i(3, 4), 20)
+	assert_equal(
+		blocked_sequence.append_candidates([
+			Vector2i(4, 4), Vector2i(4, 3), Vector2i(4, 2), Vector2i(3, 2),
+			Vector2i(2, 2), Vector2i(2, 3), Vector2i(3, 3),
+		]),
+		7,
+		"Blocked connector fixture surrounds the endpoint with three active cells and its departure"
+	)
+	var blocked_before := {
+		"records": _record_values(blocked_sequence.get_records()),
+		"inventory": blocked_sequence.get_available_track_cells(),
+		"next_route_serial": blocked_sequence._next_route_serial,
+		"next_nominal_start": blocked_sequence._next_nominal_start_cells,
+		"active_predecessor": blocked_sequence.get_active_predecessor_cell(),
+	}
+	var blocked_connector: Array[Vector2i] = blocked.call(
+		"_find_bounded_reentry_connector", blocked_sequence, Vector2i(6, 6)
+	)
+	assert_equal(blocked_connector, [], "Bounded search returns no connector when every first step is blocked")
+	assert_equal(
+		{
+			"records": _record_values(blocked_sequence.get_records()),
+			"inventory": blocked_sequence.get_available_track_cells(),
+			"next_route_serial": blocked_sequence._next_route_serial,
+			"next_nominal_start": blocked_sequence._next_nominal_start_cells,
+			"active_predecessor": blocked_sequence.get_active_predecessor_cell(),
+		},
+		blocked_before,
+		"Fully blocked search does not mutate sequence ownership, inventory, or watermarks"
+	)
+
+	var occupied = GridTrackRuntimeScript.new(
+		Vector2i(0, 0), 10, Vector2.ZERO, Vector2i(5, 5), 40.0
+	)
+	assert_equal(
+		occupied.append_cells([Vector2i(1, 0), Vector2i(1, 1)]),
+		2,
+		"Occupied-cell connector fixture creates its origin"
+	)
+	occupied.gesture_begin(Vector2i(1, 1))
+	assert_true(
+		occupied.gesture_update([Vector2i(3, 0)], Vector2i(3, 0), true),
+		"Authorized connector routes through unowned cells"
+	)
+	var occupied_cells: Array[Vector2i] = []
+	for record in occupied.get_cell_records():
+		occupied_cells.append(record.cell)
+	assert_equal(
+		occupied_cells,
+		[
+			Vector2i(1, 0), Vector2i(1, 1), Vector2i(2, 1),
+			Vector2i(3, 1), Vector2i(3, 0),
+		],
+		"Connector preserves active origin cells and selects only free cells"
+	)
+	var unique_cells: Dictionary = {}
+	for cell in occupied_cells:
+		unique_cells[cell] = true
+	assert_equal(unique_cells.size(), occupied_cells.size(), "Connector never reuses an active route cell")
+
+	var template = _make_three_by_three_curve_runtime()
+	var template_origin: Dictionary = template.gesture_begin(template.get_endpoint_cell())
+	var straight_target: Vector2i = template_origin["targets"]["straight"]
+	var template_path: Array[Vector2i] = [straight_target, Vector2i(7, 3)]
+	assert_true(
+		template.gesture_update(template_path, straight_target, true),
+		"Authorized connection applies after the selected template endpoint"
+	)
+	var template_cells: Array[Vector2i] = []
+	for record in template.get_cell_records():
+		template_cells.append(record.cell)
+	assert_equal(
+		template_cells,
+		[
+			Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+			Vector2i(3, 0), Vector2i(4, 0), Vector2i(5, 0),
+			Vector2i(6, 0), Vector2i(7, 0), Vector2i(7, 1),
+			Vector2i(7, 2), Vector2i(7, 3),
+		],
+		"Template suffix connector leaves the selected template authoritative"
+	)
+
+	var waypoint = GridTrackRuntimeScript.new(
+		Vector2i(1, 1), 10, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	waypoint.gesture_begin(Vector2i(1, 1))
+	var waypoint_path: Array[Vector2i] = [Vector2i(5, 0), Vector2i(5, 1)]
+	assert_true(
+		waypoint.gesture_update(waypoint_path, waypoint_path[-1], true),
+		"Connector reserves later authoritative waypoints while filling an earlier gap"
+	)
+	var waypoint_cells: Array[Vector2i] = []
+	for record in waypoint.get_cell_records():
+		waypoint_cells.append(record.cell)
+	assert_equal(
+		waypoint_cells,
+		[
+			Vector2i(2, 1), Vector2i(3, 1), Vector2i(4, 1),
+			Vector2i(4, 0), Vector2i(5, 0), Vector2i(5, 1),
+		],
+		"Waypoint reservation chooses the deterministic shortest non-consuming connector"
+	)
+
+	var recovered = GridTrackRuntimeScript.new(
+		Vector2i(1, 1), 10, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(
+		recovered.append_cells([Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2)]),
+		3,
+		"Recovered-departure fixture creates a legal origin route"
+	)
+	assert_equal(recovered.advance_construction(3.0), 3.0, "Recovered-departure route is fully built")
+	assert_true(recovered.prepare_for_train_sampling(0.0, 3.0), "Recovered-departure route is locked for sampling")
+	assert_equal(recovered.recover_behind(2.0), 2, "Recovered-departure fixture removes its rear prefix")
+	assert_equal(
+		recovered._sequence.get_active_predecessor_cell(),
+		Vector2i(2, 2),
+		"Recovery advances the active predecessor beyond the original departure"
+	)
+	var recovered_connector: Array[Vector2i] = recovered.call(
+		"_find_bounded_reentry_connector", recovered._sequence, Vector2i(1, 1)
+	)
+	assert_false(recovered_connector.is_empty(), "Bounded search may reconnect to the recovered departure cell")
+	if not recovered_connector.is_empty():
+		assert_equal(recovered_connector[-1], Vector2i(1, 1), "Recovered connector ends at the original departure")
+		var recovered_active_cells: Dictionary = {}
+		for record in recovered._sequence.get_records():
+			recovered_active_cells[record.cell] = true
+		for step in recovered_connector:
+			assert_false(
+				recovered_active_cells.has(step),
+				"Recovered connector does not cross an active route cell"
+			)
+
+
+func _method_argument_count(object: Object, method_name: StringName) -> int:
+	for method in object.get_method_list():
+		if StringName(method["name"]) == method_name:
+			return Array(method.get("args", [])).size()
+	return -1
+
+
+func _test_selected_template_suffix_continues_after_recovery() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(5, 2), 60, Vector2.ZERO, Vector2i(12, 12), 40.0
+	)
+	var observed_route: Array[Vector2i] = [
+		Vector2i(5, 3), Vector2i(5, 4), Vector2i(5, 5), Vector2i(5, 6),
+		Vector2i(6, 6), Vector2i(7, 6), Vector2i(8, 6), Vector2i(8, 5),
+		Vector2i(8, 4), Vector2i(8, 3), Vector2i(8, 2), Vector2i(7, 2),
+		Vector2i(6, 2), Vector2i(5, 2), Vector2i(4, 2), Vector2i(3, 2),
+		Vector2i(3, 3), Vector2i(3, 4), Vector2i(3, 5), Vector2i(3, 6),
+		Vector2i(3, 7), Vector2i(3, 8), Vector2i(3, 9), Vector2i(4, 9),
+		Vector2i(5, 9), Vector2i(6, 9), Vector2i(7, 9), Vector2i(8, 9),
+		Vector2i(9, 9), Vector2i(10, 9), Vector2i(11, 9),
+	]
+	var initial_route: Array[Vector2i] = []
+	for cell in observed_route.slice(0, 13):
+		initial_route.append(cell)
+	assert_equal(track.append_cells(initial_route), 13, "Observed route reaches the cell beside the recovered departure")
+	assert_equal(track.advance_construction(13.0), 13.0, "Observed prefix is fully built")
+	assert_true(track.prepare_for_train_sampling(0.0, 13.0), "Observed prefix is locked for train sampling")
+	assert_equal(track.recover_behind(5.0), 5, "Observed prefix recovery retains serial six at the live rejection boundary")
+	var continued_route: Array[Vector2i] = []
+	for cell in observed_route.slice(13):
+		continued_route.append(cell)
+	assert_equal(track.append_cells(continued_route), continued_route.size(), "Observed route reuses departure and reaches the reported endpoint")
+	assert_equal(track.advance_construction(float(continued_route.size())), float(continued_route.size()), "Observed continued route is fully built before later sampling locks it")
+	var began: Dictionary = track.gesture_begin(track.get_endpoint_cell())
+	assert_false(began.is_empty(), "Locked suffix fixture begins from the active endpoint")
+	if began.is_empty():
+		return
+	var selected_path: Array[Vector2i] = [Vector2i(11, 8), Vector2i(11, 7), Vector2i(11, 6)]
+	assert_true(track.gesture_update(selected_path, Vector2i(11, 6)), "Observed vertical template publishes before train locking reaches it")
+	assert_equal(track.get_endpoint_cell(), Vector2i(11, 6), "Observed template selects the reported last-valid endpoint")
+	assert_true(track.gesture_is_active(), "Observed gesture remains active after publishing its first candidate")
+	assert_equal(track.recover_behind(6.0), 1, "Observed live recovery removes one prefix cell while the gesture remains held")
+	assert_true(track.gesture_is_active(), "Observed live recovery preserves the held gesture")
+	var locked_ledger_before := _piece_values(track._locked_ledger)
+	var inventory_before: int = track.get_available_track_cells()
+	var extended_path: Array[Vector2i] = selected_path.duplicate()
+	extended_path.append(Vector2i(11, 5))
+	var extended := track.gesture_update(extended_path, Vector2i(11, 5))
+	assert_true(extended, "A held gesture keeps its selected template and appends after live recovery")
+	assert_equal(track._gesture_selected_template_index, 0, "Selected template remains selected while the pointer advances")
+	assert_equal(track._gesture_suffix_input_facts.size(), 4, "Selected template retains the full implicit suffix path")
+	if track._gesture_suffix_input_facts.size() == 4:
+		assert_equal(track._gesture_suffix_input_facts[-1]["cell"], Vector2i(11, 5), "Selected template records the new suffix cell")
+	assert_equal(_piece_values(track._locked_ledger), locked_ledger_before, "Suffix extension keeps the stable locked ledger byte-unchanged")
+	assert_equal(track.get_endpoint_cell(), Vector2i(11, 5), "Suffix extension publishes the new endpoint")
+	assert_equal(track.get_available_track_cells(), inventory_before - 1, "Suffix extension charges exactly one cell")
+	_assert_conservation(track, "Suffix extension preserves exact inventory conservation")
 
 
 func _test_active_recovery_failure_asserts_and_preserves_transaction() -> void:
@@ -246,6 +643,535 @@ func _test_exact_anchor_lifecycle_evolves_active_gesture_forms() -> void:
 	assert_equal(removal_track.get_contact_observations(), [], "Finalize cannot resurrect a removed anchor")
 
 
+func _test_active_warp_contact_latches_until_expiry_or_abort() -> void:
+	var anchor = RouteContactAnchorScript.new(
+		&"warp_latch/origin",
+		Vector2i(2, 1),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var active_anchors: Array[RouteContactAnchorScript] = [anchor]
+	var no_anchors: Array[RouteContactAnchorScript] = []
+
+	var latched = GridTrackRuntimeScript.new(
+		Vector2i(0, 1), 20, Vector2.ZERO, Vector2i(8, 6), 40.0
+	)
+	latched.set_contact_anchors(active_anchors)
+	assert_false(
+		latched.gesture_begin(latched.get_endpoint_cell()).is_empty(),
+		"Warp latch fixture begins an empty-departure gesture"
+	)
+	var contact_path: Array[Vector2i] = [
+		Vector2i(1, 1), Vector2i(2, 1), Vector2i(2, 2),
+	]
+	assert_true(
+		latched.gesture_update(contact_path, contact_path[-1]),
+		"Accepted held input reaches the active exact Warp and publishes a suffix"
+	)
+	assert_equal(
+		latched.get_cell_records().map(func(record): return record.cell),
+		contact_path,
+		"The first accepted Warp contact retains its ordered route and suffix"
+	)
+	var backtracked_before_anchor: Array[Vector2i] = [Vector2i(1, 1)]
+	assert_true(
+		latched.gesture_update(backtracked_before_anchor, backtracked_before_anchor[-1]),
+		"Held backtracking before a live Warp anchor remains a valid gesture update"
+	)
+	assert_equal(
+		latched.get_cell_records().map(func(record): return record.cell),
+		[Vector2i(1, 1), Vector2i(2, 1)],
+		"A contacted live Warp latches the prefix through its exact route occurrence"
+	)
+	assert_equal(
+		latched.get_available_track_cells(),
+		18,
+		"Warp latch retirement refunds only the suffix after the latched occurrence"
+	)
+	var branch_without_anchor_cell: Array[Vector2i] = [
+		Vector2i(1, 1), Vector2i(1, 0),
+	]
+	assert_true(
+		latched.gesture_update(
+			branch_without_anchor_cell,
+			branch_without_anchor_cell[-1],
+			true
+		),
+		"A later pointer path may omit the latched cell and still bend from that Warp"
+	)
+	assert_equal(
+		latched.get_cell_records().map(func(record): return record.cell),
+		[Vector2i(1, 1), Vector2i(2, 1), Vector2i(2, 0), Vector2i(1, 0)],
+		"The latched Warp remains the pivot for a deterministic free orthogonal branch"
+	)
+	assert_true(latched.gesture_abort(), "Right-click-equivalent abort clears the Warp latch")
+	assert_equal(latched.get_cell_records(), [], "Abort restores the exact pre-gesture route")
+	assert_equal(latched.get_available_track_cells(), 20, "Abort restores exact pre-gesture inventory")
+
+	var expired = GridTrackRuntimeScript.new(
+		Vector2i(0, 1), 20, Vector2.ZERO, Vector2i(8, 6), 40.0
+	)
+	expired.set_contact_anchors(active_anchors)
+	assert_false(
+		expired.gesture_begin(expired.get_endpoint_cell()).is_empty(),
+		"Warp expiry fixture begins an empty-departure gesture"
+	)
+	assert_true(
+		expired.gesture_update(contact_path, contact_path[-1]),
+		"Warp expiry fixture publishes the anchored candidate"
+	)
+	var before_expiry := _reentry_transaction_values(expired)
+	expired.set_contact_anchors(no_anchors)
+	assert_equal(
+		_record_values(expired.get_cell_records()),
+		before_expiry["records"],
+		"Warp expiry releases only the latch and preserves the current accepted route"
+	)
+	assert_equal(
+		expired.get_available_track_cells(),
+		before_expiry["inventory"],
+		"Warp expiry does not refund or consume inventory"
+	)
+	assert_equal(expired.get_contact_observations(), [], "Warp expiry removes the exact contact observation")
+	assert_true(
+		expired.gesture_update(backtracked_before_anchor, backtracked_before_anchor[-1]),
+		"The next held update may cross the former anchor after expiry"
+	)
+	assert_equal(
+		expired.get_cell_records().map(func(record): return record.cell),
+		backtracked_before_anchor,
+		"Expired Warp contact no longer constrains gesture topology"
+	)
+	assert_true(expired.gesture_finalize(), "Expired Warp fixture finalizes its current candidate")
+
+	var first_anchor = RouteContactAnchorScript.new(
+		&"warp_latch/first",
+		Vector2i(2, 3),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var second_anchor = RouteContactAnchorScript.new(
+		&"warp_latch/second",
+		Vector2i(4, 3),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var multi = GridTrackRuntimeScript.new(
+		Vector2i(0, 3), 20, Vector2.ZERO, Vector2i(8, 6), 40.0
+	)
+	var both_anchors: Array[RouteContactAnchorScript] = [first_anchor, second_anchor]
+	multi.set_contact_anchors(both_anchors)
+	assert_false(
+		multi.gesture_begin(multi.get_endpoint_cell()).is_empty(),
+		"Multiple-Warp fixture begins one continuous gesture"
+	)
+	var multi_contact_path: Array[Vector2i] = [
+		Vector2i(1, 3), Vector2i(2, 3), Vector2i(3, 3),
+		Vector2i(4, 3), Vector2i(5, 3),
+	]
+	assert_true(
+		multi.gesture_update(multi_contact_path, multi_contact_path[-1]),
+		"One held route contacts two active exact Warp anchors in order"
+	)
+	var before_first: Array[Vector2i] = [Vector2i(1, 3)]
+	assert_true(
+		multi.gesture_update(before_first, before_first[-1]),
+		"Backtracking remains accepted after two exact Warp contacts"
+	)
+	assert_equal(
+		multi.get_cell_records().map(func(record): return record.cell),
+		multi_contact_path.slice(0, 4),
+		"The deepest active Warp occurrence is the deterministic editing floor"
+	)
+	var first_only: Array[RouteContactAnchorScript] = [first_anchor]
+	multi.set_contact_anchors(first_only)
+	assert_true(
+		multi.gesture_update(before_first, before_first[-1]),
+		"Expiry of the deepest Warp falls back to the earlier live latch"
+	)
+	assert_equal(
+		multi.get_cell_records().map(func(record): return record.cell),
+		multi_contact_path.slice(0, 2),
+		"The earlier active Warp remains the editing floor after later-Warp expiry"
+	)
+	multi.set_contact_anchors(no_anchors)
+	assert_true(
+		multi.gesture_update(before_first, before_first[-1]),
+		"Expiry of all contacted Warps releases the full held route"
+	)
+	assert_equal(
+		multi.get_cell_records().map(func(record): return record.cell),
+		before_first,
+		"With no live Warp latch, the same gesture can backtrack through every former anchor"
+	)
+	assert_true(multi.gesture_abort(), "Multiple-Warp fixture aborts to its exact empty origin")
+	assert_equal(multi.get_available_track_cells(), 20, "Multiple-Warp abort restores inventory exactly")
+
+	var immutable = GridTrackRuntimeScript.new(
+		Vector2i(0, 4), 30, Vector2.ZERO, Vector2i(10, 8), 40.0
+	)
+	var immutable_route: Array[Vector2i] = [
+		Vector2i(1, 4), Vector2i(2, 4), Vector2i(3, 4),
+		Vector2i(4, 4), Vector2i(5, 4), Vector2i(6, 4),
+	]
+	assert_equal(
+		immutable.append_cells(immutable_route),
+		immutable_route.size(),
+		"Existing-route activation fixture appends a straight origin"
+	)
+	assert_equal(
+		immutable.advance_construction(float(immutable_route.size())),
+		float(immutable_route.size()),
+		"Existing-route activation fixture builds its complete origin"
+	)
+	assert_true(
+		immutable.prepare_for_train_sampling(0.0, 4.5),
+		"Existing-route activation fixture locks an immutable suffix after the future Warp"
+	)
+	assert_false(
+		immutable.gesture_begin(immutable.get_endpoint_cell()).is_empty(),
+		"A locked straight endpoint still begins an extension gesture"
+	)
+	var behind_anchor = RouteContactAnchorScript.new(
+		&"warp_latch/behind_immutable_suffix",
+		Vector2i(2, 4),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var behind_anchors: Array[RouteContactAnchorScript] = [behind_anchor]
+	immutable.set_contact_anchors(behind_anchors)
+	assert_equal(
+		immutable._gesture_live_warp_latches.size(),
+		0,
+		"Lifecycle activation on a pre-gesture nonendpoint occurrence is not a new gesture contact"
+	)
+	var immutable_ledger_before := _piece_values(immutable._locked_ledger)
+	var immutable_inventory_before: int = immutable.get_available_track_cells()
+	var immutable_extension: Array[Vector2i] = [Vector2i(7, 4)]
+	assert_true(
+		immutable.gesture_update(immutable_extension, immutable_extension[-1]),
+		"A Warp appearing behind the endpoint does not freeze ordinary held extension"
+	)
+	assert_equal(
+		immutable.get_endpoint_cell(),
+		Vector2i(7, 4),
+		"The held route extends from its authoritative endpoint rather than the new historical Warp"
+	)
+	assert_equal(
+		_piece_values(immutable._locked_ledger).slice(0, immutable_ledger_before.size()),
+		immutable_ledger_before,
+		"Historical Warp activation and extension preserve every pre-gesture locked piece"
+	)
+	assert_equal(
+		immutable.get_available_track_cells(),
+		immutable_inventory_before - 1,
+		"Historical Warp activation does not change ordinary extension inventory"
+	)
+	immutable.set_contact_anchors(no_anchors)
+	assert_equal(
+		immutable._gesture_live_warp_latches,
+		[],
+		"Historical Warp removal leaves gesture-local latch state empty"
+	)
+	assert_true(immutable.gesture_abort(), "Existing-route activation fixture aborts exactly")
+
+	var relocated = _make_three_by_three_curve_runtime()
+	var relocated_began: Dictionary = relocated.gesture_begin(relocated.get_endpoint_cell())
+	assert_false(relocated_began.is_empty(), "Relocated-occurrence fixture begins a completed-head gesture")
+	var relocated_target: Vector2i = relocated_began["targets"]["straight"]
+	var relocated_target_path: Array[Vector2i] = [relocated_target]
+	assert_true(
+		relocated.gesture_update(relocated_target_path, relocated_target),
+		"Completed-head reflow accepts the relocated straight occurrence"
+	)
+	var relocated_record = null
+	for record in relocated.get_cell_records():
+		if record.cell == relocated_target:
+			relocated_record = record
+			break
+	assert_not_null(relocated_record, "Relocated target has an accepted route occurrence")
+	if relocated_record != null:
+		var origin_cell := Vector2i(-1, -1)
+		for origin_record in relocated_began["route_records"]:
+			if origin_record.route_serial == relocated_record.route_serial:
+				origin_cell = origin_record.cell
+				break
+		assert_true(origin_cell != relocated_target, "Completed-head reflow moves the retained serial to a new cell")
+		var relocated_anchor = RouteContactAnchorScript.new(
+			&"warp_latch/relocated_origin_serial",
+			relocated_target,
+			RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+		)
+		var relocated_anchors: Array[RouteContactAnchorScript] = [relocated_anchor]
+		relocated.set_contact_anchors(relocated_anchors)
+		assert_equal(
+			relocated._gesture_live_warp_latches.size(),
+			1,
+			"A Warp activated on a gesture-relocated origin serial is a new accepted contact"
+		)
+		var relocated_route_before := _route_content_values(relocated.get_cell_records())
+		var relocated_ledger_before := _piece_values(relocated._locked_ledger)
+		var relocated_inventory_before: int = relocated.get_available_track_cells()
+		var relocated_empty_path: Array[Vector2i] = []
+		assert_true(
+			relocated.gesture_update(relocated_empty_path, Vector2i(-1, -1)),
+			"An omitted-pointer update remains valid after the relocated occurrence latches"
+		)
+		assert_equal(
+			_route_content_values(relocated.get_cell_records()),
+			relocated_route_before,
+			"The relocated exact Warp remains the editing floor while active"
+		)
+		assert_equal(
+			_piece_values(relocated._locked_ledger).slice(0, relocated_ledger_before.size()),
+			relocated_ledger_before,
+			"Relocated exact contact keeps every authoritative locked piece byte-stable"
+		)
+		assert_equal(
+			relocated.get_available_track_cells(),
+			relocated_inventory_before,
+			"Relocated exact contact preserves inventory on an omitted-pointer update"
+		)
+	relocated.set_contact_anchors(no_anchors)
+	assert_true(relocated.gesture_abort(), "Relocated-occurrence fixture aborts to its authoritative origin")
+
+	var revisited = _make_three_by_three_curve_runtime()
+	var revisited_anchor = RouteContactAnchorScript.new(
+		&"warp_latch/revisited_id",
+		Vector2i(2, 1),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var revisited_anchors: Array[RouteContactAnchorScript] = [revisited_anchor]
+	revisited.set_contact_anchors(revisited_anchors)
+	var revisited_began: Dictionary = revisited.gesture_begin(revisited.get_endpoint_cell())
+	assert_false(revisited_began.is_empty(), "Revisited-ID fixture begins with a historical nonendpoint contact")
+	var historical_serial := -1
+	for origin_record in revisited_began["route_records"]:
+		if origin_record.cell == Vector2i(2, 1):
+			historical_serial = origin_record.route_serial
+			break
+	assert_true(historical_serial >= 0, "Revisited-ID fixture records the historical Warp occurrence")
+	var revisited_candidate = TrackCellSequenceScript.new(Vector2i(-1, 0), 18)
+	var revisited_origin_cells: Array[Vector2i] = [
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+		Vector2i(2, 1), Vector2i(2, 2),
+	]
+	assert_equal(
+		revisited_candidate.append_candidates(revisited_origin_cells),
+		revisited_origin_cells.size(),
+		"Revisited-ID candidate recreates the accepted press-time route serials"
+	)
+	assert_equal(
+		revisited_candidate.cancel_ghost_suffix(Vector2i(2, 1)),
+		2,
+		"Revisited-ID candidate removes the historical Warp occurrence and its suffix"
+	)
+	var revisited_new_occurrence: Array[Vector2i] = [Vector2i(2, 1)]
+	assert_equal(
+		revisited_candidate.append_candidates(revisited_new_occurrence),
+		1,
+		"Revisited-ID candidate reaches the same active Warp cell with a fresh serial"
+	)
+	var revisited_record = revisited_candidate.get_records()[-1]
+	assert_true(
+		revisited_record.route_serial != historical_serial,
+		"Revisited Warp cell owns a new route occurrence rather than its press-time serial"
+	)
+	var revisited_ledger: Array[TrackGeometryPieceScript] = []
+	var revisited_resolution = revisited._resolve_candidate(
+		revisited_candidate, revisited_ledger, revisited_anchors, {}
+	)
+	assert_true(revisited_resolution.is_valid, "Fresh same-ID occurrence passes ordinary geometry resolution")
+	if revisited_resolution.is_valid:
+		revisited._assign_unique_unlocked_group_ids(revisited_resolution.pieces, revisited_ledger)
+		revisited_candidate.apply_resolved_geometry(revisited_resolution.pieces)
+		assert_true(
+			revisited._validate_candidate(revisited_candidate, revisited_ledger, revisited_resolution),
+			"Fresh same-ID occurrence passes ordinary candidate validation"
+		)
+		var revisited_contacts: Array[Dictionary] = revisited._build_contact_observations(
+			revisited_resolution.pieces,
+			revisited_anchors,
+			{},
+			revisited_candidate.get_records()
+		)
+		assert_true(
+			revisited_contacts.any(
+				func(observation): return observation.anchor_id == &"warp_latch/revisited_id" and observation.contact_possible
+			),
+			"Fresh same-ID occurrence is an accepted possible exact contact"
+		)
+		revisited._capture_candidate_warp_latches(
+			revisited_candidate, revisited_anchors, revisited_contacts
+		)
+	assert_equal(
+		revisited._gesture_live_warp_latches.size(),
+		1,
+		"A preexisting Warp ID latches when the gesture newly accepts a different occurrence"
+	)
+	if not revisited._gesture_live_warp_latches.is_empty():
+		assert_equal(
+			revisited._gesture_live_warp_latches[0]["route_serial"],
+			revisited_record.route_serial,
+			"Same-ID latch records the fresh route occurrence rather than the historical one"
+		)
+	assert_true(revisited.gesture_abort(), "Revisited-ID fixture aborts to its exact origin")
+
+
+func _test_active_warp_latch_rebranches_after_candidate_retirement() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(0, 1), 20, Vector2.ZERO, Vector2i(12, 6), 40.0
+	)
+	track.set_gesture_rejection_diagnostics_enabled(true)
+	var anchor = RouteContactAnchorScript.new(
+		&"warp_latch/retired_suffix",
+		Vector2i(2, 1),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var anchors: Array[RouteContactAnchorScript] = [anchor]
+	track.set_contact_anchors(anchors)
+	assert_false(
+		track.gesture_begin(track.get_endpoint_cell()).is_empty(),
+		"Retired-suffix fixture begins one held gesture"
+	)
+	var contacted_path: Array[Vector2i] = [
+		Vector2i(1, 1), Vector2i(2, 1), Vector2i(3, 1),
+		Vector2i(4, 1), Vector2i(5, 1), Vector2i(6, 1),
+		Vector2i(7, 1), Vector2i(8, 1), Vector2i(9, 1),
+		Vector2i(10, 1),
+	]
+	assert_true(
+		track.gesture_update(contacted_path, contacted_path[-1]),
+		"Held input accepts a long route through the exact Warp"
+	)
+	assert_true(
+		track.gesture_update(contacted_path, contacted_path[-1]),
+		"The live Warp becomes the editing latch for the accepted suffix"
+	)
+	track.set_contact_anchors(anchors)
+	var latched_serial := int(track._gesture_live_warp_latches[-1]["route_serial"])
+	var locked_prefix_before := _piece_values(
+		track._locked_ledger.filter(
+			func(piece): return (
+				piece.last_route_serial <= latched_serial
+				and (
+					piece.exit_support_route_serial < 0
+					or piece.exit_support_route_serial <= latched_serial
+				)
+			)
+		)
+	)
+	assert_true(
+		track._locked_ledger.any(
+			func(piece): return piece.first_route_serial > latched_serial
+		),
+		"Lifecycle refresh retires at least one candidate-local piece after the latch"
+	)
+	var backtracked_path: Array[Vector2i] = [
+		Vector2i(1, 1), Vector2i(2, 1), Vector2i(3, 1), Vector2i(4, 1),
+	]
+	assert_true(
+		track.gesture_update(backtracked_path, backtracked_path[-1]),
+		"A held gesture can retire and reuse its suffix serials after the active Warp"
+	)
+	assert_equal(
+		track.get_endpoint_cell(),
+		Vector2i(4, 1),
+		"The accepted preview follows the pointer instead of preserving a stale endpoint"
+	)
+	assert_equal(
+		_piece_values(track._locked_ledger),
+		locked_prefix_before,
+		"Rebranching preserves only candidate locks fully contained by the latch prefix"
+	)
+	assert_equal(
+		track.get_available_track_cells(),
+		16,
+		"Backtracking refunds exactly the six retired suffix cells"
+	)
+	assert_equal(
+		track.get_last_gesture_rejection(),
+		{},
+		"The repaired latch update leaves no candidate invariant or continuity rejection"
+	)
+	var anchor_only_path: Array[Vector2i] = [Vector2i(1, 1), Vector2i(2, 1)]
+	assert_true(
+		track.gesture_update(anchor_only_path, anchor_only_path[-1]),
+		"The held route may settle exactly on the active Warp after candidate retirement"
+	)
+	assert_equal(
+		track.get_last_gesture_rejection(),
+		{},
+		"Anchor-only retirement leaves no stale locked support rejection"
+	)
+	assert_equal(track.get_endpoint_cell(), Vector2i(2, 1), "The exact Warp remains the last accepted endpoint")
+	assert_equal(track.get_available_track_cells(), 18, "Anchor-only backtracking refunds two more cells")
+	_assert_conservation(track, "Candidate-retirement rebranch preserves inventory conservation")
+	assert_true(track.gesture_abort(), "Retired-suffix fixture aborts exactly")
+	assert_equal(track.get_cell_records(), [], "Abort restores the pre-gesture empty route")
+	assert_equal(track.get_available_track_cells(), 20, "Abort restores exact inventory")
+
+
+func _test_anchored_endpoint_routes_diagonal_suffix_around_owned_tail() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(5, 5), 60, Vector2.ZERO, Vector2i(12, 9), 40.0
+	)
+	var origin_cells: Array[Vector2i] = [
+		Vector2i(5, 6), Vector2i(5, 7), Vector2i(6, 7), Vector2i(7, 7),
+		Vector2i(8, 7), Vector2i(9, 7), Vector2i(10, 7), Vector2i(11, 7),
+		Vector2i(11, 6), Vector2i(11, 5), Vector2i(11, 4), Vector2i(10, 4),
+	]
+	assert_equal(
+		track.append_cells(origin_cells),
+		origin_cells.size(),
+		"Recorded Warp-adjacent route reaches the outlined endpoint without rejection"
+	)
+	var endpoint_anchor = RouteContactAnchorScript.new(
+		&"warp_diagonal/destination",
+		Vector2i(10, 4),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var target_anchor = RouteContactAnchorScript.new(
+		&"warp_diagonal/origin",
+		Vector2i(11, 3),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	track.set_contact_anchors([endpoint_anchor, target_anchor])
+	var origin_records := _record_values(track.get_cell_records())
+	var origin_inventory := track.get_available_track_cells()
+	var endpoint_observations: Array[Dictionary] = track.get_contact_observations()
+	assert_true(
+		endpoint_observations.any(func(observation): return observation.anchor_id == &"warp_diagonal/destination" and observation.contact_possible),
+		"The press endpoint is an active possible exact Warp contact"
+	)
+	assert_false(
+		track.gesture_begin(track.get_endpoint_cell()).is_empty(),
+		"The exact Warp endpoint begins a latch-owned gesture"
+	)
+	var raw_diagonal_path: Array[Vector2i] = [Vector2i(11, 4), Vector2i(11, 3)]
+	assert_true(
+		track.gesture_update(raw_diagonal_path, raw_diagonal_path[-1], true),
+		"A real-view-authorized diagonal suffix bypasses the already owned tie cell"
+	)
+	var expected_cells := origin_cells.duplicate()
+	expected_cells.append_array([Vector2i(10, 3), Vector2i(11, 3)])
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		expected_cells,
+		"The suffix preserves the anchored endpoint and uses the deterministic free orthogonal tie"
+	)
+	assert_equal(
+		track.get_available_track_cells(),
+		origin_inventory - 2,
+		"The two-cell connector consumes exactly two available cells"
+	)
+	var accepted_observations: Array[Dictionary] = track.get_contact_observations()
+	for anchor_id in [&"warp_diagonal/destination", &"warp_diagonal/origin"]:
+		assert_true(
+			accepted_observations.any(func(observation): return observation.anchor_id == anchor_id and observation.contact_possible),
+			"Accepted connector retains exact contact for %s" % anchor_id
+		)
+	assert_true(track.gesture_abort(), "Warp diagonal fixture aborts the complete latched gesture")
+	assert_equal(_record_values(track.get_cell_records()), origin_records, "Abort restores the exact recorded route")
+	assert_equal(track.get_available_track_cells(), origin_inventory, "Abort refunds the connector exactly once")
+
+
 func _test_exact_anchor_impossible_locked_and_removal_contracts() -> void:
 	var absent = _make_contact_runtime(
 		Vector2i(-1, 0),
@@ -281,7 +1207,7 @@ func _test_exact_anchor_impossible_locked_and_removal_contracts() -> void:
 
 	var unlocked = _make_three_by_three_curve_runtime()
 	var unlocked_before := _piece_values(unlocked.get_geometry_pieces())
-	var curve_anchor = RouteContactAnchorScript.new(&"curve_exact", Vector2i(1, 0))
+	var curve_anchor = RouteContactAnchorScript.new(&"curve_exact", Vector2i(2, 0))
 	curve_anchor.contact_mode = RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
 	var curve_anchors: Array[RouteContactAnchorScript] = [curve_anchor]
 	unlocked.set_contact_anchors(curve_anchors)
@@ -1049,6 +1975,112 @@ func _test_live_template_suffix_reconciles_from_current_path() -> void:
 	assert_equal(shorter_records[-1].route_serial, surviving_serial, "Backtracking preserves surviving suffix identity")
 	assert_true(track.gesture_is_active(), "Backtracking keeps capture active")
 	track.gesture_abort()
+
+
+func _test_candidate_retirement_does_not_revoke_origin_template() -> void:
+	var track = _make_three_by_three_curve_runtime()
+	track.set_gesture_rejection_diagnostics_enabled(true)
+	var began: Dictionary = track.gesture_begin(track.get_endpoint_cell())
+	assert_false(began.is_empty(), "Candidate-retirement fixture begins an unlocked template gesture")
+	if began.is_empty():
+		return
+	var straight_target: Vector2i = began["targets"]["straight"]
+	var long_path: Array[Vector2i] = [
+		straight_target, Vector2i(5, 0), Vector2i(6, 0), Vector2i(7, 0),
+	]
+	assert_true(
+		track.gesture_update(long_path, long_path[-1]),
+		"Long held suffix publishes before candidate-local retirement"
+	)
+	var anchor = RouteContactAnchorScript.new(
+		&"candidate_retirement_exact",
+		Vector2i(6, 0),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var anchors: Array[RouteContactAnchorScript] = [anchor]
+	track.set_contact_anchors(anchors)
+	var first_serial: int = began["editable_span"]["first_route_serial"]
+	var last_serial: int = began["editable_span"]["last_route_serial"]
+	var current_span_locked := false
+	for record in track.get_cell_records():
+		if record.route_serial >= first_serial and record.route_serial <= last_serial:
+			current_span_locked = current_span_locked or record.geometry_locked
+	var origin: Dictionary = track.get_gesture_origin_observation()
+	var origin_span_locked := false
+	for record in origin["route_records"]:
+		if record.route_serial >= first_serial and record.route_serial <= last_serial:
+			origin_span_locked = origin_span_locked or record.geometry_locked
+	assert_true(
+		current_span_locked,
+		"Anchor refresh retires the long live candidate's original template"
+	)
+	assert_false(
+		origin_span_locked,
+		"The authoritative gesture origin keeps the editable template unlocked"
+	)
+	assert_equal(
+		origin["locked_ledger"],
+		[],
+		"Candidate-local retirement does not contaminate the origin ledger"
+	)
+	var shorter_path: Array[Vector2i] = [straight_target, Vector2i(5, 0)]
+	var updated: bool = track.gesture_update(shorter_path, shorter_path[-1])
+	var rejection: Dictionary = track.get_last_gesture_rejection()
+	if updated:
+		assert_equal(rejection, {}, "Successful origin-authorized reflow clears rejection diagnostics")
+	else:
+		assert_equal(
+			rejection.get("stage", StringName()),
+			&"template_mutation",
+			"RED identifies the candidate-local safety stage"
+		)
+		assert_equal(
+			rejection.get("reason", StringName()),
+			&"unsafe_template_mutation",
+			"RED identifies candidate-local retirement as the rejection reason"
+		)
+	assert_true(
+		updated,
+		"Same-press backtrack remains valid while the refreshed Warp contact is latched"
+	)
+	if updated:
+		assert_equal(track.get_endpoint_cell(), Vector2i(6, 0), "Backtrack stops at the refreshed live Warp latch")
+		assert_false(
+			track.get_cell_records().any(
+				func(record): return record.cell == Vector2i(7, 0)
+			),
+			"Backtrack removes only the retired suffix after the refreshed Warp latch"
+		)
+		assert_true(
+			track.get_cell_records().any(func(record): return record.cell == Vector2i(6, 0)),
+			"Refreshed active Warp remains the gesture editing floor"
+		)
+	var route_before_expiry := _route_content_values(track.get_cell_records())
+	var inventory_before_expiry: int = track.get_available_track_cells()
+	var no_anchors: Array[RouteContactAnchorScript] = []
+	track.set_contact_anchors(no_anchors)
+	assert_equal(
+		_route_content_values(track.get_cell_records()),
+		route_before_expiry,
+		"Refreshed Warp expiry preserves the accepted latched candidate"
+	)
+	assert_equal(
+		track.get_available_track_cells(),
+		inventory_before_expiry,
+		"Refreshed Warp expiry preserves inventory before the next held update"
+	)
+	assert_true(
+		track.gesture_update(shorter_path, shorter_path[-1]),
+		"The next held update may backtrack through the expired refreshed Warp"
+	)
+	assert_equal(track.get_endpoint_cell(), Vector2i(5, 0), "Expired refreshed Warp releases the shorter endpoint")
+	assert_false(
+		track.get_cell_records().any(
+			func(record): return record.cell == Vector2i(6, 0) or record.cell == Vector2i(7, 0)
+		),
+		"Expired refreshed Warp permits complete suffix retirement"
+	)
+	_assert_conservation(track, "Candidate-retirement reflow preserves exact inventory")
 
 
 func _test_recovered_running_endpoint_accepts_direct_extension() -> void:
@@ -2026,6 +3058,125 @@ func _test_running_locked_curve_endpoint_remains_extendable() -> void:
 	)
 
 
+func _test_locked_aabb_empty_corner_accepts_ordinary_and_exact_routes() -> void:
+	for exact_anchor in [false, true]:
+		var label := "exact" if exact_anchor else "ordinary"
+		var track := _locked_aabb_empty_corner_runtime(exact_anchor, label)
+		var empty_corner := Vector2i(3, 2)
+		var before_begin := _reentry_transaction_values(track)
+		assert_false(track.gesture_begin(track.get_endpoint_cell()).is_empty(), "Locked empty-corner %s gesture begins" % label)
+		assert_true(track.gesture_update([empty_corner], empty_corner), "Locked AABB empty corner accepts the %s held route" % label)
+		var accepted := _reentry_transaction_values(track)
+		assert_equal(track.get_endpoint_cell(), empty_corner, "Accepted %s route advances the endpoint" % label)
+		assert_equal(track.get_available_track_cells(), before_begin["inventory"] - 1, "Accepted %s route charges one cell" % label)
+		assert_equal(_piece_values(track._locked_ledger), before_begin["ledger"], "Accepted %s route keeps locked ledger bytes" % label)
+		assert_equal(track.get_built_end_distance_cells(), before_begin["built_end"], "Accepted %s route keeps construction frontier" % label)
+		assert_equal(track._recovered_cells_by_piece, before_begin["recovered_cells"], "Accepted %s route keeps recovery cells" % label)
+		assert_equal(track._recovered_end_distance_cells, before_begin["recovered_frontier"], "Accepted %s route keeps recovery frontier" % label)
+		assert_equal(track._sequence._next_route_serial, before_begin["next_route_serial"] + 1, "Accepted %s route advances one serial" % label)
+		assert_equal(track._sequence._next_nominal_start_cells, before_begin["next_nominal_start"] + 1.0, "Accepted %s route advances one nominal cell" % label)
+		_assert_record_piece_sync(track)
+		assert_true(track._pieces_are_continuous(track.get_geometry_pieces()), "Accepted %s route remains fully continuous" % label)
+		var owner = _piece_containing(track.get_geometry_pieces(), track.get_cell_records()[-1].route_serial)
+		assert_not_null(owner, "Accepted %s route has one concrete final owner" % label)
+		if owner != null:
+			var local_start: float = track.get_cell_records()[-1].route_distance_start_cells - owner.absolute_start_distance_cells
+			assert_true(
+				owner.contacts_cell_in_nominal_range(
+					empty_corner, Vector2.ZERO, 40.0, local_start, local_start + 1.0, 8
+				),
+				"Accepted %s owner samples through its nominal route cell" % label
+			)
+			for locked in track._locked_ledger:
+				for cell in owner.footprint_cells:
+					if locked.footprint_cells.has(cell):
+						assert_false(
+							owner.contacts_cell(cell, Vector2.ZERO, 40.0)
+							and locked.contacts_cell(cell, Vector2.ZERO, 40.0),
+							"Accepted %s route has no shared geometric collision at %s" % [label, cell]
+						)
+			if exact_anchor:
+				var exact_center := (Vector2(empty_corner) + Vector2(0.5, 0.5)) * 40.0
+				assert_true(
+					owner.find_nominal_distance_at_position(exact_center, 0.0001) >= 0.0,
+					"Accepted exact route retains its literal center in nominal sampling"
+				)
+		var replay := _locked_aabb_empty_corner_runtime(exact_anchor, label + " replay")
+		assert_false(replay.gesture_begin(replay.get_endpoint_cell()).is_empty(), "Locked empty-corner %s replay begins" % label)
+		assert_true(replay.gesture_update([empty_corner], empty_corner), "Locked empty-corner %s replay publishes" % label)
+		assert_equal(_reentry_transaction_values(replay), accepted, "Locked empty-corner %s replay is deterministic" % label)
+		assert_true(replay.gesture_abort(), "Locked empty-corner %s replay aborts" % label)
+		assert_true(track.gesture_abort(), "Locked empty-corner %s route aborts" % label)
+		var expected_abort: Dictionary = before_begin.duplicate(true)
+		expected_abort["next_route_serial"] = accepted["next_route_serial"]
+		assert_equal(
+			_reentry_transaction_values(track), expected_abort,
+			"Locked empty-corner %s abort restores the deep origin and preserves the monotonic serial watermark" % label
+		)
+		_assert_conservation(track, "Locked empty-corner %s route preserves conservation" % label)
+
+
+func _locked_aabb_empty_corner_runtime(exact_anchor: bool, label: String) -> GridTrackRuntimeScript:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(2, 3), 20, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(
+		track.append_cells([Vector2i(2, 2), Vector2i(2, 1), Vector2i(3, 1)]),
+		3,
+		"Locked empty-corner %s fixture appends its initial curve" % label
+	)
+	assert_equal(track.advance_construction(3.0), 3.0, "Locked empty-corner %s fixture builds" % label)
+	assert_true(track.prepare_for_train_sampling(0.0, 3.0), "Locked empty-corner %s fixture locks" % label)
+	assert_equal(
+		track.append_cells([
+			Vector2i(4, 1), Vector2i(5, 1), Vector2i(5, 2), Vector2i(4, 2),
+		]),
+		4,
+		"Locked empty-corner %s fixture reaches the adjacent endpoint" % label
+	)
+	if exact_anchor:
+		var anchor = RouteContactAnchorScript.new(
+			&"empty_corner_exact", Vector2i(3, 2),
+			RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+		)
+		track.set_contact_anchors([anchor])
+	return track
+
+
+func _test_locked_shared_centerline_runtime_rejection_is_atomic() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 5, Vector2.ZERO, Vector2i(4, 4), 40.0
+	)
+	assert_equal(track.append_cells([Vector2i(0, 0)]), 1, "Shared-centerline fixture appends its locked owner")
+	assert_equal(track.advance_construction(1.0), 1.0, "Shared-centerline fixture builds its locked owner")
+	assert_true(track.prepare_for_train_sampling(0.0, 1.0), "Shared-centerline fixture locks its owner")
+	var anchor = RouteContactAnchorScript.new(
+		&"blocked_exact", Vector2i(1, 0),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	track.set_contact_anchors([anchor])
+	track.set_gesture_rejection_diagnostics_enabled(true)
+	assert_false(track.gesture_begin(track.get_endpoint_cell()).is_empty(), "Shared-centerline rejection gesture begins")
+	var blocker = track._locked_ledger[0].duplicate_piece()
+	blocker.footprint_cells.append(Vector2i(1, 0))
+	blocker.centerline = PackedVector2Array([Vector2(-20.0, 20.0), Vector2(60.0, 20.0)])
+	track._locked_ledger[0] = blocker.duplicate_piece()
+	track._pieces[0] = blocker.duplicate_piece()
+	track._gesture_origin_locked_ledger[0] = blocker.duplicate_piece()
+	track._gesture_origin_pieces[0] = blocker.duplicate_piece()
+	var before_rejection := _reentry_transaction_values(track)
+	assert_false(track.gesture_update([Vector2i(1, 0)], Vector2i(1, 0)), "True shared-centerline cell remains rejected")
+	var rejection := track.get_last_gesture_rejection()
+	assert_equal(rejection.get("stage", StringName()), &"candidate_resolution", "True shared-centerline rejection names resolution")
+	assert_equal(rejection.get("reason", StringName()), &"locked_overlap", "True shared-centerline rejection retains locked_overlap")
+	assert_equal(_reentry_transaction_values(track), before_rejection, "True shared-centerline rejection preserves the deep transaction")
+	assert_true(track.gesture_abort(), "Shared-centerline rejection aborts")
+	var expected_abort: Dictionary = before_rejection.duplicate(true)
+	expected_abort["origin"] = {}
+	assert_equal(_reentry_transaction_values(track), expected_abort, "Shared-centerline abort restores the deep origin")
+	_assert_conservation(track, "Shared-centerline rejection preserves conservation")
+
+
 func _test_endpoint_reshape_gesture_rejects_illegal_starts() -> void:
 	var nonendpoint_track = GridTrackRuntimeScript.new(
 		Vector2i(-1, 0), 5, Vector2.ZERO, Vector2i(8, 8), 40.0
@@ -2592,6 +3743,11 @@ func _test_endpoint_reshape_locked_boundary_rejects_template_mutation() -> void:
 	track._pieces[-1].locked = true
 	track._locked_ledger.append(locked_boundary)
 	track._sequence.apply_resolved_geometry(track._pieces)
+	var origin_locked_boundary = track._gesture_origin_pieces[-1].duplicate_piece()
+	origin_locked_boundary.locked = true
+	track._gesture_origin_pieces[-1].locked = true
+	track._gesture_origin_locked_ledger.append(origin_locked_boundary)
+	track._gesture_origin_sequence.apply_resolved_geometry(track._gesture_origin_pieces)
 	var records_before := _record_values(track.get_cell_records())
 	var pieces_before := _piece_values(track.get_geometry_pieces())
 	var ledger_before := _piece_values(track._locked_ledger)
@@ -2599,6 +3755,8 @@ func _test_endpoint_reshape_locked_boundary_rejects_template_mutation() -> void:
 	var recovery_before := _recovery_observation_values(track)
 	var contacts_before: Array = track.get_contact_observations().duplicate(true)
 	var anchors_before := _anchor_values(track._anchors)
+	var origin_before := _abort_origin_values(track.get_gesture_origin_observation())
+	var origin_watermark_before: int = track._gesture_origin_sequence._next_route_serial
 	print("Endpoint reshape: locked boundary rejects template mutation")
 	var target_cells: Array[Vector2i] = [began["targets"]["straight"]]
 	assert_false(track.call("gesture_update", target_cells), "Locked boundary rejects template mutation")
@@ -2609,6 +3767,16 @@ func _test_endpoint_reshape_locked_boundary_rejects_template_mutation() -> void:
 	assert_equal(_recovery_observation_values(track), recovery_before, "Locked boundary preserves construction and recovery")
 	assert_equal(track.get_contact_observations(), contacts_before, "Locked boundary preserves contact observations")
 	assert_equal(_anchor_values(track._anchors), anchors_before, "Locked boundary preserves anchors")
+	assert_equal(
+		_abort_origin_values(track.get_gesture_origin_observation()),
+		origin_before,
+		"Locked boundary rejection preserves the authoritative gesture origin"
+	)
+	assert_equal(
+		track._gesture_origin_sequence._next_route_serial,
+		origin_watermark_before,
+		"Locked boundary rejection preserves the origin serial watermark"
+	)
 	track.call("gesture_abort")
 
 
@@ -3261,7 +4429,7 @@ func _test_recovered_cell_can_be_contacted_by_new_geometry() -> void:
 		Vector2i(2, 1), Vector2i(2, 2),
 	]), 5, "New curve reuses route after recovery")
 	var reused_anchors: Array[RouteContactAnchorScript] = [
-		RouteContactAnchorScript.new(&"reused_inner", Vector2i(1, 1)),
+		RouteContactAnchorScript.new(&"reused_inner", Vector2i(1, 0)),
 	]
 	track.set_contact_anchors(reused_anchors)
 	var observations: Array = track.get_contact_observations()
@@ -3591,14 +4759,20 @@ func _test_unanchored_three_by_three_runtime_uses_local_corners() -> void:
 	assert_equal(piece.last_route_serial, records[4].route_serial, "Warp-free runtime owner ends at F")
 	assert_equal(piece.nominal_length_cells, 5, "Warp-free runtime owner keeps five nominal cells")
 	assert_equal(piece.centerline.size(), 81, "Warp-free runtime owner uses sixteen samples per nominal cell")
-	var first_spine: Vector2 = piece.sample_nominal(1.5).position
 	var middle_spine: Vector2 = piece.sample_nominal(2.5).position
-	var last_spine: Vector2 = piece.sample_nominal(3.5).position
-	assert_true(
-		absf((middle_spine - first_spine).cross(last_spine - middle_spine)) <= 0.0001
-			and (middle_spine - first_spine).dot(last_spine - middle_spine) > 0.0,
-		"Warp-free runtime keeps the long 3x3 interior spine straight"
-	)
+	for index in range(records.size()):
+		var local_start: float = (
+			records[index].route_distance_start_cells
+			- piece.absolute_start_distance_cells
+		)
+		assert_true(
+			piece.contacts_cell_in_nominal_range(
+				records[index].cell, Vector2.ZERO, 40.0,
+				local_start, local_start + 1.0, 8
+			),
+			"Warp-free runtime visibly enters owned route cell %s in its nominal interval"
+				% records[index].cell
+		)
 	assert_equal(track.get_contact_observations(), [], "Warp-free local corners do not synthesize anchors")
 	var unlocked_centerline: PackedVector2Array = piece.centerline
 	assert_equal(track.advance_construction(5.0), 5.0, "Warp-free local-corner route fully constructs")
@@ -3610,7 +4784,7 @@ func _test_unanchored_three_by_three_runtime_uses_local_corners() -> void:
 	assert_equal(locked_piece.centerline, unlocked_centerline, "Locking preserves local-corner bytes")
 	assert_true(
 		locked_piece.sample_nominal(2.5).position.is_equal_approx(middle_spine),
-		"Locked train sampling uses the same straight spine"
+		"Locked train sampling preserves the ordered-route spine"
 	)
 	var inventory_before: int = track.get_available_track_cells()
 	assert_equal(track.recover_behind(1.0), 1, "Warp-free local-corner route recovers one nominal cell")
@@ -4078,10 +5252,12 @@ func _piece_values(pieces: Array) -> Array[Dictionary]:
 			"kind": piece.kind,
 			"distance": piece.absolute_start_distance_cells,
 			"length": piece.nominal_length_cells,
-			"footprint": piece.footprint_cells,
-			"centerline": piece.centerline,
+			"footprint": piece.footprint_cells.duplicate(),
+			"centerline": piece.centerline.duplicate(),
 			"active_start": piece.active_local_start_cells,
 			"active_end": piece.active_local_end_cells,
+			"entry_heading": Vector2(piece.entry_heading_override),
+			"exit_heading": Vector2(piece.exit_heading_override),
 			"support": piece.exit_support_route_serial,
 			"locked": piece.locked,
 		})
@@ -4176,6 +5352,27 @@ func _anchor_values(anchors: Array) -> Array[Dictionary]:
 	for anchor in anchors:
 		values.append({"anchor_id": anchor.anchor_id, "cell": anchor.cell})
 	return values
+
+
+func _reentry_transaction_values(track: GridTrackRuntimeScript) -> Dictionary:
+	var origin: Dictionary = track.call("get_gesture_origin_observation")
+	return {
+		"records": _record_values(track.get_cell_records()),
+		"pieces": _piece_values(track.get_geometry_pieces()),
+		"ledger": _piece_values(track._locked_ledger),
+		"construction": _construction_values(track.get_cell_records()),
+		"inventory": track.get_available_track_cells(),
+		"endpoint": track.get_endpoint_cell(),
+		"built_end": track.get_built_end_distance_cells(),
+		"next_route_serial": track._sequence._next_route_serial,
+		"next_nominal_start": track._sequence._next_nominal_start_cells,
+		"active_predecessor": track._sequence.get_active_predecessor_cell(),
+		"anchors": _anchor_values(track._anchors),
+		"contacts": track.get_contact_observations().duplicate(true),
+		"recovered_cells": track._recovered_cells_by_piece.duplicate(true),
+		"recovered_frontier": track._recovered_end_distance_cells,
+		"origin": _abort_origin_values(origin) if not origin.is_empty() else {},
+	}
 
 
 func _abort_origin_values(origin: Dictionary) -> Dictionary:

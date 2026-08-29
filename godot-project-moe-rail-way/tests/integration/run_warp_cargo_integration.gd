@@ -27,11 +27,11 @@ const EXPECTED_EVENT_TICKS := {
     8: ["ACTIVATED:warp_pair_2:-1:0"],
     11: ["FORECASTED:warp_pair_3:-1:0", "LOADED:warp_pair_2:0:0"],
     13: ["ACTIVATED:warp_pair_3:-1:0"],
+    67: ["LOADED:warp_pair_3:1:0"],
     120: ["EXPIRED:warp_pair_1:-1:0"],
     121: ["FORECASTED:warp_pair_4:-1:0"],
     123: ["ACTIVATED:warp_pair_4:-1:0"],
-    126: ["LOADED:warp_pair_4:1:0"],
-    139: ["EXPIRED:warp_pair_2:0:0", "VOIDED:warp_pair_3:-1:0", "VOIDED:warp_pair_4:1:0"],
+    139: ["EXPIRED:warp_pair_2:0:0", "VOIDED:warp_pair_3:1:0", "VOIDED:warp_pair_4:-1:0"],
 }
 
 const EXPECTED_STATE_TRACE := [
@@ -42,28 +42,29 @@ const EXPECTED_STATE_TRACE := [
     {"tick": 10, "state": "RUNNING", "pairs": ["warp_pair_1:ACTIVE_UNLOADED:0:F0:L110", "warp_pair_2:ACTIVE_UNLOADED:1:F0:L129"], "occupied": 0, "delivered": 0, "reward": 0},
     {"tick": 13, "state": "RUNNING", "pairs": ["warp_pair_1:ACTIVE_UNLOADED:0:F0:L107", "warp_pair_2:IN_TRANSIT:1:F0:L126", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L152"], "occupied": 1, "delivered": 0, "reward": 0},
     {"tick": 64, "state": "RUNNING", "pairs": ["warp_pair_1:ACTIVE_UNLOADED:0:F0:L56", "warp_pair_2:IN_TRANSIT:1:F0:L75", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L101"], "occupied": 1, "delivered": 0, "reward": 0},
-    {"tick": 119, "state": "RUNNING", "pairs": ["warp_pair_1:ACTIVE_UNLOADED:0:F0:L1", "warp_pair_2:IN_TRANSIT:1:F0:L20", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L46"], "occupied": 1, "delivered": 0, "reward": 0},
-    {"tick": 120, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L19", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L45"], "occupied": 1, "delivered": 0, "reward": 0},
-    {"tick": 121, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L18", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L44", "warp_pair_4:FORECAST:0:F2:L159"], "occupied": 1, "delivered": 0, "reward": 0},
-    {"tick": 123, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L16", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L42", "warp_pair_4:ACTIVE_UNLOADED:0:F0:L158"], "occupied": 1, "delivered": 0, "reward": 0},
-    {"tick": 124, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L15", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L41", "warp_pair_4:ACTIVE_UNLOADED:0:F0:L157"], "occupied": 1, "delivered": 0, "reward": 0},
-    {"tick": 138, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L1", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L27", "warp_pair_4:IN_TRANSIT:0:F0:L143"], "occupied": 2, "delivered": 0, "reward": 0},
+    {"tick": 119, "state": "RUNNING", "pairs": ["warp_pair_1:ACTIVE_UNLOADED:0:F0:L1", "warp_pair_2:IN_TRANSIT:1:F0:L20", "warp_pair_3:IN_TRANSIT:2:F0:L46"], "occupied": 2, "delivered": 0, "reward": 0},
+    {"tick": 120, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L19", "warp_pair_3:IN_TRANSIT:2:F0:L45"], "occupied": 2, "delivered": 0, "reward": 0},
+    {"tick": 121, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L18", "warp_pair_3:IN_TRANSIT:2:F0:L44", "warp_pair_4:FORECAST:0:F2:L159"], "occupied": 2, "delivered": 0, "reward": 0},
+    {"tick": 123, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L16", "warp_pair_3:IN_TRANSIT:2:F0:L42", "warp_pair_4:ACTIVE_UNLOADED:0:F0:L158"], "occupied": 2, "delivered": 0, "reward": 0},
+    {"tick": 124, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L15", "warp_pair_3:IN_TRANSIT:2:F0:L41", "warp_pair_4:ACTIVE_UNLOADED:0:F0:L157"], "occupied": 2, "delivered": 0, "reward": 0},
+    {"tick": 138, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L1", "warp_pair_3:IN_TRANSIT:2:F0:L27", "warp_pair_4:ACTIVE_UNLOADED:0:F0:L143"], "occupied": 2, "delivered": 0, "reward": 0},
     {"tick": 139, "state": "COMPLETED", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:EXPIRED:1:F0:L0", "warp_pair_3:VOIDED:2:F0:L26", "warp_pair_4:VOIDED:0:F0:L142"], "occupied": 0, "delivered": 0, "reward": 0},
 ]
 
-const MANUAL_CHECKPOINT_TICKS: Array[int] = [1, 3, 11, 13, 64, 120, 121, 123, 126, 138, 139]
+const MANUAL_CHECKPOINT_TICKS: Array[int] = [1, 3, 11, 13, 64, 67, 120, 121, 123, 126, 138, 139]
 const MANUAL_EXPECTATIONS := {
     1: "Empty cargo; pair 1 forecast with low-alpha endpoints and F 1s.",
     3: "Pair 1 active: filled origin, outlined destination, 12s lifetime.",
     11: "Pair 2 loads at its exact origin center into slot 0.",
     13: "Pair 3 activates at its seeded cells without route correction.",
-    64: "Impossible exact contacts remain unloaded without route correction.",
-    120: "Pair 1 expires unloaded and cargo remains at 1 / 2.",
+    64: "Pair 3 remains active and unloaded immediately before the ordered route reaches it.",
+    67: "Pair 3 loads at its visible ordered-route origin into slot 1.",
+    120: "Pair 1 expires unloaded and cargo remains full at 2 / 2.",
     121: "Pair 4 forecast appears at its original seeded cells.",
     123: "Pair 4 activates with the original lifetime facts.",
-    126: "Pair 4 loads at its exact origin center into slot 1.",
-    138: "Both loaded pairs remain in transit; pair 2 has one lifetime tick.",
-    139: "Pair 2 expires before completion voids the remaining live pairs.",
+    126: "Pair 4 remains unloaded because both cargo slots are occupied.",
+    138: "Pairs 2 and 3 remain in transit; pair 2 has one lifetime tick.",
+    139: "Pair 2 expires before completion voids pair 3 and unloaded pair 4.",
 }
 
 var _failures := PackedStringArray()
@@ -77,6 +78,7 @@ var _manual_panel: PanelContainer
 var _manual_scroll: ScrollContainer
 var _manual_label: Label
 var _manual_button: Button
+var _last_mouse_gesture_rejection: Dictionary = {}
 
 
 func _initialize() -> void:
@@ -89,6 +91,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
+    _test_mouse_gesture_rejection_deduplication()
     var packed := load(SCENE_PATH) as PackedScene
     _assert_true(packed != null, "Warp Cargo app scene loads")
     if packed == null:
@@ -101,6 +104,10 @@ func _run() -> void:
     root.add_child(app)
     if _mouse_manual_mode:
         await process_frame
+        app.track_system._runtime.set_gesture_rejection_diagnostics_enabled(true)
+        app.session_controller.snapshot_published.connect(
+            _on_mouse_manual_snapshot.bind(app)
+        )
         _assert_equal(app.session_start_config.session_duration_seconds, 90.0, "Mouse manual session lasts 90 seconds")
         _assert_equal(app.session_start_config.train_speed_cells_per_second, 1.5, "Mouse manual train speed is reduced")
         _assert_equal(app.session_start_config.recovery_lag_cells, 2, "Mouse manual recovery begins two cells behind")
@@ -152,9 +159,11 @@ func _run() -> void:
                 _assert_equal(forecast_origin.countdown_text, "F 1s", "Real forecast countdown is readable")
                 _assert_true(forecast_origin.position.is_equal_approx(Vector2(360.0, 66.6666667)), "Real endpoint uses logical grid center")
         if tick == 126:
-            _assert_equal(_cargo_text(shell), "2 / 2", "Real HUD shows full cargo")
+            _assert_equal(_cargo_text(shell), "2 / 2", "Full cargo keeps pair 4 unloaded")
+        if tick == 67:
+            _assert_equal(_cargo_text(shell), "2 / 2", "Ordered-route pair 3 fills slot 1")
         if tick == 120:
-            _assert_equal(_cargo_text(shell), "1 / 2", "Unloaded expiry leaves occupied cargo unchanged")
+            _assert_equal(_cargo_text(shell), "2 / 2", "Unloaded expiry leaves full cargo unchanged")
         if tick == 139:
             _assert_equal(_reward_text(shell), "0", "Final-life expiry leaves base reward unchanged")
 
@@ -326,6 +335,51 @@ func _configure_mouse_manual_balance(app) -> void:
     manual_balance.warp_lifecycle_balance.lifetime_min_seconds = 3.0
     manual_balance.warp_lifecycle_balance.lifetime_max_seconds = 33.0
     app.balance = manual_balance
+
+
+func _on_mouse_manual_snapshot(_snapshot, app) -> void:
+    var rejection: Dictionary = app.track_system._runtime.get_last_gesture_rejection()
+    if not _accept_new_mouse_gesture_rejection(rejection):
+        return
+    var candidate_cells: Array[String] = []
+    for record in rejection.get("candidate_records", []):
+        candidate_cells.append("%d:%s:L%s" % [
+            record.get("serial", -1),
+            record.get("cell", Vector2i(-1, -1)),
+            record.get("locked", false),
+        ])
+    print("GESTURE_REJECT | stage=%s | reason=%s | pointer=%s | live_path=%s | accepted_endpoint=%s | selected_template=%s | attempted_template=%s | candidate=%s | locked=%s | anchors=%s" % [
+        rejection.get("stage", StringName()),
+        rejection.get("reason", StringName()),
+        rejection.get("pointer_cell", Vector2i(-1, -1)),
+        rejection.get("live_path", []),
+        rejection.get("accepted_endpoint", Vector2i(-1, -1)),
+        rejection.get("selected_template_index", -1),
+        rejection.get("attempted_template_index", -1),
+        candidate_cells,
+        rejection.get("locked_pieces", []),
+        rejection.get("anchors", []),
+    ])
+
+
+func _accept_new_mouse_gesture_rejection(rejection: Dictionary) -> bool:
+    if rejection.is_empty():
+        _last_mouse_gesture_rejection.clear()
+        return false
+    if rejection == _last_mouse_gesture_rejection:
+        return false
+    _last_mouse_gesture_rejection = rejection.duplicate(true)
+    return true
+
+
+func _test_mouse_gesture_rejection_deduplication() -> void:
+    var rejection := {"stage": &"candidate_sequence", "reason": &"append_path_rejected"}
+    _last_mouse_gesture_rejection.clear()
+    _assert_true(_accept_new_mouse_gesture_rejection(rejection), "First gesture rejection episode is logged")
+    _assert_true(not _accept_new_mouse_gesture_rejection(rejection), "Consecutive duplicate rejection is suppressed")
+    _assert_true(not _accept_new_mouse_gesture_rejection({}), "Successful empty diagnostic clears the rejection episode")
+    _assert_true(_accept_new_mouse_gesture_rejection(rejection), "The same rejection is logged again after a successful interval")
+    _last_mouse_gesture_rejection.clear()
 
 
 func _event_signatures(snapshot) -> Array[String]:

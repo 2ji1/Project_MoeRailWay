@@ -17,6 +17,8 @@ func run() -> PackedStringArray:
 	_test_horizontal_and_l_shaped_physical_events()
 	_test_corner_order_and_consume_once()
 	_test_outside_and_right_cell_mapping()
+	_test_held_reentry_preserves_intermediate_cells_across_frames()
+	_test_held_reentry_gap_grants_bounded_connection_authority()
 	_test_resize_and_nonzero_canvas_offset_preserve_cells()
 	_test_grid_render_observation_reports_inclusive_nonzero_origin_geometry()
 	_test_valid_start_render_observation_tracks_empty_route_endpoint_and_completion()
@@ -999,32 +1001,43 @@ func _test_unanchored_local_corner_presentation() -> void:
 	assert_equal(owner.centerline.size(), 81, "Warp-free presentation receives fixed-count local-corner samples")
 	fixture.view.present(_view_snapshot(records, pieces))
 	var observation: Dictionary = fixture.view.get_render_observation()
-	var entry_interval := _view_interval_for_serial(observation, 1)
-	var spine_interval := _view_interval_for_serial(observation, 3)
-	var exit_interval := _view_interval_for_serial(observation, 5)
-	for interval in [entry_interval, spine_interval, exit_interval]:
-		assert_false(interval.is_empty(), "Warp-free presentation exposes each inspected interval")
-		if not interval.is_empty():
-			assert_equal(PackedVector2Array(interval.points).size(), 9, "Presentation keeps one-eighth nominal cadence")
-	if not entry_interval.is_empty():
-		assert_true(
-			_points_contain_bend(PackedVector2Array(entry_interval.points)),
-			"Warp-free presentation rounds only the entry transition neighborhood"
+	for index in range(records.size()):
+		var interval := _view_interval_for_serial(
+			observation, records[index].route_serial
 		)
-	if not spine_interval.is_empty():
-		var spine_points := PackedVector2Array(spine_interval.points)
-		for index in range(spine_points.size() - 2):
-			assert_true(
-				_three_points_are_forward_collinear(
-					spine_points[index], spine_points[index + 1], spine_points[index + 2]
-				),
-				"Warp-free presentation keeps middle spine sample %d straight" % index
+		assert_false(interval.is_empty(), "Warp-free presentation exposes each owned interval")
+		if interval.is_empty():
+			continue
+		var points := PackedVector2Array(interval.points)
+		assert_equal(points.size(), 9, "Presentation keeps one-eighth nominal cadence")
+		if points.size() != 9:
+			continue
+		var enters_owned_cell := false
+		for point in points:
+			var point_cell := Vector2i(
+				int(floor(point.x / 40.0)), int(floor(point.y / 40.0))
 			)
-	if not exit_interval.is_empty():
+			if point_cell == records[index].cell:
+				enters_owned_cell = true
+				break
 		assert_true(
-			_points_contain_bend(PackedVector2Array(exit_interval.points)),
-			"Warp-free presentation rounds only the exit transition neighborhood"
+			enters_owned_cell,
+			"Presented route serial %d enters its owned route cell"
+				% records[index].route_serial
 		)
+		if index == 2:
+			assert_true(
+				_points_contain_bend(points),
+				"Presentation confines the local bend to the actual turn interval"
+			)
+		else:
+			for point_index in range(points.size() - 2):
+				assert_true(
+					_three_points_are_forward_collinear(
+						points[point_index], points[point_index + 1], points[point_index + 2]
+					),
+					"Non-turn interval %d remains straight" % records[index].route_serial
+				)
 	fixture.parent.free()
 
 
@@ -1175,6 +1188,99 @@ func _test_outside_and_right_cell_mapping() -> void:
 	assert_equal(outside_right_release.current_pointer_cell, Vector2i(-1, -1), "Outside right release keeps an invalid pointer cell")
 	assert_false(outside_right_release.current_pointer_inside_grid, "Outside right release keeps a false inside-grid fact")
 	fixture.parent.free()
+
+
+func _test_held_reentry_preserves_intermediate_cells_across_frames() -> void:
+	var fixture := _fixture(
+		Vector2.ZERO,
+		Vector2(1000.0, 700.0),
+		_config(Vector2i(4, 4), 40.0, Vector2.ZERO, Vector2i(3, 1))
+	)
+	var view = fixture.view
+	var start := _local_for_logical(view, Vector2(140.0, 60.0))
+	_deliver(view, _button(start, MOUSE_BUTTON_LEFT, true))
+	_deliver(view, _motion(_local_for_logical(view, Vector2(180.0, 60.0))))
+	var outside_frame = view.consume_input_frame()
+	assert_equal(outside_frame.crossed_cells, [], "Leaving the grid emits no outside cell")
+	assert_false(outside_frame.current_pointer_inside_grid, "The held pointer reports its outside state")
+
+	_deliver(view, _motion(_local_for_logical(view, Vector2(140.0, 140.0))))
+	var reentry_frame = view.consume_input_frame()
+	assert_equal(
+		reentry_frame.crossed_cells,
+		[Vector2i(3, 2), Vector2i(3, 3)],
+		"A held outside-to-inside segment preserves intermediate cells after a frame boundary"
+	)
+	assert_equal(
+		reentry_frame.live_gesture_path,
+		[Vector2i(3, 2), Vector2i(3, 3)],
+		"The live candidate receives the same continuous reentry path"
+	)
+	_deliver(view, _button(_local_for_logical(view, Vector2(140.0, 140.0)), MOUSE_BUTTON_LEFT, false))
+	view.consume_input_frame()
+	fixture.parent.free()
+
+
+func _test_held_reentry_gap_grants_bounded_connection_authority() -> void:
+	var fixture := _fixture(
+		Vector2.ZERO,
+		Vector2(1000.0, 700.0),
+		_config(Vector2i(8, 8), 40.0, Vector2.ZERO, Vector2i(1, 1))
+	)
+	var view = fixture.view
+	var press := _local_for_logical(view, Vector2(60.0, 60.0))
+	var first := _local_for_logical(view, Vector2(100.0, 60.0))
+	var outside_first := _local_for_logical(view, Vector2(340.0, 60.0))
+	var outside_second := _local_for_logical(view, Vector2(340.0, 220.0))
+	var reentry := _local_for_logical(view, Vector2(300.0, 220.0))
+	_deliver(view, _button(press, MOUSE_BUTTON_LEFT, true))
+	_deliver(view, _motion(first))
+	_deliver(view, _motion(outside_first))
+	_deliver(view, _motion(outside_second))
+	_deliver(view, _motion(reentry))
+	var held = view.consume_input_frame()
+	assert_equal(
+		held.live_gesture_path,
+		[
+			Vector2i(2, 1), Vector2i(3, 1), Vector2i(4, 1),
+			Vector2i(5, 1), Vector2i(6, 1), Vector2i(7, 1),
+			Vector2i(7, 5),
+		],
+		"Real held reentry preserves the raw observed gap for runtime normalization"
+	)
+	assert_true(
+		_object_has_property(held, &"allows_bounded_reentry_connection"),
+		"Real view frames expose bounded reentry authority"
+	)
+	if _object_has_property(held, &"allows_bounded_reentry_connection"):
+		assert_true(
+			bool(held.get(&"allows_bounded_reentry_connection")),
+			"Real view capture grants bounded reentry authority"
+		)
+	_deliver(view, _button(reentry, MOUSE_BUTTON_LEFT, false))
+	var released = view.consume_input_frame()
+	assert_equal(
+		released.release_live_gesture_path,
+		[
+			Vector2i(2, 1), Vector2i(3, 1), Vector2i(4, 1),
+			Vector2i(5, 1), Vector2i(6, 1), Vector2i(7, 1),
+			Vector2i(7, 5),
+		],
+		"Release retains a detached copy of the raw reentry gap"
+	)
+	if _object_has_property(released, &"allows_bounded_reentry_connection"):
+		assert_true(
+			bool(released.get(&"allows_bounded_reentry_connection")),
+			"Detached release preserves real-view reentry authority"
+		)
+	fixture.parent.free()
+
+
+func _object_has_property(object: Object, property_name: StringName) -> bool:
+	for property in object.get_property_list():
+		if StringName(property["name"]) == property_name:
+			return true
+	return false
 
 
 func _test_resize_and_nonzero_canvas_offset_preserve_cells() -> void:

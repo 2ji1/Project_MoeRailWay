@@ -8,7 +8,6 @@ const DISTANCE_EPSILON := 0.0001
 const TANGENT_DOT_EPSILON := 0.0001
 const CENTERLINE_SEGMENTS_PER_NOMINAL_CELL := 16
 const EXACT_KNOT_OFFSET_SAMPLES := CENTERLINE_SEGMENTS_PER_NOMINAL_CELL / 2
-const ENDPOINT_SUPPORT_MAX_SAMPLES := CENTERLINE_SEGMENTS_PER_NOMINAL_CELL / 2
 const LOCAL_CORNER_HALF_WINDOW_SAMPLES := CENTERLINE_SEGMENTS_PER_NOMINAL_CELL / 4
 const LOCAL_CORNER_HANDLE_RATIO := 1.0 / 3.0
 
@@ -75,6 +74,7 @@ func resolve(
         while candidate.radius > 0:
             var span := _candidate_span(candidate, records.size())
             var footprint := _candidate_footprint(candidate, records)
+            var preview = null
             var valid := span.x >= 0 and span.y < records.size()
             if valid:
                 for cell in footprint:
@@ -85,13 +85,16 @@ func resolve(
                         valid = false
             if valid and _footprint_contains_non_owned_record(candidate, records):
                 valid = false
-            if valid and _conflicts_with_locked(footprint, blocking_locked):
-                valid = false
             if valid:
-                var preview = _curve_piece(
+                preview = _curve_piece(
                     -1, candidate, span.x, span.y,
                     departure_cell, records, grid_origin_units, cell_size_units, anchors
                 )
+                if _conflicts_with_locked(
+                    preview, blocking_locked, grid_origin_units, cell_size_units
+                ):
+                    valid = false
+            if valid:
                 for anchor in anchors:
                     if anchor.contact_mode == RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER:
                         if _span_owns_cell(span, records, anchor.cell) and not _piece_contains_exact_center(
@@ -132,7 +135,9 @@ func resolve(
             group_id, candidate, start_index, end_index,
             departure_cell, records, grid_origin_units, cell_size_units, anchors
         )
-        if _conflicts_with_locked(curve.footprint_cells, blocking_locked):
+        if _conflicts_with_locked(
+            curve, blocking_locked, grid_origin_units, cell_size_units
+        ):
             return TrackGeometryResolutionScript.rejected(newest_serial, &"locked_overlap")
         for anchor in anchors:
             if anchor.contact_mode == RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER:
@@ -151,7 +156,9 @@ func resolve(
         if covered.has(index):
             continue
         var straight = _straight_piece(group_id, index, departure_cell, records, grid_origin_units, cell_size_units)
-        if _conflicts_with_locked(straight.footprint_cells, blocking_locked):
+        if _conflicts_with_locked(
+            straight, blocking_locked, grid_origin_units, cell_size_units
+        ):
             return TrackGeometryResolutionScript.rejected(newest_serial, &"locked_overlap")
         pieces.append(straight)
         group_id += 1
@@ -283,7 +290,7 @@ func _curve_piece(
     piece.absolute_start_distance_cells = records[start_index].route_distance_start_cells
     piece.footprint_cells = _candidate_footprint(candidate, records)
     piece.centerline = _curve_centerline(
-        candidate, start_index, end_index,
+        start_index, end_index,
         departure_cell, records, origin, cell_size, anchors
     )
     var exact_knots := _exact_knots_for_span(
@@ -343,7 +350,6 @@ func _boundary_after(index: int, records: Array, origin: Vector2, size: float) -
 
 
 func _curve_centerline(
-    candidate: Dictionary,
     start_index: int,
     end_index: int,
     departure_cell: Vector2i,
@@ -354,20 +360,20 @@ func _curve_centerline(
 ) -> PackedVector2Array:
     var start := _boundary_before(start_index, departure_cell, records, origin, cell_size)
     var finish := _boundary_after(end_index, records, origin, cell_size)
-    var turn_index: int = candidate.turn_index
-    var previous: Vector2i = departure_cell if turn_index == 0 else records[turn_index - 1].cell
-    var incoming: Vector2i = records[turn_index].cell - previous
-    var outgoing: Vector2i = records[turn_index + 1].cell - records[turn_index].cell
-    var exact_knots := _exact_knots_for_span(
-        anchors, records, start_index, end_index, origin, cell_size
+    var route_knots := _ordered_route_center_knots(
+        records, start_index, end_index, origin, cell_size,
+        anchors, start, finish
     )
-    return _local_corner_curve_centerline(
+    var previous_exit_cell: Vector2i = (
+        departure_cell if end_index == 0 else records[end_index - 1].cell
+    )
+    var exit_heading := Vector2(records[end_index].cell - previous_exit_cell).normalized()
+    return _ordered_route_curve_centerline(
         start,
         finish,
-        Vector2(incoming),
-        Vector2(outgoing),
-        exact_knots,
+        route_knots,
         end_index - start_index + 1,
+        exit_heading,
         cell_size
     )
 
@@ -410,13 +416,47 @@ func _exact_knots_for_span(
     return knots
 
 
-func _local_corner_curve_centerline(
+func _ordered_route_center_knots(
+    records: Array,
+    start_index: int,
+    end_index: int,
+    origin: Vector2,
+    cell_size: float,
+    anchors: Array,
+    start: Vector2,
+    finish: Vector2
+) -> Array[Dictionary]:
+    var knots: Array[Dictionary] = []
+    for record_index in range(start_index, end_index + 1):
+        var position := _cell_center(records[record_index].cell, origin, cell_size)
+        var is_exact := false
+        for anchor in anchors:
+            if (
+                anchor.contact_mode == RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+                and anchor.cell == records[record_index].cell
+            ):
+                is_exact = true
+                break
+        if not is_exact and (position.is_equal_approx(start) or position.is_equal_approx(finish)):
+            continue
+        knots.append({
+            "sample_index": (
+                (record_index - start_index)
+                * CENTERLINE_SEGMENTS_PER_NOMINAL_CELL
+                + EXACT_KNOT_OFFSET_SAMPLES
+            ),
+            "position": position,
+            "exact": is_exact,
+        })
+    return knots
+
+
+func _ordered_route_curve_centerline(
     start: Vector2,
     finish: Vector2,
-    incoming: Vector2,
-    outgoing: Vector2,
-    exact_knots: Array[Dictionary],
+    route_knots: Array[Dictionary],
     nominal_length_cells: int,
+    exit_heading: Vector2,
     cell_size: float
 ) -> PackedVector2Array:
     var skeleton: Array[Dictionary] = [{
@@ -424,18 +464,21 @@ func _local_corner_curve_centerline(
         "position": start,
         "exact": false,
     }]
-    for knot in exact_knots:
+    for knot in route_knots:
         skeleton.append({
             "sample_index": knot["sample_index"],
             "position": knot["position"],
-            "exact": true,
+            "exact": knot["exact"],
         })
+    var finish_index := nominal_length_cells * CENTERLINE_SEGMENTS_PER_NOMINAL_CELL
+    _insert_terminal_exact_exit_support(
+        skeleton, finish, finish_index, exit_heading, cell_size
+    )
     skeleton.append({
-        "sample_index": nominal_length_cells * CENTERLINE_SEGMENTS_PER_NOMINAL_CELL,
+        "sample_index": finish_index,
         "position": finish,
         "exact": false,
     })
-    _insert_endpoint_support_knots(skeleton, incoming, outgoing, cell_size)
     var points := _linear_centerline_from_knots(
         skeleton,
         nominal_length_cells * CENTERLINE_SEGMENTS_PER_NOMINAL_CELL + 1
@@ -444,79 +487,33 @@ func _local_corner_curve_centerline(
     return points
 
 
-func _insert_endpoint_support_knots(
+func _insert_terminal_exact_exit_support(
     skeleton: Array[Dictionary],
-    incoming: Vector2,
-    outgoing: Vector2,
+    finish: Vector2,
+    finish_index: int,
+    exit_heading: Vector2,
     cell_size: float
 ) -> void:
-    if skeleton.size() < 2:
+    if skeleton.size() < 2 or exit_heading.is_zero_approx() or cell_size <= 0.0:
         return
-    var entry_support := _endpoint_support_knot(
-        skeleton[0], skeleton[1], incoming.normalized(), cell_size, true
-    )
-    if not entry_support.is_empty():
-        skeleton.insert(1, entry_support)
-    var exit_support := _endpoint_support_knot(
-        skeleton[-1], skeleton[-2], outgoing.normalized(), cell_size, false
-    )
-    if not exit_support.is_empty():
-        skeleton.insert(skeleton.size() - 1, exit_support)
-
-
-func _endpoint_support_knot(
-    endpoint: Dictionary,
-    neighbor: Dictionary,
-    heading: Vector2,
-    cell_size: float,
-    from_start: bool
-) -> Dictionary:
-    if heading.is_zero_approx() or cell_size <= 0.0:
-        return {}
-    var endpoint_index: int = endpoint["sample_index"]
-    var neighbor_index: int = neighbor["sample_index"]
-    var sample_gap := (
-        neighbor_index - endpoint_index
-        if from_start
-        else endpoint_index - neighbor_index
-    )
-    var sample_offset := mini(ENDPOINT_SUPPORT_MAX_SAMPLES, sample_gap / 2)
-    if sample_offset <= 0:
-        return {}
-    var endpoint_position: Vector2 = endpoint["position"]
-    var neighbor_position: Vector2 = neighbor["position"]
-    var toward_neighbor := (
-        neighbor_position - endpoint_position
-        if from_start
-        else endpoint_position - neighbor_position
-    )
-    var forward_gap := toward_neighbor.dot(heading)
-    if forward_gap <= DISTANCE_EPSILON:
-        return {}
-    var nominal_support_units := (
-        cell_size
-        * float(sample_offset)
-        / float(CENTERLINE_SEGMENTS_PER_NOMINAL_CELL)
-    )
-    var support_units := minf(
-        nominal_support_units,
-        minf(forward_gap * 0.5, toward_neighbor.length() * 0.5)
-    )
-    if support_units <= DISTANCE_EPSILON:
-        return {}
-    return {
-        "sample_index": (
-            endpoint_index + sample_offset
-            if from_start
-            else endpoint_index - sample_offset
-        ),
+    var terminal: Dictionary = skeleton[-1]
+    if not terminal["exact"] or not Vector2(terminal["position"]).is_equal_approx(finish):
+        return
+    var terminal_index: int = terminal["sample_index"]
+    var support_sample_offset := (finish_index - terminal_index) / 2
+    if support_sample_offset <= 0:
+        return
+    skeleton.append({
+        "sample_index": terminal_index + support_sample_offset,
         "position": (
-            endpoint_position + heading * support_units
-            if from_start
-            else endpoint_position - heading * support_units
+            finish
+            - exit_heading
+            * cell_size
+            * float(support_sample_offset)
+            / float(CENTERLINE_SEGMENTS_PER_NOMINAL_CELL)
         ),
         "exact": false,
-    }
+    })
 
 
 func _linear_centerline_from_knots(
@@ -711,8 +708,19 @@ func _intersection_count(first: Array, second: Array) -> int:
     return count
 
 
-func _conflicts_with_locked(footprint: Array, locked_pieces: Array) -> bool:
-    for locked in locked_pieces:
-        if _intersection_count(footprint, locked.footprint_cells) > 0:
-            return true
+func _conflicts_with_locked(
+    piece: TrackGeometryPieceScript,
+    locked_pieces: Array,
+    grid_origin_units: Vector2,
+    cell_size_units: float
+) -> bool:
+    for cell in piece.footprint_cells:
+        if not piece.contacts_cell(cell, grid_origin_units, cell_size_units):
+            continue
+        for locked in locked_pieces:
+            if (
+                locked.footprint_cells.has(cell)
+                and locked.contacts_cell(cell, grid_origin_units, cell_size_units)
+            ):
+                return true
     return false
