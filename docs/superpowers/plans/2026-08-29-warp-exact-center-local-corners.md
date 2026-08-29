@@ -280,6 +280,7 @@ The user approved correcting the `960x540` mouse finding where an earlier route 
 - `godot-project-moe-rail-way/tests/unit/test_track_geometry_resolver.gd`
 - `godot-project-moe-rail-way/tests/unit/test_grid_track_runtime.gd`
 - `godot-project-moe-rail-way/tests/unit/test_track_field_view_input.gd`
+- `godot-project-moe-rail-way/tests/integration/run_warp_cargo_integration.gd`
 - `godot-project-moe-rail-way/tests/manual/warp_cargo_windows.md`
 
 No other path may change. No GDScript or UID sidecar is created. Commit the two documentation paths before changing implementation or test paths.
@@ -293,6 +294,7 @@ Modify only the three unit-test paths in the follow-up allowlist.
 - Require presentation sampling for each owned interval to contain at least one point inside the corresponding record cell; exact-anchor intervals still retain the literal center at their midpoint.
 - Characterize that an attempted duplicate remains rejected atomically with last-valid geometry, inventory, construction, recovery, anchors, and locked ledger unchanged.
 - Preserve the fixed sample count, footprint containment, exact-center contact, straight and locked bytes, one-owner invariant, deterministic replay, and no-pathfinding contract.
+- Update the fixed-seed Warp integration only after observing the exact new event trace: pair 3 loads into slot `1` at tick `67`, pair 4 remains unloaded at capacity, and no generation, lifetime, or ordering fact changes.
 
 Run the three focused suites. RED is valid only when the new ordered-center visibility assertions fail without parser, runtime, warning, crash, or unrelated assertion failures.
 
