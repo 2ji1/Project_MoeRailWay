@@ -33,6 +33,7 @@ class _GestureDiagnosticRejectResolver extends TrackGeometryResolverScript:
 func run() -> PackedStringArray:
 	_test_gesture_rejection_diagnostic_is_detached()
 	_test_gesture_rejection_reports_attempted_template()
+	_test_bounded_reentry_connection_requires_real_view_authority()
 	_test_selected_template_suffix_continues_after_recovery()
 	_test_active_gesture_recovery_evolves_origin_and_candidate()
 	_test_active_recovery_failure_asserts_and_preserves_transaction()
@@ -205,6 +206,156 @@ func _test_gesture_rejection_reports_attempted_template() -> void:
 		selected_index,
 		"Diagnostic also preserves the last committed template selection"
 	)
+
+
+func _test_bounded_reentry_connection_requires_real_view_authority() -> void:
+	var raw_path: Array[Vector2i] = [
+		Vector2i(2, 1), Vector2i(3, 1), Vector2i(4, 1),
+		Vector2i(5, 1), Vector2i(6, 1), Vector2i(7, 1),
+		Vector2i(7, 5),
+	]
+	var rejected = GridTrackRuntimeScript.new(
+		Vector2i(1, 1), 20, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	rejected.set_gesture_rejection_diagnostics_enabled(true)
+	assert_false(
+		rejected.gesture_begin(Vector2i(1, 1)).is_empty(),
+		"Unauthorized reentry fixture begins a legal gesture"
+	)
+	assert_false(
+		rejected.gesture_update(raw_path, raw_path[-1]),
+		"The raw remote jump remains invalid without real-view authority"
+	)
+	assert_equal(
+		rejected.get_last_gesture_rejection().get("reason", StringName()),
+		&"append_path_rejected",
+		"Unauthorized reentry retains the ordinary append rejection"
+	)
+	assert_equal(rejected.get_endpoint_cell(), Vector2i(1, 1), "Unauthorized reentry preserves the last valid endpoint")
+	assert_equal(rejected.get_available_track_cells(), 20, "Unauthorized reentry preserves inventory")
+
+	var gesture_update_argument_count := _method_argument_count(rejected, &"gesture_update")
+	assert_true(
+		gesture_update_argument_count >= 3,
+		"Runtime accepts explicit bounded reentry authority"
+	)
+	if gesture_update_argument_count < 3:
+		return
+	var connected = GridTrackRuntimeScript.new(
+		Vector2i(1, 1), 20, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_false(
+		connected.gesture_begin(Vector2i(1, 1)).is_empty(),
+		"Authorized reentry fixture begins a legal gesture"
+	)
+	assert_true(
+		bool(connected.callv(&"gesture_update", [raw_path, raw_path[-1], true])),
+		"Authorized reentry publishes a bounded deterministic connector"
+	)
+	var expected_cells: Array[Vector2i] = [
+		Vector2i(2, 1), Vector2i(3, 1), Vector2i(4, 1), Vector2i(5, 1),
+		Vector2i(6, 1), Vector2i(7, 1), Vector2i(7, 2), Vector2i(7, 3),
+		Vector2i(7, 4), Vector2i(7, 5),
+	]
+	var first_facts := _record_values(connected.get_cell_records())
+	var first_cells: Array[Vector2i] = []
+	for fact in first_facts:
+		first_cells.append(fact["cell"])
+	assert_equal(first_cells, expected_cells, "Authorized reentry chooses the fixed shortest orthogonal connector")
+	assert_equal(connected.get_available_track_cells(), 10, "Authorized connector consumes exactly its visible route cells")
+	assert_true(connected.gesture_abort(), "Authorized reentry abort restores its origin")
+	assert_equal(connected.get_cell_records(), [], "Authorized reentry abort removes the complete connector")
+	assert_equal(connected.get_available_track_cells(), 20, "Authorized reentry abort restores exact inventory")
+
+	var replay = GridTrackRuntimeScript.new(
+		Vector2i(1, 1), 20, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	replay.gesture_begin(Vector2i(1, 1))
+	assert_true(
+		bool(replay.callv(&"gesture_update", [raw_path, raw_path[-1], true])),
+		"Repeated authorized reentry publishes"
+	)
+	assert_equal(
+		_record_values(replay.get_cell_records()),
+		first_facts,
+		"Repeated authorized reentry preserves cells, serials, ownership, and state"
+	)
+
+	var insufficient = GridTrackRuntimeScript.new(
+		Vector2i(1, 1), 2, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	insufficient.set_gesture_rejection_diagnostics_enabled(true)
+	insufficient.gesture_begin(Vector2i(1, 1))
+	var insufficient_path: Array[Vector2i] = [Vector2i(2, 1), Vector2i(4, 1)]
+	assert_false(
+		insufficient.gesture_update(insufficient_path, insufficient_path[-1], true),
+		"Authorized connector cannot exceed available inventory"
+	)
+	assert_equal(
+		insufficient.get_last_gesture_rejection().get("reason", StringName()),
+		&"bounded_reentry_connection_rejected",
+		"Inventory-bounded search reports its specific rejection"
+	)
+	assert_equal(insufficient.get_cell_records(), [], "Rejected inventory-bounded search is atomic")
+	assert_equal(insufficient.get_available_track_cells(), 2, "Rejected inventory-bounded search preserves inventory")
+
+	var occupied = GridTrackRuntimeScript.new(
+		Vector2i(0, 0), 10, Vector2.ZERO, Vector2i(5, 5), 40.0
+	)
+	assert_equal(
+		occupied.append_cells([Vector2i(1, 0), Vector2i(1, 1)]),
+		2,
+		"Occupied-cell connector fixture creates its origin"
+	)
+	occupied.gesture_begin(Vector2i(1, 1))
+	assert_true(
+		occupied.gesture_update([Vector2i(3, 0)], Vector2i(3, 0), true),
+		"Authorized connector routes through unowned cells"
+	)
+	var occupied_cells: Array[Vector2i] = []
+	for record in occupied.get_cell_records():
+		occupied_cells.append(record.cell)
+	assert_equal(
+		occupied_cells,
+		[
+			Vector2i(1, 0), Vector2i(1, 1), Vector2i(2, 1),
+			Vector2i(3, 1), Vector2i(3, 0),
+		],
+		"Connector preserves active origin cells and selects only free cells"
+	)
+	var unique_cells: Dictionary = {}
+	for cell in occupied_cells:
+		unique_cells[cell] = true
+	assert_equal(unique_cells.size(), occupied_cells.size(), "Connector never reuses an active route cell")
+
+	var template = _make_three_by_three_curve_runtime()
+	var template_origin: Dictionary = template.gesture_begin(template.get_endpoint_cell())
+	var straight_target: Vector2i = template_origin["targets"]["straight"]
+	var template_path: Array[Vector2i] = [straight_target, Vector2i(7, 3)]
+	assert_true(
+		template.gesture_update(template_path, straight_target, true),
+		"Authorized connection applies after the selected template endpoint"
+	)
+	var template_cells: Array[Vector2i] = []
+	for record in template.get_cell_records():
+		template_cells.append(record.cell)
+	assert_equal(
+		template_cells,
+		[
+			Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+			Vector2i(3, 0), Vector2i(4, 0), Vector2i(5, 0),
+			Vector2i(6, 0), Vector2i(7, 0), Vector2i(7, 1),
+			Vector2i(7, 2), Vector2i(7, 3),
+		],
+		"Template suffix connector leaves the selected template authoritative"
+	)
+
+
+func _method_argument_count(object: Object, method_name: StringName) -> int:
+	for method in object.get_method_list():
+		if StringName(method["name"]) == method_name:
+			return Array(method.get("args", [])).size()
+	return -1
 
 
 func _test_selected_template_suffix_continues_after_recovery() -> void:

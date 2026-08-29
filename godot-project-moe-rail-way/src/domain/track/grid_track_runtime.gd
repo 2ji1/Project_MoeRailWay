@@ -186,7 +186,8 @@ func gesture_abort() -> bool:
 
 func gesture_update(
     live_path: Array[Vector2i],
-    current_pointer_cell: Vector2i = Vector2i(-1, -1)
+    current_pointer_cell: Vector2i = Vector2i(-1, -1),
+    allows_bounded_reentry_connection: bool = false
 ) -> bool:
     if not _gesture_active:
         return false
@@ -204,6 +205,9 @@ func gesture_update(
     var next_template_index := previous_template_index
     var next_suffix_input_facts: Array[Dictionary] = _gesture_suffix_input_facts.duplicate(true)
     var next_ordinary_input_facts: Array[Dictionary] = _gesture_ordinary_input_facts.duplicate(true)
+    var current_ordinary_cells: Array[Vector2i] = []
+    var current_suffix_cells: Array[Vector2i] = []
+    var existing_suffix_input_facts: Array[Dictionary] = []
     var pointer_template_index := _template_index_from_pointer(current_pointer_cell, templates)
     if pointer_template_index >= 0:
         next_template_index = pointer_template_index
@@ -220,17 +224,13 @@ func gesture_update(
         )
         return false
     else:
-        next_ordinary_input_facts = _reconcile_gesture_input_facts(
-            _gesture_ordinary_input_facts,
-            live_path
-        )
+        current_ordinary_cells = live_path.duplicate()
 
     var template_changed := next_template_index != previous_template_index
     if next_template_index >= 0:
         var selected_target_index := -1
         if next_template_index < frame_target_indices.size():
             selected_target_index = frame_target_indices[next_template_index]
-        var current_suffix_cells: Array[Vector2i] = []
         if selected_target_index >= 0:
             for index in range(selected_target_index + 1, live_path.size()):
                 current_suffix_cells.append(live_path[index])
@@ -249,15 +249,10 @@ func gesture_update(
             if not is_selection_replay:
                 for cell in live_path:
                     current_suffix_cells.append(cell)
-        var existing_suffix_input_facts: Array[Dictionary] = []
         if next_template_index == previous_template_index:
             existing_suffix_input_facts = _gesture_suffix_input_facts
         if template_changed:
             existing_suffix_input_facts = []
-        next_suffix_input_facts = _reconcile_gesture_input_facts(
-            existing_suffix_input_facts,
-            current_suffix_cells
-        )
     var candidate_sequence = _gesture_origin_sequence.duplicate_sequence()
     if next_template_index >= 0:
         var template_cells: Array[Vector2i] = []
@@ -281,6 +276,22 @@ func gesture_update(
                 candidate_sequence
             )
             return false
+        var expanded_suffix: Variant = _expand_bounded_reentry_path(
+            candidate_sequence,
+            current_suffix_cells,
+            allows_bounded_reentry_connection
+        )
+        if expanded_suffix == null:
+            _record_gesture_rejection(
+                &"candidate_sequence", &"bounded_reentry_connection_rejected",
+                live_path, current_pointer_cell, next_template_index,
+                candidate_sequence
+            )
+            return false
+        next_suffix_input_facts = _reconcile_gesture_input_facts(
+            existing_suffix_input_facts,
+            expanded_suffix
+        )
         if not _append_gesture_input_facts(candidate_sequence, next_suffix_input_facts):
             _record_gesture_rejection(
                 &"candidate_sequence", &"append_suffix_rejected",
@@ -289,6 +300,22 @@ func gesture_update(
             )
             return false
     else:
+        var expanded_ordinary: Variant = _expand_bounded_reentry_path(
+            candidate_sequence,
+            current_ordinary_cells,
+            allows_bounded_reentry_connection
+        )
+        if expanded_ordinary == null:
+            _record_gesture_rejection(
+                &"candidate_sequence", &"bounded_reentry_connection_rejected",
+                live_path, current_pointer_cell, next_template_index,
+                candidate_sequence
+            )
+            return false
+        next_ordinary_input_facts = _reconcile_gesture_input_facts(
+            _gesture_ordinary_input_facts,
+            expanded_ordinary
+        )
         if not _append_gesture_input_facts(candidate_sequence, next_ordinary_input_facts):
             _record_gesture_rejection(
                 &"candidate_sequence", &"append_path_rejected",
@@ -445,6 +472,91 @@ func _reconcile_gesture_input_facts(
     for index in range(common_count, cells.size()):
         reconciled = _append_new_gesture_input_fact(reconciled, cells[index])
     return reconciled
+
+
+func _expand_bounded_reentry_path(
+    base_sequence: TrackCellSequenceScript,
+    cells: Array[Vector2i],
+    authorized: bool
+) -> Variant:
+    if not authorized or not _path_has_nonadjacent_edge(base_sequence, cells):
+        return cells.duplicate()
+    var working := base_sequence.duplicate_sequence()
+    var expanded: Array[Vector2i] = []
+    for cell in cells:
+        var endpoint: Vector2i = working.get_endpoint_cell()
+        var distance := absi(cell.x - endpoint.x) + absi(cell.y - endpoint.y)
+        var steps: Array[Vector2i] = []
+        if distance == 1:
+            steps.append(cell)
+        else:
+            steps = _find_bounded_reentry_connector(working, cell)
+            if steps.is_empty():
+                return null
+        for step in steps:
+            if working.try_append_candidate(step) == null:
+                return null
+            expanded.append(step)
+    return expanded
+
+
+func _path_has_nonadjacent_edge(
+    base_sequence: TrackCellSequenceScript,
+    cells: Array[Vector2i]
+) -> bool:
+    var previous := base_sequence.get_endpoint_cell()
+    for cell in cells:
+        if absi(cell.x - previous.x) + absi(cell.y - previous.y) != 1:
+            return true
+        previous = cell
+    return false
+
+
+func _find_bounded_reentry_connector(
+    sequence: TrackCellSequenceScript,
+    target: Vector2i
+) -> Array[Vector2i]:
+    var empty: Array[Vector2i] = []
+    if not _cell_in_grid(target):
+        return empty
+    var available := sequence.get_available_track_cells()
+    var start := sequence.get_endpoint_cell()
+    var minimum_distance := absi(target.x - start.x) + absi(target.y - start.y)
+    if minimum_distance <= 0 or minimum_distance > available:
+        return empty
+    var blocked: Dictionary = {}
+    for record in sequence.get_records():
+        blocked[record.cell] = true
+    if sequence.get_active_predecessor_cell() == _departure_cell:
+        blocked[_departure_cell] = true
+    if blocked.has(target):
+        return empty
+    var visited: Dictionary = {start: true}
+    var queue: Array[Dictionary] = [{"cell": start, "path": empty}]
+    var read_index := 0
+    var directions: Array[Vector2i] = [
+        Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP,
+    ]
+    while read_index < queue.size():
+        var node: Dictionary = queue[read_index]
+        read_index += 1
+        var path: Array[Vector2i] = []
+        for path_cell in node["path"]:
+            path.append(path_cell)
+        if path.size() >= available:
+            continue
+        var current: Vector2i = node["cell"]
+        for direction in directions:
+            var neighbor := current + direction
+            if not _cell_in_grid(neighbor) or blocked.has(neighbor) or visited.has(neighbor):
+                continue
+            var next_path := path.duplicate()
+            next_path.append(neighbor)
+            if neighbor == target:
+                return next_path
+            visited[neighbor] = true
+            queue.append({"cell": neighbor, "path": next_path})
+    return empty
 
 
 func _template_index_from_pointer(

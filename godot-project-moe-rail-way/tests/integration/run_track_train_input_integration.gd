@@ -309,6 +309,49 @@ func _run() -> void:
 	var view = shell.get_track_field_view()
 	var departure := _logical_to_viewport(view, Vector2(100.0, 100.0))
 
+	var reentry_track := TrackSystemScript.new(config)
+	view.present(_track_snapshot(reentry_track))
+	var reentry_first := _logical_to_viewport(view, Vector2(140.0, 100.0))
+	var reentry_exit := _logical_to_viewport(view, Vector2(140.0, -40.0))
+	var reentry_outside := _logical_to_viewport(view, Vector2(260.0, -40.0))
+	var reentry_target := _logical_to_viewport(view, Vector2(260.0, 20.0))
+	await _deliver(_button(departure, MOUSE_BUTTON_LEFT, true))
+	await _deliver(_motion(reentry_first, MOUSE_BUTTON_MASK_LEFT))
+	await _deliver(_motion(reentry_exit, MOUSE_BUTTON_MASK_LEFT))
+	await _deliver(_motion(reentry_outside, MOUSE_BUTTON_MASK_LEFT))
+	await _deliver(_motion(reentry_target, MOUSE_BUTTON_MASK_LEFT))
+	var reentry_frame: TrackInputFrameScript = await _consume_view(shell, reentry_track)
+	var reentry_has_authority := _object_has_property(
+		reentry_frame, &"allows_bounded_reentry_connection"
+	) and bool(reentry_frame.get(&"allows_bounded_reentry_connection"))
+	_assert_equal(
+		reentry_frame.live_gesture_path,
+		[
+			Vector2i(3, 2), Vector2i(3, 1), Vector2i(3, 0),
+			Vector2i(6, 0),
+		],
+		"Actual held outside reentry preserves one raw nonadjacent edge"
+	)
+	_assert_true(reentry_has_authority, "Actual view frame grants bounded reentry authority")
+	_assert_equal(
+		_record_cells(reentry_track.get_cell_records()),
+		[
+			Vector2i(3, 2), Vector2i(3, 1), Vector2i(3, 0),
+			Vector2i(4, 0), Vector2i(5, 0), Vector2i(6, 0),
+		],
+		"Actual view and system publish the deterministic held reentry connector"
+	)
+	await _release_view(shell, reentry_target)
+	var reentry_release: TrackInputFrameScript = await _consume_view(shell, reentry_track)
+	_assert_true(reentry_release.left_released, "Connected held reentry releases cleanly")
+	_assert_true(not reentry_track.is_runtime_gesture_active(), "Connected held reentry finalizes on release")
+	if reentry_has_authority \
+		and _record_cells(reentry_track.get_cell_records()) == [
+			Vector2i(3, 2), Vector2i(3, 1), Vector2i(3, 0),
+			Vector2i(4, 0), Vector2i(5, 0), Vector2i(6, 0),
+		]:
+		print("PASS: held outside reentry connects deterministically")
+
 	var held_construction_config := _config()
 	held_construction_config.departure_required_built_cells = 99
 	var held_construction_track := ConstructionRecordingTrackSystem.new(held_construction_config)
@@ -1140,3 +1183,10 @@ func _assert_true(condition: bool, message: String) -> void:
 func _assert_equal(actual: Variant, expected: Variant, message: String) -> void:
 	if actual != expected:
 		_failures.append("%s | expected=%s actual=%s" % [message, expected, actual])
+
+
+func _object_has_property(object: Object, property_name: StringName) -> bool:
+	for property in object.get_property_list():
+		if StringName(property["name"]) == property_name:
+			return true
+	return false

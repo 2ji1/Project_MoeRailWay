@@ -202,7 +202,8 @@ func consume_input_frame():
 		_live_gesture_path,
 		frame_release_path,
 		frame_release_pointer_cell,
-		frame_release_pointer_inside_grid
+		frame_release_pointer_inside_grid,
+		true
 	)
 	if _left_released_pending and not _left_held:
 		_live_gesture_path.clear()

@@ -18,6 +18,7 @@ func run() -> PackedStringArray:
 	_test_corner_order_and_consume_once()
 	_test_outside_and_right_cell_mapping()
 	_test_held_reentry_preserves_intermediate_cells_across_frames()
+	_test_held_reentry_gap_grants_bounded_connection_authority()
 	_test_resize_and_nonzero_canvas_offset_preserve_cells()
 	_test_grid_render_observation_reports_inclusive_nonzero_origin_geometry()
 	_test_valid_start_render_observation_tracks_empty_route_endpoint_and_completion()
@@ -1218,6 +1219,68 @@ func _test_held_reentry_preserves_intermediate_cells_across_frames() -> void:
 	_deliver(view, _button(_local_for_logical(view, Vector2(140.0, 140.0)), MOUSE_BUTTON_LEFT, false))
 	view.consume_input_frame()
 	fixture.parent.free()
+
+
+func _test_held_reentry_gap_grants_bounded_connection_authority() -> void:
+	var fixture := _fixture(
+		Vector2.ZERO,
+		Vector2(1000.0, 700.0),
+		_config(Vector2i(8, 8), 40.0, Vector2.ZERO, Vector2i(1, 1))
+	)
+	var view = fixture.view
+	var press := _local_for_logical(view, Vector2(60.0, 60.0))
+	var first := _local_for_logical(view, Vector2(100.0, 60.0))
+	var outside_first := _local_for_logical(view, Vector2(340.0, 60.0))
+	var outside_second := _local_for_logical(view, Vector2(340.0, 220.0))
+	var reentry := _local_for_logical(view, Vector2(300.0, 220.0))
+	_deliver(view, _button(press, MOUSE_BUTTON_LEFT, true))
+	_deliver(view, _motion(first))
+	_deliver(view, _motion(outside_first))
+	_deliver(view, _motion(outside_second))
+	_deliver(view, _motion(reentry))
+	var held = view.consume_input_frame()
+	assert_equal(
+		held.live_gesture_path,
+		[
+			Vector2i(2, 1), Vector2i(3, 1), Vector2i(4, 1),
+			Vector2i(5, 1), Vector2i(6, 1), Vector2i(7, 1),
+			Vector2i(7, 5),
+		],
+		"Real held reentry preserves the raw observed gap for runtime normalization"
+	)
+	assert_true(
+		_object_has_property(held, &"allows_bounded_reentry_connection"),
+		"Real view frames expose bounded reentry authority"
+	)
+	if _object_has_property(held, &"allows_bounded_reentry_connection"):
+		assert_true(
+			bool(held.get(&"allows_bounded_reentry_connection")),
+			"Real view capture grants bounded reentry authority"
+		)
+	_deliver(view, _button(reentry, MOUSE_BUTTON_LEFT, false))
+	var released = view.consume_input_frame()
+	assert_equal(
+		released.release_live_gesture_path,
+		[
+			Vector2i(2, 1), Vector2i(3, 1), Vector2i(4, 1),
+			Vector2i(5, 1), Vector2i(6, 1), Vector2i(7, 1),
+			Vector2i(7, 5),
+		],
+		"Release retains a detached copy of the raw reentry gap"
+	)
+	if _object_has_property(released, &"allows_bounded_reentry_connection"):
+		assert_true(
+			bool(released.get(&"allows_bounded_reentry_connection")),
+			"Detached release preserves real-view reentry authority"
+		)
+	fixture.parent.free()
+
+
+func _object_has_property(object: Object, property_name: StringName) -> bool:
+	for property in object.get_property_list():
+		if StringName(property["name"]) == property_name:
+			return true
+	return false
 
 
 func _test_resize_and_nonzero_canvas_offset_preserve_cells() -> void:

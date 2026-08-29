@@ -9,6 +9,7 @@ const GridTrackRuntimeScript = preload("res://src/domain/track/grid_track_runtim
 
 func run() -> PackedStringArray:
 	_test_endpoint_reshape_track_input_frame_carries_final_pointer_facts()
+	_test_facade_forwards_bounded_reentry_authority()
 	_verify_invalid_configuration_probes()
 	_test_input_frame_owns_an_independent_cell_buffer()
 	_test_facade_preserves_origin_and_exact_inventory()
@@ -57,6 +58,38 @@ func _test_endpoint_reshape_track_input_frame_carries_final_pointer_facts() -> v
 		return
 	assert_equal(frame.get("current_pointer_cell"), Vector2i(4, 5), "Frame stores current pointer cell")
 	assert_true(frame.get("current_pointer_inside_grid"), "Frame stores current pointer grid fact")
+	assert_false(
+		frame.get("allows_bounded_reentry_connection"),
+		"Constructor-compatible synthetic frames default to no reentry authority"
+	)
+
+
+func _test_facade_forwards_bounded_reentry_authority() -> void:
+	var raw_path: Array[Vector2i] = [Vector2i(1, 0), Vector2i(4, 0)]
+	var unauthorized := TrackSystemScript.new(_config(8))
+	unauthorized.apply_left_input(
+		_left_frame(
+			raw_path, true, true, false, Vector2i(0, 0), true,
+			Vector2i(4, 0), true
+		)
+	)
+	assert_equal(
+		unauthorized.get_cell_records(),
+		[],
+		"Synthetic facade input preserves the invalid remote jump"
+	)
+	var authorized := TrackSystemScript.new(_config(8))
+	authorized.apply_left_input(
+		_left_frame(
+			raw_path, true, true, false, Vector2i(0, 0), true,
+			Vector2i(4, 0), true, null, Vector2i(-1, -1), false, true
+		)
+	)
+	assert_equal(
+		authorized.get_cell_records().map(func(record): return record.cell),
+		[Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0), Vector2i(4, 0)],
+		"Facade forwards explicit real-view reentry authority"
+	)
 
 
 func _verify_invalid_configuration_probes() -> void:
@@ -120,13 +153,16 @@ func _left_frame(
 	current_pointer_inside_grid: bool = false,
 	release_path: Variant = null,
 	release_pointer_cell: Vector2i = Vector2i(-1, -1),
-	release_pointer_inside_grid: bool = false
+	release_pointer_inside_grid: bool = false,
+	allows_bounded_reentry_connection: bool = false
 ) -> TrackInputFrameScript:
 	if release_path == null:
 		return TrackInputFrameScript.new(
 			cells, press_cell, inside, Vector2i(-1, -1), false,
 			pressed, held, released, false,
-			current_pointer_cell, current_pointer_inside_grid, cells
+			current_pointer_cell, current_pointer_inside_grid, cells,
+			null, Vector2i(-1, -1), false,
+			allows_bounded_reentry_connection
 		)
 	var detached_release_path: Array[Vector2i] = []
 	for cell in release_path:
@@ -135,7 +171,8 @@ func _left_frame(
 		cells, press_cell, inside, Vector2i(-1, -1), false,
 		pressed, held, released, false,
 		current_pointer_cell, current_pointer_inside_grid, cells,
-		detached_release_path, release_pointer_cell, release_pointer_inside_grid
+		detached_release_path, release_pointer_cell, release_pointer_inside_grid,
+		allows_bounded_reentry_connection
 	)
 
 
@@ -1109,14 +1146,20 @@ class _CapturingTrackRuntime extends GridTrackRuntimeScript:
 
 	func gesture_update(
 		live_path: Array[Vector2i],
-		current_pointer_cell: Vector2i = Vector2i(-1, -1)
+		current_pointer_cell: Vector2i = Vector2i(-1, -1),
+		allows_bounded_reentry_connection: bool = false
 	) -> bool:
 		events.append({
 			"phase": &"update",
 			"path": live_path.duplicate(),
 			"pointer": current_pointer_cell,
+			"allows_bounded_reentry_connection": allows_bounded_reentry_connection,
 		})
-		return super.gesture_update(live_path, current_pointer_cell)
+		return super.gesture_update(
+			live_path,
+			current_pointer_cell,
+			allows_bounded_reentry_connection
+		)
 
 	func gesture_finalize() -> bool:
 		events.append({"phase": &"finalize"})
