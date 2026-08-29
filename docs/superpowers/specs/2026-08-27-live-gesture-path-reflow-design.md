@@ -323,3 +323,60 @@ Within one active press, template-mutation authority comes from the latest autho
 The correction changes only the source snapshot used by the existing template-mutation safety predicate. It does not unlock or rewrite any piece, weaken ledger validation, permit mutation across a pre-gesture locked boundary, alter retirement rules for finalized candidates, or bypass candidate resolution, footprint, continuity, inventory, construction, recovery, contact, or finalization checks.
 
 Required deterministic evidence must begin an unlocked completed-head template gesture, publish a long suffix that retires the live candidate's original template, prove the current candidate now contains a lock absent from the gesture origin, and then backtrack or rebranch while the same press remains held. The second update must publish successfully from the origin snapshot. A paired prepared/locked-origin fixture must continue to reject the same template mutation with records, geometry bytes, ledger, inventory, recovery, anchors, and contacts unchanged.
+
+## 12. Bounded Held-Reentry Connection
+
+The `960x540` Warp Cargo mouse gate at feature candidate
+`d2c055a4b93fd4773b97e6f8b8e08480ef70eb0f` exposed a separate input gap.
+The left-button capture and pointer continued updating and the route retained spare
+inventory, but an outside-grid interval followed by reentry produced live-path edges
+such as `(9, 3) -> (10, 4)`, `(7, 9) -> (7, 11)`, and
+`(9, 10) -> (11, 10)`. `TrackCellSequence` correctly rejected those non-orthogonal
+or skipped-cell appends, and last-valid preview preservation made the held gesture
+appear frozen. This finding is independent of Warp anchors and curve geometry.
+
+The input adapter may now mark its own detached live/release snapshot as eligible
+for bounded reentry connection. That authority has all of these limits:
+
+1. Only a frame created by the real `TrackFieldView` capture may grant the
+   authority. Constructor-compatible synthetic frames and direct runtime calls
+   default to no authority, so an arbitrary remote pointer jump remains rejected.
+2. The runtime considers a connector only when two consecutive cells in the
+   authorized normalized path are not Manhattan-adjacent. Adjacent observed cells
+   remain byte-for-byte authoritative and are never rerouted.
+3. The connector starts at the current candidate endpoint and ends at the next
+   observed reentry cell. It searches only the finite configured grid, uses only
+   orthogonal cells, and is bounded by current integer inventory.
+4. The chosen connector is a shortest available cell path. Search expansion and
+   tie-breaking use a fixed cardinal order, making identical origin, inventory,
+   grid, and input facts produce the same ordered route cells.
+5. Active route cells remain blocked. Departure reuse remains governed by the
+   existing recovered-departure rule. Every inserted cell is appended through the
+   existing sequence transaction, so duplicate cells, discontinuity, and inventory
+   exhaustion still fail closed.
+6. Connection does not bypass resolver or publication authority. The complete
+   candidate must still pass geometry resolution, rectangular footprint collision,
+   locked-ledger preservation, continuity, one-owner validation, construction and
+   recovery conservation, anchor/contact handling, and finalization checks.
+7. If no bounded cell connector exists, or if the connected candidate fails any
+   later gate, the runtime preserves the last valid preview and records a specific
+   rejection. It never permits the invalid raw jump.
+8. Template reselection remains authoritative. Connection applies only to the
+   suffix after the selected template endpoint; it does not synthesize a template
+   selection or mutate an authoritative locked template.
+
+This is not a route graph, reachability correction, Warp routing, or a general
+point-to-point construction command. It is a capture-local normalization of a
+single observed outside/reentry discontinuity during one held endpoint gesture.
+It preserves one train, one ordered nonbranching route, endpoint-only construction,
+monotonic route serials, nominal sampling, and locked geometry bytes.
+
+Required deterministic evidence must reproduce a real held press that leaves the
+field, traverses outside, and reenters at a nonadjacent boundary cell while inventory
+remains available. The view snapshot must retain the raw nonadjacent observation and
+the detached connection-authority fact; the runtime must publish the same fixed
+orthogonal shortest connector on repeated runs. Paired evidence must prove that the
+same gap without real-view authority is rejected, blocked/no-inventory connectors
+remain rejected, existing active cells are not reused, selected-template suffix
+connection preserves template authority, release uses its detached authority, and
+abort restores the exact origin.
