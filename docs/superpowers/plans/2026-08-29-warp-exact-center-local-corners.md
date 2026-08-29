@@ -316,3 +316,91 @@ fix: align curve spines with ordered route cells
 ```
 
 Obtain independent specification and quality reviews. Keep all four resolution rows `PENDING` until the user directly verifies the exact reviewed feature HEAD. A manual failure returns to deterministic diagnosis within this allowlist. Publication follows Section 9 only after every automated, review, and user-owned manual gate passes and primary plus remote state are reverified.
+
+## 11. Approved Follow-up: Gesture-Local Live Warp Latch
+
+The user confirmed that a Warp contacted during one held left-button gesture must
+remain the route pivot until left release, right-click abort, or removal of that
+anchor ID by the Warp lifecycle. If the Warp expires while left remains held, the
+current accepted route remains intact, the latch is released, and the next pointer
+update may edit through the former contact.
+
+### Fixed Follow-up Allowlist
+
+- `docs/superpowers/specs/2026-08-29-warp-exact-center-local-corners-design.md`
+- `docs/superpowers/plans/2026-08-29-warp-exact-center-local-corners.md`
+- `godot-project-moe-rail-way/src/domain/track/grid_track_runtime.gd`
+- `godot-project-moe-rail-way/tests/unit/test_grid_track_runtime.gd`
+- `godot-project-moe-rail-way/tests/integration/run_track_train_input_integration.gd`
+- `godot-project-moe-rail-way/tests/manual/warp_cargo_windows.md`
+- task-owned external manual evidence Markdown
+
+No other path may change. In particular, do not modify the pointer rasterizer,
+geometry resolver, Warp generation or lifecycle classes, Cargo, train motion,
+inventory, project configuration, UID sidecars, Risk & Investment, or either
+protected worktree.
+
+### Deterministic RED
+
+The first runtime RED uses an empty-departure gesture with active exact anchor
+`warp_latch/origin` at `(2, 1)`. The accepted held path is `(1, 1) -> (2, 1) ->
+(2, 2)`. Backtracking to `(1, 1)` must retire only `(2, 2)` and preserve the
+latched prefix `(1, 1) -> (2, 1)` with exactly `18` inventory remaining. Unchanged
+production instead removes `(2, 1)` and reports `19`, producing exactly two
+assertion failures and exit `1` without parser or unrelated diagnostics.
+
+Add the recorded completed-head shape with an active exact anchor at the press
+endpoint and a second diagonal Warp target. Require actual mouse events to retain
+the press anchor, route the suffix through the deterministic free orthogonal tie,
+contact the second Warp center, and finalize without reusing an owned cell.
+Also begin from an ordinary departure, contact a Warp in the middle of the held
+path, backtrack until the current pointer path omits that Warp cell, and rebranch.
+Require the accepted route to retain the Warp prefix and connect the new suffix
+from the latched exact center through the deterministic free tie.
+
+Also require:
+
+- anchor-ID removal during the held gesture preserves the complete accepted
+  candidate and inventory, clears the exact observation, and allows the next
+  update to backtrack through the former latch;
+- activation on a pre-gesture nonendpoint occurrence does not itself create a
+  gesture contact or freeze preview; ordinary held extension continues from the
+  authoritative endpoint while pre-gesture locked pieces remain byte-stable;
+- completed-head reflow that preserves a serial but relocates its cell is not
+  historical; activation at that relocated exact occurrence latches and retains
+  current route, inventory, the complete origin ledger, and any candidate ledger
+  piece fully contained by the latched prefix;
+- a Warp ID that had a press-time nonendpoint contact may latch again when the
+  gesture removes that historical occurrence and later accepts the same ID at a
+  different serial or cell; suppression is occurrence-scoped, never ID-scoped;
+- right-click-equivalent abort restores the authoritative gesture origin;
+- multiple IDs and later contacts advance only the active editing floor;
+- locked geometry bytes, footprint rejection, one owner per serial, nominal
+  sampling, construction, recovery, and deterministic replay remain unchanged.
+
+### Minimum GREEN
+
+Modify only `grid_track_runtime.gd`.
+
+- Track detached gesture-local latch facts by stable anchor ID, cell, and accepted
+  route serial, plus the deterministic prefix required to rebuild later suffixes.
+- Capture a possible active exact anchor at the press endpoint and capture later
+  exact contacts only after the complete candidate passes ordinary resolution,
+  continuity, validation, and finalization checks.
+- While a latch remains active, derive mutation only after its occurrence and use
+  the existing bounded connector when rasterized suffix input first collides with
+  owned prefix cells but a legal shortest continuation exists.
+- On anchor refresh, remove stale latch IDs without changing the already staged
+  candidate. Clear all latch state on finalize, abort, train termination, and the
+  existing gesture-state reset path.
+- If records after an already valid latch later become immutable, preserve the
+  latch and report a template-mutation rejection; do not silently delete it and
+  retry the same frame under ordinary editing.
+- Do not add Warp-ID parsing, change anchor production, weaken rejection, or
+  mutate locked geometry.
+
+Run the runtime focused suite, actual-input integration, related Warp and geometry
+suites, the complete registered suite, all five standalone integrations, UID
+audit, and `git diff --check`. Stage exact allowlist paths and create one focused
+commit after both independent reviews approve the same candidate. Manual rows stay
+user-owned and `PENDING` until replayed at all four supported sizes.

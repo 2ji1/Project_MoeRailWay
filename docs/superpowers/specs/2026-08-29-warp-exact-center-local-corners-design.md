@@ -202,3 +202,76 @@ For every owned record, the centerline samples inside that record's own nominal 
 Already locked geometry remains byte-for-byte unchanged within a running session. Inventory, construction, recovery, train timing, Warp generation, contact ordering, cargo, reward, and lifecycle contracts remain unchanged.
 
 The fixed-seed Warp integration has one approved geometric consequence. Pair 3's origin lies on an ordered route record that the former diagonal spine skipped. The aligned spine reaches that origin at tick `67`, so pair 3 now loads into cargo slot `1`; pair 4 later remains unloaded because both slots are occupied. Pair positions, forecast and activation ticks, lifetimes, capacity rules, event ordering, and end-of-session void behavior do not change. The deterministic integration trace must record this consequence rather than preserving the obsolete hidden-ownership outcome.
+
+## 12. Approved Gesture-Local Live Warp Latch
+
+The `960x540` mouse recording exposed an interaction contract that the existing
+exact-center implementation does not represent. During one held left-button
+gesture, a candidate can reach an active Warp cell and then lose that occurrence
+when the next pointer frame reselects a completed-head template or backtracks the
+normalized path. The exact hard knot is valid while the cell is present, but the
+accepted Warp contact is not retained as a gesture editing boundary. The visible
+route therefore appears to detach from the Warp even though exact-center geometry
+itself resolved correctly.
+
+An active Warp contact accepted during a held gesture is a gesture-local latch:
+
+1. If the press begins on an endpoint that already has a possible active exact
+   Warp contact, latch that endpoint immediately. Otherwise, latch the first
+   accepted ordered-route occurrence whose active exact anchor is contact-possible,
+   including an anchor that activates on a suffix occurrence added by the current
+   held gesture. Lifecycle activation on an unchanged pre-gesture nonendpoint
+   occurrence is not, by itself, a new gesture contact.
+2. The ordered candidate prefix through the latched occurrence becomes the
+   gesture editing floor. Later pointer updates may retire or rebranch only the
+   suffix after that occurrence. They cannot remove, relocate, or reinterpret the
+   latched prefix while the anchor ID remains active. If records after a valid
+   latch later become built or origin-locked, retain the latch and reject mutation
+   across that immutable suffix; never discard the latch as a fallback to ordinary
+   editing.
+3. A later accepted active Warp advances the editing floor through that later
+   occurrence. Latches are identified by stable anchor ID and route occurrence;
+   same-cell IDs remain independently lifecycle-controlled.
+4. Pointer input after the latch is interpreted from the latched cell. When the
+   normalized pointer path has backtracked before the latch and therefore no
+   longer contains the Warp cell, occupied prefix cells are discarded and the
+   remaining free waypoints are still interpreted from the latched cell. When the
+   raw orthogonal rasterization first re-enters an already owned cell but a free,
+   in-bounds shortest connector to the later pointer waypoint exists, use the
+   existing deterministic bounded search from the latched endpoint. This is a
+   suffix connection rule, not general route insertion or Warp-aware generation.
+5. When the Warp lifecycle removes an anchor ID during the held gesture, release
+   only that latch. Preserve the complete last accepted candidate, serial
+   watermark, inventory, construction, recovery, locked ledger, and contact state
+   produced by the ordinary anchor refresh. The next pointer update may edit
+   through the former latch under the existing gesture rules.
+6. Left release finalizes the current candidate. Right-click abort retains its
+   existing priority and restores the authoritative pre-gesture origin, including
+   exact inventory conservation; it clears every gesture-local latch.
+7. A latch is not a geometry lock. It never changes `geometry_locked`, never moves
+   a locked piece, never bypasses collision, footprint, continuity, ownership, or
+   finalization validation, and never makes an inactive or merely nearby Warp
+   constrain a route. A lifecycle refresh that merely activates a Warp on a
+   pre-gesture nonendpoint route occurrence is not a contact accepted by the
+   current gesture and therefore does not latch or freeze live preview. The same
+   anchor may constrain ordinary geometry while active, and it becomes a gesture
+   latch only after the current gesture newly accepts its contact or when it was
+   already active at the press endpoint. Historical classification requires both
+   the same anchor ID, route serial, and cell. Completed-head reflow may retain a
+   serial while relocating it, and exact contact at that new cell is gesture-local.
+   Likewise, if the gesture removes the press-time occurrence and later reaches
+   the same active Warp ID at a fresh serial, that newly accepted occurrence
+   latches; the anchor ID alone is never a permanent exclusion.
+
+Latch-owned suffix rebuilding preserves the complete press-origin ledger,
+including recovered historical pieces that no longer have active route records.
+It also preserves any additional current-candidate ledger piece whose complete
+serial span remains in the latched prefix. Every retained ledger piece remains
+byte-for-byte unchanged.
+
+This section supersedes the current-pointer authority rule only for the mutable
+suffix before an active gesture-local latch expires. It also narrows Section 11's
+topology-neutral exact-anchor statement: exact anchors still do not create route
+cells, but an accepted active Warp occurrence temporarily defines the gesture's
+editing floor. Warp generation, sampling, train contact, cargo, reward, and
+lifetime rules remain unchanged.

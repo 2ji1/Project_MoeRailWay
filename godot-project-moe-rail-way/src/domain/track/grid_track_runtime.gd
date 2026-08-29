@@ -40,6 +40,10 @@ var _gesture_ordinary_input_facts: Array[Dictionary] = []
 var _gesture_template_selection_signature_valid := false
 var _gesture_template_selection_signature_path: Array[Vector2i] = []
 var _gesture_template_selection_signature_pointer := Vector2i(-1, -1)
+var _gesture_live_warp_latches: Array[Dictionary] = []
+var _gesture_latched_suffix_input_facts: Array[Dictionary] = []
+var _gesture_preexisting_nonendpoint_anchor_ids: Dictionary = {}
+var _gesture_press_anchor_ids: Dictionary = {}
 var _gesture_rejection_diagnostics_enabled := false
 var _last_gesture_rejection: Dictionary = {}
 var _last_stage_rejection_reason := StringName()
@@ -126,8 +130,15 @@ func gesture_begin(endpoint: Vector2i) -> Dictionary:
     _gesture_template_selection_signature_valid = false
     _gesture_template_selection_signature_path.clear()
     _gesture_template_selection_signature_pointer = Vector2i(-1, -1)
+    _gesture_live_warp_latches.clear()
+    _gesture_latched_suffix_input_facts.clear()
+    _gesture_preexisting_nonendpoint_anchor_ids.clear()
+    _gesture_press_anchor_ids.clear()
+    for anchor in _gesture_origin_anchors:
+        _gesture_press_anchor_ids[anchor.anchor_id] = true
     _last_gesture_rejection.clear()
     _gesture_active = true
+    _capture_press_endpoint_warp_latches()
     return _gesture_origin_observation()
 
 
@@ -191,6 +202,10 @@ func gesture_update(
 ) -> bool:
     if not _gesture_active:
         return false
+    if not _gesture_live_warp_latches.is_empty():
+        return _gesture_update_from_live_warp_latch(
+            live_path, current_pointer_cell, allows_bounded_reentry_connection
+        )
     var frame_template_index := -1
     var frame_target_indices: Array[int] = [-1, -1, -1]
     for cell_index in range(live_path.size()):
@@ -398,8 +413,370 @@ func gesture_update(
             _gesture_template_selection_signature_path = live_path.duplicate()
             _gesture_template_selection_signature_pointer = current_pointer_cell
     _contact_observations = candidate_contacts.duplicate(true)
+    _capture_candidate_warp_latches(
+        candidate_sequence, candidate_anchors, candidate_contacts
+    )
     _last_gesture_rejection.clear()
     return true
+
+
+func _capture_press_endpoint_warp_latches() -> void:
+    if _gesture_origin_sequence == null:
+        return
+    var endpoint := _gesture_origin_sequence.get_endpoint_cell()
+    for observation in _gesture_origin_contacts:
+        if (
+            not observation.get("contact_possible", false)
+            or observation.get("contact_mode", -1) \
+                != RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+        ):
+            continue
+        var anchor_id: StringName = observation.get("anchor_id", StringName())
+        var cell: Vector2i = observation.get("cell", Vector2i(-1, -1))
+        if cell == endpoint:
+            _remember_gesture_warp_latch(
+                anchor_id, cell, _route_occurrence_for_cell(_gesture_origin_sequence, cell)
+            )
+        else:
+            var occurrence := _route_occurrence_for_cell(_gesture_origin_sequence, cell)
+            if not occurrence.is_empty():
+                _gesture_preexisting_nonendpoint_anchor_ids[anchor_id] = {
+                    "route_serial": occurrence["route_serial"],
+                    "cell": cell,
+                }
+
+
+func _capture_candidate_warp_latches(
+    candidate_sequence: TrackCellSequenceScript,
+    candidate_anchors: Array[RouteContactAnchorScript],
+    candidate_contacts: Array[Dictionary]
+) -> void:
+    var exact_ids: Dictionary = {}
+    for anchor in candidate_anchors:
+        if anchor.contact_mode == RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER:
+            exact_ids[anchor.anchor_id] = true
+    var pending: Array[Dictionary] = []
+    for observation in candidate_contacts:
+        var anchor_id: StringName = observation.get("anchor_id", StringName())
+        if (
+            not exact_ids.has(anchor_id)
+            or not observation.get("contact_possible", false)
+            or _gesture_has_warp_latch(anchor_id)
+        ):
+            continue
+        var cell: Vector2i = observation.get("cell", Vector2i(-1, -1))
+        var occurrence := _route_occurrence_for_cell(candidate_sequence, cell)
+        if occurrence.is_empty():
+            continue
+        var preexisting: Dictionary = _gesture_preexisting_nonendpoint_anchor_ids.get(
+            anchor_id, {}
+        )
+        if (
+            not preexisting.is_empty()
+            and int(preexisting["route_serial"]) == int(occurrence["route_serial"])
+            and Vector2i(preexisting["cell"]) == cell
+        ):
+            continue
+        if (
+            int(occurrence["route_serial"]) >= 0
+            and _gesture_origin_occurrence_is_unchanged(
+                int(occurrence["route_serial"]), cell
+            )
+            and cell != _gesture_origin_sequence.get_endpoint_cell()
+            and not _gesture_press_anchor_ids.has(anchor_id)
+        ):
+            continue
+        pending.append({
+            "anchor_id": anchor_id,
+            "cell": cell,
+            "route_serial": occurrence["route_serial"],
+            "route_index": occurrence["route_index"],
+        })
+    pending.sort_custom(func(first: Dictionary, second: Dictionary) -> bool:
+        if first["route_index"] != second["route_index"]:
+            return first["route_index"] < second["route_index"]
+        return String(first["anchor_id"]) < String(second["anchor_id"])
+    )
+    for fact in pending:
+        _remember_gesture_warp_latch(
+            fact["anchor_id"], fact["cell"], fact
+        )
+
+
+func _remember_gesture_warp_latch(
+    anchor_id: StringName,
+    cell: Vector2i,
+    occurrence: Dictionary
+) -> void:
+    if anchor_id == StringName() or occurrence.is_empty() or _gesture_has_warp_latch(anchor_id):
+        return
+    _gesture_live_warp_latches.append({
+        "anchor_id": anchor_id,
+        "cell": cell,
+        "route_serial": int(occurrence["route_serial"]),
+    })
+    _gesture_latched_suffix_input_facts.clear()
+
+
+func _gesture_has_warp_latch(anchor_id: StringName) -> bool:
+    for latch in _gesture_live_warp_latches:
+        if latch["anchor_id"] == anchor_id:
+            return true
+    return false
+
+
+func _route_occurrence_for_cell(
+    sequence: TrackCellSequenceScript,
+    cell: Vector2i
+) -> Dictionary:
+    var records := sequence.get_records()
+    for index in range(records.size()):
+        if records[index].cell == cell:
+            return {
+                "route_serial": records[index].route_serial,
+                "route_index": index,
+            }
+    if records.is_empty() and cell == sequence.get_endpoint_cell():
+        return {"route_serial": -1, "route_index": -1}
+    return {}
+
+
+func _gesture_origin_occurrence_is_unchanged(
+    route_serial: int,
+    cell: Vector2i
+) -> bool:
+    if _gesture_origin_sequence == null:
+        return false
+    for record in _gesture_origin_sequence.get_records():
+        if record.route_serial == route_serial:
+            return record.cell == cell
+    return false
+
+
+func _latest_gesture_warp_latch() -> Dictionary:
+    var latest: Dictionary = {}
+    var latest_index := -2
+    var records := _sequence.get_records()
+    for latch in _gesture_live_warp_latches:
+        var route_index := -1
+        if int(latch["route_serial"]) >= 0:
+            route_index = -2
+            for index in range(records.size()):
+                if records[index].route_serial == int(latch["route_serial"]):
+                    route_index = index
+                    break
+            if route_index < 0:
+                continue
+        if route_index >= latest_index:
+            latest = latch
+            latest_index = route_index
+    return latest
+
+
+func _sequence_prefix_through_latch(
+    source: TrackCellSequenceScript,
+    route_serial: int
+):
+    if source == null:
+        return null
+    var prefix = source.duplicate_sequence()
+    if route_serial < 0:
+        if _gesture_origin_sequence != null and _gesture_origin_sequence.get_records().is_empty():
+            return _gesture_origin_sequence.duplicate_sequence()
+        if prefix.get_records().is_empty():
+            return prefix
+        return null
+    var records := prefix.get_records()
+    var anchor_index := -1
+    for index in range(records.size()):
+        if records[index].route_serial == route_serial:
+            anchor_index = index
+            break
+    if anchor_index < 0:
+        return null
+    if anchor_index + 1 >= records.size():
+        return prefix
+    for index in range(anchor_index + 1, prefix._records.size()):
+        var record = prefix._records[index]
+        if record.state != TrackCellRecordScript.State.RESERVED_GHOST:
+            return null
+        for locked in _gesture_origin_locked_ledger:
+            if locked.contains_serial(record.route_serial):
+                return null
+        record.geometry_locked = false
+    var expected_removed := records.size() - anchor_index - 1
+    var removed := prefix.cancel_ghost_suffix(records[anchor_index + 1].cell)
+    if removed != expected_removed:
+        return null
+    return prefix
+
+
+func _release_inactive_gesture_warp_latches(
+    candidate_anchors: Array[RouteContactAnchorScript]
+) -> void:
+    var active_ids: Dictionary = {}
+    for anchor in candidate_anchors:
+        if anchor.contact_mode == RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER:
+            active_ids[anchor.anchor_id] = true
+    var retained: Array[Dictionary] = []
+    for latch in _gesture_live_warp_latches:
+        if active_ids.has(latch["anchor_id"]):
+            retained.append(latch)
+    if retained.size() != _gesture_live_warp_latches.size():
+        _gesture_live_warp_latches = retained
+        _gesture_latched_suffix_input_facts.clear()
+
+
+func _gesture_update_from_live_warp_latch(
+    live_path: Array[Vector2i],
+    current_pointer_cell: Vector2i,
+    allows_bounded_reentry_connection: bool
+) -> bool:
+    var latch := _latest_gesture_warp_latch()
+    if latch.is_empty():
+        _gesture_live_warp_latches.clear()
+        _gesture_latched_suffix_input_facts.clear()
+        return gesture_update(
+            live_path, current_pointer_cell, allows_bounded_reentry_connection
+        )
+    var candidate_sequence = _sequence_prefix_through_latch(
+        _sequence, int(latch["route_serial"])
+    )
+    if candidate_sequence == null:
+        _record_gesture_rejection(
+            &"template_mutation", &"immutable_suffix_after_warp_latch",
+            live_path, current_pointer_cell, -1, _sequence
+        )
+        return false
+    var suffix_cells: Array[Vector2i] = []
+    var anchor_path_index := live_path.rfind(Vector2i(latch["cell"]))
+    if anchor_path_index >= 0:
+        for index in range(anchor_path_index + 1, live_path.size()):
+            suffix_cells.append(live_path[index])
+    else:
+        suffix_cells = live_path.duplicate()
+    var expanded_suffix: Variant = _expand_live_warp_latched_suffix(
+        candidate_sequence,
+        suffix_cells,
+        allows_bounded_reentry_connection
+    )
+    if expanded_suffix == null:
+        _record_gesture_rejection(
+            &"candidate_sequence", &"bounded_reentry_connection_rejected",
+            live_path, current_pointer_cell, -1, candidate_sequence
+        )
+        return false
+    var next_suffix_facts := _reconcile_gesture_input_facts(
+        _gesture_latched_suffix_input_facts,
+        expanded_suffix
+    )
+    if not _append_gesture_input_facts(candidate_sequence, next_suffix_facts):
+        _record_gesture_rejection(
+            &"candidate_sequence", &"append_latched_suffix_rejected",
+            live_path, current_pointer_cell, -1, candidate_sequence
+        )
+        return false
+    var candidate_ledger = _locked_ledger_retained_by_sequence(candidate_sequence)
+    var candidate_anchors = _duplicate_anchors(_gesture_origin_anchors)
+    var resolution = _resolve_candidate(
+        candidate_sequence,
+        candidate_ledger,
+        candidate_anchors,
+        _gesture_origin_recovered_cells_by_piece
+    )
+    if not resolution.is_valid:
+        _record_gesture_rejection(
+            &"candidate_resolution", resolution.reason,
+            live_path, current_pointer_cell, -1,
+            candidate_sequence, candidate_ledger, candidate_anchors
+        )
+        return false
+    if not _pieces_are_continuous(resolution.pieces):
+        _record_gesture_rejection(
+            &"candidate_continuity", &"piece_discontinuity",
+            live_path, current_pointer_cell, -1,
+            candidate_sequence, candidate_ledger, candidate_anchors
+        )
+        return false
+    _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
+    candidate_sequence.apply_resolved_geometry(resolution.pieces)
+    if not _validate_candidate(candidate_sequence, candidate_ledger, resolution):
+        _record_gesture_rejection(
+            &"candidate_validation", &"candidate_invariant",
+            live_path, current_pointer_cell, -1,
+            candidate_sequence, candidate_ledger, candidate_anchors
+        )
+        return false
+    if not _gesture_candidate_can_finalize(candidate_sequence, candidate_ledger, candidate_anchors):
+        var final_reason := _last_stage_rejection_reason
+        if final_reason == StringName():
+            final_reason = &"candidate_cannot_finalize"
+        _record_gesture_rejection(
+            &"candidate_finalization", final_reason,
+            live_path, current_pointer_cell, -1,
+            candidate_sequence, candidate_ledger, candidate_anchors
+        )
+        return false
+    var candidate_contacts := _build_contact_observations(
+        resolution.pieces,
+        candidate_anchors,
+        _gesture_origin_recovered_cells_by_piece,
+        candidate_sequence.get_records()
+    )
+    _commit_candidate(candidate_sequence, candidate_ledger, resolution)
+    _advance_gesture_serial_watermark(candidate_sequence)
+    _gesture_latched_suffix_input_facts = next_suffix_facts
+    _contact_observations = candidate_contacts.duplicate(true)
+    _capture_candidate_warp_latches(
+        candidate_sequence, candidate_anchors, candidate_contacts
+    )
+    _last_gesture_rejection.clear()
+    return true
+
+
+func _expand_live_warp_latched_suffix(
+    base_sequence: TrackCellSequenceScript,
+    cells: Array[Vector2i],
+    authorized: bool
+) -> Variant:
+    var occupied: Dictionary = {}
+    for record in base_sequence.get_records():
+        occupied[record.cell] = true
+    var free_waypoints: Array[Vector2i] = []
+    for cell in cells:
+        if not occupied.has(cell):
+            free_waypoints.append(cell)
+    if not authorized:
+        return free_waypoints
+    return _expand_bounded_reentry_path(base_sequence, free_waypoints, true)
+
+
+func _locked_ledger_retained_by_sequence(
+    candidate_sequence: TrackCellSequenceScript
+) -> Array[TrackGeometryPieceScript]:
+    var retained_serials: Dictionary = {}
+    for record in candidate_sequence.get_records():
+        retained_serials[record.route_serial] = true
+    var retained := _duplicate_pieces(_gesture_origin_locked_ledger)
+    for piece in _locked_ledger:
+        var belongs_to_origin := false
+        for origin_piece in _gesture_origin_locked_ledger:
+            if (
+                piece.first_route_serial == origin_piece.first_route_serial
+                and piece.last_route_serial == origin_piece.last_route_serial
+                and piece.exit_support_route_serial == origin_piece.exit_support_route_serial
+            ):
+                belongs_to_origin = true
+                break
+        if belongs_to_origin:
+            continue
+        if (
+            not retained_serials.has(piece.first_route_serial)
+            or not retained_serials.has(piece.last_route_serial)
+        ):
+            continue
+        retained.append(piece.duplicate_piece())
+    return retained
 
 
 func _record_gesture_rejection(
@@ -738,6 +1115,10 @@ func set_contact_anchors(anchors: Array[RouteContactAnchorScript]) -> void:
             _gesture_origin_anchors,
             _gesture_origin_recovered_cells_by_piece,
             _gesture_origin_sequence.get_records()
+        )
+        _release_inactive_gesture_warp_latches(candidate_anchors)
+        _capture_candidate_warp_latches(
+            _sequence, candidate_anchors, _contact_observations
         )
 
 
@@ -1564,6 +1945,10 @@ func _clear_gesture_state() -> void:
     _gesture_template_selection_signature_valid = false
     _gesture_template_selection_signature_path.clear()
     _gesture_template_selection_signature_pointer = Vector2i(-1, -1)
+    _gesture_live_warp_latches.clear()
+    _gesture_latched_suffix_input_facts.clear()
+    _gesture_preexisting_nonendpoint_anchor_ids.clear()
+    _gesture_press_anchor_ids.clear()
     _last_gesture_rejection.clear()
 
 

@@ -310,6 +310,7 @@ func _run() -> void:
 	var view = shell.get_track_field_view()
 	var departure := _logical_to_viewport(view, Vector2(100.0, 100.0))
 	await _test_locked_aabb_empty_corner_actual_input(shell, view, config)
+	await _test_live_warp_latch_diagonal_actual_input(shell, view, config)
 
 	var reentry_track := TrackSystemScript.new(config)
 	view.present(_track_snapshot(reentry_track))
@@ -1194,6 +1195,132 @@ func _test_locked_aabb_empty_corner_actual_input(shell, view, config) -> void:
 		var release: TrackInputFrameScript = await _consume_view(shell, track)
 		_assert_true(release.left_released, "Actual-input empty-corner %s drag releases" % label)
 		_assert_true(not track.is_runtime_gesture_active(), "Actual-input empty-corner %s drag finalizes" % label)
+
+
+func _test_live_warp_latch_diagonal_actual_input(shell, view, config) -> void:
+	var track := TrackSystemScript.new(config)
+	var origin_cells: Array[Vector2i] = [
+		Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2),
+		Vector2i(5, 1), Vector2i(4, 1),
+	]
+	_assert_equal(
+		track._runtime.append_cells(origin_cells),
+		origin_cells.size(),
+		"Actual-input Warp latch fixture reaches its exact endpoint"
+	)
+	var endpoint_anchor = RouteContactAnchorScript.new(
+		&"actual_latch/destination", Vector2i(4, 1),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var target_anchor = RouteContactAnchorScript.new(
+		&"actual_latch/origin", Vector2i(5, 0),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	track.set_contact_anchors([endpoint_anchor, target_anchor])
+	var origin_records := _record_content_facts(track.get_cell_records())
+	var origin_inventory := track.get_available_track_cells()
+	var locked_before := _piece_facts(track._runtime._locked_ledger)
+	view.present(_track_snapshot(track))
+	var endpoint_position := _logical_to_viewport(view, Vector2(180.0, 60.0))
+	var target_position := _logical_to_viewport(view, Vector2(220.0, 20.0))
+	await _deliver(_button(endpoint_position, MOUSE_BUTTON_LEFT, true))
+	await _deliver(_motion(target_position, MOUSE_BUTTON_MASK_LEFT))
+	var held: TrackInputFrameScript = await _consume_view(shell, track)
+	_assert_true(held.left_pressed and held.left_held, "Actual-input Warp latch remains held")
+	_assert_true(held.allows_bounded_reentry_connection, "Actual view authorizes the bounded latch connector")
+	_assert_equal(
+		held.live_gesture_path,
+		[Vector2i(5, 1), Vector2i(5, 0)],
+		"Actual diagonal input preserves the occupied horizontal-first tie"
+	)
+	var expected_cells := origin_cells.duplicate()
+	expected_cells.append_array([Vector2i(4, 0), Vector2i(5, 0)])
+	_assert_equal(
+		_record_cells(track.get_cell_records()),
+		expected_cells,
+		"Gesture-local Warp latch keeps its endpoint and routes through the free tie"
+	)
+	_assert_equal(
+		track.get_available_track_cells(),
+		origin_inventory - 2,
+		"Actual-input latch connector charges exactly two cells"
+	)
+	var observations: Array = track.get_contact_observations()
+	for anchor_id in [&"actual_latch/destination", &"actual_latch/origin"]:
+		_assert_true(
+			observations.any(func(observation): return observation.anchor_id == anchor_id and observation.contact_possible),
+			"Actual-input latch connector retains exact contact for %s" % anchor_id
+		)
+	await _release_view(shell, target_position)
+	var released: TrackInputFrameScript = await _consume_view(shell, track)
+	_assert_true(released.left_released, "Actual-input Warp latch releases")
+	_assert_true(not track.is_runtime_gesture_active(), "Actual-input Warp latch finalizes")
+	_assert_equal(_record_cells(track.get_cell_records()), expected_cells, "Finalize retains the complete latched route")
+	_assert_equal(
+		origin_records,
+		_record_content_facts(track.get_cell_records()).slice(0, origin_records.size()),
+		"Finalize preserves every pre-gesture route record"
+	)
+	_assert_equal(
+		_piece_facts(track._runtime._locked_ledger).slice(0, locked_before.size()),
+		locked_before,
+		"Actual-input Warp latch keeps every pre-gesture locked piece byte-stable"
+	)
+
+	var mid_track := TrackSystemScript.new(config)
+	var mid_anchor = RouteContactAnchorScript.new(
+		&"actual_latch/mid_gesture", Vector2i(4, 2),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	mid_track.set_contact_anchors([mid_anchor])
+	view.present(_track_snapshot(mid_track))
+	var departure_position := _logical_to_viewport(view, Vector2(100.0, 100.0))
+	var past_anchor_position := _logical_to_viewport(view, Vector2(220.0, 100.0))
+	var before_anchor_position := _logical_to_viewport(view, Vector2(140.0, 100.0))
+	var branch_position := _logical_to_viewport(view, Vector2(140.0, 60.0))
+	await _deliver(_button(departure_position, MOUSE_BUTTON_LEFT, true))
+	await _deliver(_motion(past_anchor_position, MOUSE_BUTTON_MASK_LEFT))
+	var contact_frame: TrackInputFrameScript = await _consume_view(shell, mid_track)
+	_assert_equal(
+		contact_frame.live_gesture_path,
+		[Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2)],
+		"Actual held input records the middle Warp occurrence"
+	)
+	await _deliver(_motion(before_anchor_position, MOUSE_BUTTON_MASK_LEFT))
+	var backtrack_frame: TrackInputFrameScript = await _consume_view(shell, mid_track)
+	_assert_equal(
+		backtrack_frame.live_gesture_path,
+		[Vector2i(3, 2)],
+		"Actual held backtrack removes the Warp cell from the pointer path"
+	)
+	_assert_equal(
+		_record_cells(mid_track.get_cell_records()),
+		[Vector2i(3, 2), Vector2i(4, 2)],
+		"The contacted middle Warp remains latched after pointer backtracking"
+	)
+	await _deliver(_motion(branch_position, MOUSE_BUTTON_MASK_LEFT))
+	var branch_frame: TrackInputFrameScript = await _consume_view(shell, mid_track)
+	_assert_equal(
+		branch_frame.live_gesture_path,
+		[Vector2i(3, 2), Vector2i(3, 1)],
+		"Actual rebranch path omits the earlier Warp cell"
+	)
+	_assert_equal(
+		_record_cells(mid_track.get_cell_records()),
+		[Vector2i(3, 2), Vector2i(4, 2), Vector2i(4, 1), Vector2i(3, 1)],
+		"Actual rebranch bends from the latched Warp through the free orthogonal tie"
+	)
+	await _deliver(_button(branch_position, MOUSE_BUTTON_RIGHT, true))
+	var abort_frame: TrackInputFrameScript = await _consume_view(shell, mid_track)
+	_assert_true(abort_frame.right_pressed, "Actual-input Warp latch receives right-click abort")
+	_assert_equal(_record_cells(mid_track.get_cell_records()), [], "Actual-input Warp latch abort restores the empty origin")
+	_assert_equal(mid_track.get_available_track_cells(), mid_track.get_total_track_cells(), "Actual-input Warp latch abort restores inventory")
+	_assert_true(not mid_track.is_runtime_gesture_active(), "Actual-input Warp latch abort clears runtime gesture state")
+	await _release_view(shell, branch_position)
+	await _consume_view(shell, mid_track)
+	view.present(_track_snapshot(mid_track))
+	_assert_true(not view._left_capture_active, "Actual-input Warp latch abort cleanup clears view capture")
+	print("PASS: actual-input live Warp latch routes from exact contact")
 
 
 func _test_recovered_running_endpoint_accepts_direct_drag(shell, view, config) -> void:

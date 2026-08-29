@@ -39,6 +39,8 @@ func run() -> PackedStringArray:
 	_test_active_recovery_failure_asserts_and_preserves_transaction()
 	_test_swept_contact_api_exists()
 	_test_exact_anchor_lifecycle_evolves_active_gesture_forms()
+	_test_active_warp_contact_latches_until_expiry_or_abort()
+	_test_anchored_endpoint_routes_diagonal_suffix_around_owned_tail()
 	_test_exact_anchor_impossible_locked_and_removal_contracts()
 	_test_endpoint_reshape_legal_operation_requires_concrete_candidate()
 	_test_endpoint_reshape_identical_template_is_not_a_legal_operation()
@@ -638,6 +640,441 @@ func _test_exact_anchor_lifecycle_evolves_active_gesture_forms() -> void:
 	assert_true(removal_track.gesture_update(removal_later_path, removal_later_path[-1]), "Later input cannot resurrect a removed anchor")
 	assert_true(removal_track.gesture_finalize(), "Anchor removal fixture finalizes")
 	assert_equal(removal_track.get_contact_observations(), [], "Finalize cannot resurrect a removed anchor")
+
+
+func _test_active_warp_contact_latches_until_expiry_or_abort() -> void:
+	var anchor = RouteContactAnchorScript.new(
+		&"warp_latch/origin",
+		Vector2i(2, 1),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var active_anchors: Array[RouteContactAnchorScript] = [anchor]
+	var no_anchors: Array[RouteContactAnchorScript] = []
+
+	var latched = GridTrackRuntimeScript.new(
+		Vector2i(0, 1), 20, Vector2.ZERO, Vector2i(8, 6), 40.0
+	)
+	latched.set_contact_anchors(active_anchors)
+	assert_false(
+		latched.gesture_begin(latched.get_endpoint_cell()).is_empty(),
+		"Warp latch fixture begins an empty-departure gesture"
+	)
+	var contact_path: Array[Vector2i] = [
+		Vector2i(1, 1), Vector2i(2, 1), Vector2i(2, 2),
+	]
+	assert_true(
+		latched.gesture_update(contact_path, contact_path[-1]),
+		"Accepted held input reaches the active exact Warp and publishes a suffix"
+	)
+	assert_equal(
+		latched.get_cell_records().map(func(record): return record.cell),
+		contact_path,
+		"The first accepted Warp contact retains its ordered route and suffix"
+	)
+	var backtracked_before_anchor: Array[Vector2i] = [Vector2i(1, 1)]
+	assert_true(
+		latched.gesture_update(backtracked_before_anchor, backtracked_before_anchor[-1]),
+		"Held backtracking before a live Warp anchor remains a valid gesture update"
+	)
+	assert_equal(
+		latched.get_cell_records().map(func(record): return record.cell),
+		[Vector2i(1, 1), Vector2i(2, 1)],
+		"A contacted live Warp latches the prefix through its exact route occurrence"
+	)
+	assert_equal(
+		latched.get_available_track_cells(),
+		18,
+		"Warp latch retirement refunds only the suffix after the latched occurrence"
+	)
+	var branch_without_anchor_cell: Array[Vector2i] = [
+		Vector2i(1, 1), Vector2i(1, 0),
+	]
+	assert_true(
+		latched.gesture_update(
+			branch_without_anchor_cell,
+			branch_without_anchor_cell[-1],
+			true
+		),
+		"A later pointer path may omit the latched cell and still bend from that Warp"
+	)
+	assert_equal(
+		latched.get_cell_records().map(func(record): return record.cell),
+		[Vector2i(1, 1), Vector2i(2, 1), Vector2i(2, 0), Vector2i(1, 0)],
+		"The latched Warp remains the pivot for a deterministic free orthogonal branch"
+	)
+	assert_true(latched.gesture_abort(), "Right-click-equivalent abort clears the Warp latch")
+	assert_equal(latched.get_cell_records(), [], "Abort restores the exact pre-gesture route")
+	assert_equal(latched.get_available_track_cells(), 20, "Abort restores exact pre-gesture inventory")
+
+	var expired = GridTrackRuntimeScript.new(
+		Vector2i(0, 1), 20, Vector2.ZERO, Vector2i(8, 6), 40.0
+	)
+	expired.set_contact_anchors(active_anchors)
+	assert_false(
+		expired.gesture_begin(expired.get_endpoint_cell()).is_empty(),
+		"Warp expiry fixture begins an empty-departure gesture"
+	)
+	assert_true(
+		expired.gesture_update(contact_path, contact_path[-1]),
+		"Warp expiry fixture publishes the anchored candidate"
+	)
+	var before_expiry := _reentry_transaction_values(expired)
+	expired.set_contact_anchors(no_anchors)
+	assert_equal(
+		_record_values(expired.get_cell_records()),
+		before_expiry["records"],
+		"Warp expiry releases only the latch and preserves the current accepted route"
+	)
+	assert_equal(
+		expired.get_available_track_cells(),
+		before_expiry["inventory"],
+		"Warp expiry does not refund or consume inventory"
+	)
+	assert_equal(expired.get_contact_observations(), [], "Warp expiry removes the exact contact observation")
+	assert_true(
+		expired.gesture_update(backtracked_before_anchor, backtracked_before_anchor[-1]),
+		"The next held update may cross the former anchor after expiry"
+	)
+	assert_equal(
+		expired.get_cell_records().map(func(record): return record.cell),
+		backtracked_before_anchor,
+		"Expired Warp contact no longer constrains gesture topology"
+	)
+	assert_true(expired.gesture_finalize(), "Expired Warp fixture finalizes its current candidate")
+
+	var first_anchor = RouteContactAnchorScript.new(
+		&"warp_latch/first",
+		Vector2i(2, 3),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var second_anchor = RouteContactAnchorScript.new(
+		&"warp_latch/second",
+		Vector2i(4, 3),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var multi = GridTrackRuntimeScript.new(
+		Vector2i(0, 3), 20, Vector2.ZERO, Vector2i(8, 6), 40.0
+	)
+	var both_anchors: Array[RouteContactAnchorScript] = [first_anchor, second_anchor]
+	multi.set_contact_anchors(both_anchors)
+	assert_false(
+		multi.gesture_begin(multi.get_endpoint_cell()).is_empty(),
+		"Multiple-Warp fixture begins one continuous gesture"
+	)
+	var multi_contact_path: Array[Vector2i] = [
+		Vector2i(1, 3), Vector2i(2, 3), Vector2i(3, 3),
+		Vector2i(4, 3), Vector2i(5, 3),
+	]
+	assert_true(
+		multi.gesture_update(multi_contact_path, multi_contact_path[-1]),
+		"One held route contacts two active exact Warp anchors in order"
+	)
+	var before_first: Array[Vector2i] = [Vector2i(1, 3)]
+	assert_true(
+		multi.gesture_update(before_first, before_first[-1]),
+		"Backtracking remains accepted after two exact Warp contacts"
+	)
+	assert_equal(
+		multi.get_cell_records().map(func(record): return record.cell),
+		multi_contact_path.slice(0, 4),
+		"The deepest active Warp occurrence is the deterministic editing floor"
+	)
+	var first_only: Array[RouteContactAnchorScript] = [first_anchor]
+	multi.set_contact_anchors(first_only)
+	assert_true(
+		multi.gesture_update(before_first, before_first[-1]),
+		"Expiry of the deepest Warp falls back to the earlier live latch"
+	)
+	assert_equal(
+		multi.get_cell_records().map(func(record): return record.cell),
+		multi_contact_path.slice(0, 2),
+		"The earlier active Warp remains the editing floor after later-Warp expiry"
+	)
+	multi.set_contact_anchors(no_anchors)
+	assert_true(
+		multi.gesture_update(before_first, before_first[-1]),
+		"Expiry of all contacted Warps releases the full held route"
+	)
+	assert_equal(
+		multi.get_cell_records().map(func(record): return record.cell),
+		before_first,
+		"With no live Warp latch, the same gesture can backtrack through every former anchor"
+	)
+	assert_true(multi.gesture_abort(), "Multiple-Warp fixture aborts to its exact empty origin")
+	assert_equal(multi.get_available_track_cells(), 20, "Multiple-Warp abort restores inventory exactly")
+
+	var immutable = GridTrackRuntimeScript.new(
+		Vector2i(0, 4), 30, Vector2.ZERO, Vector2i(10, 8), 40.0
+	)
+	var immutable_route: Array[Vector2i] = [
+		Vector2i(1, 4), Vector2i(2, 4), Vector2i(3, 4),
+		Vector2i(4, 4), Vector2i(5, 4), Vector2i(6, 4),
+	]
+	assert_equal(
+		immutable.append_cells(immutable_route),
+		immutable_route.size(),
+		"Existing-route activation fixture appends a straight origin"
+	)
+	assert_equal(
+		immutable.advance_construction(float(immutable_route.size())),
+		float(immutable_route.size()),
+		"Existing-route activation fixture builds its complete origin"
+	)
+	assert_true(
+		immutable.prepare_for_train_sampling(0.0, 4.5),
+		"Existing-route activation fixture locks an immutable suffix after the future Warp"
+	)
+	assert_false(
+		immutable.gesture_begin(immutable.get_endpoint_cell()).is_empty(),
+		"A locked straight endpoint still begins an extension gesture"
+	)
+	var behind_anchor = RouteContactAnchorScript.new(
+		&"warp_latch/behind_immutable_suffix",
+		Vector2i(2, 4),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var behind_anchors: Array[RouteContactAnchorScript] = [behind_anchor]
+	immutable.set_contact_anchors(behind_anchors)
+	assert_equal(
+		immutable._gesture_live_warp_latches.size(),
+		0,
+		"Lifecycle activation on a pre-gesture nonendpoint occurrence is not a new gesture contact"
+	)
+	var immutable_ledger_before := _piece_values(immutable._locked_ledger)
+	var immutable_inventory_before: int = immutable.get_available_track_cells()
+	var immutable_extension: Array[Vector2i] = [Vector2i(7, 4)]
+	assert_true(
+		immutable.gesture_update(immutable_extension, immutable_extension[-1]),
+		"A Warp appearing behind the endpoint does not freeze ordinary held extension"
+	)
+	assert_equal(
+		immutable.get_endpoint_cell(),
+		Vector2i(7, 4),
+		"The held route extends from its authoritative endpoint rather than the new historical Warp"
+	)
+	assert_equal(
+		_piece_values(immutable._locked_ledger).slice(0, immutable_ledger_before.size()),
+		immutable_ledger_before,
+		"Historical Warp activation and extension preserve every pre-gesture locked piece"
+	)
+	assert_equal(
+		immutable.get_available_track_cells(),
+		immutable_inventory_before - 1,
+		"Historical Warp activation does not change ordinary extension inventory"
+	)
+	immutable.set_contact_anchors(no_anchors)
+	assert_equal(
+		immutable._gesture_live_warp_latches,
+		[],
+		"Historical Warp removal leaves gesture-local latch state empty"
+	)
+	assert_true(immutable.gesture_abort(), "Existing-route activation fixture aborts exactly")
+
+	var relocated = _make_three_by_three_curve_runtime()
+	var relocated_began: Dictionary = relocated.gesture_begin(relocated.get_endpoint_cell())
+	assert_false(relocated_began.is_empty(), "Relocated-occurrence fixture begins a completed-head gesture")
+	var relocated_target: Vector2i = relocated_began["targets"]["straight"]
+	var relocated_target_path: Array[Vector2i] = [relocated_target]
+	assert_true(
+		relocated.gesture_update(relocated_target_path, relocated_target),
+		"Completed-head reflow accepts the relocated straight occurrence"
+	)
+	var relocated_record = null
+	for record in relocated.get_cell_records():
+		if record.cell == relocated_target:
+			relocated_record = record
+			break
+	assert_not_null(relocated_record, "Relocated target has an accepted route occurrence")
+	if relocated_record != null:
+		var origin_cell := Vector2i(-1, -1)
+		for origin_record in relocated_began["route_records"]:
+			if origin_record.route_serial == relocated_record.route_serial:
+				origin_cell = origin_record.cell
+				break
+		assert_true(origin_cell != relocated_target, "Completed-head reflow moves the retained serial to a new cell")
+		var relocated_anchor = RouteContactAnchorScript.new(
+			&"warp_latch/relocated_origin_serial",
+			relocated_target,
+			RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+		)
+		var relocated_anchors: Array[RouteContactAnchorScript] = [relocated_anchor]
+		relocated.set_contact_anchors(relocated_anchors)
+		assert_equal(
+			relocated._gesture_live_warp_latches.size(),
+			1,
+			"A Warp activated on a gesture-relocated origin serial is a new accepted contact"
+		)
+		var relocated_route_before := _route_content_values(relocated.get_cell_records())
+		var relocated_ledger_before := _piece_values(relocated._locked_ledger)
+		var relocated_inventory_before: int = relocated.get_available_track_cells()
+		var relocated_empty_path: Array[Vector2i] = []
+		assert_true(
+			relocated.gesture_update(relocated_empty_path, Vector2i(-1, -1)),
+			"An omitted-pointer update remains valid after the relocated occurrence latches"
+		)
+		assert_equal(
+			_route_content_values(relocated.get_cell_records()),
+			relocated_route_before,
+			"The relocated exact Warp remains the editing floor while active"
+		)
+		assert_equal(
+			_piece_values(relocated._locked_ledger).slice(0, relocated_ledger_before.size()),
+			relocated_ledger_before,
+			"Relocated exact contact keeps every authoritative locked piece byte-stable"
+		)
+		assert_equal(
+			relocated.get_available_track_cells(),
+			relocated_inventory_before,
+			"Relocated exact contact preserves inventory on an omitted-pointer update"
+		)
+	relocated.set_contact_anchors(no_anchors)
+	assert_true(relocated.gesture_abort(), "Relocated-occurrence fixture aborts to its authoritative origin")
+
+	var revisited = _make_three_by_three_curve_runtime()
+	var revisited_anchor = RouteContactAnchorScript.new(
+		&"warp_latch/revisited_id",
+		Vector2i(2, 1),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var revisited_anchors: Array[RouteContactAnchorScript] = [revisited_anchor]
+	revisited.set_contact_anchors(revisited_anchors)
+	var revisited_began: Dictionary = revisited.gesture_begin(revisited.get_endpoint_cell())
+	assert_false(revisited_began.is_empty(), "Revisited-ID fixture begins with a historical nonendpoint contact")
+	var historical_serial := -1
+	for origin_record in revisited_began["route_records"]:
+		if origin_record.cell == Vector2i(2, 1):
+			historical_serial = origin_record.route_serial
+			break
+	assert_true(historical_serial >= 0, "Revisited-ID fixture records the historical Warp occurrence")
+	var revisited_candidate = TrackCellSequenceScript.new(Vector2i(-1, 0), 18)
+	var revisited_origin_cells: Array[Vector2i] = [
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+		Vector2i(2, 1), Vector2i(2, 2),
+	]
+	assert_equal(
+		revisited_candidate.append_candidates(revisited_origin_cells),
+		revisited_origin_cells.size(),
+		"Revisited-ID candidate recreates the accepted press-time route serials"
+	)
+	assert_equal(
+		revisited_candidate.cancel_ghost_suffix(Vector2i(2, 1)),
+		2,
+		"Revisited-ID candidate removes the historical Warp occurrence and its suffix"
+	)
+	var revisited_new_occurrence: Array[Vector2i] = [Vector2i(2, 1)]
+	assert_equal(
+		revisited_candidate.append_candidates(revisited_new_occurrence),
+		1,
+		"Revisited-ID candidate reaches the same active Warp cell with a fresh serial"
+	)
+	var revisited_record = revisited_candidate.get_records()[-1]
+	assert_true(
+		revisited_record.route_serial != historical_serial,
+		"Revisited Warp cell owns a new route occurrence rather than its press-time serial"
+	)
+	var revisited_ledger: Array[TrackGeometryPieceScript] = []
+	var revisited_resolution = revisited._resolve_candidate(
+		revisited_candidate, revisited_ledger, revisited_anchors, {}
+	)
+	assert_true(revisited_resolution.is_valid, "Fresh same-ID occurrence passes ordinary geometry resolution")
+	if revisited_resolution.is_valid:
+		revisited._assign_unique_unlocked_group_ids(revisited_resolution.pieces, revisited_ledger)
+		revisited_candidate.apply_resolved_geometry(revisited_resolution.pieces)
+		assert_true(
+			revisited._validate_candidate(revisited_candidate, revisited_ledger, revisited_resolution),
+			"Fresh same-ID occurrence passes ordinary candidate validation"
+		)
+		var revisited_contacts: Array[Dictionary] = revisited._build_contact_observations(
+			revisited_resolution.pieces,
+			revisited_anchors,
+			{},
+			revisited_candidate.get_records()
+		)
+		assert_true(
+			revisited_contacts.any(
+				func(observation): return observation.anchor_id == &"warp_latch/revisited_id" and observation.contact_possible
+			),
+			"Fresh same-ID occurrence is an accepted possible exact contact"
+		)
+		revisited._capture_candidate_warp_latches(
+			revisited_candidate, revisited_anchors, revisited_contacts
+		)
+	assert_equal(
+		revisited._gesture_live_warp_latches.size(),
+		1,
+		"A preexisting Warp ID latches when the gesture newly accepts a different occurrence"
+	)
+	if not revisited._gesture_live_warp_latches.is_empty():
+		assert_equal(
+			revisited._gesture_live_warp_latches[0]["route_serial"],
+			revisited_record.route_serial,
+			"Same-ID latch records the fresh route occurrence rather than the historical one"
+		)
+	assert_true(revisited.gesture_abort(), "Revisited-ID fixture aborts to its exact origin")
+
+
+func _test_anchored_endpoint_routes_diagonal_suffix_around_owned_tail() -> void:
+	var track = GridTrackRuntimeScript.new(
+		Vector2i(5, 5), 60, Vector2.ZERO, Vector2i(12, 9), 40.0
+	)
+	var origin_cells: Array[Vector2i] = [
+		Vector2i(5, 6), Vector2i(5, 7), Vector2i(6, 7), Vector2i(7, 7),
+		Vector2i(8, 7), Vector2i(9, 7), Vector2i(10, 7), Vector2i(11, 7),
+		Vector2i(11, 6), Vector2i(11, 5), Vector2i(11, 4), Vector2i(10, 4),
+	]
+	assert_equal(
+		track.append_cells(origin_cells),
+		origin_cells.size(),
+		"Recorded Warp-adjacent route reaches the outlined endpoint without rejection"
+	)
+	var endpoint_anchor = RouteContactAnchorScript.new(
+		&"warp_diagonal/destination",
+		Vector2i(10, 4),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	var target_anchor = RouteContactAnchorScript.new(
+		&"warp_diagonal/origin",
+		Vector2i(11, 3),
+		RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
+	)
+	track.set_contact_anchors([endpoint_anchor, target_anchor])
+	var origin_records := _record_values(track.get_cell_records())
+	var origin_inventory := track.get_available_track_cells()
+	var endpoint_observations: Array[Dictionary] = track.get_contact_observations()
+	assert_true(
+		endpoint_observations.any(func(observation): return observation.anchor_id == &"warp_diagonal/destination" and observation.contact_possible),
+		"The press endpoint is an active possible exact Warp contact"
+	)
+	assert_false(
+		track.gesture_begin(track.get_endpoint_cell()).is_empty(),
+		"The exact Warp endpoint begins a latch-owned gesture"
+	)
+	var raw_diagonal_path: Array[Vector2i] = [Vector2i(11, 4), Vector2i(11, 3)]
+	assert_true(
+		track.gesture_update(raw_diagonal_path, raw_diagonal_path[-1], true),
+		"A real-view-authorized diagonal suffix bypasses the already owned tie cell"
+	)
+	var expected_cells := origin_cells.duplicate()
+	expected_cells.append_array([Vector2i(10, 3), Vector2i(11, 3)])
+	assert_equal(
+		track.get_cell_records().map(func(record): return record.cell),
+		expected_cells,
+		"The suffix preserves the anchored endpoint and uses the deterministic free orthogonal tie"
+	)
+	assert_equal(
+		track.get_available_track_cells(),
+		origin_inventory - 2,
+		"The two-cell connector consumes exactly two available cells"
+	)
+	var accepted_observations: Array[Dictionary] = track.get_contact_observations()
+	for anchor_id in [&"warp_diagonal/destination", &"warp_diagonal/origin"]:
+		assert_true(
+			accepted_observations.any(func(observation): return observation.anchor_id == anchor_id and observation.contact_possible),
+			"Accepted connector retains exact contact for %s" % anchor_id
+		)
+	assert_true(track.gesture_abort(), "Warp diagonal fixture aborts the complete latched gesture")
+	assert_equal(_record_values(track.get_cell_records()), origin_records, "Abort restores the exact recorded route")
+	assert_equal(track.get_available_track_cells(), origin_inventory, "Abort refunds the connector exactly once")
 
 
 func _test_exact_anchor_impossible_locked_and_removal_contracts() -> void:
@@ -1509,16 +1946,45 @@ func _test_candidate_retirement_does_not_revoke_origin_template() -> void:
 		)
 	assert_true(
 		updated,
-		"Same-press backtrack remains authorized by the unlocked gesture origin"
+		"Same-press backtrack remains valid while the refreshed Warp contact is latched"
 	)
 	if updated:
-		assert_equal(track.get_endpoint_cell(), Vector2i(5, 0), "Backtrack publishes the shorter endpoint")
+		assert_equal(track.get_endpoint_cell(), Vector2i(6, 0), "Backtrack stops at the refreshed live Warp latch")
 		assert_false(
 			track.get_cell_records().any(
-				func(record): return record.cell == Vector2i(6, 0) or record.cell == Vector2i(7, 0)
+				func(record): return record.cell == Vector2i(7, 0)
 			),
-			"Backtrack removes the retired live suffix"
+			"Backtrack removes only the retired suffix after the refreshed Warp latch"
 		)
+		assert_true(
+			track.get_cell_records().any(func(record): return record.cell == Vector2i(6, 0)),
+			"Refreshed active Warp remains the gesture editing floor"
+		)
+	var route_before_expiry := _route_content_values(track.get_cell_records())
+	var inventory_before_expiry: int = track.get_available_track_cells()
+	var no_anchors: Array[RouteContactAnchorScript] = []
+	track.set_contact_anchors(no_anchors)
+	assert_equal(
+		_route_content_values(track.get_cell_records()),
+		route_before_expiry,
+		"Refreshed Warp expiry preserves the accepted latched candidate"
+	)
+	assert_equal(
+		track.get_available_track_cells(),
+		inventory_before_expiry,
+		"Refreshed Warp expiry preserves inventory before the next held update"
+	)
+	assert_true(
+		track.gesture_update(shorter_path, shorter_path[-1]),
+		"The next held update may backtrack through the expired refreshed Warp"
+	)
+	assert_equal(track.get_endpoint_cell(), Vector2i(5, 0), "Expired refreshed Warp releases the shorter endpoint")
+	assert_false(
+		track.get_cell_records().any(
+			func(record): return record.cell == Vector2i(6, 0) or record.cell == Vector2i(7, 0)
+		),
+		"Expired refreshed Warp permits complete suffix retirement"
+	)
 	_assert_conservation(track, "Candidate-retirement reflow preserves exact inventory")
 
 
