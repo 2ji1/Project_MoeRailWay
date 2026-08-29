@@ -771,3 +771,47 @@ git commit -m 'fix: continue origin-owned construction during gestures'
   abort/finalize timing, paused recovery, and preservation of locks, inventory, and
   train sampling. Any finding must be resolved with a new focused RED/GREEN commit
   inside the six-path allowlist, followed by the full regression gate.
+
+---
+
+### Task 7: Keep a Held Template Editable After Candidate Retirement
+
+**Status:** Approved after the `960x540` Warp Cargo mouse gate failed at `1550012a43e4e7ee7c45fc87e2be78df95b376a9`.
+
+**Exact allowlist:**
+
+- `docs/superpowers/specs/2026-08-27-live-gesture-path-reflow-design.md`
+- `docs/superpowers/plans/2026-08-27-live-gesture-path-reflow.md`
+- `godot-project-moe-rail-way/src/domain/track/grid_track_runtime.gd`
+- `godot-project-moe-rail-way/tests/unit/test_grid_track_runtime.gd`
+- `godot-project-moe-rail-way/tests/manual/warp_cargo_windows.md`
+
+No other path may be modified for this correction.
+
+**Purpose:** A successful long held candidate may retire and lock the origin template in the published candidate. That candidate-local retirement must not make a later same-press backtrack or rebranch fail as `unsafe_template_mutation`. Real locks present in the authoritative gesture origin remain immutable.
+
+- [ ] **Step 1: Commit the amended English contract before behavior**
+
+  Record the candidate-local retirement failure and specify origin-snapshot safety authority without changing any code or manual PASS state.
+
+- [ ] **Step 2: Add deterministic RED before production changes**
+
+  In `test_grid_track_runtime.gd`, create an unlocked completed-head template and begin one gesture. Publish a template plus enough suffix cells for `_stage_stable_retirement` to lock the selected template in the current candidate while the corresponding gesture-origin span and origin ledger remain unlocked. Backtrack or rebranch under the same held gesture and require a successful replacement. Before the fix, this exact update must fail only as `template_mutation / unsafe_template_mutation`.
+
+  Capture the current candidate, origin, ledger, inventory, recovery, anchors, contacts, and serial watermark. Add a paired real-lock case proving that a lock synchronized into the authoritative origin still rejects and preserves every captured value, including locked geometry bytes.
+
+- [ ] **Step 3: Implement the minimum safety-source correction**
+
+  Change only `_gesture_template_mutation_is_safe()`. Resolve each editable-span serial against `_gesture_origin_sequence` and `_gesture_origin_pieces`, and check overlap against `_gesture_origin_locked_ledger`. Do not inspect candidate-local retirement state when deciding whether the origin template may be replaced. Do not clear lock flags, mutate either snapshot, or bypass any later resolver, ledger, continuity, validation, finalization, inventory, construction, recovery, anchor, or contact gate.
+
+- [ ] **Step 4: Run GREEN and regression gates**
+
+  Run the focused runtime suite, then the three affected focused suites, all `24` registered prototype suites, all five standalone integrations, UID sidecar audit, and `git diff --check`. Preserve the deterministic Warp tick trace.
+
+- [ ] **Step 5: Commit only the exact implementation allowlist**
+
+  Update the Windows manual checklist while leaving every resolution row `PENDING`. Stage exact paths, verify the staged path set and whitespace, and create one focused correction commit.
+
+- [ ] **Step 6: Repeat independent reviews and user-owned mouse gates**
+
+  Specification review checks origin-snapshot authority and real-lock preservation. Quality review checks missing/duplicate owners, stale origin state, candidate-local retirement, prepared/locked transitions, deep-value preservation, and exact allowlist scope. After both pass, repeat `960x540`, `1280x720`, `1600x900`, and `1920x1080`; no row becomes PASS without direct user confirmation on the exact reviewed HEAD.

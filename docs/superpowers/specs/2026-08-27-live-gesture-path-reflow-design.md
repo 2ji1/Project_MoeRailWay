@@ -306,3 +306,20 @@ recovery pause/resume. The historical manual evidence remains attributed to Task
 tested HEAD `6eee5f2f15d586806c3d68d99fd2e0cc87d4c239` and Task 6 tested HEAD
 `be18f1fc84b96ce1f1361cb6b9878c1ed8aeda7f`; cleanup of the feature worktree and
 branches remains pending.
+
+## 11. Held-Candidate Retirement Does Not Revoke Origin Editability
+
+The `960x540` Warp Cargo mouse gate at feature candidate `1550012a43e4e7ee7c45fc87e2be78df95b376a9` exposed a separate completed-head reflow defect. A valid held update could append enough suffix cells for stable retirement to lock the editable template in the currently published candidate. The next backtrack or rebranch still carried a valid live path, but `_gesture_template_mutation_is_safe()` inspected that published candidate and rejected every replacement as `unsafe_template_mutation`. Diagnostic evidence showed no pre-gesture locked ledger even though the candidate records had acquired retirement locks.
+
+Within one active press, template-mutation authority comes from the latest authoritative gesture-origin snapshot, not from retirement decisions made only by a published live candidate. The runtime must evaluate the editable span against `_gesture_origin_sequence`, `_gesture_origin_pieces`, and `_gesture_origin_locked_ledger`:
+
+1. Every origin record in the editable span must exist and remain geometry-unlocked.
+2. Every such serial must have exactly one unlocked owner in the origin pieces.
+3. No origin locked-ledger entry may overlap the editable span.
+4. Stable retirement performed while validating or publishing a held candidate may lock that candidate's earlier pieces, but it must not retroactively revoke the origin span's editability during the same press.
+5. Construction-state mirroring may advance origin-owned records but does not create geometry locks.
+6. Train preparation or another existing train-safety transition may update or terminate the gesture origin before immutable sampling; locks present in that authoritative origin remain strict and byte-preserving.
+
+The correction changes only the source snapshot used by the existing template-mutation safety predicate. It does not unlock or rewrite any piece, weaken ledger validation, permit mutation across a pre-gesture locked boundary, alter retirement rules for finalized candidates, or bypass candidate resolution, footprint, continuity, inventory, construction, recovery, contact, or finalization checks.
+
+Required deterministic evidence must begin an unlocked completed-head template gesture, publish a long suffix that retires the live candidate's original template, prove the current candidate now contains a lock absent from the gesture origin, and then backtrack or rebranch while the same press remains held. The second update must publish successfully from the origin snapshot. A paired prepared/locked-origin fixture must continue to reject the same template mutation with records, geometry bytes, ledger, inventory, recovery, anchors, and contacts unchanged.
