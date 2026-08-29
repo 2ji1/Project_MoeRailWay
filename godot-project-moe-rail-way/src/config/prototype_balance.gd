@@ -10,6 +10,8 @@ const DepartureBalanceScript = preload("res://src/config/departure_balance.gd")
 const WarpLifecycleBalanceScript = preload("res://src/config/warp_lifecycle_balance.gd")
 const CargoBalanceScript = preload("res://src/config/cargo_balance.gd")
 const SessionCashBalanceScript = preload("res://src/config/session_cash_balance.gd")
+const HazardGenerationBalanceScript = preload("res://src/config/hazard_generation_balance.gd")
+const DurabilityBalanceScript = preload("res://src/config/durability_balance.gd")
 
 @export var session_balance: SessionBalanceScript = SessionBalanceScript.new()
 @export var train_balance: TrainBalanceScript = TrainBalanceScript.new()
@@ -19,6 +21,8 @@ const SessionCashBalanceScript = preload("res://src/config/session_cash_balance.
 @export var warp_lifecycle_balance: WarpLifecycleBalanceScript = WarpLifecycleBalanceScript.new()
 @export var cargo_balance: CargoBalanceScript = CargoBalanceScript.new()
 @export var session_cash_balance: SessionCashBalanceScript = SessionCashBalanceScript.new()
+@export var hazard_generation_balance: HazardGenerationBalanceScript = HazardGenerationBalanceScript.new()
+@export var durability_balance: DurabilityBalanceScript = DurabilityBalanceScript.new()
 
 var session_duration_seconds: float:
     get:
@@ -49,7 +53,11 @@ func create_session_start_config(seed_value: int) -> SessionStartConfigScript:
         StringName(), Vector2.ZERO, Vector2i(-1, -1),
         0, 0, 0, 0, 0, 0, 0,
         planning_time_scale_percent,
-        session_cash_balance.starting_session_cash
+        session_cash_balance.starting_session_cash,
+        hazard_generation_balance.hazard_cell_count,
+        durability_balance.maximum_durability,
+        durability_balance.damage_per_traveled_cell,
+        durability_balance.repair_cost_per_durability
     )
     config.warp_forecast_ticks = _seconds_to_ticks(
         warp_lifecycle_balance.forecast_duration_seconds,
@@ -108,7 +116,11 @@ func complete_session_start_config(
         base_config.cargo_base_slot_count,
         base_config.cargo_base_delivery_reward,
         base_config.planning_time_scale_percent,
-        base_config.starting_session_cash
+        base_config.starting_session_cash,
+        base_config.hazard_cell_count,
+        base_config.maximum_durability,
+        base_config.damage_per_traveled_cell,
+        base_config.repair_cost_per_durability
     )
 
 

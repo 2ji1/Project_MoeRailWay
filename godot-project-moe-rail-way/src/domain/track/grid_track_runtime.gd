@@ -1672,6 +1672,39 @@ func get_contact_hits_between(
     return hits
 
 
+func get_traveled_hazard_distance_cells(
+    hazard_cells: Array[Vector2i],
+    previous_distance_cells: float,
+    through_distance_cells: float
+) -> float:
+    if (
+        not is_finite(previous_distance_cells)
+        or not is_finite(through_distance_cells)
+        or previous_distance_cells < 0.0
+        or through_distance_cells <= previous_distance_cells
+        or hazard_cells.is_empty()
+    ):
+        return 0.0
+    var hazard_lookup := {}
+    for cell in hazard_cells:
+        hazard_lookup[cell] = true
+    var traveled := 0.0
+    for record in _sequence.get_records():
+        if (
+            record.state != TrackCellRecordScript.State.BUILT
+            or not hazard_lookup.has(record.cell)
+        ):
+            continue
+        var interval_start: float = record.route_distance_start_cells
+        var interval_end := interval_start + 1.0
+        traveled += maxf(
+            0.0,
+            minf(through_distance_cells, interval_end)
+            - maxf(previous_distance_cells, interval_start)
+        )
+    return traveled
+
+
 func is_exit_support_route_serial(route_serial: int) -> bool:
     if route_serial < 0:
         return false

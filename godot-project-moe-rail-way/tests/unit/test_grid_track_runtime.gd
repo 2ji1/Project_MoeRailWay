@@ -116,6 +116,7 @@ func run() -> PackedStringArray:
 	_test_exact_center_observation_and_hit_distance()
 	_test_swept_contact_order_boundaries_and_detachment()
 	_test_swept_contacts_respect_recovery_and_invalid_ranges()
+	_test_hazard_distance_uses_built_route_intervals()
 	_test_detached_observations_and_conservation()
 	_test_twenty_construction_steps_keep_completed_head_reflowable()
 	_test_sixth_head_record_locks_whole_curve_and_supports_exit()
@@ -142,6 +143,53 @@ func run() -> PackedStringArray:
 	_test_unanchored_three_by_three_runtime_uses_local_corners()
 	_test_tight_turn_suffix_resolves_with_disjoint_local_footprints()
 	return finish()
+
+
+func _test_hazard_distance_uses_built_route_intervals() -> void:
+	var straight = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 8, Vector2.ZERO, Vector2i(8, 4), 40.0
+	)
+	assert_equal(
+		straight.append_cells([Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0)]),
+		3,
+		"Hazard distance fixture appends straight route"
+	)
+	assert_equal(straight.advance_construction(3.0), 3.0, "Hazard distance fixture builds route")
+	var hazard_cells: Array[Vector2i] = [Vector2i(1, 0)]
+	assert_equal(
+		straight.get_traveled_hazard_distance_cells(hazard_cells, 0.0, 3.0),
+		1.0,
+		"Full sweep counts exactly one hazard occurrence"
+	)
+	assert_equal(
+		straight.get_traveled_hazard_distance_cells(hazard_cells, 0.5, 1.25),
+		0.25,
+		"Partial sweep clips to actual hazard interval"
+	)
+	assert_equal(
+		straight.get_traveled_hazard_distance_cells([Vector2i(1, 0), Vector2i(1, 0)], 0.0, 3.0),
+		1.0,
+		"Duplicate terrain input cannot double damage one occurrence"
+	)
+	assert_equal(
+		straight.get_traveled_hazard_distance_cells(hazard_cells, 1.0, 1.0),
+		0.0,
+		"Stopped sweep causes no hazard distance"
+	)
+	straight.recover_behind(2.0)
+	assert_equal(
+		straight.get_traveled_hazard_distance_cells(hazard_cells, 0.0, 3.0),
+		0.0,
+		"Recovered hazard ownership is no longer sampled"
+	)
+
+	var curve = _make_fully_built_three_by_three_curve_runtime()
+	var curve_hazard: Array[Vector2i] = [Vector2i(2, 1)]
+	assert_equal(
+		curve.get_traveled_hazard_distance_cells(curve_hazard, 0.0, 6.0),
+		1.0,
+		"Curve occurrence uses its canonical nominal route interval"
+	)
 
 
 func _test_gesture_rejection_diagnostic_is_detached() -> void:

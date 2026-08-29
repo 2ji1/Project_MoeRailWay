@@ -26,6 +26,10 @@ var cargo_base_slot_count: int
 var cargo_base_delivery_reward: int
 var planning_time_scale_percent: int
 var starting_session_cash: int
+var hazard_cell_count: int
+var maximum_durability: float
+var damage_per_traveled_cell: float
+var repair_cost_per_durability: float
 
 
 func _init(
@@ -53,7 +57,11 @@ func _init(
 	cargo_base_slot_count_value: int = 0,
 	cargo_base_delivery_reward_value: int = 0,
 	planning_time_scale_percent_value: int = 100,
-	starting_session_cash_value: int = 0
+	starting_session_cash_value: int = 0,
+	hazard_cell_count_value: int = 0,
+	maximum_durability_value: float = 0.0,
+	damage_per_traveled_cell_value: float = 0.0,
+	repair_cost_per_durability_value: float = 0.0
 ) -> void:
 	seed = seed_value
 	session_duration_seconds = duration_seconds
@@ -80,3 +88,7 @@ func _init(
 	cargo_base_delivery_reward = cargo_base_delivery_reward_value
 	planning_time_scale_percent = planning_time_scale_percent_value
 	starting_session_cash = starting_session_cash_value
+	hazard_cell_count = hazard_cell_count_value
+	maximum_durability = maximum_durability_value
+	damage_per_traveled_cell = damage_per_traveled_cell_value
+	repair_cost_per_durability = repair_cost_per_durability_value

@@ -2,6 +2,7 @@ class_name PrototypeConfigValidator
 extends RefCounted
 
 const PrototypeBalanceScript = preload("res://src/config/prototype_balance.gd")
+const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
 
 static func validate(balance: PrototypeBalanceScript) -> PackedStringArray:
     var errors := PackedStringArray()
@@ -157,4 +158,57 @@ static func validate(balance: PrototypeBalanceScript) -> PackedStringArray:
             "prototype_balance.session_cash_balance.starting_session_cash must be between 0 and 1000000"
         )
 
+    if balance.hazard_generation_balance == null:
+        errors.append("prototype_balance.hazard_generation_balance.resource is required")
+    elif (
+        balance.hazard_generation_balance.hazard_cell_count < 0
+        or balance.hazard_generation_balance.hazard_cell_count > 4096
+    ):
+        errors.append(
+            "prototype_balance.hazard_generation_balance.hazard_cell_count must be between 0 and 4096"
+        )
+
+    if balance.durability_balance == null:
+        errors.append("prototype_balance.durability_balance.resource is required")
+    else:
+        if (
+            not is_finite(balance.durability_balance.maximum_durability)
+            or balance.durability_balance.maximum_durability < 1.0
+            or balance.durability_balance.maximum_durability > 1000000.0
+        ):
+            errors.append(
+                "prototype_balance.durability_balance.maximum_durability must be finite and between 1.0 and 1000000.0"
+            )
+        if (
+            not is_finite(balance.durability_balance.damage_per_traveled_cell)
+            or balance.durability_balance.damage_per_traveled_cell < 0.0
+            or balance.durability_balance.damage_per_traveled_cell > 1000000.0
+        ):
+            errors.append(
+                "prototype_balance.durability_balance.damage_per_traveled_cell must be finite and between 0.0 and 1000000.0"
+            )
+        if (
+            not is_finite(balance.durability_balance.repair_cost_per_durability)
+            or balance.durability_balance.repair_cost_per_durability < 0.0
+            or balance.durability_balance.repair_cost_per_durability > 1000000.0
+        ):
+            errors.append(
+                "prototype_balance.durability_balance.repair_cost_per_durability must be finite and between 0.0 and 1000000.0"
+            )
+
+    return errors
+
+
+static func validate_completed_session_start_config(
+    config: SessionStartConfigScript
+) -> PackedStringArray:
+    var errors := PackedStringArray()
+    if config == null:
+        errors.append("session_start_config is required")
+        return errors
+    var eligible_cell_count := config.grid_size.x * config.grid_size.y - 1
+    if config.hazard_cell_count > eligible_cell_count:
+        errors.append(
+            "prototype_balance.hazard_generation_balance.hazard_cell_count must not exceed completed grid eligible cells"
+        )
     return errors

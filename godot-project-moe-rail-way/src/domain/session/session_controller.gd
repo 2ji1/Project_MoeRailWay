@@ -9,6 +9,7 @@ const TrackSystemScript = preload("res://src/domain/track/track_system.gd")
 const TrainSystemScript = preload("res://src/domain/train/train_system.gd")
 const WarpPairSystemScript = preload("res://src/domain/warp/warp_pair_system.gd")
 const CargoSystemScript = preload("res://src/domain/cargo/cargo_system.gd")
+const HazardSystemScript = preload("res://src/domain/hazard/hazard_system.gd")
 const WarpPairRecordScript = preload("res://src/domain/warp/warp_pair_record.gd")
 const CargoSlotRecordScript = preload("res://src/domain/cargo/cargo_slot_record.gd")
 
@@ -30,6 +31,7 @@ var _track_system: TrackSystemScript
 var _train_system: TrainSystemScript
 var _warp_pair_system: WarpPairSystemScript
 var _cargo_system: CargoSystemScript
+var _hazard_system: HazardSystemScript
 var _total_ticks: int
 var _elapsed_ticks := 0
 var _remaining_ticks: int
@@ -48,7 +50,8 @@ func _init(
 	track_system: TrackSystemScript,
 	train_system: TrainSystemScript,
 	warp_pair_system: WarpPairSystemScript = null,
-	cargo_system: CargoSystemScript = null
+	cargo_system: CargoSystemScript = null,
+	hazard_system: HazardSystemScript = null
 ) -> void:
 	assert(start_config != null, "Session start config is required")
 	assert(track_system != null, "Track system is required")
@@ -62,6 +65,7 @@ func _init(
 	_train_system = train_system
 	_warp_pair_system = warp_pair_system
 	_cargo_system = cargo_system
+	_hazard_system = hazard_system
 	_ticks_per_second = _start_config.simulation_ticks_per_second
 	_total_ticks = maxi(
 		1,
@@ -166,6 +170,16 @@ func advance_tick(input_frame: TrackInputFrameScript = null) -> void:
 				_cargo_system
 			)
 			_install_warp_anchors()
+		if _hazard_system != null:
+			var hazard_distance := _track_system.get_traveled_hazard_distance_cells(
+				_hazard_system.get_hazard_cells(),
+				previous_train_distance,
+				_train_system.get_route_distance_cells()
+			)
+			_train_system.apply_damage(_hazard_system.calculate_damage(hazard_distance))
+			if _train_system.is_durability_depleted():
+				_complete(SessionResultScript.Reason.DURABILITY_DEPLETED)
+				return
 		_track_system.recover_behind(
 			_train_system.get_route_distance_cells() - float(_start_config.recovery_lag_cells)
 		)
@@ -232,7 +246,10 @@ func _complete(reason: SessionResultScript.Reason) -> void:
 		_elapsed_ticks,
 		_remaining_ticks,
 		delivered_pair_count,
-		base_delivery_reward_total
+		base_delivery_reward_total,
+		_train_system.get_maximum_durability(),
+		_train_system.get_current_durability(),
+		_calculate_repair_cost_basis()
 	))
 
 
@@ -242,6 +259,9 @@ func _publish_snapshot(include_warp_events: bool = true) -> void:
 
 
 func _create_snapshot(include_warp_events: bool = true) -> SessionSnapshotScript:
+	var hazard_cells: Array[Vector2i] = []
+	if _hazard_system != null:
+		hazard_cells = _hazard_system.get_hazard_cells()
 	var train_active := _train_system.is_active()
 	var train_distance := _train_system.get_route_distance_cells()
 	var train_position := Vector2(_start_config.departure_position)
@@ -314,8 +334,20 @@ func _create_snapshot(include_warp_events: bool = true) -> SessionSnapshotScript
 		warp_cargo_events,
 		_state == State.RUNNING and _track_system.is_runtime_gesture_active(),
 		_start_config.planning_time_scale_percent,
-		_did_advance_simulation_tick
+		_did_advance_simulation_tick,
+		hazard_cells,
+		_train_system.get_maximum_durability(),
+		_train_system.get_current_durability(),
+		_calculate_repair_cost_basis()
 	)
+
+
+func _calculate_repair_cost_basis() -> int:
+	var durability_loss := maxf(
+		0.0,
+		_train_system.get_maximum_durability() - _train_system.get_current_durability()
+	)
+	return int(ceil(durability_loss * _start_config.repair_cost_per_durability))
 
 
 func _begin_warp_running_tick() -> void:

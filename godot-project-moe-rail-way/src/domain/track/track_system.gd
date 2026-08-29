@@ -222,5 +222,15 @@ func get_contact_hits_between(
 	return _runtime.get_contact_hits_between(previous_distance_cells, through_distance_cells)
 
 
+func get_traveled_hazard_distance_cells(
+	hazard_cells: Array[Vector2i],
+	previous_distance_cells: float,
+	through_distance_cells: float
+) -> float:
+	return _runtime.get_traveled_hazard_distance_cells(
+		hazard_cells, previous_distance_cells, through_distance_cells
+	)
+
+
 func _cell_is_inside(cell: Vector2i, grid_size: Vector2i) -> bool:
 	return cell.x >= 0 and cell.y >= 0 and cell.x < grid_size.x and cell.y < grid_size.y

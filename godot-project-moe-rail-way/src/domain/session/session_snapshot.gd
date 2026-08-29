@@ -42,6 +42,10 @@ var _warp_cargo_events: Array[Dictionary] = []
 var _planning_slowdown_active: bool
 var _planning_time_scale_percent: int
 var _did_advance_simulation_tick: bool
+var _hazard_cells: Array[Vector2i] = []
+var _maximum_durability: float
+var _current_durability: float
+var _repair_cost_basis: int
 
 
 func _init(
@@ -80,7 +84,11 @@ func _init(
 	warp_cargo_events_value: Array[Dictionary] = [],
 	planning_slowdown_active_value: bool = false,
 	planning_time_scale_percent_value: int = 100,
-	did_advance_simulation_tick_value: bool = true
+	did_advance_simulation_tick_value: bool = true,
+	hazard_cells_value: Array[Vector2i] = [],
+	maximum_durability_value: float = 0.0,
+	current_durability_value: float = 0.0,
+	repair_cost_basis_value: int = 0
 ) -> void:
 	_total_ticks = total_ticks_value
 	_elapsed_ticks = elapsed_ticks_value
@@ -118,6 +126,10 @@ func _init(
 	_planning_slowdown_active = planning_slowdown_active_value
 	_planning_time_scale_percent = planning_time_scale_percent_value
 	_did_advance_simulation_tick = did_advance_simulation_tick_value
+	_hazard_cells = hazard_cells_value.duplicate()
+	_maximum_durability = maximum_durability_value
+	_current_durability = current_durability_value
+	_repair_cost_basis = repair_cost_basis_value
 
 
 func get_total_ticks() -> int:
@@ -268,6 +280,22 @@ func get_planning_time_scale_percent() -> int:
 
 func did_advance_simulation_tick() -> bool:
 	return _did_advance_simulation_tick
+
+
+func get_hazard_cells() -> Array[Vector2i]:
+	return _hazard_cells.duplicate()
+
+
+func get_maximum_durability() -> float:
+	return _maximum_durability
+
+
+func get_current_durability() -> float:
+	return _current_durability
+
+
+func get_repair_cost_basis() -> int:
+	return _repair_cost_basis
 
 
 func _duplicate_records(source: Array[TrackCellRecordScript]) -> Array[TrackCellRecordScript]:

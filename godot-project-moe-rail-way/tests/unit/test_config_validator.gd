@@ -51,6 +51,10 @@ func run() -> PackedStringArray:
 		300,
 		"Default starting_session_cash must be 300"
 	)
+	assert_equal(default_balance.hazard_generation_balance.hazard_cell_count, 12, "Default hazard count is 12")
+	assert_equal(default_balance.durability_balance.maximum_durability, 100.0, "Default durability is 100")
+	assert_equal(default_balance.durability_balance.damage_per_traveled_cell, 10.0, "Default hazard damage is 10")
+	assert_equal(default_balance.durability_balance.repair_cost_per_durability, 1.0, "Default repair rate is 1")
 	assert_equal(
 		default_balance.track_inventory_balance.total_track_cells,
 		18,
@@ -129,6 +133,41 @@ func run() -> PackedStringArray:
 		Validator.validate(missing_cash_resource),
 		"prototype_balance.session_cash_balance.resource"
 	)
+
+	var invalid_hazard_count := PrototypeBalanceScript.new()
+	invalid_hazard_count.hazard_generation_balance.hazard_cell_count = -1
+	_assert_contains(Validator.validate(invalid_hazard_count), "prototype_balance.hazard_generation_balance.hazard_cell_count")
+	invalid_hazard_count.hazard_generation_balance.hazard_cell_count = 4097
+	_assert_contains(Validator.validate(invalid_hazard_count), "prototype_balance.hazard_generation_balance.hazard_cell_count")
+	invalid_hazard_count.hazard_generation_balance = null
+	_assert_contains(Validator.validate(invalid_hazard_count), "prototype_balance.hazard_generation_balance.resource")
+
+	var invalid_durability := PrototypeBalanceScript.new()
+	invalid_durability.durability_balance.maximum_durability = NAN
+	_assert_contains(Validator.validate(invalid_durability), "prototype_balance.durability_balance.maximum_durability")
+	invalid_durability.durability_balance.maximum_durability = 100.0
+	invalid_durability.durability_balance.damage_per_traveled_cell = INF
+	_assert_contains(Validator.validate(invalid_durability), "prototype_balance.durability_balance.damage_per_traveled_cell")
+	invalid_durability.durability_balance.damage_per_traveled_cell = 10.0
+	invalid_durability.durability_balance.repair_cost_per_durability = -INF
+	_assert_contains(Validator.validate(invalid_durability), "prototype_balance.durability_balance.repair_cost_per_durability")
+	invalid_durability.durability_balance = null
+	_assert_contains(Validator.validate(invalid_durability), "prototype_balance.durability_balance.resource")
+
+	var risk_copy_balance := PrototypeBalanceScript.new()
+	risk_copy_balance.hazard_generation_balance.hazard_cell_count = 7
+	risk_copy_balance.durability_balance.maximum_durability = 125.0
+	risk_copy_balance.durability_balance.damage_per_traveled_cell = 4.5
+	risk_copy_balance.durability_balance.repair_cost_per_durability = 2.0
+	var risk_config = risk_copy_balance.create_session_start_config(812)
+	assert_equal(risk_config.hazard_cell_count, 7, "Start config copies hazard count")
+	assert_equal(risk_config.maximum_durability, 125.0, "Start config copies maximum durability")
+	assert_equal(risk_config.damage_per_traveled_cell, 4.5, "Start config copies hazard damage")
+	assert_equal(risk_config.repair_cost_per_durability, 2.0, "Start config copies repair rate")
+	risk_copy_balance.hazard_generation_balance.hazard_cell_count = 1
+	risk_copy_balance.durability_balance.maximum_durability = 1.0
+	assert_equal(risk_config.hazard_cell_count, 7, "Risk config is detached from hazard Resource")
+	assert_equal(risk_config.maximum_durability, 125.0, "Risk config is detached from durability Resource")
 
 	return finish()
 

@@ -13,7 +13,20 @@ func run() -> PackedStringArray:
 	_test_building_interval_blocks_and_endpoint_requests_completion()
 	_test_recovery_preserves_absolute_train_distance()
 	_test_capture_pose_is_the_only_pair_sampler()
+	_test_durability_is_clamped_and_one_way()
 	return finish()
+
+
+func _test_durability_is_clamped_and_one_way() -> void:
+	var train = TrainSystemScript.new(1.0, 100.0)
+	assert_equal(train.get_maximum_durability(), 100.0, "Durability maximum is copied")
+	assert_equal(train.get_current_durability(), 100.0, "Train starts at maximum durability")
+	assert_equal(train.apply_damage(12.5), 12.5, "Finite damage applies exactly")
+	assert_equal(train.get_current_durability(), 87.5, "Current durability decreases")
+	assert_equal(train.apply_damage(100.0), 87.5, "Damage clamps to remaining durability")
+	assert_equal(train.get_current_durability(), 0.0, "Durability clamps at zero")
+	assert_true(train.is_durability_depleted(), "Zero durability is depleted")
+	assert_equal(train.apply_damage(1.0), 0.0, "Repeated damage after depletion is a no-op")
 
 
 func _config() -> SessionStartConfigScript:
