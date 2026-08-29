@@ -288,9 +288,9 @@ No other path may change. No GDScript or UID sidecar is created. Commit the two 
 
 Modify only the three unit-test paths in the follow-up allowlist.
 
-- Add all-eight-orientation `1x1`, `2x2`, and `3x3` resolver fixtures that require every owned record center at `(record_offset * 16) + 8`.
+- Add all-eight-orientation `1x1`, `2x2`, and `3x3` resolver fixtures that require each owned record's own nominal interval to visibly enter that record cell.
 - Add the reported right-edge hidden-ownership shape and prove its logically owned `(11, 3)` cell lacks visible centerline contact on unchanged production.
-- Require presentation sampling for each owned interval to retain the corresponding record center.
+- Require presentation sampling for each owned interval to contain at least one point inside the corresponding record cell; exact-anchor intervals still retain the literal center at their midpoint.
 - Characterize that an attempted duplicate remains rejected atomically with last-valid geometry, inventory, construction, recovery, anchors, and locked ledger unchanged.
 - Preserve the fixed sample count, footprint containment, exact-center contact, straight and locked bytes, one-owner invariant, deterministic replay, and no-pathfinding contract.
 
@@ -300,10 +300,10 @@ Run the three focused suites. RED is valid only when the new ordered-center visi
 
 Modify only `track_geometry_resolver.gd`.
 
-- Replace the endpoint-support diagonal skeleton for newly resolved unlocked curves with ordered hard knots at every owned route-record center.
+- Replace the endpoint-support diagonal skeleton for newly resolved unlocked curves with ordered route-center skeleton knots.
 - Keep entry and exit boundary knots and the fixed `16` segments per nominal cell.
-- Apply the existing position-preserving local cubic halves only at actual orthogonal turns; keep collinear runs linear.
-- Treat exact anchors as semantics on coincident record-center knots rather than as an alternate geometry path.
+- Apply the existing bounded quadratic cut-corner to ordinary orthogonal route turns; keep collinear runs linear and preserve nonzero endpoint travel.
+- Mark only exact-anchor centers as position-preserving hard knots and apply the existing bounded local cubic halves there.
 - Do not modify route records, active-cell uniqueness, footprint construction, overlap fallback, locked ledger reuse, inventory, construction, recovery, train sampling, Warp generation, or public APIs.
 
 Run the three focused suites, complete registered suite, and all five standalone integrations. Audit the exact changed-path union, UID sidecars, `git diff --check`, primary cleanliness, merge-base, and ahead/behind state. Stage exact paths and commit:
