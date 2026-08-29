@@ -182,3 +182,20 @@ The user clarified twice that local-corner geometry was always intended for ordi
 The correction must reuse one deterministic local-corner builder for every unlocked curve. An empty exact-knot list produces the ordinary straight-spine shape; one or more exact knots constrain that same construction. No Warp-ID or anchor-presence branch may select between a legacy curve and the common local-corner curve.
 
 The user also approved publication and integration after the required tests and independent reviews: push this feature branch, open a pull request to `main`, merge with a merge commit, fast-forward the clean primary `main`, rerun the complete automated gate there, and clean up the feature worktree and local and remote feature branches. Manual visual rows remain `PENDING` unless the user directly confirms them; publication does not convert them to PASS.
+
+## 11. Approved Ordered-Route Spine Correction
+
+The `960x540` mouse gate exposed a mismatch between logical route ownership and visible geometry. The active endpoint was `(11, 2)`. A downward gesture correctly observed `(11, 3)`, but the candidate sequence rejected it as a duplicate because an earlier locked record already owned `(11, 3)`. The visible diagonal spine did not enter that cell, so the rejection appeared to come from empty space. This is not a pointer-rasterization failure, Warp-anchor constraint, or `final_overlap` result.
+
+This section supersedes the Section 5 rule that uses one visible diagonal between endpoint supports. Every newly resolved unlocked curve must instead use the ordered route itself as its visible skeleton:
+
+1. Preserve the entry boundary at sample `0` and exit boundary at sample `nominal_length_cells * 16`.
+2. Add every owned route-record center in order at sample `(record_offset * 16) + 8`.
+3. Treat those record centers as position-preserving hard knots. Collinear records remain a byte-stable straight run between their neighboring knots.
+4. At an actual orthogonal direction change, use the existing bounded two-half local cubic construction so both halves meet at the literal route-cell center with a shared bisector tangent. No local blend may move or skip that center.
+5. An `EXACT_CELL_CENTER` anchor adds authoritative exact-contact semantics to its coincident ordered-route hard knot. It does not create a second point, select a different builder, move ownership, or alter topology.
+6. Preserve exactly `nominal_length_cells * 16 + 1` samples, uniform-index nominal sampling, entry and exit headings, footprint containment, candidate fallback, one owner per serial, and deterministic replay.
+
+The visible centerline of a newly resolved curve must therefore enter every cell that the curve's ordered records claim to own. Hidden ownership is invalid. An active duplicate cell remains rejected; after this correction, that rejection is supported by visible track in the same cell. The correction does not permit branches, merges, loops, automatic pathfinding, route insertion, or reuse of an active route cell.
+
+Already locked geometry remains byte-for-byte unchanged within a running session. Inventory, construction, recovery, train timing, Warp generation, contact ordering, cargo, reward, and lifecycle contracts remain unchanged.

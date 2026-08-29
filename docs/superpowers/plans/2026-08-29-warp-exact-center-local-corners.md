@@ -267,3 +267,49 @@ After all automated and review gates pass:
 5. rerun the registered suite and all five standalone integrations in `D:\godot\MoeRailWay` with anchored diagnostic checks;
 6. require the primary to remain clean and equal `origin/main`, then stop only agent-owned feature-project Godot processes, remove this feature worktree, and delete the local and remote feature branches;
 7. do not tag, modify Risk & Investment, or change any legacy branch.
+
+## 10. Approved Follow-up: Ordered-Route Spine Alignment
+
+The user approved correcting the `960x540` mouse finding where an earlier route record owned `(11, 3)` but the generalized diagonal spine did not visibly enter that cell. This follow-up remains on `feature/reservation-live-candidate-diagnosis` and does not modify or absorb Risk & Investment, `feature/warp-reservation-anchor-correction`, or either protected worktree.
+
+### Fixed Follow-up Allowlist
+
+- `docs/superpowers/specs/2026-08-29-warp-exact-center-local-corners-design.md`
+- `docs/superpowers/plans/2026-08-29-warp-exact-center-local-corners.md`
+- `godot-project-moe-rail-way/src/domain/track/track_geometry_resolver.gd`
+- `godot-project-moe-rail-way/tests/unit/test_track_geometry_resolver.gd`
+- `godot-project-moe-rail-way/tests/unit/test_grid_track_runtime.gd`
+- `godot-project-moe-rail-way/tests/unit/test_track_field_view_input.gd`
+- `godot-project-moe-rail-way/tests/manual/warp_cargo_windows.md`
+
+No other path may change. No GDScript or UID sidecar is created. Commit the two documentation paths before changing implementation or test paths.
+
+### Deterministic RED
+
+Modify only the three unit-test paths in the follow-up allowlist.
+
+- Add all-eight-orientation `1x1`, `2x2`, and `3x3` resolver fixtures that require every owned record center at `(record_offset * 16) + 8`.
+- Add the reported right-edge hidden-ownership shape and prove its logically owned `(11, 3)` cell lacks visible centerline contact on unchanged production.
+- Require presentation sampling for each owned interval to retain the corresponding record center.
+- Characterize that an attempted duplicate remains rejected atomically with last-valid geometry, inventory, construction, recovery, anchors, and locked ledger unchanged.
+- Preserve the fixed sample count, footprint containment, exact-center contact, straight and locked bytes, one-owner invariant, deterministic replay, and no-pathfinding contract.
+
+Run the three focused suites. RED is valid only when the new ordered-center visibility assertions fail without parser, runtime, warning, crash, or unrelated assertion failures.
+
+### Minimum GREEN
+
+Modify only `track_geometry_resolver.gd`.
+
+- Replace the endpoint-support diagonal skeleton for newly resolved unlocked curves with ordered hard knots at every owned route-record center.
+- Keep entry and exit boundary knots and the fixed `16` segments per nominal cell.
+- Apply the existing position-preserving local cubic halves only at actual orthogonal turns; keep collinear runs linear.
+- Treat exact anchors as semantics on coincident record-center knots rather than as an alternate geometry path.
+- Do not modify route records, active-cell uniqueness, footprint construction, overlap fallback, locked ledger reuse, inventory, construction, recovery, train sampling, Warp generation, or public APIs.
+
+Run the three focused suites, complete registered suite, and all five standalone integrations. Audit the exact changed-path union, UID sidecars, `git diff --check`, primary cleanliness, merge-base, and ahead/behind state. Stage exact paths and commit:
+
+```text
+fix: align curve spines with ordered route cells
+```
+
+Obtain independent specification and quality reviews. Keep all four resolution rows `PENDING` until the user directly verifies the exact reviewed feature HEAD. A manual failure returns to deterministic diagnosis within this allowlist. Publication follows Section 9 only after every automated, review, and user-owned manual gate passes and primary plus remote state are reverified.
