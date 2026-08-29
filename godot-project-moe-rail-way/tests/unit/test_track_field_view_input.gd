@@ -1000,32 +1000,43 @@ func _test_unanchored_local_corner_presentation() -> void:
 	assert_equal(owner.centerline.size(), 81, "Warp-free presentation receives fixed-count local-corner samples")
 	fixture.view.present(_view_snapshot(records, pieces))
 	var observation: Dictionary = fixture.view.get_render_observation()
-	var entry_interval := _view_interval_for_serial(observation, 1)
-	var spine_interval := _view_interval_for_serial(observation, 3)
-	var exit_interval := _view_interval_for_serial(observation, 5)
-	for interval in [entry_interval, spine_interval, exit_interval]:
-		assert_false(interval.is_empty(), "Warp-free presentation exposes each inspected interval")
-		if not interval.is_empty():
-			assert_equal(PackedVector2Array(interval.points).size(), 9, "Presentation keeps one-eighth nominal cadence")
-	if not entry_interval.is_empty():
-		assert_true(
-			_points_contain_bend(PackedVector2Array(entry_interval.points)),
-			"Warp-free presentation rounds only the entry transition neighborhood"
+	for index in range(records.size()):
+		var interval := _view_interval_for_serial(
+			observation, records[index].route_serial
 		)
-	if not spine_interval.is_empty():
-		var spine_points := PackedVector2Array(spine_interval.points)
-		for index in range(spine_points.size() - 2):
-			assert_true(
-				_three_points_are_forward_collinear(
-					spine_points[index], spine_points[index + 1], spine_points[index + 2]
-				),
-				"Warp-free presentation keeps middle spine sample %d straight" % index
+		assert_false(interval.is_empty(), "Warp-free presentation exposes each owned interval")
+		if interval.is_empty():
+			continue
+		var points := PackedVector2Array(interval.points)
+		assert_equal(points.size(), 9, "Presentation keeps one-eighth nominal cadence")
+		if points.size() != 9:
+			continue
+		var enters_owned_cell := false
+		for point in points:
+			var point_cell := Vector2i(
+				int(floor(point.x / 40.0)), int(floor(point.y / 40.0))
 			)
-	if not exit_interval.is_empty():
+			if point_cell == records[index].cell:
+				enters_owned_cell = true
+				break
 		assert_true(
-			_points_contain_bend(PackedVector2Array(exit_interval.points)),
-			"Warp-free presentation rounds only the exit transition neighborhood"
+			enters_owned_cell,
+			"Presented route serial %d enters its owned route cell"
+				% records[index].route_serial
 		)
+		if index == 2:
+			assert_true(
+				_points_contain_bend(points),
+				"Presentation confines the local bend to the actual turn interval"
+			)
+		else:
+			for point_index in range(points.size() - 2):
+				assert_true(
+					_three_points_are_forward_collinear(
+						points[point_index], points[point_index + 1], points[point_index + 2]
+					),
+					"Non-turn interval %d remains straight" % records[index].route_serial
+				)
 	fixture.parent.free()
 
 

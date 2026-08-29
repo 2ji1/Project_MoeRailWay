@@ -16,7 +16,6 @@ const MAX_LOCAL_CORNER_NONLINEAR_RUN := 9
 const MAX_LOCAL_REVERSE_SEGMENT_RUN := 8
 const MIN_STRAIGHT_SEGMENT_RUN := 4
 const CENTERLINE_SEGMENTS_PER_NOMINAL_CELL := 16
-const ENDPOINT_SUPPORT_MAX_SAMPLES := 8
 const LOCAL_CORNER_HALF_WINDOW_SAMPLES := 4
 const TEST_CELL_SIZE := 40.0
 
@@ -32,6 +31,7 @@ func run() -> PackedStringArray:
 	_test_irreducible_duplicate_turn_footprints_still_reject()
 	_test_anchor_forces_centerline_contact()
 	_test_unanchored_curve_orientations_use_local_corners()
+	_test_right_edge_owned_turn_center_is_visible()
 	_test_exact_anchor_knots_preserve_template_contracts()
 	_test_multiple_exact_knots_remain_literal_and_deterministic()
 	_test_nonzero_grid_origin_translates_every_centerline()
@@ -245,7 +245,7 @@ func _assert_unanchored_curve_fixture(
 		nonlinear_run <= MAX_LOCAL_CORNER_NONLINEAR_RUN,
 		"%s confines nonlinear samples to local windows (run=%d)" % [label, nonlinear_run]
 	)
-	_assert_unanchored_samples_match_linear_skeleton(piece, incoming, outgoing, label)
+	_assert_owned_record_intervals_enter_cells(piece, records, origin, label)
 	_assert_centerline_never_reverses(piece.centerline, incoming, outgoing)
 	for sample_index in range(1, piece.centerline.size() - 1):
 		var point: Vector2 = piece.centerline[sample_index]
@@ -268,6 +268,38 @@ func _assert_unanchored_curve_fixture(
 			_resolution_signature(result),
 			"%s deterministic replay is byte-identical" % label
 		)
+
+
+func _test_right_edge_owned_turn_center_is_visible() -> void:
+	var departure := Vector2i(11, 8)
+	var records := _records_for([
+		Vector2i(11, 7), Vector2i(11, 6), Vector2i(11, 5),
+		Vector2i(11, 4), Vector2i(11, 3), Vector2i(10, 3),
+		Vector2i(9, 3), Vector2i(8, 3), Vector2i(7, 3),
+	], departure)
+	var result = _resolver.resolve(
+		departure, records, [], [], Vector2.ZERO, Vector2i(12, 12), 40.0
+	)
+	assert_true(result.is_valid, "Reported right-edge ownership fixture resolves")
+	if not result.is_valid:
+		return
+	var turn_record = records[4]
+	var owner = _piece_covering_serial(result.pieces, turn_record.route_serial)
+	assert_not_null(owner, "Reported hidden cell has one geometry owner")
+	if owner == null:
+		return
+	assert_equal(owner.kind, CURVE_3X3, "Reported hidden cell retains 3x3 ownership")
+	var local_start: float = (
+		turn_record.route_distance_start_cells
+		- owner.absolute_start_distance_cells
+	)
+	assert_true(
+		owner.contacts_cell_in_nominal_range(
+			Vector2i(11, 3), Vector2.ZERO, 40.0,
+			local_start, local_start + 1.0, 8
+		),
+		"The visible spine enters the logically owned (11, 3) route cell"
+	)
 
 
 func _test_multiple_exact_knots_remain_literal_and_deterministic() -> void:
@@ -418,6 +450,9 @@ func _assert_exact_curve_fixture(
 	assert_true(
 		piece.sample_nominal(local_offset).position.distance_to(expected_center) <= 0.0001,
 		"%s passes the literal cell center at its nominal knot" % label
+	)
+	_assert_owned_record_intervals_enter_cells(
+		piece, records, Vector2.ZERO, label
 	)
 	var turn_index := _first_turn_index(departure, records)
 	var previous: Vector2i = departure if turn_index == 0 else records[turn_index - 1].cell
@@ -969,69 +1004,26 @@ func _assert_each_serial_owned_once(pieces: Array, records: Array) -> void:
 		assert_equal(owner_count, 1, "Every route serial has exactly one geometry owner")
 
 
-func _assert_unanchored_samples_match_linear_skeleton(
+func _assert_owned_record_intervals_enter_cells(
 	piece,
-	incoming: Vector2,
-	outgoing: Vector2,
+	records: Array,
+	origin: Vector2,
 	label: String
 ) -> void:
-	var final_index: int = piece.centerline.size() - 1
-	var entry_index: int = mini(ENDPOINT_SUPPORT_MAX_SAMPLES, final_index / 2)
-	var start: Vector2 = piece.centerline[0]
-	var finish: Vector2 = piece.centerline[-1]
-	var entry_gap: Vector2 = finish - start
-	var entry_units: float = minf(
-		TEST_CELL_SIZE * float(entry_index) / float(CENTERLINE_SEGMENTS_PER_NOMINAL_CELL),
-		minf(entry_gap.dot(incoming) * 0.5, entry_gap.length() * 0.5)
-	)
-	var entry_support: Vector2 = start + incoming * entry_units
-	var exit_offset: int = mini(
-		ENDPOINT_SUPPORT_MAX_SAMPLES,
-		(final_index - entry_index) / 2
-	)
-	var exit_index: int = final_index - exit_offset
-	var exit_gap: Vector2 = finish - entry_support
-	var exit_units: float = minf(
-		TEST_CELL_SIZE * float(exit_offset) / float(CENTERLINE_SEGMENTS_PER_NOMINAL_CELL),
-		minf(exit_gap.dot(outgoing) * 0.5, exit_gap.length() * 0.5)
-	)
-	var exit_support: Vector2 = finish - outgoing * exit_units
-	var entry_half_window: int = mini(
-		LOCAL_CORNER_HALF_WINDOW_SAMPLES,
-		mini(entry_index / 2, (exit_index - entry_index) / 2)
-	)
-	var exit_half_window: int = mini(
-		LOCAL_CORNER_HALF_WINDOW_SAMPLES,
-		mini((exit_index - entry_index) / 2, (final_index - exit_index) / 2)
-	)
-	for sample_index in range(final_index + 1):
-		var inside_entry_window: bool = (
-			sample_index > entry_index - entry_half_window
-			and sample_index < entry_index + entry_half_window
-		)
-		var inside_exit_window: bool = (
-			sample_index > exit_index - exit_half_window
-			and sample_index < exit_index + exit_half_window
-		)
-		if inside_entry_window or inside_exit_window:
+	for record in records:
+		if not piece.contains_serial(record.route_serial):
 			continue
-		var expected: Vector2
-		if sample_index <= entry_index:
-			expected = start.lerp(entry_support, float(sample_index) / float(entry_index))
-		elif sample_index <= exit_index:
-			expected = entry_support.lerp(
-				exit_support,
-				float(sample_index - entry_index) / float(exit_index - entry_index)
-			)
-		else:
-			expected = exit_support.lerp(
-				finish,
-				float(sample_index - exit_index) / float(final_index - exit_index)
-			)
+		var local_start: float = (
+			record.route_distance_start_cells
+			- piece.absolute_start_distance_cells
+		)
 		assert_true(
-			piece.centerline[sample_index].distance_to(expected) <= 0.0001,
-			"%s sample %d exactly matches the linear skeleton outside corner windows"
-				% [label, sample_index]
+			piece.contacts_cell_in_nominal_range(
+				record.cell, origin, TEST_CELL_SIZE,
+				local_start, local_start + 1.0, 8
+			),
+			"%s visibly enters owned route cell %s in its nominal interval"
+				% [label, record.cell]
 		)
 
 

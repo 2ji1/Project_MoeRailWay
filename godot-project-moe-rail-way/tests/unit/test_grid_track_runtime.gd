@@ -426,7 +426,7 @@ func _test_exact_anchor_impossible_locked_and_removal_contracts() -> void:
 
 	var unlocked = _make_three_by_three_curve_runtime()
 	var unlocked_before := _piece_values(unlocked.get_geometry_pieces())
-	var curve_anchor = RouteContactAnchorScript.new(&"curve_exact", Vector2i(1, 0))
+	var curve_anchor = RouteContactAnchorScript.new(&"curve_exact", Vector2i(2, 0))
 	curve_anchor.contact_mode = RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER
 	var curve_anchors: Array[RouteContactAnchorScript] = [curve_anchor]
 	unlocked.set_contact_anchors(curve_anchors)
@@ -3406,7 +3406,7 @@ func _test_recovered_cell_can_be_contacted_by_new_geometry() -> void:
 		Vector2i(2, 1), Vector2i(2, 2),
 	]), 5, "New curve reuses route after recovery")
 	var reused_anchors: Array[RouteContactAnchorScript] = [
-		RouteContactAnchorScript.new(&"reused_inner", Vector2i(1, 1)),
+		RouteContactAnchorScript.new(&"reused_inner", Vector2i(1, 0)),
 	]
 	track.set_contact_anchors(reused_anchors)
 	var observations: Array = track.get_contact_observations()
@@ -3736,14 +3736,20 @@ func _test_unanchored_three_by_three_runtime_uses_local_corners() -> void:
 	assert_equal(piece.last_route_serial, records[4].route_serial, "Warp-free runtime owner ends at F")
 	assert_equal(piece.nominal_length_cells, 5, "Warp-free runtime owner keeps five nominal cells")
 	assert_equal(piece.centerline.size(), 81, "Warp-free runtime owner uses sixteen samples per nominal cell")
-	var first_spine: Vector2 = piece.sample_nominal(1.5).position
 	var middle_spine: Vector2 = piece.sample_nominal(2.5).position
-	var last_spine: Vector2 = piece.sample_nominal(3.5).position
-	assert_true(
-		absf((middle_spine - first_spine).cross(last_spine - middle_spine)) <= 0.0001
-			and (middle_spine - first_spine).dot(last_spine - middle_spine) > 0.0,
-		"Warp-free runtime keeps the long 3x3 interior spine straight"
-	)
+	for index in range(records.size()):
+		var local_start: float = (
+			records[index].route_distance_start_cells
+			- piece.absolute_start_distance_cells
+		)
+		assert_true(
+			piece.contacts_cell_in_nominal_range(
+				records[index].cell, Vector2.ZERO, 40.0,
+				local_start, local_start + 1.0, 8
+			),
+			"Warp-free runtime visibly enters owned route cell %s in its nominal interval"
+				% records[index].cell
+		)
 	assert_equal(track.get_contact_observations(), [], "Warp-free local corners do not synthesize anchors")
 	var unlocked_centerline: PackedVector2Array = piece.centerline
 	assert_equal(track.advance_construction(5.0), 5.0, "Warp-free local-corner route fully constructs")
@@ -3755,7 +3761,7 @@ func _test_unanchored_three_by_three_runtime_uses_local_corners() -> void:
 	assert_equal(locked_piece.centerline, unlocked_centerline, "Locking preserves local-corner bytes")
 	assert_true(
 		locked_piece.sample_nominal(2.5).position.is_equal_approx(middle_spine),
-		"Locked train sampling uses the same straight spine"
+		"Locked train sampling preserves the ordered-route spine"
 	)
 	var inventory_before: int = track.get_available_track_cells()
 	assert_equal(track.recover_behind(1.0), 1, "Warp-free local-corner route recovers one nominal cell")

@@ -27,11 +27,11 @@ const EXPECTED_EVENT_TICKS := {
     8: ["ACTIVATED:warp_pair_2:-1:0"],
     11: ["FORECASTED:warp_pair_3:-1:0", "LOADED:warp_pair_2:0:0"],
     13: ["ACTIVATED:warp_pair_3:-1:0"],
+    67: ["LOADED:warp_pair_3:1:0"],
     120: ["EXPIRED:warp_pair_1:-1:0"],
     121: ["FORECASTED:warp_pair_4:-1:0"],
     123: ["ACTIVATED:warp_pair_4:-1:0"],
-    126: ["LOADED:warp_pair_4:1:0"],
-    139: ["EXPIRED:warp_pair_2:0:0", "VOIDED:warp_pair_3:-1:0", "VOIDED:warp_pair_4:1:0"],
+    139: ["EXPIRED:warp_pair_2:0:0", "VOIDED:warp_pair_3:1:0", "VOIDED:warp_pair_4:-1:0"],
 }
 
 const EXPECTED_STATE_TRACE := [
@@ -42,28 +42,29 @@ const EXPECTED_STATE_TRACE := [
     {"tick": 10, "state": "RUNNING", "pairs": ["warp_pair_1:ACTIVE_UNLOADED:0:F0:L110", "warp_pair_2:ACTIVE_UNLOADED:1:F0:L129"], "occupied": 0, "delivered": 0, "reward": 0},
     {"tick": 13, "state": "RUNNING", "pairs": ["warp_pair_1:ACTIVE_UNLOADED:0:F0:L107", "warp_pair_2:IN_TRANSIT:1:F0:L126", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L152"], "occupied": 1, "delivered": 0, "reward": 0},
     {"tick": 64, "state": "RUNNING", "pairs": ["warp_pair_1:ACTIVE_UNLOADED:0:F0:L56", "warp_pair_2:IN_TRANSIT:1:F0:L75", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L101"], "occupied": 1, "delivered": 0, "reward": 0},
-    {"tick": 119, "state": "RUNNING", "pairs": ["warp_pair_1:ACTIVE_UNLOADED:0:F0:L1", "warp_pair_2:IN_TRANSIT:1:F0:L20", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L46"], "occupied": 1, "delivered": 0, "reward": 0},
-    {"tick": 120, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L19", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L45"], "occupied": 1, "delivered": 0, "reward": 0},
-    {"tick": 121, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L18", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L44", "warp_pair_4:FORECAST:0:F2:L159"], "occupied": 1, "delivered": 0, "reward": 0},
-    {"tick": 123, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L16", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L42", "warp_pair_4:ACTIVE_UNLOADED:0:F0:L158"], "occupied": 1, "delivered": 0, "reward": 0},
-    {"tick": 124, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L15", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L41", "warp_pair_4:ACTIVE_UNLOADED:0:F0:L157"], "occupied": 1, "delivered": 0, "reward": 0},
-    {"tick": 138, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L1", "warp_pair_3:ACTIVE_UNLOADED:2:F0:L27", "warp_pair_4:IN_TRANSIT:0:F0:L143"], "occupied": 2, "delivered": 0, "reward": 0},
+    {"tick": 119, "state": "RUNNING", "pairs": ["warp_pair_1:ACTIVE_UNLOADED:0:F0:L1", "warp_pair_2:IN_TRANSIT:1:F0:L20", "warp_pair_3:IN_TRANSIT:2:F0:L46"], "occupied": 2, "delivered": 0, "reward": 0},
+    {"tick": 120, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L19", "warp_pair_3:IN_TRANSIT:2:F0:L45"], "occupied": 2, "delivered": 0, "reward": 0},
+    {"tick": 121, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L18", "warp_pair_3:IN_TRANSIT:2:F0:L44", "warp_pair_4:FORECAST:0:F2:L159"], "occupied": 2, "delivered": 0, "reward": 0},
+    {"tick": 123, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L16", "warp_pair_3:IN_TRANSIT:2:F0:L42", "warp_pair_4:ACTIVE_UNLOADED:0:F0:L158"], "occupied": 2, "delivered": 0, "reward": 0},
+    {"tick": 124, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L15", "warp_pair_3:IN_TRANSIT:2:F0:L41", "warp_pair_4:ACTIVE_UNLOADED:0:F0:L157"], "occupied": 2, "delivered": 0, "reward": 0},
+    {"tick": 138, "state": "RUNNING", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:IN_TRANSIT:1:F0:L1", "warp_pair_3:IN_TRANSIT:2:F0:L27", "warp_pair_4:ACTIVE_UNLOADED:0:F0:L143"], "occupied": 2, "delivered": 0, "reward": 0},
     {"tick": 139, "state": "COMPLETED", "pairs": ["warp_pair_1:EXPIRED:0:F0:L0", "warp_pair_2:EXPIRED:1:F0:L0", "warp_pair_3:VOIDED:2:F0:L26", "warp_pair_4:VOIDED:0:F0:L142"], "occupied": 0, "delivered": 0, "reward": 0},
 ]
 
-const MANUAL_CHECKPOINT_TICKS: Array[int] = [1, 3, 11, 13, 64, 120, 121, 123, 126, 138, 139]
+const MANUAL_CHECKPOINT_TICKS: Array[int] = [1, 3, 11, 13, 64, 67, 120, 121, 123, 126, 138, 139]
 const MANUAL_EXPECTATIONS := {
     1: "Empty cargo; pair 1 forecast with low-alpha endpoints and F 1s.",
     3: "Pair 1 active: filled origin, outlined destination, 12s lifetime.",
     11: "Pair 2 loads at its exact origin center into slot 0.",
     13: "Pair 3 activates at its seeded cells without route correction.",
-    64: "Impossible exact contacts remain unloaded without route correction.",
-    120: "Pair 1 expires unloaded and cargo remains at 1 / 2.",
+    64: "Pair 3 remains active and unloaded immediately before the ordered route reaches it.",
+    67: "Pair 3 loads at its visible ordered-route origin into slot 1.",
+    120: "Pair 1 expires unloaded and cargo remains full at 2 / 2.",
     121: "Pair 4 forecast appears at its original seeded cells.",
     123: "Pair 4 activates with the original lifetime facts.",
-    126: "Pair 4 loads at its exact origin center into slot 1.",
-    138: "Both loaded pairs remain in transit; pair 2 has one lifetime tick.",
-    139: "Pair 2 expires before completion voids the remaining live pairs.",
+    126: "Pair 4 remains unloaded because both cargo slots are occupied.",
+    138: "Pairs 2 and 3 remain in transit; pair 2 has one lifetime tick.",
+    139: "Pair 2 expires before completion voids pair 3 and unloaded pair 4.",
 }
 
 var _failures := PackedStringArray()
@@ -158,9 +159,11 @@ func _run() -> void:
                 _assert_equal(forecast_origin.countdown_text, "F 1s", "Real forecast countdown is readable")
                 _assert_true(forecast_origin.position.is_equal_approx(Vector2(360.0, 66.6666667)), "Real endpoint uses logical grid center")
         if tick == 126:
-            _assert_equal(_cargo_text(shell), "2 / 2", "Real HUD shows full cargo")
+            _assert_equal(_cargo_text(shell), "2 / 2", "Full cargo keeps pair 4 unloaded")
+        if tick == 67:
+            _assert_equal(_cargo_text(shell), "2 / 2", "Ordered-route pair 3 fills slot 1")
         if tick == 120:
-            _assert_equal(_cargo_text(shell), "1 / 2", "Unloaded expiry leaves occupied cargo unchanged")
+            _assert_equal(_cargo_text(shell), "2 / 2", "Unloaded expiry leaves full cargo unchanged")
         if tick == 139:
             _assert_equal(_reward_text(shell), "0", "Final-life expiry leaves base reward unchanged")
 

@@ -37,13 +37,14 @@ The driver disables automatic physics, injects the approved 47-cell route on tic
 | `3` | Pair 1 is active with a filled origin, outlined destination, and `12s`. |
 | `11` | Pair 2 loads at its exact origin center into slot 0 and the HUD reads `1 / 2`. |
 | `13` | Pair 3 remains at the seeded origin/destination shown in the panel; no route correction occurs. |
-| `64` | Impossible exact contacts remain unloaded; pair 3 remains active and cargo remains `1 / 2`. |
-| `120` | Pair 1 expires unloaded, reward remains `0`, and cargo remains `1 / 2`. |
+| `64` | Pair 3 remains active and unloaded immediately before the visible ordered route reaches it; cargo remains `1 / 2`. |
+| `67` | Pair 3 loads at its visible ordered-route origin into slot 1 and cargo reaches `2 / 2`. |
+| `120` | Pair 1 expires unloaded, reward remains `0`, and cargo remains `2 / 2`. |
 | `121` | Pair 4 forecast appears at the seeded cells shown in the panel without correction. |
 | `123` | Pair 4 activates with its original seeded lifetime facts. |
-| `126` | Pair 4 loads at its exact origin center into slot 1 and cargo reaches `2 / 2`. |
-| `138` | Pair 2 is in transit with `1s`, immediately before final-life delivery. |
-| `139` | Pair 2 expires before completion voids the remaining live pairs; cargo is `0 / 2` and reward remains `0`. |
+| `126` | Pair 4 remains unloaded because pair 2 and pair 3 occupy both cargo slots. |
+| `138` | Pair 2 is in transit with `1s`, pair 3 remains in transit, and pair 4 remains active but unloaded. |
+| `139` | Pair 2 expires before completion voids in-transit pair 3 and unloaded pair 4; cargo is `0 / 2` and reward remains `0`. |
 | `result` | The regular-end result retains reward `0` and adds no penalty, failure, settlement, or action text. |
 
 The checkpoint panel also prints every pair's exact origin, destination, state, and remaining ticks. Use those facts to confirm impossible or behind-train generation is retained rather than rerolled.
@@ -72,6 +73,7 @@ At every size, also complete these control-feel checks:
 10. Confirm the planning label and departure fade remain readable at this window size and that neither primitive intercepts field input.
 11. After rear recovery removes the first route cell and the departure marker has dissolved, guide the active endpoint back beside departure `(5, 2)`. Hold left drag through `(5, 2)` and one following recovered cell, confirm both cells remain in the live preview, then release and confirm both install. If an active Warp occupies `(5, 2)`, confirm the reused track passes through its exact center and the origin marker does not return.
 12. Let the train approach closely enough to lock the current endpoint, then start one held drag straight into an adjacent active Warp and turn on the following cell. Continue for at least one more cell before release. Confirm the Warp cell, first turn, and remaining suffix all stay in the live preview and install together without moving the locked track behind them.
+13. Build a long orthogonal turn, later route the active endpoint beside one of that curve's owned cells, and attempt to drag back into it. Confirm the earlier curve is visibly present inside the rejected cell; no duplicate-cell rejection may appear to come from empty space.
 
 ## Track local-corner visual addendum
 
@@ -87,7 +89,7 @@ At every supported window size, first draw Warp-free turns representing the visi
 1. Every Warp-free `1x1`, `2x2`, and `3x3` owner uses the same straight-spine and local-corner visual rule.
 2. Long portions of the owner remain visually straight.
 3. Curvature is limited to the actual direction-change neighborhoods.
-4. Reproduce the screenshot-reported Warp-free `3x3`: its long diagonal middle run remains straight, with rounding only near the two endpoint transitions.
+4. Reproduce the screenshot-reported Warp-free `3x3`: its centerline follows every ordered route cell, with straight runs between cells and rounding only at the actual direction change.
 5. No owner-wide S-shaped excursion remains, whether or not a Warp exists on the owner.
 6. An exact-anchored turn crosses the literal center of the Warp marker without changing the ordinary local-corner rule elsewhere.
 7. The accepted ownership scale does not visibly shrink merely to satisfy the exact anchor.
@@ -95,15 +97,16 @@ At every supported window size, first draw Warp-free turns representing the visi
 9. Loading and delivery each occur once at the exact marker center without changing route cells.
 10. Dragging, backtracking, rebranching, release, and right-click cancellation retain the same control feel around the locally rounded track.
 11. Reproduce a `2x2` tail that enters its endpoint vertically, then begin separate drags to the left and right neighbors. Confirm both previews publish, their two adjacent unlocked turns settle into visibly separate local corners, locked track does not move, and an exact Warp marker on the right target is crossed through its literal center.
+12. Reproduce the `960x540` hidden-ownership report: approach the active endpoint from above while an earlier curve already owns the cell immediately below it. Confirm that earlier curve is visibly present in the owned cell and the rejected downward duplicate no longer appears to target an empty cell.
 
 Record the user-owned result for the exact candidate in this table. Leave a row `PENDING` until that exact size and candidate commit have been checked.
 
-| Window size | 1x1 observed | 2x2 observed | 3x3 observed | Warp-free 3x3 spine | Exact center | Local bends only | Adjacent side turns | Lock stable | Control feel | User result |
-|---|---|---|---|---|---|---|---|---|---|---|
-| `960x540` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING (user-owned)` |
-| `1280x720` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING (user-owned)` |
-| `1600x900` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING (user-owned)` |
-| `1920x1080` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING (user-owned)` |
+| Window size | 1x1 observed | 2x2 observed | 3x3 observed | Ordered-route spine | Exact center | Local bends only | Adjacent side turns | Owned-cell visibility | Lock stable | Control feel | User result |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `960x540` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING (user-owned)` |
+| `1280x720` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING (user-owned)` |
+| `1600x900` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING (user-owned)` |
+| `1920x1080` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING` | `PENDING (user-owned)` |
 
 ## Evidence header
 
