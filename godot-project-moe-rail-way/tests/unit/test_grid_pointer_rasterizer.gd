@@ -14,6 +14,7 @@ func run() -> PackedStringArray:
 	_test_outside_reentry_preserves_intermediate_cells()
 	_test_outside_to_outside_crossing_preserves_in_grid_cells()
 	_test_reverse_outside_crossing_preserves_in_grid_cells()
+	_test_non_dyadic_clipped_boundaries_preserve_entry_cells()
 	_test_corner_touch_does_not_invent_a_cell()
 	_test_outer_edge_corner_entry_uses_inward_cell()
 	_test_outer_axis_first_corner_entry_preserves_two_cells()
@@ -163,6 +164,26 @@ func _test_reverse_outside_crossing_preserves_in_grid_cells() -> void:
 		[Vector2i(3, 0), Vector2i(2, 0), Vector2i(1, 0), Vector2i(0, 0)],
 		"A reverse outside crossing preserves the same physical order"
 	)
+
+
+func _test_non_dyadic_clipped_boundaries_preserve_entry_cells() -> void:
+	var rasterizer = GridPointerRasterizerScript.new()
+	var grid_rect := Rect2(Vector2.ZERO, Vector2(160.0, 160.0))
+	var cases := [
+		{"label": "left", "from": Vector2(-20.0, 20.0), "to": Vector2(113.0, 20.0), "expected": [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0)]},
+		{"label": "top", "from": Vector2(20.0, -20.0), "to": Vector2(20.0, 113.0), "expected": [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2)]},
+		{"label": "right", "from": Vector2(180.0, 20.0), "to": Vector2(47.0, 20.0), "expected": [Vector2i(3, 0), Vector2i(2, 0), Vector2i(1, 0)]},
+		{"label": "bottom", "from": Vector2(20.0, 180.0), "to": Vector2(20.0, 47.0), "expected": [Vector2i(0, 3), Vector2i(0, 2), Vector2i(0, 1)]},
+	]
+	for entry_case in cases:
+		assert_equal(
+			rasterizer.rasterize_motion(
+				entry_case["from"], entry_case["to"], grid_rect,
+				Vector2i(4, 4), Vector2i(-1, -1)
+			),
+			entry_case["expected"],
+			"%s-edge non-dyadic clipping keeps every entry cell" % entry_case["label"]
+		)
 
 
 func _test_corner_touch_does_not_invent_a_cell() -> void:

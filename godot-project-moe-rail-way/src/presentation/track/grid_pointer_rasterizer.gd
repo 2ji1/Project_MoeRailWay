@@ -131,9 +131,16 @@ func _clip_motion_to_grid(
 	):
 		return []
 	var clipped: Array[Vector2] = []
-	clipped.append(from_logical + motion * interval.x)
-	clipped.append(from_logical + motion * interval.y)
+	clipped.append(_clamp_point_to_rect(from_logical + motion * interval.x, grid_rect))
+	clipped.append(_clamp_point_to_rect(from_logical + motion * interval.y, grid_rect))
 	return clipped
+
+
+func _clamp_point_to_rect(point: Vector2, rect: Rect2) -> Vector2:
+	return Vector2(
+		clampf(point.x, rect.position.x, rect.end.x),
+		clampf(point.y, rect.position.y, rect.end.y)
+	)
 
 
 func _clip_axis(
