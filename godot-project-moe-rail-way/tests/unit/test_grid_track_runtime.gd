@@ -116,7 +116,7 @@ func run() -> PackedStringArray:
 	_test_exact_center_observation_and_hit_distance()
 	_test_swept_contact_order_boundaries_and_detachment()
 	_test_swept_contacts_respect_recovery_and_invalid_ranges()
-	_test_hazard_distance_uses_built_route_intervals()
+	_test_hazard_distance_clips_active_centerlines()
 	_test_detached_observations_and_conservation()
 	_test_twenty_construction_steps_keep_completed_head_reflowable()
 	_test_sixth_head_record_locks_whole_curve_and_supports_exit()
@@ -145,7 +145,7 @@ func run() -> PackedStringArray:
 	return finish()
 
 
-func _test_hazard_distance_uses_built_route_intervals() -> void:
+func _test_hazard_distance_clips_active_centerlines() -> void:
 	var straight = GridTrackRuntimeScript.new(
 		Vector2i(-1, 0), 8, Vector2.ZERO, Vector2i(8, 4), 40.0
 	)
@@ -155,6 +155,7 @@ func _test_hazard_distance_uses_built_route_intervals() -> void:
 		"Hazard distance fixture appends straight route"
 	)
 	assert_equal(straight.advance_construction(3.0), 3.0, "Hazard distance fixture builds route")
+	assert_true(straight.prepare_for_train_sampling(0.0, 3.0), "Hazard distance fixture locks its traversed route")
 	var hazard_cells: Array[Vector2i] = [Vector2i(1, 0)]
 	assert_equal(
 		straight.get_traveled_hazard_distance_cells(hazard_cells, 0.0, 3.0),
@@ -184,12 +185,64 @@ func _test_hazard_distance_uses_built_route_intervals() -> void:
 	)
 
 	var curve = _make_fully_built_three_by_three_curve_runtime()
-	var curve_hazard: Array[Vector2i] = [Vector2i(2, 1)]
+	var curve_hazard: Array[Vector2i] = [Vector2i(0, 0)]
 	assert_equal(
 		curve.get_traveled_hazard_distance_cells(curve_hazard, 0.0, 6.0),
-		1.0,
-		"Curve occurrence uses its canonical nominal route interval"
+		0.75,
+		"Composite curve damage counts only its centerline distance inside hazard terrain"
 	)
+
+	var boundary_crossing = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 8, Vector2.ZERO, Vector2i(8, 4), 40.0
+	)
+	var boundary_pieces: Array[TrackGeometryPieceScript] = [
+		_synthetic_locked_piece(100, 0.0, Vector2(20.0, 20.0), Vector2(60.0, 20.0))
+	]
+	boundary_crossing._pieces = boundary_pieces
+	assert_true(
+		is_equal_approx(
+			boundary_crossing.get_traveled_hazard_distance_cells(
+				[Vector2i(1, 0)], 0.0, 1.0
+			),
+			0.5
+		),
+		"A centerline crossing a cell boundary spends only half its nominal distance in the hazard"
+	)
+
+	var repeated_occurrence = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 8, Vector2.ZERO, Vector2i(8, 4), 40.0
+	)
+	var repeated_pieces: Array[TrackGeometryPieceScript] = [
+		_synthetic_locked_piece(101, 0.0, Vector2(5.0, 20.0), Vector2(35.0, 20.0)),
+		_synthetic_locked_piece(102, 1.0, Vector2(5.0, 20.0), Vector2(35.0, 20.0)),
+	]
+	repeated_occurrence._pieces = repeated_pieces
+	assert_true(
+		is_equal_approx(
+			repeated_occurrence.get_traveled_hazard_distance_cells(
+				[Vector2i(0, 0)], 0.0, 2.0
+			),
+			2.0
+		),
+		"Distinct route occurrences through one terrain cell each contribute damage distance"
+	)
+
+
+func _synthetic_locked_piece(
+	group_id: int,
+	absolute_start_distance_cells: float,
+	centerline_start: Vector2,
+	centerline_end: Vector2
+):
+	var piece = TrackGeometryPieceScript.new()
+	piece.group_id = group_id
+	piece.nominal_length_cells = 1
+	piece.absolute_start_distance_cells = absolute_start_distance_cells
+	piece.centerline = PackedVector2Array([centerline_start, centerline_end])
+	piece.locked = true
+	piece.active_local_start_cells = 0.0
+	piece.active_local_end_cells = 1.0
+	return piece
 
 
 func _test_gesture_rejection_diagnostic_is_detached() -> void:

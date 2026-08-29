@@ -1689,20 +1689,113 @@ func get_traveled_hazard_distance_cells(
     for cell in hazard_cells:
         hazard_lookup[cell] = true
     var traveled := 0.0
-    for record in _sequence.get_records():
+    for piece in _pieces:
         if (
-            record.state != TrackCellRecordScript.State.BUILT
-            or not hazard_lookup.has(record.cell)
+            not piece.locked
+            or piece.nominal_length_cells <= 0
+            or piece.centerline.size() < 2
         ):
             continue
-        var interval_start: float = record.route_distance_start_cells
-        var interval_end := interval_start + 1.0
-        traveled += maxf(
-            0.0,
-            minf(through_distance_cells, interval_end)
-            - maxf(previous_distance_cells, interval_start)
+        var local_start := maxf(
+            piece.active_local_start_cells,
+            previous_distance_cells - piece.absolute_start_distance_cells
+        )
+        var local_end := minf(
+            piece.active_local_end_cells,
+            through_distance_cells - piece.absolute_start_distance_cells
+        )
+        if local_end <= local_start:
+            continue
+        traveled += _piece_hazard_distance_cells(
+            piece, hazard_lookup, local_start, local_end
         )
     return traveled
+
+
+func _piece_hazard_distance_cells(
+    piece: TrackGeometryPieceScript,
+    hazard_lookup: Dictionary,
+    local_start_cells: float,
+    local_end_cells: float
+) -> float:
+    var segment_count: int = piece.centerline.size() - 1
+    var nominal_per_segment := (
+        float(piece.nominal_length_cells) / float(segment_count)
+    )
+    var recovered_cells: Dictionary = _recovered_cells_by_piece.get(
+        _piece_key(piece), {}
+    )
+    var traveled := 0.0
+    for segment_index in range(segment_count):
+        var segment_local_start := float(segment_index) * nominal_per_segment
+        var segment_local_end := segment_local_start + nominal_per_segment
+        var overlap_start := maxf(local_start_cells, segment_local_start)
+        var overlap_end := minf(local_end_cells, segment_local_end)
+        if overlap_end <= overlap_start:
+            continue
+        var start: Vector2 = piece.centerline[segment_index]
+        var finish: Vector2 = piece.centerline[segment_index + 1]
+        var parameter_start := (
+            (overlap_start - segment_local_start) / nominal_per_segment
+        )
+        var parameter_end := (
+            (overlap_end - segment_local_start) / nominal_per_segment
+        )
+        var boundaries: Array[float] = [parameter_start, parameter_end]
+        _append_axis_grid_crossings(
+            boundaries,
+            start.x,
+            finish.x,
+            _grid_origin_units.x,
+            parameter_start,
+            parameter_end
+        )
+        _append_axis_grid_crossings(
+            boundaries,
+            start.y,
+            finish.y,
+            _grid_origin_units.y,
+            parameter_start,
+            parameter_end
+        )
+        boundaries.sort()
+        for boundary_index in range(boundaries.size() - 1):
+            var interval_start: float = boundaries[boundary_index]
+            var interval_end: float = boundaries[boundary_index + 1]
+            if interval_end <= interval_start:
+                continue
+            var midpoint := start.lerp(finish, (interval_start + interval_end) * 0.5)
+            var cell := _map_position_to_cell(midpoint)
+            if hazard_lookup.has(cell) and not recovered_cells.has(cell):
+                traveled += (interval_end - interval_start) * nominal_per_segment
+    return traveled
+
+
+func _append_axis_grid_crossings(
+    boundaries: Array[float],
+    start_units: float,
+    finish_units: float,
+    origin_units: float,
+    parameter_start: float,
+    parameter_end: float
+) -> void:
+    var delta_units := finish_units - start_units
+    if is_zero_approx(delta_units):
+        return
+    var start_cells := (start_units - origin_units) / _cell_size_units
+    var finish_cells := (finish_units - origin_units) / _cell_size_units
+    var first_boundary := int(floor(minf(start_cells, finish_cells))) + 1
+    var last_boundary := int(floor(maxf(start_cells, finish_cells)))
+    for boundary_cell in range(first_boundary, last_boundary + 1):
+        var parameter := (
+            (float(boundary_cell) - start_cells)
+            / (finish_cells - start_cells)
+        )
+        if (
+            parameter > parameter_start
+            and parameter < parameter_end
+        ):
+            boundaries.append(parameter)
 
 
 func is_exit_support_route_serial(route_serial: int) -> bool:
