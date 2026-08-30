@@ -20,6 +20,7 @@ func run() -> PackedStringArray:
 	_test_start_building_does_not_lock_geometry()
 	_test_endpoint_reshape_replacement_preserves_identity()
 	_test_crossing_occurrence_counts_and_identity_conserve_inventory()
+	_test_temporary_capacity_preserves_records_and_conservation()
 	return finish()
 
 
@@ -351,3 +352,40 @@ func _test_crossing_occurrence_counts_and_identity_conserve_inventory() -> void:
 	assert_equal(route.get_active_occurrence_count(Vector2i(2, 0)), 1, "Crossing cancellation retains the earlier occurrence count")
 	assert_equal(route.get_available_track_cells(), 5, "Crossing suffix cancellation refunds its route occurrences")
 	assert_true(route.is_conservation_valid(), "Crossing cancellation restores ordinary conservation")
+
+
+func _test_temporary_capacity_preserves_records_and_conservation() -> void:
+	var route = TrackCellSequenceScript.new(Vector2i(0, 0), 4)
+	var cells: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0)]
+	assert_equal(route.append_candidates(cells), 2, "Capacity fixture appends two records")
+	var records_before := JSON.stringify(route.get_records().map(func(record): return {
+		"serial": record.route_serial,
+		"cell": record.cell,
+		"state": record.state,
+		"progress": record.build_progress,
+		"group": record.geometry_group_id,
+		"locked": record.geometry_locked,
+	}))
+	assert_true(route.try_add_temporary_capacity(5), "Positive temporary capacity commits")
+	assert_equal(route.get_total_track_cells(), 9, "Temporary capacity increases total exactly")
+	assert_equal(route.get_available_track_cells(), 7, "Temporary capacity increases available exactly")
+	assert_equal(JSON.stringify(route.get_records().map(func(record): return {
+		"serial": record.route_serial,
+		"cell": record.cell,
+		"state": record.state,
+		"progress": record.build_progress,
+		"group": record.geometry_group_id,
+		"locked": record.geometry_locked,
+	})), records_before, "Temporary capacity changes no record identity or state")
+	assert_true(route.is_conservation_valid(), "Temporary capacity preserves conservation")
+	var rejected_before := JSON.stringify({
+		"total": route.get_total_track_cells(),
+		"available": route.get_available_track_cells(),
+		"records": route.get_records().size(),
+	})
+	assert_false(route.try_add_temporary_capacity(0), "Nonpositive capacity is rejected")
+	assert_equal(JSON.stringify({
+		"total": route.get_total_track_cells(),
+		"available": route.get_available_track_cells(),
+		"records": route.get_records().size(),
+	}), rejected_before, "Rejected capacity leaves sequence byte-identical")

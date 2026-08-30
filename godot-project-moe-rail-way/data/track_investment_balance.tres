@@ -5,3 +5,6 @@
 [resource]
 script = ExtResource("1_track_investment")
 major_track_action_cost = 50
+temporary_track_purchase_cost = 40
+temporary_track_cells_per_purchase = 5
+maximum_temporary_track_purchases = 6

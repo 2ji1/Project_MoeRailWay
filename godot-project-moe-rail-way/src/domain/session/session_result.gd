@@ -16,6 +16,12 @@ var _base_delivery_reward_total: int
 var _maximum_durability: float
 var _current_durability: float
 var _repair_cost_basis: int
+var _final_session_cash: int
+var _total_session_cash_spent: int
+var _temporary_track_purchase_count: int
+var _temporary_cargo_purchase_count: int
+var _final_total_track_cells: int
+var _final_total_cargo_slots: int
 
 
 func _init(
@@ -27,7 +33,13 @@ func _init(
 	base_delivery_reward_total_value: int = 0,
 	maximum_durability_value: float = 0.0,
 	current_durability_value: float = 0.0,
-	repair_cost_basis_value: int = 0
+	repair_cost_basis_value: int = 0,
+	final_session_cash_value: int = 0,
+	total_session_cash_spent_value: int = 0,
+	temporary_track_purchase_count_value: int = 0,
+	temporary_cargo_purchase_count_value: int = 0,
+	final_total_track_cells_value: int = 0,
+	final_total_cargo_slots_value: int = 0
 ) -> void:
 	_reason = reason_value
 	_total_ticks = total_ticks_value
@@ -38,6 +50,12 @@ func _init(
 	_maximum_durability = maximum_durability_value
 	_current_durability = current_durability_value
 	_repair_cost_basis = repair_cost_basis_value
+	_final_session_cash = final_session_cash_value
+	_total_session_cash_spent = total_session_cash_spent_value
+	_temporary_track_purchase_count = temporary_track_purchase_count_value
+	_temporary_cargo_purchase_count = temporary_cargo_purchase_count_value
+	_final_total_track_cells = final_total_track_cells_value
+	_final_total_cargo_slots = final_total_cargo_slots_value
 
 
 func get_reason() -> Reason:
@@ -78,3 +96,27 @@ func get_durability_loss() -> float:
 
 func get_repair_cost_basis() -> int:
 	return _repair_cost_basis
+
+
+func get_final_session_cash() -> int:
+	return _final_session_cash
+
+
+func get_total_session_cash_spent() -> int:
+	return _total_session_cash_spent
+
+
+func get_temporary_track_purchase_count() -> int:
+	return _temporary_track_purchase_count
+
+
+func get_temporary_cargo_purchase_count() -> int:
+	return _temporary_cargo_purchase_count
+
+
+func get_final_total_track_cells() -> int:
+	return _final_total_track_cells
+
+
+func get_final_total_cargo_slots() -> int:
+	return _final_total_cargo_slots

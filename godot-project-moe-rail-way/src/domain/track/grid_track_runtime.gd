@@ -1796,6 +1796,12 @@ func get_total_track_cells() -> int:
     return _sequence.get_total_track_cells()
 
 
+func try_add_temporary_track_capacity(additional_cells: int) -> bool:
+    if _gesture_active:
+        return false
+    return _sequence.try_add_temporary_capacity(additional_cells)
+
+
 func get_grid_origin_units() -> Vector2:
     return _grid_origin_units
 

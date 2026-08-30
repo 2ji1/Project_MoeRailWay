@@ -4,6 +4,7 @@ extends RefCounted
 const SessionResultScript = preload("res://src/domain/session/session_result.gd")
 const SessionSnapshotScript = preload("res://src/domain/session/session_snapshot.gd")
 const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
+const SessionInvestmentInputScript = preload("res://src/domain/session/session_investment_input.gd")
 const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
 const TrackSystemScript = preload("res://src/domain/track/track_system.gd")
 const TrainSystemScript = preload("res://src/domain/train/train_system.gd")
@@ -46,6 +47,8 @@ var _cached_tick_pose: Dictionary = {"position": Vector2.ZERO, "heading": Vector
 var _planning_accumulator_percent := 0
 var _did_advance_simulation_tick := true
 var _paid_track_actions_enabled := false
+var _temporary_track_purchase_count := 0
+var _temporary_cargo_purchase_count := 0
 
 
 func _init(
@@ -96,7 +99,13 @@ func start() -> void:
 	_publish_snapshot()
 
 
-func advance_tick(input_frame: TrackInputFrameScript = null) -> void:
+func advance_tick(
+	input_frame: TrackInputFrameScript = null,
+	investment_input: SessionInvestmentInputScript = null
+) -> void:
+	var ordered_priced_actions: Array[StringName] = []
+	if investment_input != null:
+		ordered_priced_actions = investment_input.take_ordered_priced_actions()
 	if _state == State.READY or _state == State.COMPLETED:
 		return
 	var planning_at_real_tick_start := (
@@ -124,7 +133,18 @@ func advance_tick(input_frame: TrackInputFrameScript = null) -> void:
 	var right_won := _track_system.apply_right_input(frame)
 	if right_won:
 		paid_demolition_route_serial = _track_system.take_paid_demolition_request()
-	else:
+	var selected_priced_action := StringName()
+	if (
+		simulation_tick_due
+		and _paid_track_actions_enabled
+		and not planning_at_real_tick_start
+		and not (right_won and paid_demolition_route_serial < 0)
+	):
+		selected_priced_action = _select_priced_action(
+			ordered_priced_actions,
+			paid_demolition_route_serial
+		)
+	if not right_won and selected_priced_action.is_empty():
 		if _paid_track_actions_enabled:
 			_track_system.apply_left_input_with_paid_crossings(
 				frame,
@@ -139,19 +159,23 @@ func advance_tick(input_frame: TrackInputFrameScript = null) -> void:
 		_publish_snapshot(false)
 		return
 
-	if paid_demolition_route_serial >= 0:
+	if selected_priced_action == SessionInvestmentInputScript.ACTION_PAID_DEMOLITION:
 		var train_distance := (
 			_train_system.get_route_distance_cells()
 			if _train_system.is_active()
 			else 0.0
 		)
-		if _paid_track_actions_enabled:
+		if paid_demolition_route_serial >= 0:
 			_track_system.try_commit_paid_demolition(
 				paid_demolition_route_serial,
 				train_distance,
 				_start_config.major_track_action_cost,
 				_session_economy
 			)
+	elif selected_priced_action == SessionInvestmentInputScript.ACTION_TEMPORARY_TRACK_PURCHASE:
+		_try_commit_temporary_track_purchase()
+	elif selected_priced_action == SessionInvestmentInputScript.ACTION_TEMPORARY_CARGO_PURCHASE:
+		_try_commit_temporary_cargo_purchase()
 
 	_track_system.advance_construction(_construction_cells_per_tick)
 	var track_end_requested := false
@@ -237,6 +261,50 @@ func advance_tick(input_frame: TrackInputFrameScript = null) -> void:
 		_publish_snapshot()
 
 
+func _select_priced_action(
+	ordered_priced_actions: Array[StringName],
+	paid_demolition_route_serial: int
+) -> StringName:
+	if not ordered_priced_actions.is_empty():
+		return ordered_priced_actions[0]
+	if paid_demolition_route_serial >= 0:
+		return SessionInvestmentInputScript.ACTION_PAID_DEMOLITION
+	return StringName()
+
+
+func _try_commit_temporary_track_purchase() -> bool:
+	if _temporary_track_purchase_count >= _start_config.maximum_temporary_track_purchases:
+		return false
+	if not _track_system.try_commit_temporary_track_purchase(
+		_start_config.temporary_track_cells_per_purchase,
+		_start_config.temporary_track_purchase_cost,
+		_session_economy
+	):
+		return false
+	_temporary_track_purchase_count += 1
+	return true
+
+
+func _try_commit_temporary_cargo_purchase() -> bool:
+	if (
+		_cargo_system == null
+		or _temporary_cargo_purchase_count >= _start_config.maximum_temporary_cargo_purchases
+	):
+		return false
+	var candidate_economy = _session_economy.duplicate_economy()
+	if not candidate_economy.try_spend(_start_config.temporary_cargo_purchase_cost):
+		return false
+	var candidate_cargo = _cargo_system.duplicate_cargo()
+	if not candidate_cargo.try_append_empty_slots(
+		_start_config.temporary_cargo_slots_per_purchase
+	):
+		return false
+	_cargo_system.replace_with(candidate_cargo)
+	_session_economy.replace_with(candidate_economy)
+	_temporary_cargo_purchase_count += 1
+	return true
+
+
 func get_snapshot() -> SessionSnapshotScript:
 	return _snapshot
 
@@ -283,7 +351,13 @@ func _complete(reason: SessionResultScript.Reason) -> void:
 		base_delivery_reward_total,
 		_train_system.get_maximum_durability(),
 		_train_system.get_current_durability(),
-		_calculate_repair_cost_basis()
+		_calculate_repair_cost_basis(),
+		_session_economy.get_cash(),
+		_session_economy.get_total_spent(),
+		_temporary_track_purchase_count,
+		_temporary_cargo_purchase_count,
+		_track_system.get_total_track_cells(),
+		_cargo_system.get_total_slot_count() if _cargo_system != null else 0
 	))
 
 
@@ -336,6 +410,12 @@ func _create_snapshot(include_warp_events: bool = true) -> SessionSnapshotScript
 	var pending_crossing_total_cost := (
 		pending_crossing_count * _start_config.major_track_action_cost
 	)
+	var spending_state_active := (
+		_paid_track_actions_enabled
+		and _state in [State.PREPARING_DEPARTURE, State.RUNNING]
+		and not _track_system.is_runtime_gesture_active()
+	)
+	var current_cash := _session_economy.get_cash()
 	return SessionSnapshotScript.new(
 		_total_ticks,
 		_elapsed_ticks,
@@ -378,11 +458,34 @@ func _create_snapshot(include_warp_events: bool = true) -> SessionSnapshotScript
 		_train_system.get_current_durability(),
 		_calculate_repair_cost_basis(),
 		_session_economy.get_starting_cash(),
-		_session_economy.get_cash(),
+		current_cash,
 		_session_economy.get_total_spent(),
 		pending_crossing_count,
 		pending_crossing_total_cost,
-		_session_economy.get_cash() >= pending_crossing_total_cost
+		current_cash >= pending_crossing_total_cost,
+		_temporary_track_purchase_count,
+		_start_config.maximum_temporary_track_purchases,
+		_start_config.temporary_track_purchase_cost,
+		_start_config.temporary_track_cells_per_purchase,
+		(
+			spending_state_active
+			and _temporary_track_purchase_count
+				< _start_config.maximum_temporary_track_purchases
+		),
+		_paid_track_actions_enabled
+			and current_cash >= _start_config.temporary_track_purchase_cost,
+		_temporary_cargo_purchase_count,
+		_start_config.maximum_temporary_cargo_purchases,
+		_start_config.temporary_cargo_purchase_cost,
+		_start_config.temporary_cargo_slots_per_purchase,
+		(
+			spending_state_active
+			and _cargo_system != null
+			and _temporary_cargo_purchase_count
+				< _start_config.maximum_temporary_cargo_purchases
+		),
+		_paid_track_actions_enabled
+			and current_cash >= _start_config.temporary_cargo_purchase_cost
 	)
 
 

@@ -7,6 +7,7 @@ const SessionResultScript = preload("res://src/domain/session/session_result.gd"
 const SessionRngScript = preload("res://src/domain/random/session_rng.gd")
 const SessionSnapshotScript = preload("res://src/domain/session/session_snapshot.gd")
 const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
+const SessionInvestmentInputScript = preload("res://src/domain/session/session_investment_input.gd")
 const TrackSystemScript = preload("res://src/domain/track/track_system.gd")
 const TrainSystemScript = preload("res://src/domain/train/train_system.gd")
 const WarpPairSystemScript = preload("res://src/domain/warp/warp_pair_system.gd")
@@ -169,7 +170,7 @@ func _physics_process(_delta: float) -> void:
 	]:
 		return
 	var input_frame = _session_shell.consume_track_input_frame()
-	session_controller.advance_tick(input_frame)
+	session_controller.advance_tick(input_frame, SessionInvestmentInputScript.empty())
 
 
 func present_session_result(result: SessionResultScript) -> void:

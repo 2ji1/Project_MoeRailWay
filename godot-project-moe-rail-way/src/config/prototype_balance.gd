@@ -13,6 +13,7 @@ const SessionCashBalanceScript = preload("res://src/config/session_cash_balance.
 const HazardGenerationBalanceScript = preload("res://src/config/hazard_generation_balance.gd")
 const DurabilityBalanceScript = preload("res://src/config/durability_balance.gd")
 const TrackInvestmentBalanceScript = preload("res://src/config/track_investment_balance.gd")
+const CargoInvestmentBalanceScript = preload("res://src/config/cargo_investment_balance.gd")
 
 @export var session_balance: SessionBalanceScript = SessionBalanceScript.new()
 @export var train_balance: TrainBalanceScript = TrainBalanceScript.new()
@@ -25,6 +26,7 @@ const TrackInvestmentBalanceScript = preload("res://src/config/track_investment_
 @export var hazard_generation_balance: HazardGenerationBalanceScript = HazardGenerationBalanceScript.new()
 @export var durability_balance: DurabilityBalanceScript = DurabilityBalanceScript.new()
 @export var track_investment_balance: TrackInvestmentBalanceScript = TrackInvestmentBalanceScript.new()
+@export var cargo_investment_balance: CargoInvestmentBalanceScript = CargoInvestmentBalanceScript.new()
 
 var session_duration_seconds: float:
     get:
@@ -60,7 +62,13 @@ func create_session_start_config(seed_value: int) -> SessionStartConfigScript:
         durability_balance.maximum_durability,
         durability_balance.damage_per_traveled_cell,
         durability_balance.repair_cost_per_durability,
-        track_investment_balance.major_track_action_cost
+        track_investment_balance.major_track_action_cost,
+        track_investment_balance.temporary_track_purchase_cost,
+        track_investment_balance.temporary_track_cells_per_purchase,
+        track_investment_balance.maximum_temporary_track_purchases,
+        cargo_investment_balance.temporary_cargo_purchase_cost,
+        cargo_investment_balance.temporary_cargo_slots_per_purchase,
+        cargo_investment_balance.maximum_temporary_cargo_purchases
     )
     config.warp_forecast_ticks = _seconds_to_ticks(
         warp_lifecycle_balance.forecast_duration_seconds,
@@ -124,7 +132,13 @@ func complete_session_start_config(
         base_config.maximum_durability,
         base_config.damage_per_traveled_cell,
         base_config.repair_cost_per_durability,
-        base_config.major_track_action_cost
+        base_config.major_track_action_cost,
+        base_config.temporary_track_purchase_cost,
+        base_config.temporary_track_cells_per_purchase,
+        base_config.maximum_temporary_track_purchases,
+        base_config.temporary_cargo_purchase_cost,
+        base_config.temporary_cargo_slots_per_purchase,
+        base_config.maximum_temporary_cargo_purchases
     )
 
 

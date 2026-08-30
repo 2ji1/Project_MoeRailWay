@@ -3,6 +3,7 @@ extends RefCounted
 
 const TrackCellRecordScript = preload("res://src/domain/track/track_cell_record.gd")
 const TrackGeometryPieceScript = preload("res://src/domain/track/track_geometry_piece.gd")
+const MAX_SIGNED_INTEGER := 9223372036854775807
 
 var _departure_cell: Vector2i
 var _total_track_cells: int
@@ -320,6 +321,19 @@ func get_available_track_cells() -> int:
 
 func get_total_track_cells() -> int:
     return _total_track_cells
+
+
+func try_add_temporary_capacity(additional_cells: int) -> bool:
+    if (
+        additional_cells <= 0
+        or _total_track_cells > MAX_SIGNED_INTEGER - additional_cells
+        or not is_conservation_valid()
+    ):
+        return false
+    _total_track_cells += additional_cells
+    _available_track_cells += additional_cells
+    assert(is_conservation_valid(), "Temporary track capacity must preserve conservation")
+    return true
 
 
 func is_conservation_valid() -> bool:

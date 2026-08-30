@@ -114,6 +114,30 @@ func try_commit_paid_demolition(
 	return true
 
 
+func try_commit_temporary_track_purchase(
+	additional_cells: int,
+	cost: int,
+	economy: SessionEconomyScript
+) -> bool:
+	if (
+		additional_cells <= 0
+		or cost < 0
+		or economy == null
+		or _left_capture_active
+		or _runtime.gesture_is_active()
+	):
+		return false
+	var candidate_economy = economy.duplicate_economy()
+	if not candidate_economy.try_spend(cost):
+		return false
+	var candidate_runtime = _runtime.duplicate_runtime()
+	if not candidate_runtime.try_add_temporary_track_capacity(additional_cells):
+		return false
+	_runtime.replace_with(candidate_runtime)
+	economy.replace_with(candidate_economy)
+	return true
+
+
 func apply_left_input(input_frame: TrackInputFrameScript) -> void:
 	_apply_left_input_internal(input_frame, null, 0, false)
 

@@ -31,6 +31,12 @@ var maximum_durability: float
 var damage_per_traveled_cell: float
 var repair_cost_per_durability: float
 var major_track_action_cost: int
+var temporary_track_purchase_cost: int
+var temporary_track_cells_per_purchase: int
+var maximum_temporary_track_purchases: int
+var temporary_cargo_purchase_cost: int
+var temporary_cargo_slots_per_purchase: int
+var maximum_temporary_cargo_purchases: int
 
 
 func _init(
@@ -63,7 +69,13 @@ func _init(
 	maximum_durability_value: float = 0.0,
 	damage_per_traveled_cell_value: float = 0.0,
 	repair_cost_per_durability_value: float = 0.0,
-	major_track_action_cost_value: int = 0
+	major_track_action_cost_value: int = 0,
+	temporary_track_purchase_cost_value: int = 40,
+	temporary_track_cells_per_purchase_value: int = 5,
+	maximum_temporary_track_purchases_value: int = 6,
+	temporary_cargo_purchase_cost_value: int = 80,
+	temporary_cargo_slots_per_purchase_value: int = 1,
+	maximum_temporary_cargo_purchases_value: int = 4
 ) -> void:
 	seed = seed_value
 	session_duration_seconds = duration_seconds
@@ -95,3 +107,9 @@ func _init(
 	damage_per_traveled_cell = damage_per_traveled_cell_value
 	repair_cost_per_durability = repair_cost_per_durability_value
 	major_track_action_cost = major_track_action_cost_value
+	temporary_track_purchase_cost = temporary_track_purchase_cost_value
+	temporary_track_cells_per_purchase = temporary_track_cells_per_purchase_value
+	maximum_temporary_track_purchases = maximum_temporary_track_purchases_value
+	temporary_cargo_purchase_cost = temporary_cargo_purchase_cost_value
+	temporary_cargo_slots_per_purchase = temporary_cargo_slots_per_purchase_value
+	maximum_temporary_cargo_purchases = maximum_temporary_cargo_purchases_value

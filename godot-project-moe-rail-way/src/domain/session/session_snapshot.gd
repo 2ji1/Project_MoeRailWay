@@ -52,6 +52,18 @@ var _total_session_cash_spent: int
 var _pending_crossing_count: int
 var _pending_crossing_total_cost: int
 var _pending_crossing_affordable: bool
+var _temporary_track_purchase_count: int
+var _maximum_temporary_track_purchases: int
+var _temporary_track_purchase_cost: int
+var _temporary_track_cells_per_purchase: int
+var _temporary_track_purchase_available: bool
+var _temporary_track_purchase_affordable: bool
+var _temporary_cargo_purchase_count: int
+var _maximum_temporary_cargo_purchases: int
+var _temporary_cargo_purchase_cost: int
+var _temporary_cargo_slots_per_purchase: int
+var _temporary_cargo_purchase_available: bool
+var _temporary_cargo_purchase_affordable: bool
 
 
 func _init(
@@ -100,7 +112,19 @@ func _init(
 	total_session_cash_spent_value: int = 0,
 	pending_crossing_count_value: int = 0,
 	pending_crossing_total_cost_value: int = 0,
-	pending_crossing_affordable_value: bool = true
+	pending_crossing_affordable_value: bool = true,
+	temporary_track_purchase_count_value: int = 0,
+	maximum_temporary_track_purchases_value: int = 0,
+	temporary_track_purchase_cost_value: int = 0,
+	temporary_track_cells_per_purchase_value: int = 0,
+	temporary_track_purchase_available_value: bool = false,
+	temporary_track_purchase_affordable_value: bool = false,
+	temporary_cargo_purchase_count_value: int = 0,
+	maximum_temporary_cargo_purchases_value: int = 0,
+	temporary_cargo_purchase_cost_value: int = 0,
+	temporary_cargo_slots_per_purchase_value: int = 0,
+	temporary_cargo_purchase_available_value: bool = false,
+	temporary_cargo_purchase_affordable_value: bool = false
 ) -> void:
 	_total_ticks = total_ticks_value
 	_elapsed_ticks = elapsed_ticks_value
@@ -148,6 +172,18 @@ func _init(
 	_pending_crossing_count = pending_crossing_count_value
 	_pending_crossing_total_cost = pending_crossing_total_cost_value
 	_pending_crossing_affordable = pending_crossing_affordable_value
+	_temporary_track_purchase_count = temporary_track_purchase_count_value
+	_maximum_temporary_track_purchases = maximum_temporary_track_purchases_value
+	_temporary_track_purchase_cost = temporary_track_purchase_cost_value
+	_temporary_track_cells_per_purchase = temporary_track_cells_per_purchase_value
+	_temporary_track_purchase_available = temporary_track_purchase_available_value
+	_temporary_track_purchase_affordable = temporary_track_purchase_affordable_value
+	_temporary_cargo_purchase_count = temporary_cargo_purchase_count_value
+	_maximum_temporary_cargo_purchases = maximum_temporary_cargo_purchases_value
+	_temporary_cargo_purchase_cost = temporary_cargo_purchase_cost_value
+	_temporary_cargo_slots_per_purchase = temporary_cargo_slots_per_purchase_value
+	_temporary_cargo_purchase_available = temporary_cargo_purchase_available_value
+	_temporary_cargo_purchase_affordable = temporary_cargo_purchase_affordable_value
 
 
 func get_total_ticks() -> int:
@@ -338,6 +374,54 @@ func get_pending_crossing_total_cost() -> int:
 
 func is_pending_crossing_affordable() -> bool:
 	return _pending_crossing_affordable
+
+
+func get_temporary_track_purchase_count() -> int:
+	return _temporary_track_purchase_count
+
+
+func get_maximum_temporary_track_purchases() -> int:
+	return _maximum_temporary_track_purchases
+
+
+func get_temporary_track_purchase_cost() -> int:
+	return _temporary_track_purchase_cost
+
+
+func get_temporary_track_cells_per_purchase() -> int:
+	return _temporary_track_cells_per_purchase
+
+
+func is_temporary_track_purchase_available() -> bool:
+	return _temporary_track_purchase_available
+
+
+func is_temporary_track_purchase_affordable() -> bool:
+	return _temporary_track_purchase_affordable
+
+
+func get_temporary_cargo_purchase_count() -> int:
+	return _temporary_cargo_purchase_count
+
+
+func get_maximum_temporary_cargo_purchases() -> int:
+	return _maximum_temporary_cargo_purchases
+
+
+func get_temporary_cargo_purchase_cost() -> int:
+	return _temporary_cargo_purchase_cost
+
+
+func get_temporary_cargo_slots_per_purchase() -> int:
+	return _temporary_cargo_slots_per_purchase
+
+
+func is_temporary_cargo_purchase_available() -> bool:
+	return _temporary_cargo_purchase_available
+
+
+func is_temporary_cargo_purchase_affordable() -> bool:
+	return _temporary_cargo_purchase_affordable
 
 
 func _duplicate_records(source: Array[TrackCellRecordScript]) -> Array[TrackCellRecordScript]:
