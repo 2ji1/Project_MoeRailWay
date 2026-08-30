@@ -48,9 +48,9 @@ func run() -> PackedStringArray:
 
 	var default_balance := PrototypeBalanceScript.new()
 	assert_equal(
-		default_balance.session_cash_balance.starting_session_cash,
+		default_balance.contract_economy_balance.initial_run_cash,
 		300,
-		"Default starting_session_cash must be 300"
+		"Default initial_run_cash must be 300"
 	)
 	assert_equal(default_balance.hazard_generation_balance.hazard_cell_count, 12, "Default hazard count is 12")
 	assert_equal(default_balance.durability_balance.maximum_durability, 100.0, "Default durability is 100")
@@ -116,24 +116,24 @@ func run() -> PackedStringArray:
 	_assert_contains(Validator.validate(invalid_large_departure), "required_built_cells")
 
 	var invalid_negative_cash := PrototypeBalanceScript.new()
-	invalid_negative_cash.session_cash_balance.starting_session_cash = -1
+	invalid_negative_cash.contract_economy_balance.initial_run_cash = -1
 	_assert_contains(
 		Validator.validate(invalid_negative_cash),
-		"prototype_balance.session_cash_balance.starting_session_cash"
+		"prototype_balance.contract_economy_balance.initial_run_cash"
 	)
 
 	var invalid_large_cash := PrototypeBalanceScript.new()
-	invalid_large_cash.session_cash_balance.starting_session_cash = 1000001
+	invalid_large_cash.contract_economy_balance.initial_run_cash = 1000001
 	_assert_contains(
 		Validator.validate(invalid_large_cash),
-		"prototype_balance.session_cash_balance.starting_session_cash"
+		"prototype_balance.contract_economy_balance.initial_run_cash"
 	)
 
 	var missing_cash_resource := PrototypeBalanceScript.new()
-	missing_cash_resource.session_cash_balance = null
+	missing_cash_resource.contract_economy_balance = null
 	_assert_contains(
 		Validator.validate(missing_cash_resource),
-		"prototype_balance.session_cash_balance.resource"
+		"prototype_balance.contract_economy_balance.resource"
 	)
 
 	var invalid_hazard_count := PrototypeBalanceScript.new()

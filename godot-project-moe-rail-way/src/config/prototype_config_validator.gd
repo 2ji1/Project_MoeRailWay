@@ -150,15 +150,7 @@ static func validate(balance: PrototypeBalanceScript) -> PackedStringArray:
                 "prototype_balance.cargo_balance.base_delivery_reward must be between 0 and 1000000"
             )
 
-    if balance.session_cash_balance == null:
-        errors.append("prototype_balance.session_cash_balance.resource is required")
-    elif (
-        balance.session_cash_balance.starting_session_cash < 0
-        or balance.session_cash_balance.starting_session_cash > 1000000
-    ):
-        errors.append(
-            "prototype_balance.session_cash_balance.starting_session_cash must be between 0 and 1000000"
-        )
+    _validate_contract_economy(errors, balance.contract_economy_balance)
 
     if balance.hazard_generation_balance == null:
         errors.append("prototype_balance.hazard_generation_balance.resource is required")
@@ -285,6 +277,65 @@ static func _validate_track_investment(
         errors.append(prefix + ".maximum_temporary_track_purchases must not overflow maximum track capacity")
     if _product_exceeds(purchase_cost, maximum_purchases, MAX_SIGNED_INTEGER):
         errors.append(prefix + ".maximum_temporary_track_purchases must not overflow maximum track purchase cost")
+
+
+static func _validate_contract_economy(errors: PackedStringArray, balance: Resource) -> void:
+    var prefix := "prototype_balance.contract_economy_balance"
+    if balance == null:
+        errors.append(prefix + ".resource is required")
+        return
+    if balance.initial_run_cash < 0 or balance.initial_run_cash > 1000000:
+        errors.append(prefix + ".initial_run_cash must be between 0 and 1000000")
+    if balance.base_operating_cost < 0 or balance.base_operating_cost > 1000000:
+        errors.append(prefix + ".base_operating_cost must be between 0 and 1000000")
+    if balance.companies.size() != 6:
+        errors.append(prefix + ".companies must contain exactly 6 entries")
+        return
+    var seen_ids := {}
+    var total_weight := 0
+    for index in range(balance.companies.size()):
+        var company: Resource = balance.companies[index]
+        var company_prefix := "%s.companies[%d]" % [prefix, index]
+        if company == null:
+            errors.append(company_prefix + ".resource is required")
+            continue
+        if company.company_id.is_empty():
+            errors.append(company_prefix + ".company_id must not be empty")
+        elif seen_ids.has(company.company_id):
+            errors.append(company_prefix + ".company_id must be unique")
+        else:
+            seen_ids[company.company_id] = true
+        if company.display_name.strip_edges().is_empty():
+            errors.append(company_prefix + ".display_name must not be empty")
+        if company.generation_weight < 1 or company.generation_weight > 1000000:
+            errors.append(company_prefix + ".generation_weight must be between 1 and 1000000")
+        else:
+            if total_weight > MAX_SIGNED_INTEGER - company.generation_weight:
+                errors.append(prefix + ".generation_weight total must not overflow")
+            else:
+                total_weight += company.generation_weight
+        _validate_nonnegative_company_value(errors, company_prefix, "base_delivery_fee", company.base_delivery_fee)
+        if company.quota < 1 or company.quota > 1000000:
+            errors.append(company_prefix + ".quota must be between 1 and 1000000")
+        _validate_nonnegative_company_value(errors, company_prefix, "maximum_shortfall_penalty", company.maximum_shortfall_penalty)
+        _validate_nonnegative_company_value(errors, company_prefix, "completion_bonus_at_quota", company.completion_bonus_at_quota)
+        _validate_nonnegative_company_value(errors, company_prefix, "trust_per_excess_delivery_milli", company.trust_per_excess_delivery_milli)
+        if company.completion_bonus_at_quota > MAX_SIGNED_INTEGER - company.maximum_shortfall_penalty:
+            errors.append(company_prefix + ".cash curve must not overflow")
+        elif _product_exceeds(company.quota, company.completion_bonus_at_quota + company.maximum_shortfall_penalty, MAX_SIGNED_INTEGER):
+            errors.append(company_prefix + ".cash curve must not overflow")
+    if total_weight <= 0:
+        errors.append(prefix + ".generation_weight total must be positive")
+
+
+static func _validate_nonnegative_company_value(
+    errors: PackedStringArray,
+    prefix: String,
+    field_name: String,
+    value: int
+) -> void:
+    if value < 0 or value > 1000000:
+        errors.append(prefix + "." + field_name + " must be between 0 and 1000000")
 
 
 static func _validate_cargo_investment(

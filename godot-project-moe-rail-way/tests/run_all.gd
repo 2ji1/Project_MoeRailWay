@@ -32,6 +32,8 @@ const SUITES = [
     preload("res://tests/unit/test_track_system_crossing.gd"),
     preload("res://tests/unit/test_session_investment_purchases.gd"),
     preload("res://tests/unit/test_risk_investment_presentation.gd"),
+    preload("res://tests/unit/test_contract_economy_config.gd"),
+    preload("res://tests/unit/test_run_state.gd"),
 ]
 
 const GridTrackRuntimeSuiteScript = preload("res://tests/unit/test_grid_track_runtime.gd")
@@ -40,6 +42,7 @@ const CargoSystemSuiteScript = preload("res://tests/unit/test_cargo_system.gd")
 const WarpCargoSessionControllerSuiteScript = preload(
     "res://tests/unit/test_warp_cargo_session_controller.gd"
 )
+const RunStateSuiteScript = preload("res://tests/unit/test_run_state.gd")
 
 
 func _initialize() -> void:
@@ -47,6 +50,14 @@ func _initialize() -> void:
 
 
 func _run_suites() -> void:
+    var run_state_probe_prefix := "--run-state-invalid-probe="
+    for argument in OS.get_cmdline_user_args():
+        if argument.begins_with(run_state_probe_prefix):
+            var probe_case := argument.trim_prefix(run_state_probe_prefix)
+            print("RUN_STATE_INVALID_PROBE_BEGIN:" + probe_case)
+            RunStateSuiteScript.new().run_invalid_probe(probe_case)
+            quit(0)
+            return
     var controller_probe_prefix := "--warp-cargo-controller-invalid-probe="
     var warp_probe_prefix := "--warp-pair-invalid-probe="
     var cargo_probe_prefix := "--cargo-invalid-probe="

@@ -8,7 +8,7 @@
 [ext_resource type="Script" path="res://src/config/departure_balance.gd" id="6_departure"]
 [ext_resource type="Script" path="res://src/config/warp_lifecycle_balance.gd" id="7_warp"]
 [ext_resource type="Script" path="res://src/config/cargo_balance.gd" id="8_cargo"]
-[ext_resource type="Script" path="res://src/config/session_cash_balance.gd" id="9_cash"]
+[ext_resource type="Resource" path="res://data/contract_economy_balance.tres" id="9_contract"]
 [ext_resource type="Script" path="res://src/config/hazard_generation_balance.gd" id="10_hazard"]
 [ext_resource type="Script" path="res://src/config/durability_balance.gd" id="11_durability"]
 [ext_resource type="Script" path="res://src/config/track_investment_balance.gd" id="12_track_investment"]
@@ -50,10 +50,6 @@ script = ExtResource("8_cargo")
 base_slot_count = 2
 base_delivery_reward = 37
 
-[sub_resource type="Resource" id="Resource_cash"]
-script = ExtResource("9_cash")
-starting_session_cash = 300
-
 [sub_resource type="Resource" id="Resource_hazard"]
 script = ExtResource("10_hazard")
 hazard_cell_count = 12
@@ -86,7 +82,7 @@ track_construction_balance = SubResource("Resource_construction")
 departure_balance = SubResource("Resource_departure")
 warp_lifecycle_balance = SubResource("Resource_warp")
 cargo_balance = SubResource("Resource_cargo")
-session_cash_balance = SubResource("Resource_cash")
+contract_economy_balance = ExtResource("9_contract")
 hazard_generation_balance = SubResource("Resource_hazard")
 durability_balance = SubResource("Resource_durability")
 track_investment_balance = SubResource("Resource_track_investment")
