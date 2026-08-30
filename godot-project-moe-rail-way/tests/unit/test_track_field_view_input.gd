@@ -18,6 +18,7 @@ func run() -> PackedStringArray:
 	_test_corner_order_and_consume_once()
 	_test_outside_and_right_cell_mapping()
 	_test_crossing_interval_exposes_primitive_gap_identity()
+	_test_crossing_cost_feedback_is_visible_before_departure()
 	_test_held_reentry_preserves_intermediate_cells_across_frames()
 	_test_held_reentry_gap_grants_bounded_connection_authority()
 	_test_resize_and_nonzero_canvas_offset_preserve_cells()
@@ -199,14 +200,21 @@ func _view_snapshot(
 	gesture_active := false,
 	train_active := false,
 	train_position := Vector2.ZERO,
-	has_track_train_data := true
+	has_track_train_data := true,
+	pending_crossing_count := 0,
+	pending_crossing_total_cost := 0,
+	pending_crossing_affordable := true
 ) -> SessionSnapshotScript:
-	return SessionSnapshotScript.new(
+	var snapshot := SessionSnapshotScript.new(
 		1, 0, 1, 60, has_track_train_data, state,
 		records, pieces, [], 0.0, 0, 0, Vector2.ZERO, 0, 0, 0.0,
 		train_active, 0.0, train_position, Vector2.RIGHT, 0.0, false, &"view",
 		Vector2i(-1, -1), endpoint_eligible, gesture_active
 	)
+	snapshot._pending_crossing_count = pending_crossing_count
+	snapshot._pending_crossing_total_cost = pending_crossing_total_cost
+	snapshot._pending_crossing_affordable = pending_crossing_affordable
+	return snapshot
 
 
 func _endpoint_record(
@@ -1216,6 +1224,24 @@ func _test_crossing_interval_exposes_primitive_gap_identity() -> void:
 		interval.get("points", PackedVector2Array())
 	)
 	assert_true(gap_points.size() >= 2, "Crossing interval produces a minimal visible gap primitive")
+	fixture.parent.free()
+
+
+func _test_crossing_cost_feedback_is_visible_before_departure() -> void:
+	var fixture := _fixture()
+	var snapshot := _view_snapshot(
+		[], [], SessionControllerScript.State.PREPARING_DEPARTURE,
+		true, true, false, Vector2.ZERO, true,
+		1, 50, false
+	)
+	fixture.view.present(snapshot)
+	var unaffordable: Dictionary = fixture.view.get_render_observation().planning_indicator
+	assert_true(unaffordable.visible, "Pending crossing cost feedback is visible before departure")
+	assert_equal(unaffordable.text, "CROSSING 50 (NO CASH)", "Pre-departure feedback exposes exact cost and affordability")
+	snapshot._pending_crossing_affordable = true
+	fixture.view.present(snapshot)
+	var affordable: Dictionary = fixture.view.get_render_observation().planning_indicator
+	assert_equal(affordable.text, "CROSSING 50 (READY)", "Pre-departure feedback updates readiness without a planning prefix")
 	fixture.parent.free()
 
 

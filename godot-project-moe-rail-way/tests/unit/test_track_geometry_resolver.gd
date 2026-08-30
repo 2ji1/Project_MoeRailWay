@@ -1091,6 +1091,23 @@ func _test_grade_separated_crossing_exception_is_exact_and_perpendicular() -> vo
 	)
 	assert_false(rejected.is_valid, "A mismatched partner serial cannot bypass locked collision ownership")
 	assert_equal(rejected.reason, &"locked_overlap", "Mismatched crossing identity rejects as a real overlap")
+	var parallel = locked.duplicate_piece()
+	parallel.group_id = 91
+	parallel.first_route_serial = 8
+	parallel.last_route_serial = 8
+	parallel.absolute_start_distance_cells = 7.0
+	parallel.locked = false
+	assert_true(
+		_resolver._conflicts_with_locked(
+			parallel,
+			[locked],
+			Vector2.ZERO,
+			40.0,
+			Vector2i(2, 2),
+			2
+		),
+		"An authorized cell and partner cannot exempt a parallel centerline overlap"
+	)
 
 
 func _records_for(source_cells: Array, departure: Vector2i = DEPARTURE) -> Array:

@@ -159,6 +159,15 @@ func _test_incomplete_and_branch_like_reentry_preserve_last_valid_preview() -> v
 	assert_false(_update_gesture(branch_track, branch_path), "A turn through occupied track does not create a branch-like crossing")
 	assert_equal(_track_observation(branch_track), branch_before, "Rejected branch-like reentry preserves the last valid preview")
 
+	var tangent_track := _built_horizontal_track()
+	assert_true(_begin_gesture(tangent_track), "Shared-tangent fixture begins")
+	assert_true(_update_gesture(tangent_track, CROSSING_APPROACH), "Shared-tangent fixture publishes its approach")
+	var tangent_before := _track_observation(tangent_track)
+	var tangent_path := CROSSING_APPROACH.duplicate()
+	tangent_path.append_array([Vector2i(2, 2), Vector2i(1, 2)])
+	assert_false(_update_gesture(tangent_track, tangent_path), "An occupied-cell turn sharing the earlier tangent rejects")
+	assert_equal(_track_observation(tangent_track), tangent_before, "Rejected shared tangent preserves the last valid preview")
+
 	var uturn_track := _built_horizontal_track()
 	assert_true(_begin_gesture(uturn_track), "U-turn fixture begins")
 	assert_true(_update_gesture(uturn_track, CROSSING_APPROACH), "U-turn fixture publishes its approach")
@@ -183,6 +192,24 @@ func _test_incomplete_and_branch_like_reentry_preserve_last_valid_preview() -> v
 	diagonal_path.append_array([Vector2i(2, 2), Vector2i(2, 1)])
 	assert_false(_update_gesture(diagonal_track, diagonal_path), "A diagonal entry into occupied track rejects")
 	assert_equal(_track_observation(diagonal_track), diagonal_before, "Rejected diagonal entry preserves the last valid preview")
+
+	var parallel_track := _built_horizontal_track()
+	assert_true(_begin_gesture(parallel_track), "Parallel-overlap fixture begins")
+	var parallel_approach: Array[Vector2i] = [Vector2i(8, 2)]
+	assert_true(_update_gesture(parallel_track, parallel_approach), "Parallel-overlap fixture publishes its free approach")
+	var parallel_before := _track_observation(parallel_track)
+	var parallel_path: Array[Vector2i] = [Vector2i(8, 2), Vector2i(7, 2), Vector2i(6, 2)]
+	assert_false(_update_gesture(parallel_track, parallel_path), "A reverse parallel overlap through occupied track rejects")
+	assert_equal(_track_observation(parallel_track), parallel_before, "Rejected parallel overlap preserves the last valid preview")
+	assert_equal(
+		parallel_track._runtime._crossing_partner_for_candidate(
+			parallel_track._runtime._sequence,
+			Vector2i(7, 2),
+			Vector2i(6, 2)
+		),
+		-1,
+		"Same-orientation reuse cannot acquire crossing authority"
+	)
 
 
 func _test_crossing_finalize_charges_once_and_abort_is_free() -> void:

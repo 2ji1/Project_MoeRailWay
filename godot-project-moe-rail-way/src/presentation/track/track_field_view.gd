@@ -403,15 +403,21 @@ func present(snapshot: SessionSnapshotScript) -> void:
 	if _presented_state == SessionControllerScript.State.RUNNING and not _departure_dissolve_started:
 		_departure_dissolve_started = true
 		set_process(true)
-	_planning_indicator_visible = (
-		_presented_state == SessionControllerScript.State.RUNNING
-		and snapshot.is_planning_slowdown_active()
-	)
 	_presented_pending_crossing_count = snapshot.get_pending_crossing_count()
 	_presented_pending_crossing_total_cost = snapshot.get_pending_crossing_total_cost()
 	_presented_pending_crossing_affordable = snapshot.is_pending_crossing_affordable()
+	var planning_slowdown_visible := (
+		_presented_state == SessionControllerScript.State.RUNNING
+		and snapshot.is_planning_slowdown_active()
+	)
+	_planning_indicator_visible = (
+		planning_slowdown_visible or _presented_pending_crossing_count > 0
+	)
 	_planning_indicator_text = (
-		_build_planning_indicator_text(snapshot.get_planning_time_scale_percent())
+		_build_planning_indicator_text(
+			snapshot.get_planning_time_scale_percent(),
+			planning_slowdown_visible
+		)
 		if _planning_indicator_visible
 		else ""
 	)
@@ -510,16 +516,19 @@ func get_render_observation() -> Dictionary:
 	return observation
 
 
-func _build_planning_indicator_text(planning_percent: int) -> String:
-	var text := "PLANNING %d%%" % planning_percent
+func _build_planning_indicator_text(
+	planning_percent: int,
+	include_planning: bool
+) -> String:
+	var planning_text := "PLANNING %d%%" % planning_percent
 	if _presented_pending_crossing_count <= 0:
-		return text
+		return planning_text if include_planning else ""
 	var affordability := "READY" if _presented_pending_crossing_affordable else "NO CASH"
-	return "%s | CROSSING %d (%s)" % [
-		text,
+	var crossing_text := "CROSSING %d (%s)" % [
 		_presented_pending_crossing_total_cost,
 		affordability,
 	]
+	return "%s | %s" % [planning_text, crossing_text] if include_planning else crossing_text
 
 
 func _get_valid_start_cell() -> Vector2i:
