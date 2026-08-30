@@ -100,6 +100,10 @@ func get_base_delivery_reward_total() -> int:
 	return _base_delivery_reward_total
 
 
+func get_delivery_fee_total() -> int:
+	return _base_delivery_reward_total
+
+
 func get_maximum_durability() -> float:
 	return _maximum_durability
 

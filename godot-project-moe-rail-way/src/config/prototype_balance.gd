@@ -88,7 +88,7 @@ func create_session_start_config(seed_value: int) -> SessionStartConfigScript:
     )
     config.warp_max_live_pairs = warp_lifecycle_balance.max_live_pairs
     config.cargo_base_slot_count = cargo_balance.base_slot_count
-    config.cargo_base_delivery_reward = cargo_balance.base_delivery_reward
+    config.company_definitions = _company_definitions()
     return config
 
 
@@ -102,7 +102,7 @@ func complete_session_start_config(
     grid_origin_value: Vector2 = Vector2.ZERO,
     departure_cell_value: Vector2i = Vector2i(-1, -1)
 ) -> SessionStartConfigScript:
-    return SessionStartConfigScript.new(
+    var completed := SessionStartConfigScript.new(
         base_config.seed,
         base_config.session_duration_seconds,
         base_config.simulation_ticks_per_second,
@@ -140,6 +140,19 @@ func complete_session_start_config(
         base_config.temporary_cargo_slots_per_purchase,
         base_config.maximum_temporary_cargo_purchases
     )
+    completed.company_definitions = base_config.company_definitions.duplicate(true)
+    return completed
+
+
+func _company_definitions() -> Array[Dictionary]:
+    var definitions: Array[Dictionary] = []
+    for company in contract_economy_balance.companies:
+        definitions.append({
+            "company_id": company.company_id,
+            "generation_weight": company.generation_weight,
+            "base_delivery_fee": company.base_delivery_fee,
+        })
+    return definitions
 
 
 func _seconds_to_ticks(seconds: float, require_positive: bool) -> int:

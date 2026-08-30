@@ -45,6 +45,22 @@ func run() -> PackedStringArray:
 		valid_balance.simulation_ticks_per_second,
         "SessionStartConfig must copy tick rate"
 	)
+	assert_equal(start_config.company_definitions.size(), 6, "SessionStartConfig copies six company definitions")
+	var invalid_company_config = valid_balance.complete_session_start_config(
+		start_config,
+		Vector2(1200.0, 560.0),
+		&"departure",
+		Vector2(20.0, 20.0),
+		40.0,
+		Vector2i(30, 14),
+		Vector2.ZERO,
+		Vector2i.ZERO
+	)
+	invalid_company_config.company_definitions.clear()
+	_assert_contains(
+		Validator.validate_completed_session_start_config(invalid_company_config),
+		"session_start_config.company_definitions must contain exactly 6"
+	)
 
 	var default_balance := PrototypeBalanceScript.new()
 	assert_equal(

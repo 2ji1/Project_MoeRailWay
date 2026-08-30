@@ -19,6 +19,8 @@ var forecast_remaining_ticks: int
 var lifetime_total_ticks: int
 var lifetime_remaining_ticks: int
 var style_index: int
+var company_id: StringName
+var base_delivery_fee: int = -1
 
 
 func duplicate_record() -> RefCounted:
@@ -32,4 +34,6 @@ func duplicate_record() -> RefCounted:
     copy.lifetime_total_ticks = lifetime_total_ticks
     copy.lifetime_remaining_ticks = lifetime_remaining_ticks
     copy.style_index = style_index
+    copy.company_id = company_id
+    copy.base_delivery_fee = base_delivery_fee
     return copy

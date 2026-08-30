@@ -142,14 +142,6 @@ static func validate(balance: PrototypeBalanceScript) -> PackedStringArray:
             errors.append(
                 "prototype_balance.cargo_balance.base_slot_count must be between 1 and 8"
             )
-        if (
-            balance.cargo_balance.base_delivery_reward < 0
-            or balance.cargo_balance.base_delivery_reward > 1000000
-        ):
-            errors.append(
-                "prototype_balance.cargo_balance.base_delivery_reward must be between 0 and 1000000"
-            )
-
     _validate_contract_economy(errors, balance.contract_economy_balance)
 
     if balance.hazard_generation_balance == null:
@@ -251,7 +243,38 @@ static func validate_completed_session_start_config(
         config.maximum_temporary_cargo_purchases,
         config.cargo_base_slot_count
     )
+    _validate_completed_company_definitions(errors, config.company_definitions)
     return errors
+
+
+static func _validate_completed_company_definitions(
+    errors: PackedStringArray,
+    definitions: Array[Dictionary]
+) -> void:
+    if definitions.size() != 6:
+        errors.append("session_start_config.company_definitions must contain exactly 6 entries")
+        return
+    var seen_ids := {}
+    var total_weight := 0
+    for index in range(definitions.size()):
+        var definition: Dictionary = definitions[index]
+        var prefix := "session_start_config.company_definitions[%d]" % index
+        if not definition.has("company_id") or StringName(definition.get("company_id", StringName())).is_empty():
+            errors.append(prefix + ".company_id must not be empty")
+        elif seen_ids.has(definition["company_id"]):
+            errors.append(prefix + ".company_id must be unique")
+        else:
+            seen_ids[definition["company_id"]] = true
+        var weight := int(definition.get("generation_weight", 0))
+        if weight < 1 or weight > 1000000:
+            errors.append(prefix + ".generation_weight must be between 1 and 1000000")
+        else:
+            total_weight += weight
+        var fee := int(definition.get("base_delivery_fee", -1))
+        if fee < 0 or fee > 1000000:
+            errors.append(prefix + ".base_delivery_fee must be between 0 and 1000000")
+    if total_weight <= 0:
+        errors.append("session_start_config.company_definitions generation weight total must be positive")
 
 
 static func _validate_track_investment(

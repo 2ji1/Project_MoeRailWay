@@ -6,6 +6,7 @@ const SessionRngScript = preload("res://src/domain/random/session_rng.gd")
 const WarpPairRecordScript = preload("res://src/domain/warp/warp_pair_record.gd")
 const RouteContactAnchorScript = preload("res://src/domain/track/route_contact_anchor.gd")
 const CargoSystemScript = preload("res://src/domain/cargo/cargo_system.gd")
+const COMPANY_SEED_SALT := 0x434F4D50414E5952
 
 var _grid_size: Vector2i
 var _forecast_ticks: int
@@ -14,6 +15,8 @@ var _lifetime_min_ticks: int
 var _lifetime_max_ticks: int
 var _max_live_pairs: int
 var _session_rng: SessionRngScript
+var _company_rng: SessionRngScript
+var _company_definitions: Array[Dictionary] = []
 var _records: Array[WarpPairRecordScript] = []
 var _tick_events: Array[Dictionary] = []
 var _last_begin_tick := 0
@@ -36,6 +39,15 @@ func _init(
     _lifetime_max_ticks = start_config.warp_lifetime_max_ticks
     _max_live_pairs = start_config.warp_max_live_pairs
     _session_rng = session_rng
+    _company_rng = SessionRngScript.new(start_config.seed ^ COMPANY_SEED_SALT)
+    _company_definitions = start_config.company_definitions.duplicate(true)
+    if _company_definitions.is_empty():
+        _company_definitions = [{
+            "company_id": &"legacy",
+            "generation_weight": 1,
+            "base_delivery_fee": start_config.cargo_base_delivery_reward,
+        }]
+    _assert_company_definitions()
 
 
 static func cell_from_row_major_index(index: int, grid_size: Vector2i) -> Vector2i:
@@ -109,7 +121,12 @@ func resolve_contact_hits(
         if endpoint == &"origin":
             if record.state != WarpPairRecordScript.State.ACTIVE_UNLOADED:
                 continue
-            var loaded_slot := cargo_system.try_load(record.pair_id, record.style_index)
+            var loaded_slot := cargo_system.try_load(
+                record.pair_id,
+                record.style_index,
+                record.company_id,
+                record.base_delivery_fee
+            )
             if loaded_slot < 0:
                 continue
             record.state = WarpPairRecordScript.State.IN_TRANSIT
@@ -224,6 +241,7 @@ func create_running_tick_checkpoint() -> Dictionary:
         "generation_pending": _generation_pending,
         "terminal": _terminal,
         "rng_state": _session_rng.capture_state(),
+        "company_rng_state": _company_rng.capture_state(),
     }
 
 
@@ -242,6 +260,7 @@ func restore_running_tick_checkpoint(checkpoint: Dictionary) -> void:
     _generation_pending = checkpoint["generation_pending"]
     _terminal = checkpoint["terminal"]
     _session_rng.restore_state(checkpoint["rng_state"])
+    _company_rng.restore_state(checkpoint["company_rng_state"])
 
 
 func _generate_pair(tick_index: int) -> void:
@@ -269,6 +288,9 @@ func _generate_pair(tick_index: int) -> void:
     record.lifetime_remaining_ticks = record.lifetime_total_ticks
     record.forecast_remaining_ticks = _forecast_ticks
     record.style_index = _get_lowest_unused_style()
+    var company := _select_company()
+    record.company_id = company["company_id"]
+    record.base_delivery_fee = company["base_delivery_fee"]
     record.state = WarpPairRecordScript.State.FORECAST
     _records.append(record)
     _next_ordinal += 1
@@ -295,13 +317,59 @@ func _append_event(
     slot_index: int = -1,
     amount: int = 0
 ) -> void:
-    _tick_events.append({
+    var event := {
         "tick": tick_index,
         "type": type,
         "pair_id": pair_id,
         "slot_index": slot_index,
         "amount": amount,
-    })
+        "company_id": StringName(),
+        "base_delivery_fee": 0,
+    }
+    for record in _records:
+        if record.pair_id == pair_id:
+            event["company_id"] = record.company_id
+            event["base_delivery_fee"] = record.base_delivery_fee
+            break
+    _tick_events.append(event)
+
+
+func _select_company() -> Dictionary:
+    var total_weight := 0
+    for definition in _company_definitions:
+        total_weight += int(definition["generation_weight"])
+    var draw := _company_rng.next_index(total_weight)
+    var cumulative := 0
+    for definition in _company_definitions:
+        cumulative += int(definition["generation_weight"])
+        if draw < cumulative:
+            return definition
+    assert(false, "Company weighted selection must resolve")
+    return _company_definitions[0]
+
+
+func _assert_company_definitions() -> void:
+    assert(
+        _company_definitions.size() == 6
+        or (
+            _company_definitions.size() == 1
+            and _company_definitions[0].get("company_id", StringName()) == &"legacy"
+        ),
+        "Warp requires six companies or one explicit legacy fixture company"
+    )
+    var seen_ids := {}
+    var total_weight := 0
+    for definition in _company_definitions:
+        var company_id := StringName(definition.get("company_id", StringName()))
+        var weight := int(definition.get("generation_weight", 0))
+        var fee := int(definition.get("base_delivery_fee", -1))
+        assert(not company_id.is_empty(), "Warp company ID cannot be empty")
+        assert(not seen_ids.has(company_id), "Warp company IDs must be unique")
+        assert(weight > 0 and weight <= 1000000, "Warp company generation weight must be between 1 and 1000000")
+        assert(fee >= 0 and fee <= 1000000, "Warp company delivery fee must be between 0 and 1000000")
+        seen_ids[company_id] = true
+        total_weight += weight
+    assert(total_weight > 0, "Warp company generation weight total must be positive")
 
 
 func _contact_candidate(hit: Dictionary) -> Dictionary:

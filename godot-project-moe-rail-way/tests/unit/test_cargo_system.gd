@@ -9,7 +9,68 @@ func run() -> PackedStringArray:
     _test_matching_delivery_and_reward_idempotence()
     _test_removal_clear_all_and_detached_records()
     _test_temporary_capacity_staging_preserves_slot_identity()
+    _test_company_fee_identity_and_alias()
     return finish()
+
+
+func _test_company_fee_identity_and_alias() -> void:
+    var cargo := CargoSystemScript.new(2, 999)
+    var initial_records: Array = cargo.get_slot_records()
+    var has_company := _object_has_property(initial_records[0], &"company_id")
+    var has_fee := _object_has_property(initial_records[0], &"base_delivery_fee")
+    assert_true(has_company, "Cargo slot carries company identity")
+    assert_true(has_fee, "Cargo slot carries copied company fee")
+    assert_true(cargo.has_method("get_delivery_fee_total"), "Cargo exposes delivery-fee total")
+    if not has_company or not has_fee or not cargo.has_method("get_delivery_fee_total"):
+        return
+    assert_equal(cargo.call("try_load", &"pair_a", 1, &"company_01", 41), 0, "Company cargo loads")
+    assert_equal(cargo.call("try_load", &"pair_b", 2, &"company_02", 73), 1, "Second company cargo loads")
+    var loaded: Array = cargo.get_slot_records()
+    assert_equal(loaded[0].company_id, &"company_01", "Slot preserves first company")
+    assert_equal(loaded[0].base_delivery_fee, 41, "Slot preserves first fee")
+    var delivery: Dictionary = cargo.try_deliver(&"pair_b")
+    assert_equal(delivery["company_id"], &"company_02", "Delivery fact preserves company")
+    assert_equal(delivery["base_delivery_fee"], 73, "Delivery fact preserves copied fee")
+    assert_equal(delivery["amount"], 73, "Compatibility amount equals copied fee")
+    assert_equal(cargo.get_delivery_fee_total(), 73, "Company fee accumulates once")
+    assert_equal(cargo.get_base_delivery_reward_total(), 73, "Legacy observation aliases same total")
+    assert_equal(cargo.try_deliver(&"pair_b")["delivered"], false, "Repeated company delivery rejects")
+    assert_equal(cargo.get_delivery_fee_total(), 73, "Repeated delivery cannot repay")
+
+    var fee_overflow := CargoSystemScript.new(1, 999)
+    fee_overflow.try_load(&"fee_overflow", 0, &"company_01", 1)
+    fee_overflow._delivery_fee_total = 9223372036854775807
+    var before_fee_overflow := _authority_observation(fee_overflow)
+    assert_false(fee_overflow.try_deliver(&"fee_overflow")["delivered"], "Fee overflow rejects delivery")
+    assert_equal(_authority_observation(fee_overflow), before_fee_overflow, "Fee overflow leaves cargo byte-identical")
+
+    var count_overflow := CargoSystemScript.new(1, 999)
+    count_overflow.try_load(&"count_overflow", 0, &"company_01", 1)
+    count_overflow._delivered_pair_count = 9223372036854775807
+    var before_count_overflow := _authority_observation(count_overflow)
+    assert_false(count_overflow.try_deliver(&"count_overflow")["delivered"], "Delivery-count overflow rejects delivery")
+    assert_equal(_authority_observation(count_overflow), before_count_overflow, "Delivery-count overflow leaves cargo byte-identical")
+
+
+func _authority_observation(cargo: RefCounted) -> String:
+    return JSON.stringify({
+        "slots": cargo.get_slot_records().map(func(slot): return {
+            "index": slot.slot_index,
+            "pair": String(slot.pair_id),
+            "style": slot.style_index,
+            "company": String(slot.company_id),
+            "fee": slot.base_delivery_fee,
+        }),
+        "delivered": cargo.get_delivered_pair_count(),
+        "fee_total": cargo.get_delivery_fee_total(),
+    })
+
+
+func _object_has_property(object: Object, property_name: StringName) -> bool:
+    for property in object.get_property_list():
+        if property.get("name", StringName()) == property_name:
+            return true
+    return false
 
 
 func _verify_invalid_configuration_probes() -> void:
@@ -81,7 +142,7 @@ func _test_matching_delivery_and_reward_idempotence() -> void:
     var missing: Dictionary = cargo.try_deliver(&"pair_missing")
     assert_equal(
         missing,
-        {"delivered": false, "slot_index": -1, "amount": 0},
+        {"delivered": false, "slot_index": -1, "amount": 0, "company_id": StringName(), "base_delivery_fee": 0},
         "Nonmatching destination must not deliver"
     )
     assert_equal(cargo.get_delivered_pair_count(), 0, "Missing delivery changes no count")
@@ -90,7 +151,7 @@ func _test_matching_delivery_and_reward_idempotence() -> void:
     var delivered: Dictionary = cargo.try_deliver(&"pair_b")
     assert_equal(
         delivered,
-        {"delivered": true, "slot_index": 1, "amount": 37},
+        {"delivered": true, "slot_index": 1, "amount": 37, "company_id": &"legacy", "base_delivery_fee": 37},
         "Matching delivery must clear one slot and return exact reward"
     )
     assert_equal(cargo.get_delivered_pair_count(), 1, "Delivery increments count once")
@@ -101,7 +162,7 @@ func _test_matching_delivery_and_reward_idempotence() -> void:
     var repeated: Dictionary = cargo.try_deliver(&"pair_b")
     assert_equal(
         repeated,
-        {"delivered": false, "slot_index": -1, "amount": 0},
+        {"delivered": false, "slot_index": -1, "amount": 0, "company_id": StringName(), "base_delivery_fee": 0},
         "Repeated delivery must be a no-op"
     )
     assert_equal(cargo.get_delivered_pair_count(), 1, "Repeated delivery cannot repay")
@@ -140,10 +201,14 @@ func _test_removal_clear_all_and_detached_records() -> void:
         records[2].pair_id = &"mutated"
         records[2].style_index = 99
         records[2].slot_index = 99
+        records[2].company_id = &"mutated_company"
+        records[2].base_delivery_fee = 999
         var fresh: Array = cargo.get_slot_records()
         assert_equal(fresh[2].pair_id, &"pair_c", "Returned pair ID must be detached")
         assert_equal(fresh[2].style_index, 2, "Returned style must be detached")
         assert_equal(fresh[2].slot_index, 2, "Returned slot index must be detached")
+        assert_equal(fresh[2].company_id, &"legacy", "Returned company must be detached")
+        assert_equal(fresh[2].base_delivery_fee, 19, "Returned fee must be detached")
 
     cargo.clear_all()
     assert_equal(cargo.get_occupied_slot_count(), 0, "clear_all must empty every slot")
@@ -175,6 +240,8 @@ func _test_temporary_capacity_staging_preserves_slot_identity() -> void:
     cargo.replace_with(candidate)
     assert_equal(cargo.get_slot_records().map(func(slot): return slot.slot_index), [0, 1, 2], "Installed slot indices append monotonically")
     assert_equal(cargo.get_slot_records()[0].pair_id, &"pair_a", "Install preserves occupied pair identity")
+    assert_equal(cargo.get_slot_records()[0].company_id, &"legacy", "Install preserves company identity")
+    assert_equal(cargo.get_slot_records()[0].base_delivery_fee, 19, "Install preserves copied fee")
     assert_equal(cargo.get_delivered_pair_count(), 1, "Install preserves delivery count")
     assert_equal(cargo.get_base_delivery_reward_total(), 19, "Install preserves delivery reward total")
     assert_equal(cargo.try_load(&"pair_c", 5), 1, "Original lowest empty slot still wins after expansion")

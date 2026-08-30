@@ -338,6 +338,10 @@ func get_base_delivery_reward_total() -> int:
 	return _base_delivery_reward_total
 
 
+func get_delivery_fee_total() -> int:
+	return _base_delivery_reward_total
+
+
 func get_warp_cargo_events() -> Array[Dictionary]:
 	return _warp_cargo_events.duplicate(true)
 

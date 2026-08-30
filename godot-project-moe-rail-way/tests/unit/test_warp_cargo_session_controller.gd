@@ -243,6 +243,7 @@ func _test_snapshot_and_result_expose_warp_cargo_observations() -> void:
         "get_total_cargo_slots",
         "get_delivered_pair_count",
         "get_base_delivery_reward_total",
+        "get_delivery_fee_total",
         "get_warp_cargo_events",
     ]:
         assert_true(snapshot.has_method(method_name), "Snapshot exposes " + method_name)
@@ -258,6 +259,7 @@ func _test_snapshot_and_result_expose_warp_cargo_observations() -> void:
         result.has_method("get_base_delivery_reward_total"),
         "Result exposes base delivery reward total"
     )
+    assert_true(result.has_method("get_delivery_fee_total"), "Result exposes delivery fee total")
 
 
 func _test_preparation_freezes_scheduling_and_departure_starts_tick_one() -> void:
@@ -390,9 +392,12 @@ func _test_controller_resolves_ordinal_and_physical_hit_order() -> void:
     )
     assert_equal(turnover_snapshot.get_delivered_pair_count(), 1, "Turnover pays one delivery")
     assert_equal(turnover_snapshot.get_base_delivery_reward_total(), 37, "Turnover pays exact reward")
+    assert_equal(turnover_snapshot.get_delivery_fee_total(), 37, "Turnover fee total aliases reward observation")
     var slots: Array = turnover_snapshot.get_cargo_slot_records()
     if slots.size() == 1:
         assert_equal(slots[0].pair_id, &"warp_pair_2", "Later physical origin reuses freed slot")
+        assert_equal(slots[0].company_id, &"legacy", "Snapshot cargo preserves legacy fixture company")
+        assert_equal(slots[0].base_delivery_fee, 37, "Snapshot cargo preserves copied fixture fee")
         slots[0].pair_id = &"mutated"
         slots[0].slot_index = 99
         var fresh_slots: Array = turnover_snapshot.get_cargo_slot_records()
@@ -431,10 +436,12 @@ func _test_final_life_delivery_survives_regular_track_end_tie() -> void:
         assert_equal(terminal_pairs[0].state, WarpPairRecordScript.State.DELIVERED, "Delivered pair does not expire or void")
     assert_equal(terminal.get_delivered_pair_count(), 1, "Terminal snapshot retains delivery")
     assert_equal(terminal.get_base_delivery_reward_total(), 37, "Terminal snapshot retains reward")
+    assert_equal(terminal.get_delivery_fee_total(), 37, "Terminal snapshot exposes same fee total")
     if results.size() == 1:
         assert_equal(results[0].get_reason(), SessionResultScript.Reason.REGULAR_TIME_EXPIRED, "Regular expiry wins track-end tie")
         assert_equal(results[0].get_delivered_pair_count(), 1, "Result retains delivery")
         assert_equal(results[0].get_base_delivery_reward_total(), 37, "Result retains reward")
+        assert_equal(results[0].get_delivery_fee_total(), 37, "Result exposes same fee total")
 
     var pairs := terminal.get_warp_pair_records()
     var events := terminal.get_warp_cargo_events()

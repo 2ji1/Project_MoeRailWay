@@ -145,10 +145,7 @@ func compose_session_dependencies() -> PackedStringArray:
 	hazard_system = HazardSystemScript.new(session_start_config)
 	session_economy = SessionEconomyScript.new(session_start_config.starting_session_cash)
 	warp_pair_system = WarpPairSystemScript.new(session_start_config, session_rng)
-	cargo_system = CargoSystemScript.new(
-		session_start_config.cargo_base_slot_count,
-		session_start_config.cargo_base_delivery_reward
-	)
+	cargo_system = CargoSystemScript.new(session_start_config.cargo_base_slot_count)
 	session_controller = SessionControllerScript.new(
 		session_start_config,
 		track_system,

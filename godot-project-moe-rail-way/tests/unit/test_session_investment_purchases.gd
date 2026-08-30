@@ -623,6 +623,8 @@ func _canonical_observation(fixture: Dictionary) -> String:
 				"index": slot.slot_index,
 				"pair": String(slot.pair_id),
 				"style": slot.style_index,
+				"company": String(slot.company_id),
+				"fee": slot.base_delivery_fee,
 			}),
 			"base_reward": fixture.cargo._base_delivery_reward,
 			"delivered": fixture.cargo.get_delivered_pair_count(),
@@ -664,6 +666,8 @@ func _warp_checkpoint_values(checkpoint: Dictionary) -> Dictionary:
 			"lifetime_total": record.lifetime_total_ticks,
 			"lifetime_remaining": record.lifetime_remaining_ticks,
 			"style": record.style_index,
+			"company": String(record.company_id),
+			"fee": record.base_delivery_fee,
 		}),
 		"events": checkpoint.tick_events,
 		"last_begin_tick": checkpoint.last_begin_tick,
@@ -674,6 +678,7 @@ func _warp_checkpoint_values(checkpoint: Dictionary) -> Dictionary:
 		"generation_pending": checkpoint.generation_pending,
 		"terminal": checkpoint.terminal,
 		"rng_state": checkpoint.rng_state,
+		"company_rng_state": checkpoint.company_rng_state,
 	}
 
 

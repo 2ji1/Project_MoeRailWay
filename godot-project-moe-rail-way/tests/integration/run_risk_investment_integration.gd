@@ -431,6 +431,8 @@ func _install_active_warp(app, origin: Vector2i, destination: Vector2i) -> void:
 	record.lifetime_total_ticks = 200
 	record.lifetime_remaining_ticks = 200
 	record.style_index = 0
+	record.company_id = &"legacy_risk_fixture"
+	record.base_delivery_fee = 37
 	var records: Array[WarpPairRecordScript] = [record]
 	app.warp_pair_system._records = records
 	app.warp_pair_system._next_ordinal = 2
