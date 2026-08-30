@@ -40,3 +40,17 @@ func get_observation() -> Dictionary:
 		"cash": _cash,
 		"total_spent": _total_spent,
 	}
+
+
+func duplicate_economy() -> SessionEconomy:
+	var copy: SessionEconomy = get_script().new(_starting_cash)
+	copy._cash = _cash
+	copy._total_spent = _total_spent
+	return copy
+
+
+func replace_with(source: SessionEconomy) -> void:
+	assert(source != null, "Source economy is required")
+	_starting_cash = source._starting_cash
+	_cash = source._cash
+	_total_spent = source._total_spent

@@ -55,6 +55,7 @@ func run() -> PackedStringArray:
 	assert_equal(default_balance.durability_balance.maximum_durability, 100.0, "Default durability is 100")
 	assert_equal(default_balance.durability_balance.damage_per_traveled_cell, 10.0, "Default hazard damage is 10")
 	assert_equal(default_balance.durability_balance.repair_cost_per_durability, 1.0, "Default repair rate is 1")
+	assert_equal(default_balance.track_investment_balance.major_track_action_cost, 50, "Default major track action cost is 50")
 	assert_equal(
 		default_balance.track_inventory_balance.total_track_cells,
 		18,
@@ -154,20 +155,32 @@ func run() -> PackedStringArray:
 	invalid_durability.durability_balance = null
 	_assert_contains(Validator.validate(invalid_durability), "prototype_balance.durability_balance.resource")
 
+	var invalid_track_investment := PrototypeBalanceScript.new()
+	invalid_track_investment.track_investment_balance.major_track_action_cost = -1
+	_assert_contains(Validator.validate(invalid_track_investment), "prototype_balance.track_investment_balance.major_track_action_cost")
+	invalid_track_investment.track_investment_balance.major_track_action_cost = 1000001
+	_assert_contains(Validator.validate(invalid_track_investment), "prototype_balance.track_investment_balance.major_track_action_cost")
+	invalid_track_investment.track_investment_balance = null
+	_assert_contains(Validator.validate(invalid_track_investment), "prototype_balance.track_investment_balance.resource")
+
 	var risk_copy_balance := PrototypeBalanceScript.new()
 	risk_copy_balance.hazard_generation_balance.hazard_cell_count = 7
 	risk_copy_balance.durability_balance.maximum_durability = 125.0
 	risk_copy_balance.durability_balance.damage_per_traveled_cell = 4.5
 	risk_copy_balance.durability_balance.repair_cost_per_durability = 2.0
+	risk_copy_balance.track_investment_balance.major_track_action_cost = 73
 	var risk_config = risk_copy_balance.create_session_start_config(812)
 	assert_equal(risk_config.hazard_cell_count, 7, "Start config copies hazard count")
 	assert_equal(risk_config.maximum_durability, 125.0, "Start config copies maximum durability")
 	assert_equal(risk_config.damage_per_traveled_cell, 4.5, "Start config copies hazard damage")
 	assert_equal(risk_config.repair_cost_per_durability, 2.0, "Start config copies repair rate")
+	assert_equal(risk_config.major_track_action_cost, 73, "Start config copies major track action cost")
 	risk_copy_balance.hazard_generation_balance.hazard_cell_count = 1
 	risk_copy_balance.durability_balance.maximum_durability = 1.0
+	risk_copy_balance.track_investment_balance.major_track_action_cost = 1
 	assert_equal(risk_config.hazard_cell_count, 7, "Risk config is detached from hazard Resource")
 	assert_equal(risk_config.maximum_durability, 125.0, "Risk config is detached from durability Resource")
+	assert_equal(risk_config.major_track_action_cost, 73, "Risk config is detached from track investment Resource")
 
 	return finish()
 

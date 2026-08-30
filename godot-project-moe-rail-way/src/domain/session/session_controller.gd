@@ -12,6 +12,7 @@ const CargoSystemScript = preload("res://src/domain/cargo/cargo_system.gd")
 const HazardSystemScript = preload("res://src/domain/hazard/hazard_system.gd")
 const WarpPairRecordScript = preload("res://src/domain/warp/warp_pair_record.gd")
 const CargoSlotRecordScript = preload("res://src/domain/cargo/cargo_slot_record.gd")
+const SessionEconomyScript = preload("res://src/domain/economy/session_economy.gd")
 
 const DISTANCE_EPSILON := 0.0001
 
@@ -32,6 +33,7 @@ var _train_system: TrainSystemScript
 var _warp_pair_system: WarpPairSystemScript
 var _cargo_system: CargoSystemScript
 var _hazard_system: HazardSystemScript
+var _session_economy: SessionEconomyScript
 var _total_ticks: int
 var _elapsed_ticks := 0
 var _remaining_ticks: int
@@ -43,6 +45,8 @@ var _snapshot: SessionSnapshotScript
 var _cached_tick_pose: Dictionary = {"position": Vector2.ZERO, "heading": Vector2.RIGHT}
 var _planning_accumulator_percent := 0
 var _did_advance_simulation_tick := true
+var _pending_paid_demolition_route_serial := -1
+var _paid_track_actions_enabled := false
 
 
 func _init(
@@ -51,7 +55,8 @@ func _init(
 	train_system: TrainSystemScript,
 	warp_pair_system: WarpPairSystemScript = null,
 	cargo_system: CargoSystemScript = null,
-	hazard_system: HazardSystemScript = null
+	hazard_system: HazardSystemScript = null,
+	session_economy: SessionEconomyScript = null
 ) -> void:
 	assert(start_config != null, "Session start config is required")
 	assert(track_system != null, "Track system is required")
@@ -66,6 +71,12 @@ func _init(
 	_warp_pair_system = warp_pair_system
 	_cargo_system = cargo_system
 	_hazard_system = hazard_system
+	_paid_track_actions_enabled = session_economy != null
+	_session_economy = (
+		session_economy
+		if session_economy != null
+		else SessionEconomyScript.new(_start_config.starting_session_cash)
+	)
 	_ticks_per_second = _start_config.simulation_ticks_per_second
 	_total_ticks = maxi(
 		1,
@@ -110,14 +121,33 @@ func advance_tick(input_frame: TrackInputFrameScript = null) -> void:
 	var frame: TrackInputFrameScript = (
 		input_frame if input_frame != null else TrackInputFrameScript.empty()
 	)
-	var right_won := _track_system.apply_right_input(frame)
-	if not right_won:
-		_track_system.apply_left_input(frame)
+	if _pending_paid_demolition_route_serial < 0:
+		var right_won := _track_system.apply_right_input(frame)
+		if right_won:
+			_pending_paid_demolition_route_serial = _track_system.take_paid_demolition_request()
+		else:
+			_track_system.apply_left_input(frame)
 	if not simulation_tick_due:
 		if not _track_system.is_runtime_gesture_active():
 			_planning_accumulator_percent = 0
 		_publish_snapshot(false)
 		return
+
+	if _pending_paid_demolition_route_serial >= 0:
+		var requested_serial := _pending_paid_demolition_route_serial
+		_pending_paid_demolition_route_serial = -1
+		var train_distance := (
+			_train_system.get_route_distance_cells()
+			if _train_system.is_active()
+			else 0.0
+		)
+		if _paid_track_actions_enabled:
+			_track_system.try_commit_paid_demolition(
+				requested_serial,
+				train_distance,
+				_start_config.major_track_action_cost,
+				_session_economy
+			)
 
 	_track_system.advance_construction(_construction_cells_per_tick)
 	var track_end_requested := false
@@ -229,6 +259,7 @@ func _restore_aborted_warp_running_tick(
 func _complete(reason: SessionResultScript.Reason) -> void:
 	if _state == State.COMPLETED:
 		return
+	_pending_paid_demolition_route_serial = -1
 	if _warp_cargo_enabled():
 		_warp_pair_system.void_nonterminal(_running_tick_index, _cargo_system)
 		_install_warp_anchors()
@@ -338,7 +369,10 @@ func _create_snapshot(include_warp_events: bool = true) -> SessionSnapshotScript
 		hazard_cells,
 		_train_system.get_maximum_durability(),
 		_train_system.get_current_durability(),
-		_calculate_repair_cost_basis()
+		_calculate_repair_cost_basis(),
+		_session_economy.get_starting_cash(),
+		_session_economy.get_cash(),
+		_session_economy.get_total_spent()
 	)
 
 

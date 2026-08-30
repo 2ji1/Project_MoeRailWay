@@ -30,6 +30,7 @@ var hazard_cell_count: int
 var maximum_durability: float
 var damage_per_traveled_cell: float
 var repair_cost_per_durability: float
+var major_track_action_cost: int
 
 
 func _init(
@@ -61,7 +62,8 @@ func _init(
 	hazard_cell_count_value: int = 0,
 	maximum_durability_value: float = 0.0,
 	damage_per_traveled_cell_value: float = 0.0,
-	repair_cost_per_durability_value: float = 0.0
+	repair_cost_per_durability_value: float = 0.0,
+	major_track_action_cost_value: int = 0
 ) -> void:
 	seed = seed_value
 	session_duration_seconds = duration_seconds
@@ -92,3 +94,4 @@ func _init(
 	maximum_durability = maximum_durability_value
 	damage_per_traveled_cell = damage_per_traveled_cell_value
 	repair_cost_per_durability = repair_cost_per_durability_value
+	major_track_action_cost = major_track_action_cost_value

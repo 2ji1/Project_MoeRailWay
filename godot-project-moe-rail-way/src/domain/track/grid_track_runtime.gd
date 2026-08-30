@@ -1082,6 +1082,142 @@ func cancel_ghost_suffix(cell: Vector2i) -> bool:
     return true
 
 
+func duplicate_runtime() -> GridTrackRuntime:
+    assert(not _gesture_active, "Paid staging cannot duplicate an active gesture")
+    var copy: GridTrackRuntime = get_script().new(
+        _departure_cell,
+        _sequence.get_total_track_cells(),
+        Vector2(_grid_origin_units),
+        Vector2i(_grid_size),
+        _cell_size_units
+    )
+    copy._sequence = _sequence.duplicate_sequence()
+    copy._pieces = _duplicate_pieces(_pieces)
+    copy._locked_ledger = _duplicate_pieces(_locked_ledger)
+    copy._anchors = _duplicate_anchors(_anchors)
+    copy._contact_observations = _contact_observations.duplicate(true)
+    copy._recovered_cells_by_piece = _recovered_cells_by_piece.duplicate(true)
+    copy._recovered_end_distance_cells = _recovered_end_distance_cells
+    copy._gesture_rejection_diagnostics_enabled = _gesture_rejection_diagnostics_enabled
+    copy._last_gesture_rejection = _last_gesture_rejection.duplicate(true)
+    return copy
+
+
+func replace_with(source: GridTrackRuntime) -> void:
+    assert(source != null, "Source track runtime is required")
+    assert(not _gesture_active and not source._gesture_active, "Paid install requires inactive gestures")
+    _sequence.replace_with(source._sequence)
+    _pieces = _duplicate_pieces(source._pieces)
+    _locked_ledger = _duplicate_pieces(source._locked_ledger)
+    _anchors = _duplicate_anchors(source._anchors)
+    _contact_observations = source._contact_observations.duplicate(true)
+    _recovered_cells_by_piece = source._recovered_cells_by_piece.duplicate(true)
+    _recovered_end_distance_cells = source._recovered_end_distance_cells
+    _gesture_rejection_diagnostics_enabled = source._gesture_rejection_diagnostics_enabled
+    _last_gesture_rejection = source._last_gesture_rejection.duplicate(true)
+
+
+func try_paid_demolition(route_serial: int, train_distance_cells: float) -> bool:
+    if (
+        route_serial < 0
+        or not is_finite(train_distance_cells)
+        or train_distance_cells < 0.0
+        or _gesture_active
+    ):
+        return false
+    var records: Array[TrackCellRecordScript] = _sequence.get_records()
+    var target_index := -1
+    for index in range(records.size()):
+        if records[index].route_serial == route_serial:
+            target_index = index
+            break
+    if target_index < 0:
+        return false
+    var target := records[target_index]
+    if target.state not in [
+        TrackCellRecordScript.State.BUILDING,
+        TrackCellRecordScript.State.BUILT,
+    ]:
+        return false
+    var target_start: float = target.route_distance_start_cells
+    var target_end := target_start + 1.0
+    if target_start > train_distance_cells:
+        return _try_paid_front_suffix_demolition(records, target_index)
+    if target_end <= train_distance_cells:
+        var recovered_count := recover_behind(target_end)
+        return recovered_count == target_index + 1
+    return false
+
+
+func _try_paid_front_suffix_demolition(
+    records: Array[TrackCellRecordScript],
+    target_index: int
+) -> bool:
+    for index in range(target_index, records.size()):
+        var record := records[index]
+        if record.geometry_locked:
+            return false
+        for piece in _pieces:
+            if piece.locked and piece.contains_serial(record.route_serial):
+                return false
+    var candidate_sequence = _sequence.duplicate_sequence()
+    var removed := candidate_sequence.remove_suffix_from_serial(
+        records[target_index].route_serial
+    )
+    if removed.size() != records.size() - target_index:
+        return false
+    var candidate_ledger = _duplicate_pieces(_locked_ledger)
+    var candidate_anchors = _duplicate_anchors(_anchors)
+    var candidate_recovered_cells: Dictionary = _recovered_cells_by_piece.duplicate(true)
+    for removed_record in removed:
+        _remember_exit_support_cell_in(
+            candidate_ledger, candidate_recovered_cells, removed_record
+        )
+    var resolution = _stage_stable_retirement(
+        candidate_sequence,
+        candidate_ledger,
+        candidate_anchors,
+        candidate_recovered_cells
+    )
+    if not resolution.is_valid:
+        return false
+    _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
+    candidate_sequence.apply_resolved_geometry(resolution.pieces)
+    if not _validate_candidate(
+        candidate_sequence,
+        candidate_ledger,
+        resolution,
+        candidate_recovered_cells,
+        _recovered_end_distance_cells
+    ):
+        return false
+    var candidate_contacts := _build_contact_observations(
+        resolution.pieces,
+        candidate_anchors,
+        candidate_recovered_cells,
+        candidate_sequence.get_records()
+    )
+    _commit_candidate(candidate_sequence, candidate_ledger, resolution)
+    _recovered_cells_by_piece = candidate_recovered_cells.duplicate(true)
+    _contact_observations = candidate_contacts.duplicate(true)
+    return true
+
+
+func _remember_exit_support_cell_in(
+    ledger: Array[TrackGeometryPieceScript],
+    recovered_cells_by_piece: Dictionary,
+    record: TrackCellRecordScript
+) -> void:
+    for locked in ledger:
+        if locked.exit_support_route_serial != record.route_serial:
+            continue
+        var key := _piece_key(locked)
+        if not recovered_cells_by_piece.has(key):
+            recovered_cells_by_piece[key] = {}
+        recovered_cells_by_piece[key][record.cell] = true
+        return
+
+
 func set_contact_anchors(anchors: Array[RouteContactAnchorScript]) -> void:
     var candidate_anchors: Array[RouteContactAnchorScript] = []
     for anchor in anchors:
@@ -2356,7 +2492,10 @@ func _validate_candidate(
                 if record.route_serial == locked.exit_support_route_serial:
                     support_exists = true
                     break
-            if not support_exists:
+            var recovered_support: Dictionary = recovered_cells_by_piece.get(
+                _piece_key(locked), {}
+            )
+            if not support_exists and recovered_support.is_empty():
                 return false
     for key in recovered_cells_by_piece:
         var has_active_ledger_piece := false

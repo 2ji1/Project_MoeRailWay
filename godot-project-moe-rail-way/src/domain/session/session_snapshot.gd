@@ -46,6 +46,9 @@ var _hazard_cells: Array[Vector2i] = []
 var _maximum_durability: float
 var _current_durability: float
 var _repair_cost_basis: int
+var _starting_session_cash: int
+var _current_session_cash: int
+var _total_session_cash_spent: int
 
 
 func _init(
@@ -88,7 +91,10 @@ func _init(
 	hazard_cells_value: Array[Vector2i] = [],
 	maximum_durability_value: float = 0.0,
 	current_durability_value: float = 0.0,
-	repair_cost_basis_value: int = 0
+	repair_cost_basis_value: int = 0,
+	starting_session_cash_value: int = 0,
+	current_session_cash_value: int = 0,
+	total_session_cash_spent_value: int = 0
 ) -> void:
 	_total_ticks = total_ticks_value
 	_elapsed_ticks = elapsed_ticks_value
@@ -130,6 +136,9 @@ func _init(
 	_maximum_durability = maximum_durability_value
 	_current_durability = current_durability_value
 	_repair_cost_basis = repair_cost_basis_value
+	_starting_session_cash = starting_session_cash_value
+	_current_session_cash = current_session_cash_value
+	_total_session_cash_spent = total_session_cash_spent_value
 
 
 func get_total_ticks() -> int:
@@ -296,6 +305,18 @@ func get_current_durability() -> float:
 
 func get_repair_cost_basis() -> int:
 	return _repair_cost_basis
+
+
+func get_starting_session_cash() -> int:
+	return _starting_session_cash
+
+
+func get_current_session_cash() -> int:
+	return _current_session_cash
+
+
+func get_total_session_cash_spent() -> int:
+	return _total_session_cash_spent
 
 
 func _duplicate_records(source: Array[TrackCellRecordScript]) -> Array[TrackCellRecordScript]:

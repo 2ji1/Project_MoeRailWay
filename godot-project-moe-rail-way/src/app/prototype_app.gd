@@ -12,6 +12,7 @@ const TrainSystemScript = preload("res://src/domain/train/train_system.gd")
 const WarpPairSystemScript = preload("res://src/domain/warp/warp_pair_system.gd")
 const CargoSystemScript = preload("res://src/domain/cargo/cargo_system.gd")
 const HazardSystemScript = preload("res://src/domain/hazard/hazard_system.gd")
+const SessionEconomyScript = preload("res://src/domain/economy/session_economy.gd")
 const SessionShellScript = preload("res://src/presentation/session/session_shell.gd")
 const UILayoutProfileScript = preload("res://src/presentation/layout/ui_layout_profile.gd")
 const UILayoutValidatorScript = preload("res://src/presentation/layout/ui_layout_validator.gd")
@@ -29,6 +30,7 @@ var train_system: TrainSystemScript
 var warp_pair_system: WarpPairSystemScript
 var cargo_system: CargoSystemScript
 var hazard_system: HazardSystemScript
+var session_economy: SessionEconomyScript
 var session_controller: SessionControllerScript
 
 @onready var _session_shell: SessionShellScript = $SessionShell
@@ -73,6 +75,7 @@ func compose_session_dependencies() -> PackedStringArray:
 	warp_pair_system = null
 	cargo_system = null
 	hazard_system = null
+	session_economy = null
 	session_controller = null
 	_session_result_was_presented = false
 
@@ -139,6 +142,7 @@ func compose_session_dependencies() -> PackedStringArray:
 		session_start_config.maximum_durability
 	)
 	hazard_system = HazardSystemScript.new(session_start_config)
+	session_economy = SessionEconomyScript.new(session_start_config.starting_session_cash)
 	warp_pair_system = WarpPairSystemScript.new(session_start_config, session_rng)
 	cargo_system = CargoSystemScript.new(
 		session_start_config.cargo_base_slot_count,
@@ -150,7 +154,8 @@ func compose_session_dependencies() -> PackedStringArray:
 		train_system,
 		warp_pair_system,
 		cargo_system,
-		hazard_system
+		hazard_system,
+		session_economy
 	)
 	return errors
 

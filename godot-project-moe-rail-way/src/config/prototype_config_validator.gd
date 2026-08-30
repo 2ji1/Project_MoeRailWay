@@ -196,6 +196,16 @@ static func validate(balance: PrototypeBalanceScript) -> PackedStringArray:
                 "prototype_balance.durability_balance.repair_cost_per_durability must be finite and between 0.0 and 1000000.0"
             )
 
+    if balance.track_investment_balance == null:
+        errors.append("prototype_balance.track_investment_balance.resource is required")
+    elif (
+        balance.track_investment_balance.major_track_action_cost < 0
+        or balance.track_investment_balance.major_track_action_cost > 1000000
+    ):
+        errors.append(
+            "prototype_balance.track_investment_balance.major_track_action_cost must be between 0 and 1000000"
+        )
+
     return errors
 
 
@@ -210,5 +220,9 @@ static func validate_completed_session_start_config(
     if config.hazard_cell_count > eligible_cell_count:
         errors.append(
             "prototype_balance.hazard_generation_balance.hazard_cell_count must not exceed completed grid eligible cells"
+        )
+    if config.major_track_action_cost < 0 or config.major_track_action_cost > 1000000:
+        errors.append(
+            "prototype_balance.track_investment_balance.major_track_action_cost must be between 0 and 1000000"
         )
     return errors

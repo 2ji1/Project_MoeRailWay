@@ -145,6 +145,28 @@ func cancel_ghost_suffix(cell: Vector2i) -> int:
     return removed_count
 
 
+func remove_suffix_from_serial(route_serial: int) -> Array[TrackCellRecordScript]:
+    var removed: Array[TrackCellRecordScript] = []
+    var target_index := -1
+    for index in range(_records.size()):
+        if _records[index].route_serial == route_serial:
+            target_index = index
+            break
+    if target_index < 0:
+        return removed
+    var replacement_distance: float = _records[target_index].route_distance_start_cells
+    for index in range(_records.size() - 1, target_index - 1, -1):
+        var record = _records[index]
+        removed.push_front(record.duplicate_record())
+        _active_cells.erase(record.cell)
+        _records.remove_at(index)
+    _available_track_cells += removed.size()
+    _next_nominal_start_cells = replacement_distance
+    if _records.is_empty():
+        _active_predecessor_cell = _departure_cell
+    return removed
+
+
 func apply_resolved_geometry(pieces: Array[TrackGeometryPieceScript]) -> void:
     for record in _records:
         record.geometry_group_id = -1

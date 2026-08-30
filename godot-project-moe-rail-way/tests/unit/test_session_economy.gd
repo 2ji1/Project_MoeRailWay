@@ -80,6 +80,15 @@ func _test_session_economy_atomic_spending() -> void:
 	var detached: Dictionary = economy.call("get_observation")
 	detached["cash"] = 999
 	assert_equal(economy.call("get_cash"), 250, "Economy observation is detached")
+	assert_true(economy.has_method("duplicate_economy"), "Economy exposes concrete staged copy")
+	assert_true(economy.has_method("replace_with"), "Economy exposes non-rejecting staged install")
+	if economy.has_method("duplicate_economy") and economy.has_method("replace_with"):
+		var candidate: Variant = economy.call("duplicate_economy")
+		assert_true(candidate.call("try_spend", 50), "Staged economy can precompute a spend")
+		assert_equal(economy.call("get_cash"), 250, "Staged spend does not mutate authority")
+		economy.call("replace_with", candidate)
+		assert_equal(economy.call("get_cash"), 200, "Validated staged economy installs exactly")
+		assert_equal(economy.call("get_total_spent"), 100, "Staged install preserves exact spending total")
 
 
 func _assert_contains(errors: PackedStringArray, fragment: String) -> void:

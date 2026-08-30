@@ -7,10 +7,12 @@ const SessionStartConfigScript = preload("res://src/domain/session/session_start
 const TrackCellRecordScript = preload("res://src/domain/track/track_cell_record.gd")
 const TrackGeometryPieceScript = preload("res://src/domain/track/track_geometry_piece.gd")
 const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
+const SessionEconomyScript = preload("res://src/domain/economy/session_economy.gd")
 
 var _runtime: GridTrackRuntimeScript
 var _left_capture_active := false
 var _left_press_latched := false
+var _paid_demolition_request_serial := -1
 
 
 func _init(start_config: SessionStartConfigScript) -> void:
@@ -59,7 +61,49 @@ func apply_right_input(input_frame: TrackInputFrameScript) -> bool:
 	if input_frame.left_released:
 		_left_press_latched = false
 	if input_frame.right_press_inside_grid:
-		_runtime.cancel_ghost_suffix(input_frame.right_press_cell)
+		if not _runtime.cancel_ghost_suffix(input_frame.right_press_cell):
+			var records := _runtime.get_cell_records()
+			for record in records:
+				if (
+					record.cell == input_frame.right_press_cell
+					and record.state in [
+						TrackCellRecordScript.State.BUILDING,
+						TrackCellRecordScript.State.BUILT,
+					]
+				):
+					_paid_demolition_request_serial = record.route_serial
+					break
+	return true
+
+
+func take_paid_demolition_request() -> int:
+	var request := _paid_demolition_request_serial
+	_paid_demolition_request_serial = -1
+	return request
+
+
+func try_commit_paid_demolition(
+	route_serial: int,
+	train_distance_cells: float,
+	cost: int,
+	economy: SessionEconomyScript
+) -> bool:
+	if (
+		route_serial < 0
+		or economy == null
+		or cost < 0
+		or _left_capture_active
+		or _runtime.gesture_is_active()
+	):
+		return false
+	var candidate_economy = economy.duplicate_economy()
+	if not candidate_economy.try_spend(cost):
+		return false
+	var candidate_runtime = _runtime.duplicate_runtime()
+	if not candidate_runtime.try_paid_demolition(route_serial, train_distance_cells):
+		return false
+	_runtime.replace_with(candidate_runtime)
+	economy.replace_with(candidate_economy)
 	return true
 
 
@@ -143,6 +187,7 @@ func terminate_for_session_completion() -> bool:
 		_runtime.gesture_finalize()
 	_left_capture_active = false
 	_left_press_latched = false
+	_paid_demolition_request_serial = -1
 	return was_active
 
 

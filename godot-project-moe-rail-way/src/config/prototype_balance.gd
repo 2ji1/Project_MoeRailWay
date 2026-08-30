@@ -12,6 +12,7 @@ const CargoBalanceScript = preload("res://src/config/cargo_balance.gd")
 const SessionCashBalanceScript = preload("res://src/config/session_cash_balance.gd")
 const HazardGenerationBalanceScript = preload("res://src/config/hazard_generation_balance.gd")
 const DurabilityBalanceScript = preload("res://src/config/durability_balance.gd")
+const TrackInvestmentBalanceScript = preload("res://src/config/track_investment_balance.gd")
 
 @export var session_balance: SessionBalanceScript = SessionBalanceScript.new()
 @export var train_balance: TrainBalanceScript = TrainBalanceScript.new()
@@ -23,6 +24,7 @@ const DurabilityBalanceScript = preload("res://src/config/durability_balance.gd"
 @export var session_cash_balance: SessionCashBalanceScript = SessionCashBalanceScript.new()
 @export var hazard_generation_balance: HazardGenerationBalanceScript = HazardGenerationBalanceScript.new()
 @export var durability_balance: DurabilityBalanceScript = DurabilityBalanceScript.new()
+@export var track_investment_balance: TrackInvestmentBalanceScript = TrackInvestmentBalanceScript.new()
 
 var session_duration_seconds: float:
     get:
@@ -57,7 +59,8 @@ func create_session_start_config(seed_value: int) -> SessionStartConfigScript:
         hazard_generation_balance.hazard_cell_count,
         durability_balance.maximum_durability,
         durability_balance.damage_per_traveled_cell,
-        durability_balance.repair_cost_per_durability
+        durability_balance.repair_cost_per_durability,
+        track_investment_balance.major_track_action_cost
     )
     config.warp_forecast_ticks = _seconds_to_ticks(
         warp_lifecycle_balance.forecast_duration_seconds,
@@ -120,7 +123,8 @@ func complete_session_start_config(
         base_config.hazard_cell_count,
         base_config.maximum_durability,
         base_config.damage_per_traveled_cell,
-        base_config.repair_cost_per_durability
+        base_config.repair_cost_per_durability,
+        base_config.major_track_action_cost
     )
 
 
