@@ -22,6 +22,12 @@ var _temporary_track_purchase_count: int
 var _temporary_cargo_purchase_count: int
 var _final_total_track_cells: int
 var _final_total_cargo_slots: int
+var _paid_demolition_count: int
+var _paid_demolition_spent: int
+var _grade_separated_crossing_count: int
+var _grade_separated_crossing_spent: int
+var _temporary_track_purchase_spent: int
+var _temporary_cargo_purchase_spent: int
 
 
 func _init(
@@ -39,7 +45,13 @@ func _init(
 	temporary_track_purchase_count_value: int = 0,
 	temporary_cargo_purchase_count_value: int = 0,
 	final_total_track_cells_value: int = 0,
-	final_total_cargo_slots_value: int = 0
+	final_total_cargo_slots_value: int = 0,
+	paid_demolition_count_value: int = 0,
+	paid_demolition_spent_value: int = 0,
+	grade_separated_crossing_count_value: int = 0,
+	grade_separated_crossing_spent_value: int = 0,
+	temporary_track_purchase_spent_value: int = 0,
+	temporary_cargo_purchase_spent_value: int = 0
 ) -> void:
 	_reason = reason_value
 	_total_ticks = total_ticks_value
@@ -56,6 +68,12 @@ func _init(
 	_temporary_cargo_purchase_count = temporary_cargo_purchase_count_value
 	_final_total_track_cells = final_total_track_cells_value
 	_final_total_cargo_slots = final_total_cargo_slots_value
+	_paid_demolition_count = paid_demolition_count_value
+	_paid_demolition_spent = paid_demolition_spent_value
+	_grade_separated_crossing_count = grade_separated_crossing_count_value
+	_grade_separated_crossing_spent = grade_separated_crossing_spent_value
+	_temporary_track_purchase_spent = temporary_track_purchase_spent_value
+	_temporary_cargo_purchase_spent = temporary_cargo_purchase_spent_value
 
 
 func get_reason() -> Reason:
@@ -120,3 +138,27 @@ func get_final_total_track_cells() -> int:
 
 func get_final_total_cargo_slots() -> int:
 	return _final_total_cargo_slots
+
+
+func get_paid_demolition_count() -> int:
+	return _paid_demolition_count
+
+
+func get_paid_demolition_spent() -> int:
+	return _paid_demolition_spent
+
+
+func get_grade_separated_crossing_count() -> int:
+	return _grade_separated_crossing_count
+
+
+func get_grade_separated_crossing_spent() -> int:
+	return _grade_separated_crossing_spent
+
+
+func get_temporary_track_purchase_spent() -> int:
+	return _temporary_track_purchase_spent
+
+
+func get_temporary_cargo_purchase_spent() -> int:
+	return _temporary_cargo_purchase_spent

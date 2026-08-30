@@ -64,6 +64,12 @@ var _temporary_cargo_purchase_cost: int
 var _temporary_cargo_slots_per_purchase: int
 var _temporary_cargo_purchase_available: bool
 var _temporary_cargo_purchase_affordable: bool
+var _paid_demolition_count: int
+var _paid_demolition_spent: int
+var _grade_separated_crossing_count: int
+var _grade_separated_crossing_spent: int
+var _temporary_track_purchase_spent: int
+var _temporary_cargo_purchase_spent: int
 
 
 func _init(
@@ -124,7 +130,13 @@ func _init(
 	temporary_cargo_purchase_cost_value: int = 0,
 	temporary_cargo_slots_per_purchase_value: int = 0,
 	temporary_cargo_purchase_available_value: bool = false,
-	temporary_cargo_purchase_affordable_value: bool = false
+	temporary_cargo_purchase_affordable_value: bool = false,
+	paid_demolition_count_value: int = 0,
+	paid_demolition_spent_value: int = 0,
+	grade_separated_crossing_count_value: int = 0,
+	grade_separated_crossing_spent_value: int = 0,
+	temporary_track_purchase_spent_value: int = 0,
+	temporary_cargo_purchase_spent_value: int = 0
 ) -> void:
 	_total_ticks = total_ticks_value
 	_elapsed_ticks = elapsed_ticks_value
@@ -184,6 +196,12 @@ func _init(
 	_temporary_cargo_slots_per_purchase = temporary_cargo_slots_per_purchase_value
 	_temporary_cargo_purchase_available = temporary_cargo_purchase_available_value
 	_temporary_cargo_purchase_affordable = temporary_cargo_purchase_affordable_value
+	_paid_demolition_count = paid_demolition_count_value
+	_paid_demolition_spent = paid_demolition_spent_value
+	_grade_separated_crossing_count = grade_separated_crossing_count_value
+	_grade_separated_crossing_spent = grade_separated_crossing_spent_value
+	_temporary_track_purchase_spent = temporary_track_purchase_spent_value
+	_temporary_cargo_purchase_spent = temporary_cargo_purchase_spent_value
 
 
 func get_total_ticks() -> int:
@@ -422,6 +440,30 @@ func is_temporary_cargo_purchase_available() -> bool:
 
 func is_temporary_cargo_purchase_affordable() -> bool:
 	return _temporary_cargo_purchase_affordable
+
+
+func get_paid_demolition_count() -> int:
+	return _paid_demolition_count
+
+
+func get_paid_demolition_spent() -> int:
+	return _paid_demolition_spent
+
+
+func get_grade_separated_crossing_count() -> int:
+	return _grade_separated_crossing_count
+
+
+func get_grade_separated_crossing_spent() -> int:
+	return _grade_separated_crossing_spent
+
+
+func get_temporary_track_purchase_spent() -> int:
+	return _temporary_track_purchase_spent
+
+
+func get_temporary_cargo_purchase_spent() -> int:
+	return _temporary_cargo_purchase_spent
 
 
 func _duplicate_records(source: Array[TrackCellRecordScript]) -> Array[TrackCellRecordScript]:

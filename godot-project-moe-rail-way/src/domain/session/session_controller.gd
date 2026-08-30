@@ -47,8 +47,14 @@ var _cached_tick_pose: Dictionary = {"position": Vector2.ZERO, "heading": Vector
 var _planning_accumulator_percent := 0
 var _did_advance_simulation_tick := true
 var _paid_track_actions_enabled := false
+var _paid_demolition_count := 0
+var _paid_demolition_spent := 0
+var _grade_separated_crossing_count := 0
+var _grade_separated_crossing_spent := 0
 var _temporary_track_purchase_count := 0
+var _temporary_track_purchase_spent := 0
 var _temporary_cargo_purchase_count := 0
+var _temporary_cargo_purchase_spent := 0
 
 
 func _init(
@@ -146,11 +152,17 @@ func advance_tick(
 		)
 	if not right_won and selected_priced_action.is_empty():
 		if _paid_track_actions_enabled:
-			_track_system.apply_left_input_with_paid_crossings(
+			var committed_crossing_count := _track_system.apply_left_input_with_paid_crossings(
 				frame,
 				_session_economy,
 				_start_config.major_track_action_cost
 			)
+			if committed_crossing_count > 0:
+				_grade_separated_crossing_count += committed_crossing_count
+				_grade_separated_crossing_spent += (
+					committed_crossing_count * _start_config.major_track_action_cost
+				)
+				_assert_action_spend_conservation()
 		else:
 			_track_system.apply_left_input(frame)
 	if not simulation_tick_due:
@@ -166,12 +178,15 @@ func advance_tick(
 			else 0.0
 		)
 		if paid_demolition_route_serial >= 0:
-			_track_system.try_commit_paid_demolition(
+			if _track_system.try_commit_paid_demolition(
 				paid_demolition_route_serial,
 				train_distance,
 				_start_config.major_track_action_cost,
 				_session_economy
-			)
+			):
+				_paid_demolition_count += 1
+				_paid_demolition_spent += _start_config.major_track_action_cost
+				_assert_action_spend_conservation()
 	elif selected_priced_action == SessionInvestmentInputScript.ACTION_TEMPORARY_TRACK_PURCHASE:
 		_try_commit_temporary_track_purchase()
 	elif selected_priced_action == SessionInvestmentInputScript.ACTION_TEMPORARY_CARGO_PURCHASE:
@@ -282,6 +297,8 @@ func _try_commit_temporary_track_purchase() -> bool:
 	):
 		return false
 	_temporary_track_purchase_count += 1
+	_temporary_track_purchase_spent += _start_config.temporary_track_purchase_cost
+	_assert_action_spend_conservation()
 	return true
 
 
@@ -302,7 +319,25 @@ func _try_commit_temporary_cargo_purchase() -> bool:
 	_cargo_system.replace_with(candidate_cargo)
 	_session_economy.replace_with(candidate_economy)
 	_temporary_cargo_purchase_count += 1
+	_temporary_cargo_purchase_spent += _start_config.temporary_cargo_purchase_cost
+	_assert_action_spend_conservation()
 	return true
+
+
+func _get_action_class_spent_total() -> int:
+	return (
+		_paid_demolition_spent
+		+ _grade_separated_crossing_spent
+		+ _temporary_track_purchase_spent
+		+ _temporary_cargo_purchase_spent
+	)
+
+
+func _assert_action_spend_conservation() -> void:
+	assert(
+		_get_action_class_spent_total() == _session_economy.get_total_spent(),
+		"Action-class spend must conserve total session spend"
+	)
 
 
 func get_snapshot() -> SessionSnapshotScript:
@@ -331,6 +366,7 @@ func _restore_aborted_warp_running_tick(
 func _complete(reason: SessionResultScript.Reason) -> void:
 	if _state == State.COMPLETED:
 		return
+	_assert_action_spend_conservation()
 	if _warp_cargo_enabled():
 		_warp_pair_system.void_nonterminal(_running_tick_index, _cargo_system)
 		_install_warp_anchors()
@@ -357,7 +393,13 @@ func _complete(reason: SessionResultScript.Reason) -> void:
 		_temporary_track_purchase_count,
 		_temporary_cargo_purchase_count,
 		_track_system.get_total_track_cells(),
-		_cargo_system.get_total_slot_count() if _cargo_system != null else 0
+		_cargo_system.get_total_slot_count() if _cargo_system != null else 0,
+		_paid_demolition_count,
+		_paid_demolition_spent,
+		_grade_separated_crossing_count,
+		_grade_separated_crossing_spent,
+		_temporary_track_purchase_spent,
+		_temporary_cargo_purchase_spent
 	))
 
 
@@ -367,6 +409,7 @@ func _publish_snapshot(include_warp_events: bool = true) -> void:
 
 
 func _create_snapshot(include_warp_events: bool = true) -> SessionSnapshotScript:
+	_assert_action_spend_conservation()
 	var hazard_cells: Array[Vector2i] = []
 	if _hazard_system != null:
 		hazard_cells = _hazard_system.get_hazard_cells()
@@ -485,7 +528,13 @@ func _create_snapshot(include_warp_events: bool = true) -> SessionSnapshotScript
 				< _start_config.maximum_temporary_cargo_purchases
 		),
 		_paid_track_actions_enabled
-			and current_cash >= _start_config.temporary_cargo_purchase_cost
+			and current_cash >= _start_config.temporary_cargo_purchase_cost,
+		_paid_demolition_count,
+		_paid_demolition_spent,
+		_grade_separated_crossing_count,
+		_grade_separated_crossing_spent,
+		_temporary_track_purchase_spent,
+		_temporary_cargo_purchase_spent
 	)
 
 

@@ -146,8 +146,8 @@ func apply_left_input_with_paid_crossings(
 	input_frame: TrackInputFrameScript,
 	economy: SessionEconomyScript,
 	major_track_action_cost: int
-) -> void:
-	_apply_left_input_internal(
+) -> int:
+	return _apply_left_input_internal(
 		input_frame,
 		economy,
 		major_track_action_cost,
@@ -160,8 +160,9 @@ func _apply_left_input_internal(
 	economy: SessionEconomyScript,
 	major_track_action_cost: int,
 	paid_crossings_authorized: bool
-) -> void:
+) -> int:
 	assert(input_frame != null, "Track input frame is required")
+	var committed_crossing_count := 0
 	if _left_capture_active and not _runtime.gesture_is_active():
 		_left_capture_active = false
 	var had_old_release := input_frame.left_released and _left_press_latched
@@ -189,7 +190,7 @@ func _apply_left_input_internal(
 					legacy_pointer_cell,
 					input_frame.allows_bounded_reentry_connection
 				)
-			_finalize_active_gesture(
+			committed_crossing_count += _finalize_active_gesture(
 				economy,
 				major_track_action_cost,
 				paid_crossings_authorized
@@ -219,7 +220,7 @@ func _apply_left_input_internal(
 				input_frame.allows_bounded_reentry_connection
 			)
 		if input_frame.left_released and not coalesced_release_before_press:
-			_finalize_active_gesture(
+			committed_crossing_count += _finalize_active_gesture(
 				economy,
 				major_track_action_cost,
 				paid_crossings_authorized
@@ -228,33 +229,35 @@ func _apply_left_input_internal(
 	if input_frame.left_released and not coalesced_release_before_press:
 		_left_capture_active = false
 		_left_press_latched = false
+	return committed_crossing_count
 
 
 func _finalize_active_gesture(
 	economy: SessionEconomyScript,
 	major_track_action_cost: int,
 	paid_crossings_authorized: bool
-) -> bool:
+) -> int:
 	var pending_crossings := _runtime.get_pending_crossing_count()
 	if pending_crossings <= 0:
-		return _runtime.gesture_finalize()
+		_runtime.gesture_finalize()
+		return 0
 	if (
 		not paid_crossings_authorized
 		or economy == null
 		or major_track_action_cost < 0
 	):
 		_runtime.gesture_abort(true)
-		return false
+		return 0
 	var candidate_economy = economy.duplicate_economy()
 	if not candidate_economy.try_spend(
 		pending_crossings * major_track_action_cost
 	):
 		_runtime.gesture_abort(true)
-		return false
+		return 0
 	if not _runtime.gesture_finalize_paid_crossings():
-		return false
+		return 0
 	economy.replace_with(candidate_economy)
-	return true
+	return pending_crossings
 
 
 func is_left_capture_active() -> bool:
