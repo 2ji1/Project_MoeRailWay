@@ -170,7 +170,8 @@ func _physics_process(_delta: float) -> void:
 	]:
 		return
 	var input_frame = _session_shell.consume_track_input_frame()
-	session_controller.advance_tick(input_frame, SessionInvestmentInputScript.empty())
+	var investment_input = _session_shell.consume_investment_input()
+	session_controller.advance_tick(input_frame, investment_input)
 
 
 func present_session_result(result: SessionResultScript) -> void:

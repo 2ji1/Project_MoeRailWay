@@ -1,6 +1,8 @@
 class_name TrackFieldView
 extends Control
 
+signal paid_demolition_edge_captured
+
 const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
 const SessionControllerScript = preload("res://src/domain/session/session_controller.gd")
 const SessionSnapshotScript = preload("res://src/domain/session/session_snapshot.gd")
@@ -31,6 +33,15 @@ const PLANNING_BACK_COLOR := Color(0.04, 0.07, 0.08, 0.82)
 const PLANNING_TEXT_COLOR := Color(0.91, 0.73, 0.29, 1.0)
 const CROSSING_GAP_COLOR := Color(0.80, 0.84, 0.75, 1.0)
 const CROSSING_GAP_WIDTH := BUILT_WIDTH + 5.0
+const HAZARD_FILL_COLOR := Color(0.72, 0.24, 0.18, 0.20)
+const HAZARD_BORDER_COLOR := Color(0.58, 0.16, 0.12, 0.88)
+const HAZARD_MARK_COLOR := Color(0.52, 0.12, 0.10, 0.72)
+const FREE_CANCEL_COLOR := Color(0.91, 0.73, 0.29, 0.95)
+const PAID_DEMOLITION_COLOR := Color(0.95, 0.49, 0.20, 0.95)
+const UNAFFORDABLE_COLOR := Color(0.82, 0.26, 0.20, 0.95)
+const RIGHT_ACTION_BACK_COLOR := Color(0.04, 0.07, 0.08, 0.84)
+const DEMOLITION_TIE_EPSILON_CELLS := 0.01
+const ROUTE_DISTANCE_EPSILON := 0.0001
 const WARP_STYLE_COLORS := [
 	Color("2ec4b6"), Color("ff9f1c"), Color("9b5de5"),
 	Color("f4d35e"), Color("3a86ff"), Color("ff5d8f"),
@@ -49,6 +60,7 @@ var _grid_size := Vector2i.ZERO
 var _selected_candidate_id := StringName()
 var _selected_departure_position := Vector2.ZERO
 var _selected_departure_cell := INVALID_CELL
+var _major_track_action_cost := 0
 var _field_draw_order := PackedStringArray(["grid_lines", "valid_start"])
 
 var _rasterizer = GridPointerRasterizerScript.new()
@@ -81,6 +93,7 @@ var _presented_pieces: Array[TrackGeometryPieceScript] = []
 var _presented_contacts: Array[Dictionary] = []
 var _presented_intervals: Array[Dictionary] = []
 var _train_active := false
+var _train_route_distance_cells := 0.0
 var _train_position := Vector2.ZERO
 var _train_heading := Vector2.RIGHT
 var _hover_cancel_cell := INVALID_CELL
@@ -99,6 +112,19 @@ var _planning_indicator_text := ""
 var _presented_pending_crossing_count := 0
 var _presented_pending_crossing_total_cost := 0
 var _presented_pending_crossing_affordable := true
+var _presented_hazard_cells: Array[Vector2i] = []
+var _presented_current_cash := 0
+var _right_click_feedback := {
+	"visible": false,
+	"mode": StringName(),
+	"route_serial": -1,
+	"affected_route_serials": [],
+	"selected_points": PackedVector2Array(),
+	"cost": 0,
+	"affordable": true,
+	"text": "",
+	"label_position": Vector2.ZERO,
+}
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -127,11 +153,19 @@ func _gui_input(event: InputEvent) -> void:
 	if event.button_index == MOUSE_BUTTON_RIGHT:
 		if event.pressed and not _right_pressed_pending:
 			var mapping := _map_local_to_grid(event.position)
+			_update_hover_cell(event.position)
+			var paid_demolition_selected: bool = (
+				_right_click_feedback.get("visible", false)
+				and StringName(_right_click_feedback.get("mode", StringName()))
+					== &"paid_demolition"
+			)
 			_right_pressed_pending = true
 			_right_press_inside_grid = mapping.inside_grid
 			_right_press_cell = mapping.cell
 			_right_press_position_units = mapping.logical
 			_right_press_position_available = mapping.inside_grid
+			if paid_demolition_selected:
+				paid_demolition_edge_captured.emit()
 		_update_hover_cell(event.position)
 		if event.pressed:
 			_clear_hover_cell()
@@ -344,10 +378,14 @@ func configure_session(start_config: SessionStartConfigScript) -> void:
 	_selected_candidate_id = candidate_departure_id
 	_selected_departure_position = candidate_departure_position
 	_selected_departure_cell = candidate_departure_cell
+	_major_track_action_cost = start_config.major_track_action_cost
 	_departure_marker_alpha = 1.0
 	_departure_dissolve_started = false
 	_planning_indicator_visible = false
 	_planning_indicator_text = ""
+	_presented_hazard_cells.clear()
+	_presented_current_cash = start_config.starting_session_cash
+	_right_click_feedback = _empty_right_click_feedback()
 	set_process(false)
 	_session_configured = true
 	if not Engine.is_editor_hint():
@@ -394,6 +432,7 @@ func present(snapshot: SessionSnapshotScript) -> void:
 	_presented_contacts = snapshot.get_contact_observations()
 	_presented_intervals = _build_intervals(_presented_cells, _presented_pieces)
 	_train_active = snapshot.is_train_active()
+	_train_route_distance_cells = snapshot.get_train_route_distance_cells()
 	_train_position = snapshot.get_train_position()
 	_train_heading = snapshot.get_train_heading()
 	_presented_snapshot_has_endpoint_eligibility = snapshot.is_endpoint_gesture_eligible()
@@ -406,6 +445,8 @@ func present(snapshot: SessionSnapshotScript) -> void:
 	_presented_pending_crossing_count = snapshot.get_pending_crossing_count()
 	_presented_pending_crossing_total_cost = snapshot.get_pending_crossing_total_cost()
 	_presented_pending_crossing_affordable = snapshot.is_pending_crossing_affordable()
+	_presented_hazard_cells = snapshot.get_hazard_cells()
+	_presented_current_cash = snapshot.get_current_session_cash()
 	var planning_slowdown_visible := (
 		_presented_state == SessionControllerScript.State.RUNNING
 		and snapshot.is_planning_slowdown_active()
@@ -491,6 +532,7 @@ func get_render_observation() -> Dictionary:
 		"field_draw_order": field_render_facts.field_draw_order,
 		"valid_start_cell": field_render_facts.valid_start_cell,
 		"valid_start_rect": field_render_facts.valid_start_rect,
+		"hazard_terrain": field_render_facts.hazard_terrain.duplicate(true),
 		"cells": _duplicate_records(_presented_cells),
 		"pieces": _duplicate_pieces(_presented_pieces),
 		"contacts": _presented_contacts.duplicate(true),
@@ -505,10 +547,18 @@ func get_render_observation() -> Dictionary:
 			"visible": _planning_indicator_visible,
 			"text": _planning_indicator_text,
 		},
+		"crossing_preview": {
+			"visible": _presented_pending_crossing_count > 0,
+			"count": _presented_pending_crossing_count,
+			"cost": _presented_pending_crossing_total_cost,
+			"affordable": _presented_pending_crossing_affordable,
+			"primitive": &"bridge_gap",
+		},
 		"train_active": _train_active,
 		"train_position": Vector2(_train_position),
 		"train_heading": Vector2(_train_heading),
 		"hover_cancel_cell": Vector2i(_hover_cancel_cell),
+		"right_click_feedback": _right_click_feedback.duplicate(true),
 		"warp_endpoints": _build_warp_endpoint_observations(),
 	}
 	if _hover_extend_cell != INVALID_CELL:
@@ -541,6 +591,7 @@ func _get_valid_start_cell() -> Vector2i:
 
 func _get_field_render_facts() -> Dictionary:
 	var grid_lines: Array[Dictionary] = []
+	var hazard_terrain := _build_hazard_terrain()
 	var valid_start_cell := _get_valid_start_cell()
 	var valid_start_rect := Rect2()
 	if _session_configured and _grid_size.x > 0 and _grid_size.y > 0:
@@ -569,10 +620,41 @@ func _get_field_render_facts() -> Dictionary:
 		"grid_size": Vector2i(_grid_size),
 		"grid_line_color": Color(grid_line_color),
 		"grid_lines": grid_lines,
+		"hazard_terrain": hazard_terrain,
 		"field_draw_order": _field_draw_order.duplicate(),
 		"valid_start_cell": Vector2i(valid_start_cell),
 		"valid_start_rect": Rect2(valid_start_rect),
 	}
+
+
+func _build_hazard_terrain() -> Array[Dictionary]:
+	var terrain: Array[Dictionary] = []
+	if not _session_configured or _grid_size.x <= 0 or _grid_size.y <= 0:
+		return terrain
+	var cell_size := Vector2(
+		_grid_rect.size.x / float(_grid_size.x),
+		_grid_rect.size.y / float(_grid_size.y)
+	)
+	var inset := maxf(2.0, minf(cell_size.x, cell_size.y) * 0.08)
+	for cell in _presented_hazard_cells:
+		var cell_rect := Rect2(_grid_rect.position + Vector2(cell) * cell_size, cell_size)
+		var mark_rect := cell_rect.grow(-inset)
+		terrain.append({
+			"cell": Vector2i(cell),
+			"rect": Rect2(cell_rect),
+			"draw_layer": &"below_grid",
+			"fill_color": Color(HAZARD_FILL_COLOR),
+			"border_color": Color(HAZARD_BORDER_COLOR),
+			"mark_color": Color(HAZARD_MARK_COLOR),
+			"mark_segments": [
+				{"from": mark_rect.position, "to": mark_rect.end},
+				{
+					"from": Vector2(mark_rect.end.x, mark_rect.position.y),
+					"to": Vector2(mark_rect.position.x, mark_rect.end.y),
+				},
+			],
+		})
+	return terrain
 
 
 func _duplicate_records(source: Array) -> Array:
@@ -680,6 +762,11 @@ func _draw() -> void:
 	var uniform_scale: float = content_rect.size.x / logical_size.x
 	draw_set_transform(content_rect.position, 0.0, Vector2.ONE * uniform_scale)
 	var field_render_facts := _get_field_render_facts()
+	for terrain in field_render_facts.hazard_terrain:
+		draw_rect(terrain.rect, terrain.fill_color, true)
+		draw_rect(terrain.rect, terrain.border_color, false, 2.0, true)
+		for segment in terrain.mark_segments:
+			draw_line(segment.from, segment.to, terrain.mark_color, 1.5, true)
 	for layer in field_render_facts.field_draw_order:
 		if layer == "grid_lines":
 			for grid_line in field_render_facts.grid_lines:
@@ -717,6 +804,8 @@ func _draw() -> void:
 		)
 		var extend_rect := Rect2(_grid_rect.position + Vector2(_hover_extend_cell) * cell_size, cell_size)
 		draw_rect(extend_rect, EXTEND_HOVER_COLOR, false, 4.0, true)
+	if _right_click_feedback.get("visible", false):
+		_draw_right_click_feedback()
 	if _session_configured and _departure_marker_alpha > 0.0:
 		var departure_color := Color(DEPARTURE_COLOR)
 		departure_color.a *= _departure_marker_alpha
@@ -768,6 +857,45 @@ func _draw_planning_indicator() -> void:
 		-1.0,
 		13,
 		PLANNING_TEXT_COLOR
+	)
+
+
+func _draw_right_click_feedback() -> void:
+	var mode := StringName(_right_click_feedback.get("mode", StringName()))
+	var affordable := bool(_right_click_feedback.get("affordable", true))
+	var color := FREE_CANCEL_COLOR
+	if mode == &"paid_demolition":
+		color = PAID_DEMOLITION_COLOR if affordable else UNAFFORDABLE_COLOR
+	var affected: Array = _right_click_feedback.get("affected_route_serials", [])
+	var selected_serial := int(_right_click_feedback.get("route_serial", -1))
+	for interval in _presented_intervals:
+		if not affected.has(interval.route_serial):
+			continue
+		var width := 4.5 if interval.route_serial == selected_serial else 2.5
+		draw_polyline(interval.points, color, width, true)
+	var label_position: Vector2 = _right_click_feedback.get("label_position", Vector2.ZERO)
+	var text: String = _right_click_feedback.get("text", "")
+	if text.is_empty():
+		return
+	var text_size := ThemeDB.fallback_font.get_string_size(
+		text,
+		HORIZONTAL_ALIGNMENT_LEFT,
+		-1.0,
+		12
+	)
+	draw_rect(
+		Rect2(label_position, text_size + Vector2(10.0, 7.0)),
+		RIGHT_ACTION_BACK_COLOR,
+		true
+	)
+	draw_string(
+		ThemeDB.fallback_font,
+		label_position + Vector2(5.0, text_size.y),
+		text,
+		HORIZONTAL_ALIGNMENT_LEFT,
+		-1.0,
+		12,
+		color
 	)
 
 
@@ -849,7 +977,10 @@ func _update_hover_cell(local_position: Vector2) -> void:
 		_clear_hover_observations()
 		return
 	var changed := false
-	var next_cancel: Vector2i = mapping.cell if _is_cancelable_cell(mapping.cell) else INVALID_CELL
+	var next_feedback := _build_right_click_feedback(mapping.logical)
+	var next_cancel := INVALID_CELL
+	if StringName(next_feedback.get("mode", StringName())) == &"free_cancel":
+		next_cancel = mapping.cell
 	var next_extend: Vector2i = _current_pointer_cell if _is_extendable_endpoint(_current_pointer_cell) else INVALID_CELL
 	if _hover_cancel_cell != next_cancel:
 		_hover_cancel_cell = next_cancel
@@ -857,8 +988,170 @@ func _update_hover_cell(local_position: Vector2) -> void:
 	if _hover_extend_cell != next_extend:
 		_hover_extend_cell = next_extend
 		changed = true
+	if _right_click_feedback != next_feedback:
+		_right_click_feedback = next_feedback
+		changed = true
 	if changed:
 		queue_redraw()
+
+
+func _build_right_click_feedback(logical_position: Vector2) -> Dictionary:
+	var hidden := _empty_right_click_feedback()
+	if (
+		_presented_state == SessionControllerScript.State.COMPLETED
+		or not _has_track_train_data
+		or _presented_gesture_active
+		or _grid_size.x <= 0
+		or _grid_size.y <= 0
+		or not _grid_rect.has_point(logical_position)
+	):
+		return hidden
+	var cell_size := Vector2(
+		_grid_rect.size.x / float(_grid_size.x),
+		_grid_rect.size.y / float(_grid_size.y)
+	)
+	var cell := Vector2i(floor((logical_position - _grid_rect.position) / cell_size))
+	var candidates: Array[Dictionary] = []
+	for index in range(_presented_cells.size()):
+		var record = _presented_cells[index]
+		if record.cell != cell:
+			continue
+		var interval := _interval_for_serial(record.route_serial)
+		if interval.is_empty():
+			continue
+		candidates.append({
+			"index": index,
+			"distance": _distance_to_route_occurrence(record, logical_position),
+			"points": interval.points.duplicate(),
+		})
+	if candidates.is_empty():
+		return hidden
+	candidates.sort_custom(func(first: Dictionary, second: Dictionary) -> bool:
+		if not is_equal_approx(first.distance, second.distance):
+			return first.distance < second.distance
+		return first.index < second.index
+	)
+	if candidates.size() > 1:
+		var distance_scale := maxf(0.0001, minf(cell_size.x, cell_size.y))
+		if (
+			absf(float(candidates[0].distance) - float(candidates[1].distance))
+				/ distance_scale
+			<= DEMOLITION_TIE_EPSILON_CELLS
+		):
+			return hidden
+	var selected_index := int(candidates[0].index)
+	var selected = _presented_cells[selected_index]
+	var affected: Array[int] = []
+	var mode := StringName()
+	var cost := 0
+	var affordable := true
+	var text := ""
+	if selected.state == TrackCellRecordScript.State.RESERVED_GHOST:
+		if not _free_suffix_is_eligible(selected_index):
+			return hidden
+		mode = &"free_cancel"
+		for index in range(selected_index, _presented_cells.size()):
+			affected.append(_presented_cells[index].route_serial)
+		text = "FREE CANCEL"
+	elif selected.state in [
+		TrackCellRecordScript.State.BUILDING,
+		TrackCellRecordScript.State.BUILT,
+	]:
+		var train_distance := _train_route_distance_cells if _train_active else 0.0
+		var selected_start: float = selected.route_distance_start_cells
+		var selected_end := selected_start + 1.0
+		if selected_start > train_distance + ROUTE_DISTANCE_EPSILON:
+			for index in range(selected_index, _presented_cells.size()):
+				affected.append(_presented_cells[index].route_serial)
+		elif selected_end <= train_distance + ROUTE_DISTANCE_EPSILON:
+			for index in range(selected_index + 1):
+				affected.append(_presented_cells[index].route_serial)
+		else:
+			return hidden
+		mode = &"paid_demolition"
+		cost = _major_track_action_cost
+		affordable = _presented_current_cash >= cost
+		text = "DEMOLISH %d (%s)" % [
+			cost,
+			"READY" if affordable else "NO CASH",
+		]
+	else:
+		return hidden
+	return {
+		"visible": true,
+		"mode": mode,
+		"route_serial": selected.route_serial,
+		"affected_route_serials": affected,
+		"selected_points": candidates[0].points.duplicate(),
+		"cost": cost,
+		"affordable": affordable,
+		"text": text,
+		"label_position": logical_position + Vector2(8.0, 8.0),
+	}
+
+
+func _empty_right_click_feedback() -> Dictionary:
+	return {
+		"visible": false,
+		"mode": StringName(),
+		"route_serial": -1,
+		"affected_route_serials": [],
+		"selected_points": PackedVector2Array(),
+		"cost": 0,
+		"affordable": true,
+		"text": "",
+		"label_position": Vector2.ZERO,
+	}
+
+
+func _interval_for_serial(route_serial: int) -> Dictionary:
+	for interval in _presented_intervals:
+		if interval.route_serial == route_serial:
+			return interval
+	return {}
+
+
+func _distance_to_route_occurrence(record, point: Vector2) -> float:
+	var owner = null
+	for piece in _presented_pieces:
+		if piece.contains_serial(record.route_serial):
+			owner = piece
+			break
+	if owner == null:
+		return INF
+	var local_start: float = (
+		record.route_distance_start_cells - owner.absolute_start_distance_cells
+	)
+	var shortest := INF
+	var previous: Vector2 = owner.sample_nominal(local_start).position
+	for sample_index in range(1, 17):
+		var local_distance := local_start + float(sample_index) / 16.0
+		var current: Vector2 = owner.sample_nominal(local_distance).position
+		shortest = minf(shortest, _distance_to_segment(point, previous, current))
+		previous = current
+	return shortest
+
+
+func _distance_to_segment(point: Vector2, start: Vector2, finish: Vector2) -> float:
+	var segment := finish - start
+	var length_squared := segment.length_squared()
+	if length_squared <= 0.000001:
+		return point.distance_to(start)
+	var weight := clampf((point - start).dot(segment) / length_squared, 0.0, 1.0)
+	return point.distance_to(start + segment * weight)
+
+
+func _free_suffix_is_eligible(selected_index: int) -> bool:
+	for index in range(selected_index, _presented_cells.size()):
+		var record = _presented_cells[index]
+		if record.state != TrackCellRecordScript.State.RESERVED_GHOST or record.geometry_locked:
+			return false
+		for piece in _presented_pieces:
+			if piece.contains_serial(record.route_serial) and piece.locked:
+				return false
+			if piece.exit_support_route_serial == record.route_serial:
+				return false
+	return true
 
 
 func _set_current_pointer(mapping: Dictionary) -> void:
@@ -922,10 +1215,15 @@ func _clear_hover_cell() -> void:
 
 
 func _clear_hover_observations() -> void:
-	if _hover_cancel_cell == INVALID_CELL and _hover_extend_cell == INVALID_CELL:
+	if (
+		_hover_cancel_cell == INVALID_CELL
+		and _hover_extend_cell == INVALID_CELL
+		and not _right_click_feedback.get("visible", false)
+	):
 		return
 	_hover_cancel_cell = INVALID_CELL
 	_hover_extend_cell = INVALID_CELL
+	_right_click_feedback = _empty_right_click_feedback()
 	queue_redraw()
 
 

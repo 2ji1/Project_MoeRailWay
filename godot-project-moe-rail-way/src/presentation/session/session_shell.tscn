@@ -151,9 +151,38 @@ theme_override_constants/separation = 0
 [node name="CashTitle" type="Label" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/CashItem/CashText"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "BASE REWARD"
+text = "CASH"
 
 [node name="CashValue" type="Label" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/CashItem/CashText"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(48, 0)
+layout_mode = 2
+text = "0"
+
+[node name="BaseRewardItem" type="HBoxContainer" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="BaseRewardIcon" type="ColorRect" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/BaseRewardItem"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+mouse_filter = 2
+color = Color(0.47, 0.72, 0.43, 1)
+
+[node name="BaseRewardText" type="VBoxContainer" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/BaseRewardItem"]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="BaseRewardTitle" type="Label" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/BaseRewardItem/BaseRewardText"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "BASE REWARD"
+
+[node name="BaseRewardValue" type="Label" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/BaseRewardItem/BaseRewardText"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(48, 0)
 layout_mode = 2
@@ -182,11 +211,20 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "DURABILITY"
 
-[node name="DurabilityValue" type="Label" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/DurabilityItem/DurabilityText"]
+[node name="DurabilityValues" type="HBoxContainer" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/DurabilityItem/DurabilityText"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="DurabilityValue" type="Label" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/DurabilityItem/DurabilityText/DurabilityValues"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(48, 0)
+custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
 text = "—"
+
+[node name="RepairBasisValue" type="Label" parent="OuterMargin/MainColumn/TopHud/TopContent/TopItems/DurabilityItem/DurabilityText/DurabilityValues"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "REPAIR —"
 
 [node name="Field" type="PanelContainer" parent="OuterMargin/MainColumn"]
 unique_name_in_owner = true
@@ -312,6 +350,20 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(48, 0)
 layout_mode = 2
 text = "—"
+
+[node name="TrackPurchaseButton" type="Button" parent="OuterMargin/MainColumn/BottomHud/BottomContent/BottomItems"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(176, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "BUY TRACK +5 / 40 [0/6]"
+
+[node name="CargoPurchaseButton" type="Button" parent="OuterMargin/MainColumn/BottomHud/BottomContent/BottomItems"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(176, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "BUY CARGO +1 / 80 [0/4]"
 
 [node name="ResultOverlay" type="CenterContainer" parent="."]
 unique_name_in_owner = true

@@ -5,6 +5,7 @@ const SessionStartConfigScript = preload("res://src/domain/session/session_start
 const SessionControllerScript = preload("res://src/domain/session/session_controller.gd")
 const SessionResultScript = preload("res://src/domain/session/session_result.gd")
 const SessionSnapshotScript = preload("res://src/domain/session/session_snapshot.gd")
+const SessionInvestmentInputScript = preload("res://src/domain/session/session_investment_input.gd")
 const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
 const UILayoutProfileScript = preload("res://src/presentation/layout/ui_layout_profile.gd")
 const TrackFieldViewScript = preload("res://src/presentation/track/track_field_view.gd")
@@ -30,24 +31,33 @@ const TRACK_END_URGENT_COLOR := Color(0.95, 0.35, 0.22, 1.0)
 @onready var _track_value: Label = %TrackValue
 @onready var _track_end_value: Label = %TrackEndValue
 @onready var _cash_value: Label = %CashValue
+@onready var _base_reward_value: Label = %BaseRewardValue
+@onready var _durability_value: Label = %DurabilityValue
+@onready var _repair_basis_value: Label = %RepairBasisValue
 @onready var _cargo_value: Label = %CargoValue
 @onready var _cargo_slot_strip: CargoSlotStripScript = %CargoSlotStrip
+@onready var _track_purchase_button: Button = %TrackPurchaseButton
+@onready var _cargo_purchase_button: Button = %CargoPurchaseButton
 
 @onready var _top_item_controls: Array[Control] = [
     %TimeItem,
     %TrackItem,
     %CashItem,
+    %BaseRewardItem,
     %DurabilityItem,
 ]
 @onready var _bottom_item_controls: Array[Control] = [
     %ContractItem,
     %CargoItem,
     %TrackEndItem,
+    %TrackPurchaseButton,
+    %CargoPurchaseButton,
 ]
 @onready var _icon_controls: Array[Control] = [
     %TimeIcon,
     %TrackIcon,
     %CashIcon,
+    %BaseRewardIcon,
     %DurabilityIcon,
     %ContractIcon,
     %CargoIcon,
@@ -62,10 +72,21 @@ const TRACK_END_URGENT_COLOR := Color(0.95, 0.35, 0.22, 1.0)
 var _profile: UILayoutProfileScript
 var _showing_result := false
 var _track_end_urgent := false
+var _pending_priced_actions: Array[StringName] = []
 
 
 func _ready() -> void:
     _result_overlay.hide()
+    _track_purchase_button.pressed.connect(_on_track_purchase_pressed)
+    _cargo_purchase_button.pressed.connect(_on_cargo_purchase_pressed)
+    var track_field_view = get_track_field_view()
+    if (
+        track_field_view != null
+        and track_field_view.has_signal("paid_demolition_edge_captured")
+    ):
+        track_field_view.paid_demolition_edge_captured.connect(
+            _on_paid_demolition_edge_captured
+        )
 
 
 func configure(
@@ -92,11 +113,37 @@ func present(snapshot: SessionSnapshotScript) -> void:
     var track_field_view = get_track_field_view()
     if track_field_view != null:
         track_field_view.present(snapshot)
-    _cash_value.text = str(snapshot.get_base_delivery_reward_total())
+    _cash_value.text = str(snapshot.get_current_session_cash())
+    _base_reward_value.text = str(snapshot.get_base_delivery_reward_total())
+    _durability_value.text = "%s / %s" % [
+        _format_number(snapshot.get_current_durability()),
+        _format_number(snapshot.get_maximum_durability()),
+    ]
+    _repair_basis_value.text = "REPAIR %d" % snapshot.get_repair_cost_basis()
     _cargo_value.text = "%d / %d" % [
         snapshot.get_occupied_cargo_slots(),
         snapshot.get_total_cargo_slots(),
     ]
+    _track_purchase_button.text = "BUY TRACK +%d / %d [%d/%d]" % [
+        snapshot.get_temporary_track_cells_per_purchase(),
+        snapshot.get_temporary_track_purchase_cost(),
+        snapshot.get_temporary_track_purchase_count(),
+        snapshot.get_maximum_temporary_track_purchases(),
+    ]
+    _cargo_purchase_button.text = "BUY CARGO +%d / %d [%d/%d]" % [
+        snapshot.get_temporary_cargo_slots_per_purchase(),
+        snapshot.get_temporary_cargo_purchase_cost(),
+        snapshot.get_temporary_cargo_purchase_count(),
+        snapshot.get_maximum_temporary_cargo_purchases(),
+    ]
+    _track_purchase_button.disabled = not (
+        snapshot.is_temporary_track_purchase_available()
+        and snapshot.is_temporary_track_purchase_affordable()
+    )
+    _cargo_purchase_button.disabled = not (
+        snapshot.is_temporary_cargo_purchase_available()
+        and snapshot.is_temporary_cargo_purchase_affordable()
+    )
     if _cargo_slot_strip != null:
         _cargo_slot_strip.present(snapshot)
     if not snapshot.has_track_train_data():
@@ -130,10 +177,24 @@ func show_result(result: SessionResultScript) -> void:
         reason_text = "REGULAR TIME EXPIRED"
     elif result.get_reason() == SessionResultScript.Reason.TRACK_END_REACHED:
         reason_text = "TRACK END REACHED"
+    elif result.get_reason() == SessionResultScript.Reason.DURABILITY_DEPLETED:
+        reason_text = "DURABILITY DEPLETED"
     else:
         return
     _showing_result = true
+    _pending_priced_actions.clear()
     %ResultReason.text = reason_text
+    %ResultNotice.text = (
+        "CASH %d | DURABILITY %s / %s | REPAIR %d\n"
+        + "TRACK BUY %d | CARGO BUY %d"
+    ) % [
+        result.get_final_session_cash(),
+        _format_number(result.get_current_durability()),
+        _format_number(result.get_maximum_durability()),
+        result.get_repair_cost_basis(),
+        result.get_temporary_track_purchase_count(),
+        result.get_temporary_cargo_purchase_count(),
+    ]
     _result_overlay.show()
 
 
@@ -170,6 +231,14 @@ func consume_track_input_frame() -> TrackInputFrameScript:
     if track_field_view == null:
         return null
     return track_field_view.consume_input_frame()
+
+
+func consume_investment_input() -> SessionInvestmentInputScript:
+    var investment_input := SessionInvestmentInputScript.new(
+        _pending_priced_actions
+    )
+    _pending_priced_actions.clear()
+    return investment_input
 
 
 func try_viewport_to_logical_field(viewport_position: Vector2) -> Variant:
@@ -210,7 +279,23 @@ func get_layout_observation() -> Dictionary:
         "result_row_gaps": _vertical_gaps(result_row_rects),
         "root_separation": float(_main_column.get_theme_constant("separation")),
         "time_text": _time_value.text,
+        "cash_text": _cash_value.text,
+        "base_reward_text": _base_reward_value.text,
+        "durability_text": _durability_value.text,
+        "repair_basis_text": _repair_basis_value.text,
         "track_end_urgent": _track_end_urgent,
+        "investment_buttons": {
+            "track": {
+                "text": _track_purchase_button.text,
+                "disabled": _track_purchase_button.disabled,
+                "mouse_filter": _track_purchase_button.mouse_filter,
+            },
+            "cargo": {
+                "text": _cargo_purchase_button.text,
+                "disabled": _cargo_purchase_button.disabled,
+                "mouse_filter": _cargo_purchase_button.mouse_filter,
+            },
+        },
         "hud_texts": PackedStringArray([
             %TimeTitle.text,
             _time_value.text,
@@ -218,14 +303,19 @@ func get_layout_observation() -> Dictionary:
             %TrackValue.text,
             %CashTitle.text,
             %CashValue.text,
+            %BaseRewardTitle.text,
+            %BaseRewardValue.text,
             %DurabilityTitle.text,
             %DurabilityValue.text,
+            %RepairBasisValue.text,
             %ContractTitle.text,
             %ContractValue.text,
             %CargoTitle.text,
             %CargoValue.text,
             %TrackEndTitle.text,
             %TrackEndValue.text,
+            %TrackPurchaseButton.text,
+            %CargoPurchaseButton.text,
         ]),
         "result_texts": PackedStringArray([
             %ResultTitle.text,
@@ -233,6 +323,37 @@ func get_layout_observation() -> Dictionary:
             %ResultNotice.text,
         ]),
     }
+
+
+func _on_track_purchase_pressed() -> void:
+    if _track_purchase_button.disabled or _showing_result:
+        return
+    _pending_priced_actions.append(
+        SessionInvestmentInputScript.ACTION_TEMPORARY_TRACK_PURCHASE
+    )
+
+
+func _on_cargo_purchase_pressed() -> void:
+    if _cargo_purchase_button.disabled or _showing_result:
+        return
+    _pending_priced_actions.append(
+        SessionInvestmentInputScript.ACTION_TEMPORARY_CARGO_PURCHASE
+    )
+
+
+func _on_paid_demolition_edge_captured() -> void:
+    if _showing_result:
+        return
+    _pending_priced_actions.append(
+        SessionInvestmentInputScript.ACTION_PAID_DEMOLITION
+    )
+
+
+func _format_number(value: float) -> String:
+    var rounded := roundf(value)
+    if is_equal_approx(value, rounded):
+        return str(int(rounded))
+    return "%.1f" % value
 
 
 func _set_track_end_urgent(urgent: bool) -> void:
