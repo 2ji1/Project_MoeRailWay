@@ -8,6 +8,7 @@ func run() -> PackedStringArray:
     _test_empty_full_and_mixed_slot_transitions()
     _test_matching_delivery_and_reward_idempotence()
     _test_removal_clear_all_and_detached_records()
+    _test_temporary_capacity_staging_preserves_slot_identity()
     return finish()
 
 
@@ -151,6 +152,36 @@ func _test_removal_clear_all_and_detached_records() -> void:
     assert_equal(cargo.get_base_delivery_reward_total(), 19, "clear_all preserves earned reward")
     _assert_slot_ids(cargo, [StringName(), StringName(), StringName()], "Cleared slots")
     _assert_conservation(cargo, "Cleared slot conservation")
+
+
+func _test_temporary_capacity_staging_preserves_slot_identity() -> void:
+    var cargo := CargoSystemScript.new(2, 19)
+    cargo.try_load(&"pair_a", 3)
+    cargo.try_load(&"pair_b", 4)
+    cargo.try_deliver(&"pair_b")
+    var live_before := JSON.stringify(cargo.get_slot_records().map(func(slot): return {
+        "index": slot.slot_index,
+        "pair": String(slot.pair_id),
+        "style": slot.style_index,
+    }))
+    var candidate = cargo.duplicate_cargo()
+    assert_true(candidate.try_append_empty_slots(1), "Candidate appends one empty temporary slot")
+    assert_equal(cargo.get_total_slot_count(), 2, "Candidate staging does not mutate live capacity")
+    assert_equal(JSON.stringify(cargo.get_slot_records().map(func(slot): return {
+        "index": slot.slot_index,
+        "pair": String(slot.pair_id),
+        "style": slot.style_index,
+    })), live_before, "Candidate staging preserves every live slot byte")
+    cargo.replace_with(candidate)
+    assert_equal(cargo.get_slot_records().map(func(slot): return slot.slot_index), [0, 1, 2], "Installed slot indices append monotonically")
+    assert_equal(cargo.get_slot_records()[0].pair_id, &"pair_a", "Install preserves occupied pair identity")
+    assert_equal(cargo.get_delivered_pair_count(), 1, "Install preserves delivery count")
+    assert_equal(cargo.get_base_delivery_reward_total(), 19, "Install preserves delivery reward total")
+    assert_equal(cargo.try_load(&"pair_c", 5), 1, "Original lowest empty slot still wins after expansion")
+    var full_before := JSON.stringify(cargo.get_slot_records().map(func(slot): return String(slot.pair_id)))
+    assert_false(cargo.try_append_empty_slots(6), "Concrete capacity rejects totals above eight")
+    assert_equal(JSON.stringify(cargo.get_slot_records().map(func(slot): return String(slot.pair_id))), full_before, "Rejected expansion preserves every slot")
+    _assert_conservation(cargo, "Expanded slot conservation")
 
 
 func _assert_slot_ids(cargo: RefCounted, expected: Array, message: String) -> void:

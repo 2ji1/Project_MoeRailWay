@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="DurabilityBalance" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/config/durability_balance.gd" id="1_durability"]
+
+[resource]
+script = ExtResource("1_durability")
+maximum_durability = 100.0
+damage_per_traveled_cell = 10.0
+repair_cost_per_durability = 1.0

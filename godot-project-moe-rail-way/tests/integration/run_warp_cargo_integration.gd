@@ -187,7 +187,7 @@ func _run() -> void:
     _assert_equal(controller.get_state(), SessionControllerScript.State.COMPLETED, "Trace ends by regular completion")
     _assert_equal(_cargo_text(shell), "0 / 2", "Regular end clears the cargo HUD")
     _assert_equal(_reward_text(shell), "0", "Regular end retains the unchanged base reward")
-    _assert_true(shell.get_layout_observation().hud_texts.has("BASE REWARD"), "Cash placeholder is renamed BASE REWARD")
+    _assert_true(shell.get_layout_observation().hud_texts.has("BASE REWARD"), "Base reward remains distinct from provisional cash")
     _assert_true(shell.has_method("get_cargo_slot_strip"), "Real shell exposes the cargo slot strip")
     if shell.has_method("get_cargo_slot_strip"):
         var strip = shell.get_cargo_slot_strip()
@@ -447,7 +447,7 @@ func _cargo_text(shell) -> String:
 
 
 func _reward_text(shell) -> String:
-    return shell.get_node("OuterMargin/MainColumn/TopHud/TopContent/TopItems/CashItem/CashText/CashValue").text
+    return shell.get_node("OuterMargin/MainColumn/TopHud/TopContent/TopItems/BaseRewardItem/BaseRewardText/BaseRewardValue").text
 
 
 func _create_manual_overlay(app) -> void:

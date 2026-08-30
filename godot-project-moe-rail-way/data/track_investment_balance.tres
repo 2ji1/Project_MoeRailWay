@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="TrackInvestmentBalance" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/config/track_investment_balance.gd" id="1_track_investment"]
+
+[resource]
+script = ExtResource("1_track_investment")
+major_track_action_cost = 50
+temporary_track_purchase_cost = 40
+temporary_track_cells_per_purchase = 5
+maximum_temporary_track_purchases = 6

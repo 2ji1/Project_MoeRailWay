@@ -6,6 +6,7 @@ const Validator = preload("res://src/config/prototype_config_validator.gd")
 
 func run() -> PackedStringArray:
 	_test_planning_time_scale_contract()
+	_test_investment_configuration_contract()
 	var valid_balance := PrototypeBalanceScript.new()
 	assert_equal(
 		Validator.validate(valid_balance).size(),
@@ -46,6 +47,16 @@ func run() -> PackedStringArray:
 	)
 
 	var default_balance := PrototypeBalanceScript.new()
+	assert_equal(
+		default_balance.session_cash_balance.starting_session_cash,
+		300,
+		"Default starting_session_cash must be 300"
+	)
+	assert_equal(default_balance.hazard_generation_balance.hazard_cell_count, 12, "Default hazard count is 12")
+	assert_equal(default_balance.durability_balance.maximum_durability, 100.0, "Default durability is 100")
+	assert_equal(default_balance.durability_balance.damage_per_traveled_cell, 10.0, "Default hazard damage is 10")
+	assert_equal(default_balance.durability_balance.repair_cost_per_durability, 1.0, "Default repair rate is 1")
+	assert_equal(default_balance.track_investment_balance.major_track_action_cost, 50, "Default major track action cost is 50")
 	assert_equal(
 		default_balance.track_inventory_balance.total_track_cells,
 		18,
@@ -104,7 +115,133 @@ func run() -> PackedStringArray:
 	)
 	_assert_contains(Validator.validate(invalid_large_departure), "required_built_cells")
 
+	var invalid_negative_cash := PrototypeBalanceScript.new()
+	invalid_negative_cash.session_cash_balance.starting_session_cash = -1
+	_assert_contains(
+		Validator.validate(invalid_negative_cash),
+		"prototype_balance.session_cash_balance.starting_session_cash"
+	)
+
+	var invalid_large_cash := PrototypeBalanceScript.new()
+	invalid_large_cash.session_cash_balance.starting_session_cash = 1000001
+	_assert_contains(
+		Validator.validate(invalid_large_cash),
+		"prototype_balance.session_cash_balance.starting_session_cash"
+	)
+
+	var missing_cash_resource := PrototypeBalanceScript.new()
+	missing_cash_resource.session_cash_balance = null
+	_assert_contains(
+		Validator.validate(missing_cash_resource),
+		"prototype_balance.session_cash_balance.resource"
+	)
+
+	var invalid_hazard_count := PrototypeBalanceScript.new()
+	invalid_hazard_count.hazard_generation_balance.hazard_cell_count = -1
+	_assert_contains(Validator.validate(invalid_hazard_count), "prototype_balance.hazard_generation_balance.hazard_cell_count")
+	invalid_hazard_count.hazard_generation_balance.hazard_cell_count = 4097
+	_assert_contains(Validator.validate(invalid_hazard_count), "prototype_balance.hazard_generation_balance.hazard_cell_count")
+	invalid_hazard_count.hazard_generation_balance = null
+	_assert_contains(Validator.validate(invalid_hazard_count), "prototype_balance.hazard_generation_balance.resource")
+
+	var invalid_durability := PrototypeBalanceScript.new()
+	invalid_durability.durability_balance.maximum_durability = NAN
+	_assert_contains(Validator.validate(invalid_durability), "prototype_balance.durability_balance.maximum_durability")
+	invalid_durability.durability_balance.maximum_durability = 100.0
+	invalid_durability.durability_balance.damage_per_traveled_cell = INF
+	_assert_contains(Validator.validate(invalid_durability), "prototype_balance.durability_balance.damage_per_traveled_cell")
+	invalid_durability.durability_balance.damage_per_traveled_cell = 10.0
+	invalid_durability.durability_balance.repair_cost_per_durability = -INF
+	_assert_contains(Validator.validate(invalid_durability), "prototype_balance.durability_balance.repair_cost_per_durability")
+	invalid_durability.durability_balance = null
+	_assert_contains(Validator.validate(invalid_durability), "prototype_balance.durability_balance.resource")
+
+	var invalid_track_investment := PrototypeBalanceScript.new()
+	invalid_track_investment.track_investment_balance.major_track_action_cost = -1
+	_assert_contains(Validator.validate(invalid_track_investment), "prototype_balance.track_investment_balance.major_track_action_cost")
+	invalid_track_investment.track_investment_balance.major_track_action_cost = 1000001
+	_assert_contains(Validator.validate(invalid_track_investment), "prototype_balance.track_investment_balance.major_track_action_cost")
+	invalid_track_investment.track_investment_balance = null
+	_assert_contains(Validator.validate(invalid_track_investment), "prototype_balance.track_investment_balance.resource")
+
+	var risk_copy_balance := PrototypeBalanceScript.new()
+	risk_copy_balance.hazard_generation_balance.hazard_cell_count = 7
+	risk_copy_balance.durability_balance.maximum_durability = 125.0
+	risk_copy_balance.durability_balance.damage_per_traveled_cell = 4.5
+	risk_copy_balance.durability_balance.repair_cost_per_durability = 2.0
+	risk_copy_balance.track_investment_balance.major_track_action_cost = 73
+	var risk_config = risk_copy_balance.create_session_start_config(812)
+	assert_equal(risk_config.hazard_cell_count, 7, "Start config copies hazard count")
+	assert_equal(risk_config.maximum_durability, 125.0, "Start config copies maximum durability")
+	assert_equal(risk_config.damage_per_traveled_cell, 4.5, "Start config copies hazard damage")
+	assert_equal(risk_config.repair_cost_per_durability, 2.0, "Start config copies repair rate")
+	assert_equal(risk_config.major_track_action_cost, 73, "Start config copies major track action cost")
+	risk_copy_balance.hazard_generation_balance.hazard_cell_count = 1
+	risk_copy_balance.durability_balance.maximum_durability = 1.0
+	risk_copy_balance.track_investment_balance.major_track_action_cost = 1
+	assert_equal(risk_config.hazard_cell_count, 7, "Risk config is detached from hazard Resource")
+	assert_equal(risk_config.maximum_durability, 125.0, "Risk config is detached from durability Resource")
+	assert_equal(risk_config.major_track_action_cost, 73, "Risk config is detached from track investment Resource")
+
 	return finish()
+
+
+func _test_investment_configuration_contract() -> void:
+	var defaults := PrototypeBalanceScript.new()
+	assert_equal(defaults.track_investment_balance.temporary_track_purchase_cost, 40, "Track purchase defaults to cost 40")
+	assert_equal(defaults.track_investment_balance.temporary_track_cells_per_purchase, 5, "Track purchase defaults to five cells")
+	assert_equal(defaults.track_investment_balance.maximum_temporary_track_purchases, 6, "Track purchase defaults to six")
+	assert_not_null(defaults.cargo_investment_balance, "Cargo investment Resource is concrete")
+	assert_equal(defaults.cargo_investment_balance.temporary_cargo_purchase_cost, 80, "Cargo purchase defaults to cost 80")
+	assert_equal(defaults.cargo_investment_balance.temporary_cargo_slots_per_purchase, 1, "Cargo purchase defaults to one slot")
+	assert_equal(defaults.cargo_investment_balance.maximum_temporary_cargo_purchases, 4, "Cargo purchase defaults to four")
+
+	var invalid_track := PrototypeBalanceScript.new()
+	invalid_track.track_investment_balance.temporary_track_purchase_cost = -1
+	_assert_contains(Validator.validate(invalid_track), "prototype_balance.track_investment_balance.temporary_track_purchase_cost")
+	invalid_track.track_investment_balance.temporary_track_purchase_cost = 40
+	invalid_track.track_investment_balance.temporary_track_cells_per_purchase = 0
+	_assert_contains(Validator.validate(invalid_track), "prototype_balance.track_investment_balance.temporary_track_cells_per_purchase")
+	invalid_track.track_investment_balance.temporary_track_cells_per_purchase = 5
+	invalid_track.track_investment_balance.maximum_temporary_track_purchases = 101
+	_assert_contains(Validator.validate(invalid_track), "prototype_balance.track_investment_balance.maximum_temporary_track_purchases")
+
+	var overflowing_track := PrototypeBalanceScript.new()
+	overflowing_track.track_inventory_balance.total_track_cells = 9223372036854775807
+	overflowing_track.track_investment_balance.temporary_track_cells_per_purchase = 1
+	overflowing_track.track_investment_balance.maximum_temporary_track_purchases = 1
+	_assert_contains(Validator.validate(overflowing_track), "maximum track capacity")
+	var overflowing_track_cost := PrototypeBalanceScript.new()
+	overflowing_track_cost.track_investment_balance.temporary_track_purchase_cost = 9223372036854775807
+	overflowing_track_cost.track_investment_balance.maximum_temporary_track_purchases = 2
+	_assert_contains(Validator.validate(overflowing_track_cost), "maximum track purchase cost")
+
+	var invalid_cargo := PrototypeBalanceScript.new()
+	invalid_cargo.cargo_investment_balance.temporary_cargo_purchase_cost = 1000001
+	_assert_contains(Validator.validate(invalid_cargo), "prototype_balance.cargo_investment_balance.temporary_cargo_purchase_cost")
+	invalid_cargo.cargo_investment_balance.temporary_cargo_purchase_cost = 80
+	invalid_cargo.cargo_investment_balance.temporary_cargo_slots_per_purchase = 0
+	_assert_contains(Validator.validate(invalid_cargo), "prototype_balance.cargo_investment_balance.temporary_cargo_slots_per_purchase")
+	invalid_cargo.cargo_investment_balance.temporary_cargo_slots_per_purchase = 1
+	invalid_cargo.cargo_investment_balance.maximum_temporary_cargo_purchases = 9
+	_assert_contains(Validator.validate(invalid_cargo), "prototype_balance.cargo_investment_balance.maximum_temporary_cargo_purchases")
+	invalid_cargo.cargo_investment_balance.maximum_temporary_cargo_purchases = 1
+	invalid_cargo.cargo_balance.base_slot_count = 8
+	_assert_contains(Validator.validate(invalid_cargo), "total cargo slots at or below 8")
+	var overflowing_cargo_cost := PrototypeBalanceScript.new()
+	overflowing_cargo_cost.cargo_investment_balance.temporary_cargo_purchase_cost = 9223372036854775807
+	overflowing_cargo_cost.cargo_investment_balance.maximum_temporary_cargo_purchases = 2
+	_assert_contains(Validator.validate(overflowing_cargo_cost), "maximum cargo purchase cost")
+	invalid_cargo.cargo_investment_balance = null
+	_assert_contains(Validator.validate(invalid_cargo), "prototype_balance.cargo_investment_balance.resource")
+
+	var copied := defaults.create_session_start_config(901)
+	assert_equal(copied.temporary_track_purchase_cost, 40, "Start config copies track purchase cost")
+	assert_equal(copied.temporary_track_cells_per_purchase, 5, "Start config copies track increment")
+	assert_equal(copied.maximum_temporary_track_purchases, 6, "Start config copies track limit")
+	assert_equal(copied.temporary_cargo_purchase_cost, 80, "Start config copies cargo purchase cost")
+	assert_equal(copied.temporary_cargo_slots_per_purchase, 1, "Start config copies cargo increment")
+	assert_equal(copied.maximum_temporary_cargo_purchases, 4, "Start config copies cargo limit")
 
 
 func _test_planning_time_scale_contract() -> void:

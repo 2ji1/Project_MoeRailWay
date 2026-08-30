@@ -81,7 +81,7 @@ func resolve(
                     valid = valid and _cell_in_grid(cell, grid_size)
             if valid:
                 for index in range(span.x, span.y + 1):
-                    if covered.has(index):
+                    if covered.has(index) or records[index].grade_separated_crossing:
                         valid = false
             if valid and _footprint_contains_non_owned_record(candidate, records):
                 valid = false
@@ -129,7 +129,20 @@ func resolve(
             return TrackGeometryResolutionScript.rejected(newest_serial, &"serial_overlap")
         for index in range(last_assigned + 1, start_index):
             if not covered.has(index):
-                pieces.append(_straight_piece(group_id, index, departure_cell, records, grid_origin_units, cell_size_units))
+                var straight = _straight_piece(
+                    group_id, index, departure_cell, records,
+                    grid_origin_units, cell_size_units
+                )
+                if _conflicts_with_locked(
+                    straight,
+                    blocking_locked,
+                    grid_origin_units,
+                    cell_size_units,
+                    records[index].cell if records[index].grade_separated_crossing else Vector2i(-1, -1),
+                    records[index].crossing_partner_route_serial
+                ):
+                    return TrackGeometryResolutionScript.rejected(newest_serial, &"locked_overlap")
+                pieces.append(straight)
                 group_id += 1
         var curve = _curve_piece(
             group_id, candidate, start_index, end_index,
@@ -157,7 +170,12 @@ func resolve(
             continue
         var straight = _straight_piece(group_id, index, departure_cell, records, grid_origin_units, cell_size_units)
         if _conflicts_with_locked(
-            straight, blocking_locked, grid_origin_units, cell_size_units
+            straight,
+            blocking_locked,
+            grid_origin_units,
+            cell_size_units,
+            records[index].cell if records[index].grade_separated_crossing else Vector2i(-1, -1),
+            records[index].crossing_partner_route_serial
         ):
             return TrackGeometryResolutionScript.rejected(newest_serial, &"locked_overlap")
         pieces.append(straight)
@@ -712,7 +730,9 @@ func _conflicts_with_locked(
     piece: TrackGeometryPieceScript,
     locked_pieces: Array,
     grid_origin_units: Vector2,
-    cell_size_units: float
+    cell_size_units: float,
+    allowed_crossing_cell: Vector2i = Vector2i(-1, -1),
+    crossing_partner_route_serial: int = -1
 ) -> bool:
     for cell in piece.footprint_cells:
         if not piece.contacts_cell(cell, grid_origin_units, cell_size_units):
@@ -722,5 +742,41 @@ func _conflicts_with_locked(
                 locked.footprint_cells.has(cell)
                 and locked.contacts_cell(cell, grid_origin_units, cell_size_units)
             ):
+                if (
+                    cell == allowed_crossing_cell
+                    and crossing_partner_route_serial >= 0
+                    and locked.contains_serial(crossing_partner_route_serial)
+                    and _pieces_cross_perpendicularly_at_cell_center(
+                        piece,
+                        locked,
+                        cell,
+                        grid_origin_units,
+                        cell_size_units
+                    )
+                ):
+                    continue
                 return true
     return false
+
+
+func _pieces_cross_perpendicularly_at_cell_center(
+    later: TrackGeometryPieceScript,
+    earlier: TrackGeometryPieceScript,
+    cell: Vector2i,
+    grid_origin_units: Vector2,
+    cell_size_units: float
+) -> bool:
+    var center := (
+        grid_origin_units
+        + (Vector2(cell) + Vector2(0.5, 0.5)) * cell_size_units
+    )
+    var tolerance := maxf(DISTANCE_EPSILON, cell_size_units * 0.0001)
+    var later_distance := later.find_nominal_distance_at_position(center, tolerance)
+    var earlier_distance := earlier.find_nominal_distance_at_position(center, tolerance)
+    if later_distance < 0.0 or earlier_distance < 0.0:
+        return false
+    var later_heading: Vector2 = later.sample_nominal(later_distance).heading.normalized()
+    var earlier_heading: Vector2 = earlier.sample_nominal(earlier_distance).heading.normalized()
+    if later_heading.is_zero_approx() or earlier_heading.is_zero_approx():
+        return false
+    return absf(later_heading.dot(earlier_heading)) <= TANGENT_DOT_EPSILON

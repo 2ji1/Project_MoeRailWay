@@ -42,6 +42,34 @@ var _warp_cargo_events: Array[Dictionary] = []
 var _planning_slowdown_active: bool
 var _planning_time_scale_percent: int
 var _did_advance_simulation_tick: bool
+var _hazard_cells: Array[Vector2i] = []
+var _maximum_durability: float
+var _current_durability: float
+var _repair_cost_basis: int
+var _starting_session_cash: int
+var _current_session_cash: int
+var _total_session_cash_spent: int
+var _pending_crossing_count: int
+var _pending_crossing_total_cost: int
+var _pending_crossing_affordable: bool
+var _temporary_track_purchase_count: int
+var _maximum_temporary_track_purchases: int
+var _temporary_track_purchase_cost: int
+var _temporary_track_cells_per_purchase: int
+var _temporary_track_purchase_available: bool
+var _temporary_track_purchase_affordable: bool
+var _temporary_cargo_purchase_count: int
+var _maximum_temporary_cargo_purchases: int
+var _temporary_cargo_purchase_cost: int
+var _temporary_cargo_slots_per_purchase: int
+var _temporary_cargo_purchase_available: bool
+var _temporary_cargo_purchase_affordable: bool
+var _paid_demolition_count: int
+var _paid_demolition_spent: int
+var _grade_separated_crossing_count: int
+var _grade_separated_crossing_spent: int
+var _temporary_track_purchase_spent: int
+var _temporary_cargo_purchase_spent: int
 
 
 func _init(
@@ -80,7 +108,35 @@ func _init(
 	warp_cargo_events_value: Array[Dictionary] = [],
 	planning_slowdown_active_value: bool = false,
 	planning_time_scale_percent_value: int = 100,
-	did_advance_simulation_tick_value: bool = true
+	did_advance_simulation_tick_value: bool = true,
+	hazard_cells_value: Array[Vector2i] = [],
+	maximum_durability_value: float = 0.0,
+	current_durability_value: float = 0.0,
+	repair_cost_basis_value: int = 0,
+	starting_session_cash_value: int = 0,
+	current_session_cash_value: int = 0,
+	total_session_cash_spent_value: int = 0,
+	pending_crossing_count_value: int = 0,
+	pending_crossing_total_cost_value: int = 0,
+	pending_crossing_affordable_value: bool = true,
+	temporary_track_purchase_count_value: int = 0,
+	maximum_temporary_track_purchases_value: int = 0,
+	temporary_track_purchase_cost_value: int = 0,
+	temporary_track_cells_per_purchase_value: int = 0,
+	temporary_track_purchase_available_value: bool = false,
+	temporary_track_purchase_affordable_value: bool = false,
+	temporary_cargo_purchase_count_value: int = 0,
+	maximum_temporary_cargo_purchases_value: int = 0,
+	temporary_cargo_purchase_cost_value: int = 0,
+	temporary_cargo_slots_per_purchase_value: int = 0,
+	temporary_cargo_purchase_available_value: bool = false,
+	temporary_cargo_purchase_affordable_value: bool = false,
+	paid_demolition_count_value: int = 0,
+	paid_demolition_spent_value: int = 0,
+	grade_separated_crossing_count_value: int = 0,
+	grade_separated_crossing_spent_value: int = 0,
+	temporary_track_purchase_spent_value: int = 0,
+	temporary_cargo_purchase_spent_value: int = 0
 ) -> void:
 	_total_ticks = total_ticks_value
 	_elapsed_ticks = elapsed_ticks_value
@@ -118,6 +174,34 @@ func _init(
 	_planning_slowdown_active = planning_slowdown_active_value
 	_planning_time_scale_percent = planning_time_scale_percent_value
 	_did_advance_simulation_tick = did_advance_simulation_tick_value
+	_hazard_cells = hazard_cells_value.duplicate()
+	_maximum_durability = maximum_durability_value
+	_current_durability = current_durability_value
+	_repair_cost_basis = repair_cost_basis_value
+	_starting_session_cash = starting_session_cash_value
+	_current_session_cash = current_session_cash_value
+	_total_session_cash_spent = total_session_cash_spent_value
+	_pending_crossing_count = pending_crossing_count_value
+	_pending_crossing_total_cost = pending_crossing_total_cost_value
+	_pending_crossing_affordable = pending_crossing_affordable_value
+	_temporary_track_purchase_count = temporary_track_purchase_count_value
+	_maximum_temporary_track_purchases = maximum_temporary_track_purchases_value
+	_temporary_track_purchase_cost = temporary_track_purchase_cost_value
+	_temporary_track_cells_per_purchase = temporary_track_cells_per_purchase_value
+	_temporary_track_purchase_available = temporary_track_purchase_available_value
+	_temporary_track_purchase_affordable = temporary_track_purchase_affordable_value
+	_temporary_cargo_purchase_count = temporary_cargo_purchase_count_value
+	_maximum_temporary_cargo_purchases = maximum_temporary_cargo_purchases_value
+	_temporary_cargo_purchase_cost = temporary_cargo_purchase_cost_value
+	_temporary_cargo_slots_per_purchase = temporary_cargo_slots_per_purchase_value
+	_temporary_cargo_purchase_available = temporary_cargo_purchase_available_value
+	_temporary_cargo_purchase_affordable = temporary_cargo_purchase_affordable_value
+	_paid_demolition_count = paid_demolition_count_value
+	_paid_demolition_spent = paid_demolition_spent_value
+	_grade_separated_crossing_count = grade_separated_crossing_count_value
+	_grade_separated_crossing_spent = grade_separated_crossing_spent_value
+	_temporary_track_purchase_spent = temporary_track_purchase_spent_value
+	_temporary_cargo_purchase_spent = temporary_cargo_purchase_spent_value
 
 
 func get_total_ticks() -> int:
@@ -268,6 +352,118 @@ func get_planning_time_scale_percent() -> int:
 
 func did_advance_simulation_tick() -> bool:
 	return _did_advance_simulation_tick
+
+
+func get_hazard_cells() -> Array[Vector2i]:
+	return _hazard_cells.duplicate()
+
+
+func get_maximum_durability() -> float:
+	return _maximum_durability
+
+
+func get_current_durability() -> float:
+	return _current_durability
+
+
+func get_repair_cost_basis() -> int:
+	return _repair_cost_basis
+
+
+func get_starting_session_cash() -> int:
+	return _starting_session_cash
+
+
+func get_current_session_cash() -> int:
+	return _current_session_cash
+
+
+func get_total_session_cash_spent() -> int:
+	return _total_session_cash_spent
+
+
+func get_pending_crossing_count() -> int:
+	return _pending_crossing_count
+
+
+func get_pending_crossing_total_cost() -> int:
+	return _pending_crossing_total_cost
+
+
+func is_pending_crossing_affordable() -> bool:
+	return _pending_crossing_affordable
+
+
+func get_temporary_track_purchase_count() -> int:
+	return _temporary_track_purchase_count
+
+
+func get_maximum_temporary_track_purchases() -> int:
+	return _maximum_temporary_track_purchases
+
+
+func get_temporary_track_purchase_cost() -> int:
+	return _temporary_track_purchase_cost
+
+
+func get_temporary_track_cells_per_purchase() -> int:
+	return _temporary_track_cells_per_purchase
+
+
+func is_temporary_track_purchase_available() -> bool:
+	return _temporary_track_purchase_available
+
+
+func is_temporary_track_purchase_affordable() -> bool:
+	return _temporary_track_purchase_affordable
+
+
+func get_temporary_cargo_purchase_count() -> int:
+	return _temporary_cargo_purchase_count
+
+
+func get_maximum_temporary_cargo_purchases() -> int:
+	return _maximum_temporary_cargo_purchases
+
+
+func get_temporary_cargo_purchase_cost() -> int:
+	return _temporary_cargo_purchase_cost
+
+
+func get_temporary_cargo_slots_per_purchase() -> int:
+	return _temporary_cargo_slots_per_purchase
+
+
+func is_temporary_cargo_purchase_available() -> bool:
+	return _temporary_cargo_purchase_available
+
+
+func is_temporary_cargo_purchase_affordable() -> bool:
+	return _temporary_cargo_purchase_affordable
+
+
+func get_paid_demolition_count() -> int:
+	return _paid_demolition_count
+
+
+func get_paid_demolition_spent() -> int:
+	return _paid_demolition_spent
+
+
+func get_grade_separated_crossing_count() -> int:
+	return _grade_separated_crossing_count
+
+
+func get_grade_separated_crossing_spent() -> int:
+	return _grade_separated_crossing_spent
+
+
+func get_temporary_track_purchase_spent() -> int:
+	return _temporary_track_purchase_spent
+
+
+func get_temporary_cargo_purchase_spent() -> int:
+	return _temporary_cargo_purchase_spent
 
 
 func _duplicate_records(source: Array[TrackCellRecordScript]) -> Array[TrackCellRecordScript]:

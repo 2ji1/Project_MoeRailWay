@@ -18,6 +18,8 @@ var left_release_pointer_cell: Vector2i
 var left_release_pointer_inside_grid: bool
 var has_explicit_release_snapshot: bool
 var allows_bounded_reentry_connection: bool
+var right_press_position_units: Vector2
+var right_press_position_available: bool
 
 
 func _init(
@@ -36,7 +38,9 @@ func _init(
 	release_live_gesture_path_value: Variant = null,
 	left_release_pointer_cell_value: Vector2i = Vector2i(-1, -1),
 	left_release_pointer_inside_grid_value: bool = false,
-	allows_bounded_reentry_connection_value: bool = false
+	allows_bounded_reentry_connection_value: bool = false,
+	right_press_position_units_value: Vector2 = Vector2.ZERO,
+	right_press_position_available_value: bool = false
 ) -> void:
 	crossed_cells = crossed_cells_value.duplicate()
 	live_gesture_path = []
@@ -61,6 +65,8 @@ func _init(
 	left_release_pointer_inside_grid = left_release_pointer_inside_grid_value
 	has_explicit_release_snapshot = release_live_gesture_path_value != null
 	allows_bounded_reentry_connection = allows_bounded_reentry_connection_value
+	right_press_position_units = right_press_position_units_value
+	right_press_position_available = right_press_position_available_value
 
 
 static func empty() -> TrackInputFrame:

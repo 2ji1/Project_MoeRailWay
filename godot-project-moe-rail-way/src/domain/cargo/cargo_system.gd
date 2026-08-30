@@ -2,6 +2,7 @@ class_name CargoSystem
 extends RefCounted
 
 const CargoSlotRecordScript = preload("res://src/domain/cargo/cargo_slot_record.gd")
+const MAX_SLOT_COUNT := 8
 
 var _slots: Array[CargoSlotRecordScript] = []
 var _base_delivery_reward: int
@@ -92,6 +93,37 @@ func get_occupied_slot_count() -> int:
 
 func get_total_slot_count() -> int:
     return _slots.size()
+
+
+func try_append_empty_slots(additional_slots: int) -> bool:
+    if additional_slots <= 0 or _slots.size() > MAX_SLOT_COUNT - additional_slots:
+        return false
+    var first_new_index := _slots.size()
+    for offset in range(additional_slots):
+        var slot := CargoSlotRecordScript.new()
+        slot.slot_index = first_new_index + offset
+        _slots.append(slot)
+    return true
+
+
+func duplicate_cargo() -> CargoSystem:
+    var copy: CargoSystem = get_script().new(1, _base_delivery_reward)
+    copy._slots.clear()
+    for slot in _slots:
+        copy._slots.append(slot.duplicate_record())
+    copy._delivered_pair_count = _delivered_pair_count
+    copy._base_delivery_reward_total = _base_delivery_reward_total
+    return copy
+
+
+func replace_with(source: CargoSystem) -> void:
+    assert(source != null, "Source cargo system is required")
+    _slots.clear()
+    for slot in source._slots:
+        _slots.append(slot.duplicate_record())
+    _base_delivery_reward = source._base_delivery_reward
+    _delivered_pair_count = source._delivered_pair_count
+    _base_delivery_reward_total = source._base_delivery_reward_total
 
 
 func get_delivered_pair_count() -> int:

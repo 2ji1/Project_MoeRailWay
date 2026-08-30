@@ -17,6 +17,8 @@ func run() -> PackedStringArray:
 	_test_horizontal_and_l_shaped_physical_events()
 	_test_corner_order_and_consume_once()
 	_test_outside_and_right_cell_mapping()
+	_test_crossing_interval_exposes_primitive_gap_identity()
+	_test_crossing_cost_feedback_is_visible_before_departure()
 	_test_held_reentry_preserves_intermediate_cells_across_frames()
 	_test_held_reentry_gap_grants_bounded_connection_authority()
 	_test_resize_and_nonzero_canvas_offset_preserve_cells()
@@ -198,14 +200,21 @@ func _view_snapshot(
 	gesture_active := false,
 	train_active := false,
 	train_position := Vector2.ZERO,
-	has_track_train_data := true
+	has_track_train_data := true,
+	pending_crossing_count := 0,
+	pending_crossing_total_cost := 0,
+	pending_crossing_affordable := true
 ) -> SessionSnapshotScript:
-	return SessionSnapshotScript.new(
+	var snapshot := SessionSnapshotScript.new(
 		1, 0, 1, 60, has_track_train_data, state,
 		records, pieces, [], 0.0, 0, 0, Vector2.ZERO, 0, 0, 0.0,
 		train_active, 0.0, train_position, Vector2.RIGHT, 0.0, false, &"view",
 		Vector2i(-1, -1), endpoint_eligible, gesture_active
 	)
+	snapshot._pending_crossing_count = pending_crossing_count
+	snapshot._pending_crossing_total_cost = pending_crossing_total_cost
+	snapshot._pending_crossing_affordable = pending_crossing_affordable
+	return snapshot
 
 
 func _endpoint_record(
@@ -1173,6 +1182,8 @@ func _test_outside_and_right_cell_mapping() -> void:
 	assert_true(right.right_pressed, "Right edge appears once")
 	assert_true(right.right_press_inside_grid, "Right center is inside the grid")
 	assert_equal(right.right_press_cell, Vector2i(2, 1), "Right press resolves one exact cell")
+	assert_true(right.right_press_position_available, "Inside right press retains its exact logical position")
+	assert_true(right.right_press_position_units.distance_to(Vector2(100.0, 60.0)) <= 0.001, "Inside right press preserves logical pointer units")
 	assert_false(view.consume_input_frame().right_pressed, "Right edge clears after consume")
 	var outside_right_position := Vector2(-20.0, -20.0)
 	_deliver(view, _button(outside_right_position, MOUSE_BUTTON_RIGHT, true))
@@ -1180,6 +1191,7 @@ func _test_outside_and_right_cell_mapping() -> void:
 	assert_true(outside_right.right_pressed, "Outside right press still emits one edge")
 	assert_false(outside_right.right_press_inside_grid, "Outside right press carries a false inside-grid fact")
 	assert_equal(outside_right.right_press_cell, Vector2i(-1, -1), "Outside right press carries an invalid cell")
+	assert_false(outside_right.right_press_position_available, "Outside right press exposes no selectable logical position")
 	assert_equal(outside_right.current_pointer_cell, Vector2i(-1, -1), "Outside right press clears current pointer cell")
 	assert_false(outside_right.current_pointer_inside_grid, "Outside right press clears current pointer inside-grid fact")
 	_deliver(view, _button(outside_right_position, MOUSE_BUTTON_RIGHT, false))
@@ -1187,6 +1199,49 @@ func _test_outside_and_right_cell_mapping() -> void:
 	assert_false(outside_right_release.right_pressed, "Outside right release does not create a duplicate edge")
 	assert_equal(outside_right_release.current_pointer_cell, Vector2i(-1, -1), "Outside right release keeps an invalid pointer cell")
 	assert_false(outside_right_release.current_pointer_inside_grid, "Outside right release keeps a false inside-grid fact")
+	fixture.parent.free()
+
+
+func _test_crossing_interval_exposes_primitive_gap_identity() -> void:
+	var fixture := _fixture()
+	var earlier := _endpoint_record(Vector2i(2, 2), TrackCellRecordScript.State.BUILT, 1, 0.0)
+	var later := _endpoint_record(Vector2i(2, 2), TrackCellRecordScript.State.RESERVED_GHOST, 2, 1.0)
+	later.grade_separated_crossing = true
+	later.crossing_partner_route_serial = 1
+	var horizontal := _view_straight_piece(1, Vector2i(2, 2), 0.0)
+	var vertical := _view_straight_piece(2, Vector2i(2, 2), 1.0)
+	var center := Vector2(100.0, 100.0)
+	vertical.centerline = PackedVector2Array([
+		center - Vector2(0.0, 20.0),
+		center + Vector2(0.0, 20.0),
+	])
+	_present_endpoint(fixture.view, [earlier, later], [horizontal, vertical], true)
+	var observation: Dictionary = fixture.view.get_render_observation()
+	var interval := _view_interval_for_serial(observation, 2)
+	assert_true(interval.get("grade_separated_crossing", false), "Later crossing interval retains primitive overpass identity")
+	var gap_points: PackedVector2Array = fixture.view.call(
+		"_crossing_gap_points",
+		interval.get("points", PackedVector2Array())
+	)
+	assert_true(gap_points.size() >= 2, "Crossing interval produces a minimal visible gap primitive")
+	fixture.parent.free()
+
+
+func _test_crossing_cost_feedback_is_visible_before_departure() -> void:
+	var fixture := _fixture()
+	var snapshot := _view_snapshot(
+		[], [], SessionControllerScript.State.PREPARING_DEPARTURE,
+		true, true, false, Vector2.ZERO, true,
+		1, 50, false
+	)
+	fixture.view.present(snapshot)
+	var unaffordable: Dictionary = fixture.view.get_render_observation().planning_indicator
+	assert_true(unaffordable.visible, "Pending crossing cost feedback is visible before departure")
+	assert_equal(unaffordable.text, "CROSSING 50 (NO CASH)", "Pre-departure feedback exposes exact cost and affordability")
+	snapshot._pending_crossing_affordable = true
+	fixture.view.present(snapshot)
+	var affordable: Dictionary = fixture.view.get_render_observation().planning_indicator
+	assert_equal(affordable.text, "CROSSING 50 (READY)", "Pre-departure feedback updates readiness without a planning prefix")
 	fixture.parent.free()
 
 

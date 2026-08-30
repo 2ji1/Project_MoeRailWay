@@ -19,6 +19,8 @@ func run() -> PackedStringArray:
 	_test_departure_anchor_reuse_follows_recovery_boundary()
 	_test_start_building_does_not_lock_geometry()
 	_test_endpoint_reshape_replacement_preserves_identity()
+	_test_crossing_occurrence_counts_and_identity_conserve_inventory()
+	_test_temporary_capacity_preserves_records_and_conservation()
 	return finish()
 
 
@@ -320,3 +322,70 @@ func _test_endpoint_reshape_replacement_preserves_identity() -> void:
 	assert_equal(gap_route.get_available_track_cells(), gap_inventory_before, "Serial-gap replacement does not charge inventory")
 	assert_equal(gap_route._active_cells.size(), gap_route.get_records().size(), "Serial-gap replacement preserves uniqueness")
 	assert_true(gap_route.is_conservation_valid(), "Serial-gap replacement preserves conservation")
+
+
+func _test_crossing_occurrence_counts_and_identity_conserve_inventory() -> void:
+	var route = TrackCellSequenceScript.new(Vector2i(0, 0), 12)
+	assert_equal(route.append_candidates([
+		Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0),
+		Vector2i(3, 1), Vector2i(3, 2), Vector2i(2, 2), Vector2i(2, 1),
+	]), 7, "Crossing sequence fixture appends its unique approach")
+	route._records[1].geometry_locked = true
+	assert_true(route.try_append_candidate(Vector2i(2, 0)) == null, "Duplicate cells remain rejected without explicit crossing authority")
+	assert_true(route.try_append_candidate(Vector2i(2, 0), true, 1) == null, "Crossing authority requires the exact earlier serial")
+	var crossing = route.try_append_candidate(Vector2i(2, 0), true, 2)
+	assert_not_null(crossing, "Explicit crossing authority creates one later occurrence")
+	if crossing == null:
+		return
+	assert_not_null(route.try_append_candidate(Vector2i(2, -1)), "A crossing remains incomplete until its opposite-side exit exists")
+	assert_equal(route.get_active_occurrence_count(Vector2i(2, 0)), 2, "Crossing cell counts both ordered occurrences")
+	assert_equal(route._active_cells.size(), route.get_records().size() - 1, "Only the crossing coordinate is shared")
+	assert_equal(route.get_available_track_cells(), 3, "Every crossing occurrence consumes one inventory cell")
+	assert_true(route.is_conservation_valid(), "Perpendicular crossing topology preserves occurrence-based conservation")
+	var observed := route.get_records()
+	assert_true(observed[-2].grade_separated_crossing, "Later occurrence retains crossing identity")
+	assert_equal(observed[-2].crossing_partner_route_serial, 2, "Later occurrence retains exact partner identity")
+	observed[-2].grade_separated_crossing = false
+	assert_true(route.get_records()[-2].grade_separated_crossing, "Crossing identity observations remain detached")
+	assert_false(route.replace_span_in_place(8, 9, [Vector2i(2, 0), Vector2i(2, -1)]), "Template replacement cannot mutate a paid crossing identity")
+	assert_equal(route.cancel_ghost_suffix_from_serial(8), 2, "Exact crossing serial cancels its complete ghost suffix")
+	assert_equal(route.get_active_occurrence_count(Vector2i(2, 0)), 1, "Crossing cancellation retains the earlier occurrence count")
+	assert_equal(route.get_available_track_cells(), 5, "Crossing suffix cancellation refunds its route occurrences")
+	assert_true(route.is_conservation_valid(), "Crossing cancellation restores ordinary conservation")
+
+
+func _test_temporary_capacity_preserves_records_and_conservation() -> void:
+	var route = TrackCellSequenceScript.new(Vector2i(0, 0), 4)
+	var cells: Array[Vector2i] = [Vector2i(1, 0), Vector2i(2, 0)]
+	assert_equal(route.append_candidates(cells), 2, "Capacity fixture appends two records")
+	var records_before := JSON.stringify(route.get_records().map(func(record): return {
+		"serial": record.route_serial,
+		"cell": record.cell,
+		"state": record.state,
+		"progress": record.build_progress,
+		"group": record.geometry_group_id,
+		"locked": record.geometry_locked,
+	}))
+	assert_true(route.try_add_temporary_capacity(5), "Positive temporary capacity commits")
+	assert_equal(route.get_total_track_cells(), 9, "Temporary capacity increases total exactly")
+	assert_equal(route.get_available_track_cells(), 7, "Temporary capacity increases available exactly")
+	assert_equal(JSON.stringify(route.get_records().map(func(record): return {
+		"serial": record.route_serial,
+		"cell": record.cell,
+		"state": record.state,
+		"progress": record.build_progress,
+		"group": record.geometry_group_id,
+		"locked": record.geometry_locked,
+	})), records_before, "Temporary capacity changes no record identity or state")
+	assert_true(route.is_conservation_valid(), "Temporary capacity preserves conservation")
+	var rejected_before := JSON.stringify({
+		"total": route.get_total_track_cells(),
+		"available": route.get_available_track_cells(),
+		"records": route.get_records().size(),
+	})
+	assert_false(route.try_add_temporary_capacity(0), "Nonpositive capacity is rejected")
+	assert_equal(JSON.stringify({
+		"total": route.get_total_track_cells(),
+		"available": route.get_available_track_cells(),
+		"records": route.get_records().size(),
+	}), rejected_before, "Rejected capacity leaves sequence byte-identical")

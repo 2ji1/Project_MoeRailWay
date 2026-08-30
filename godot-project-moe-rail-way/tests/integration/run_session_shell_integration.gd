@@ -102,8 +102,10 @@ func _verify_supported_layouts() -> void:
         _assert_equal(
             observation.hud_texts,
             PackedStringArray([
-                "TIME", "3:00", "TRACK", "—", "BASE REWARD", "0", "DURABILITY", "—",
-                "CONTRACT", "—", "CARGO", "0 / 0", "TRACK END", "—",
+                "TIME", "3:00", "TRACK", "—", "CASH", "0", "BASE REWARD", "0",
+                "DURABILITY", "0 / 0", "REPAIR 0", "CONTRACT", "—",
+                "CARGO", "0 / 0", "TRACK END", "—",
+                "BUY TRACK +0 / 0 [0/0]", "BUY CARGO +0 / 0 [0/0]",
             ]),
             "%s must expose approved live and inactive placeholders" % description
         )
@@ -269,9 +271,9 @@ func _verify_profile_metric_consumers() -> void:
         PackedStringArray([
             "SESSION COMPLETE",
             "REGULAR TIME EXPIRED",
-            "Settlement is not available in this milestone.",
+            "CASH 0 | DURABILITY 0 / 0 | REPAIR 0\nTRACK BUY 0 | CARGO BUY 0",
         ]),
-        "The result overlay must contain only approved text"
+        "The result overlay must retain detached Risk evidence"
     )
 
     var panel_profile = _copy_profile(default_profile)
@@ -390,7 +392,7 @@ func _verify_app_lifecycle() -> void:
         "The real preparation HUD must show available and total track"
     )
     _assert_equal(
-        preparation_observation.hud_texts[13],
+        preparation_observation.hud_texts[16],
         "0 / 1",
         "The real preparation HUD must show built and required track"
     )
@@ -440,7 +442,7 @@ func _verify_app_lifecycle() -> void:
         "The departure threshold tick must publish an active train"
     )
     _assert_equal(
-        shell.get_layout_observation().hud_texts[13],
+        shell.get_layout_observation().hud_texts[16],
         "10.0 s",
         "The real running HUD must show built-end seconds with one decimal"
     )
@@ -480,17 +482,18 @@ func _verify_app_lifecycle() -> void:
         )
 
     var final_observation: Dictionary = shell.get_layout_observation()
-    _assert_equal(final_observation.hud_texts[5], "0", "BASE REWARD must remain zero without cargo delivery")
-    _assert_equal(final_observation.hud_texts[9], "—", "CONTRACT must remain an inactive em dash")
-    _assert_equal(final_observation.hud_texts[11], "0 / 2", "CARGO must expose the empty configured slot count")
+    _assert_equal(final_observation.hud_texts[5], "300", "CASH must retain the unspent provisional balance")
+    _assert_equal(final_observation.hud_texts[7], "0", "BASE REWARD must remain zero without cargo delivery")
+    _assert_equal(final_observation.hud_texts[12], "—", "CONTRACT must remain an inactive em dash")
+    _assert_equal(final_observation.hud_texts[14], "0 / 2", "CARGO must expose the empty configured slot count")
     _assert_equal(
         final_observation.result_texts,
         PackedStringArray([
             "SESSION COMPLETE",
             "REGULAR TIME EXPIRED",
-            "Settlement is not available in this milestone.",
+            "CASH 300 | DURABILITY 100 / 100 | REPAIR 0\nTRACK BUY 0 | CARGO BUY 0",
         ]),
-        "Lifecycle completion must not add settlement or action text"
+        "Lifecycle completion must retain detached Risk evidence"
     )
 
     app.queue_free()
@@ -534,7 +537,7 @@ func _verify_track_end_urgent_presentation() -> void:
     await _wait_for_layout()
     var urgent_observation: Dictionary = shell.get_layout_observation()
     _assert_equal(urgent_observation.hud_texts[3], "10 / 20", "Urgent probe inventory text")
-    _assert_equal(urgent_observation.hud_texts[13], "1.5 s", "Urgent probe seconds text")
+    _assert_equal(urgent_observation.hud_texts[16], "1.5 s", "Urgent probe seconds text")
     _assert_true(urgent_observation.track_end_urgent, "Urgent snapshot must expose urgent style")
 
     shell.show_result(SessionResultScript.new(
@@ -549,9 +552,9 @@ func _verify_track_end_urgent_presentation() -> void:
         PackedStringArray([
             "SESSION COMPLETE",
             "TRACK END REACHED",
-            "Settlement is not available in this milestone.",
+            "CASH 0 | DURABILITY 0 / 0 | REPAIR 0\nTRACK BUY 0 | CARGO BUY 0",
         ]),
-        "Track-end result overlay must contain only approved text"
+        "Track-end result overlay must retain detached Risk evidence"
     )
     fixture.host.queue_free()
     await process_frame

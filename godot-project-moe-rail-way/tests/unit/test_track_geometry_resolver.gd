@@ -46,6 +46,7 @@ func run() -> PackedStringArray:
 	_test_empty_acceptance_and_final_conflict_rejection()
 	_test_detached_duplicates()
 	_test_exit_support_metadata_copies_with_active_slices()
+	_test_grade_separated_crossing_exception_is_exact_and_perpendicular()
 	return finish()
 
 
@@ -1044,6 +1045,69 @@ func _test_exit_support_metadata_copies_with_active_slices() -> void:
 	assert_equal(active_slice.active_local_end_cells, 4.0, "Support slice stores its active end")
 	active_slice.exit_support_route_serial = 7
 	assert_equal(piece.exit_support_route_serial, 6, "Active slice support metadata is detached")
+
+
+func _test_grade_separated_crossing_exception_is_exact_and_perpendicular() -> void:
+	var sequence = TrackCellSequenceScript.new(Vector2i(0, 2), 16)
+	assert_equal(sequence.append_candidates([
+		Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2),
+		Vector2i(3, 3), Vector2i(3, 4), Vector2i(2, 4), Vector2i(2, 3),
+	]), 7, "Geometry crossing fixture appends its unique approach")
+	sequence._records[1].geometry_locked = true
+	assert_not_null(sequence.try_append_candidate(Vector2i(2, 2), true, 2), "Geometry fixture appends the authorized crossing occurrence")
+	assert_not_null(sequence.try_append_candidate(Vector2i(2, 1)), "Geometry fixture appends the opposite-side exit")
+	var locked = TrackGeometryPieceScript.new()
+	locked.group_id = 90
+	locked.kind = STRAIGHT
+	locked.first_route_serial = 2
+	locked.last_route_serial = 2
+	locked.nominal_length_cells = 1
+	locked.absolute_start_distance_cells = 1.0
+	var locked_footprint: Array[Vector2i] = [Vector2i(2, 2)]
+	locked.footprint_cells = locked_footprint
+	locked.centerline = PackedVector2Array([Vector2(80.0, 100.0), Vector2(120.0, 100.0)])
+	locked.active_local_end_cells = 1.0
+	locked.locked = true
+	var result = _resolver.resolve(
+		Vector2i(0, 2), sequence.get_records(), [locked], [],
+		Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_true(result.is_valid, "Exact perpendicular center crossing is the only locked-overlap exception")
+	if result.is_valid:
+		var later = _piece_covering_serial(result.pieces, 8)
+		assert_not_null(later, "Later crossing occurrence owns one geometry piece")
+		if later != null:
+			var center := Vector2(100.0, 100.0)
+			var later_distance: float = later.find_nominal_distance_at_position(center, 0.001)
+			var locked_distance: float = locked.find_nominal_distance_at_position(center, 0.001)
+			assert_true(later_distance >= 0.0 and locked_distance >= 0.0, "Both centerlines pass through the literal crossing center")
+			if later_distance >= 0.0 and locked_distance >= 0.0:
+				assert_true(absf(later.sample_nominal(later_distance).heading.dot(locked.sample_nominal(locked_distance).heading)) <= 0.0001, "Resolved crossing headings are perpendicular")
+	var wrong_partner_records := sequence.get_records()
+	wrong_partner_records[-2].crossing_partner_route_serial = 1
+	var rejected = _resolver.resolve(
+		Vector2i(0, 2), wrong_partner_records, [locked], [],
+		Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_false(rejected.is_valid, "A mismatched partner serial cannot bypass locked collision ownership")
+	assert_equal(rejected.reason, &"locked_overlap", "Mismatched crossing identity rejects as a real overlap")
+	var parallel = locked.duplicate_piece()
+	parallel.group_id = 91
+	parallel.first_route_serial = 8
+	parallel.last_route_serial = 8
+	parallel.absolute_start_distance_cells = 7.0
+	parallel.locked = false
+	assert_true(
+		_resolver._conflicts_with_locked(
+			parallel,
+			[locked],
+			Vector2.ZERO,
+			40.0,
+			Vector2i(2, 2),
+			2
+		),
+		"An authorized cell and partner cannot exempt a parallel centerline overlap"
+	)
 
 
 func _records_for(source_cells: Array, departure: Vector2i = DEPARTURE) -> Array:

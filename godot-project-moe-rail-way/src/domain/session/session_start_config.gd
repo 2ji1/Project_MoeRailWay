@@ -25,6 +25,18 @@ var warp_max_live_pairs: int
 var cargo_base_slot_count: int
 var cargo_base_delivery_reward: int
 var planning_time_scale_percent: int
+var starting_session_cash: int
+var hazard_cell_count: int
+var maximum_durability: float
+var damage_per_traveled_cell: float
+var repair_cost_per_durability: float
+var major_track_action_cost: int
+var temporary_track_purchase_cost: int
+var temporary_track_cells_per_purchase: int
+var maximum_temporary_track_purchases: int
+var temporary_cargo_purchase_cost: int
+var temporary_cargo_slots_per_purchase: int
+var maximum_temporary_cargo_purchases: int
 
 
 func _init(
@@ -51,7 +63,19 @@ func _init(
 	warp_max_live_pairs_value: int = 0,
 	cargo_base_slot_count_value: int = 0,
 	cargo_base_delivery_reward_value: int = 0,
-	planning_time_scale_percent_value: int = 100
+	planning_time_scale_percent_value: int = 100,
+	starting_session_cash_value: int = 0,
+	hazard_cell_count_value: int = 0,
+	maximum_durability_value: float = 0.0,
+	damage_per_traveled_cell_value: float = 0.0,
+	repair_cost_per_durability_value: float = 0.0,
+	major_track_action_cost_value: int = 0,
+	temporary_track_purchase_cost_value: int = 40,
+	temporary_track_cells_per_purchase_value: int = 5,
+	maximum_temporary_track_purchases_value: int = 6,
+	temporary_cargo_purchase_cost_value: int = 80,
+	temporary_cargo_slots_per_purchase_value: int = 1,
+	maximum_temporary_cargo_purchases_value: int = 4
 ) -> void:
 	seed = seed_value
 	session_duration_seconds = duration_seconds
@@ -77,3 +101,15 @@ func _init(
 	cargo_base_slot_count = cargo_base_slot_count_value
 	cargo_base_delivery_reward = cargo_base_delivery_reward_value
 	planning_time_scale_percent = planning_time_scale_percent_value
+	starting_session_cash = starting_session_cash_value
+	hazard_cell_count = hazard_cell_count_value
+	maximum_durability = maximum_durability_value
+	damage_per_traveled_cell = damage_per_traveled_cell_value
+	repair_cost_per_durability = repair_cost_per_durability_value
+	major_track_action_cost = major_track_action_cost_value
+	temporary_track_purchase_cost = temporary_track_purchase_cost_value
+	temporary_track_cells_per_purchase = temporary_track_cells_per_purchase_value
+	maximum_temporary_track_purchases = maximum_temporary_track_purchases_value
+	temporary_cargo_purchase_cost = temporary_cargo_purchase_cost_value
+	temporary_cargo_slots_per_purchase = temporary_cargo_slots_per_purchase_value
+	maximum_temporary_cargo_purchases = maximum_temporary_cargo_purchases_value

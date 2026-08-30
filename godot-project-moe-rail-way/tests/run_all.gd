@@ -25,6 +25,13 @@ const SUITES = [
     preload("res://tests/unit/test_warp_cargo_session_controller.gd"),
     preload("res://tests/unit/test_warp_cargo_presentation.gd"),
     preload("res://tests/unit/test_warp_cargo_control_feel_presentation.gd"),
+    preload("res://tests/unit/test_session_economy.gd"),
+    preload("res://tests/unit/test_hazard_system.gd"),
+    preload("res://tests/unit/test_risk_session_controller.gd"),
+    preload("res://tests/unit/test_track_system_demolition.gd"),
+    preload("res://tests/unit/test_track_system_crossing.gd"),
+    preload("res://tests/unit/test_session_investment_purchases.gd"),
+    preload("res://tests/unit/test_risk_investment_presentation.gd"),
 ]
 
 const GridTrackRuntimeSuiteScript = preload("res://tests/unit/test_grid_track_runtime.gd")
