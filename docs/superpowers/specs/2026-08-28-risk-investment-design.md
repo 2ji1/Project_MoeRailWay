@@ -91,7 +91,7 @@ No action spends before validation. No retry, repeated input frame, presentation
 
 Disabled button state and pointer-derived affordability feedback may be presented without mutating domain state. An unaffordable action does not publish a domain rejection event that would violate the byte-unchanged rule.
 
-For this contract, the canonical authoritative comparison is a deterministic serialization of current cash and spending totals; ordered route records and their complete fields; geometry pieces and locked ledger; contact anchors; inventory totals; train state; hazard records; Warp pair state; cargo slots; purchase counters and capacities; session clock/completion state; and the last published domain snapshot/result. It excludes raw OS input, a request already dequeued for the current tick, pointer/hover presentation, and derived local affordability text. Rejected actions never enter a domain event log. Tests capture the canonical serialization immediately after request dequeue and compare it after the rejected attempt; no hidden authoritative counter, serial, RNG state, or queued domain command may advance.
+For this contract, the canonical authoritative comparison is a deterministic serialization of current cash and spending totals; ordered route records and their complete fields; geometry pieces and locked ledger; contact anchors; inventory totals; train state; hazard records; Warp pair state; cargo slots; purchase counters and capacities; session clock/completion state; and the last published domain snapshot/result. It excludes raw OS input, the current tick's already-arbitrated input edge, pointer/hover presentation, and derived local affordability text. Rejected actions never enter a domain event log. Tests capture the canonical serialization immediately after the input edge is consumed and compare it after the rejected attempt; no hidden authoritative counter, serial, RNG state, or queued domain command may advance.
 
 Every priced action uses one concrete single-threaded staged commit, not a generalized transaction framework. The responsible system duplicates only its affected concrete owners, applies the candidate to those copies, and validates all invariants and the exact post-spend cash before touching live state. A valid candidate is installed through task-local `replace_from_validated_candidate` operations that cannot reject or allocate gameplay identity; cash is installed from its precomputed post-spend value in the same controller call. No snapshot, signal, redraw, or other observer runs between those assignments. A failed validation installs neither copy. An invariant failure during installation is a programming assertion, not a recoverable partially charged action.
 
@@ -189,9 +189,11 @@ One successful prefix or suffix demolition costs `major_track_action_cost = 50`,
 
 An active-gesture right-click abort and a selected `RESERVED_GHOST` suffix cancellation remain immediate on the real input tick, including a skipped planning simulation tick. They are free and use the existing responsive input contract.
 
-A selected `BUILDING` or `BUILT` right-click on a skipped planning tick does not mutate gameplay and is not discarded. The controller stores one transient paid-demolition request containing the exact selected `route_serial`; after crossings exist it also retains the occurrence's canonical centerline identity. Paid demolition and capacity purchases share one pending priced-action slot, so the earliest eligible input edge wins. While that request is pending, later field and purchase presses are ignored, pointer motion may update presentation but cannot retarget the request, and hover continues to show the retained target. On the next due simulation tick, the request is dequeued, resolved by its retained identity, fully revalidated against current train/route/cash state, and either committed once or rejected without authoritative mutation. Repeated pressed frames never duplicate it.
+A gesture release or right-click abort clears slow-planning ownership immediately. The next real tick uses normal cadence; this slice does not add residual slowdown after the gesture ends.
 
-If the paid click arrives on a due tick, the same validation and commit path runs immediately without entering the pending slot. Completion clears a pending request without action. The pending request is transient input transport excluded from the canonical byte comparison; it is never published as a domain event or persistent state.
+A selected `BUILDING` or `BUILT` paid-demolition click is eligible only while no field gesture is active. Because an inactive field gesture uses normal cadence, every eligible paid-demolition click arrives on a due simulation tick. The controller retains the exact selected `route_serial`, and after crossings exist the occurrence's canonical centerline identity, only as local data within that same controller call. It fully revalidates and either commits once or rejects without authoritative mutation on that tick. No paid-demolition request is retained across real ticks, pointer motion cannot retarget an already consumed edge, and held or repeated frames cannot duplicate a mouse-press edge.
+
+On a skipped planning tick, the active field gesture owns field input: right-click aborts it for free and cannot also become paid demolition. Capacity purchases are disabled while that gesture is active. Completion therefore has no queued priced action to clear.
 
 ## 8. Grade-Separated Crossing
 
@@ -244,9 +246,9 @@ The terminal snapshot/result may retain detached final capacity and purchase-cou
 
 ### 9.4 Purchase input arbitration
 
-The app and controller expose one shared transient pending priced-action slot between due planning ticks. The first eligible paid-demolition, track-purchase, or cargo-purchase mouse edge in chronological input-event order wins; later priced or field presses are ignored until that edge is consumed. Repeated pressed frames never create additional requests. A purchase press while a field gesture is active, after completion, or while another priced edge is pending is rejected before entering the slot.
+All capacity purchases are disabled while a field gesture is active. When no field gesture is active, planning cadence is normal and every eligible priced input is handled on a due simulation tick. The app and controller arbitrate paid-demolition, track-purchase, and cargo-purchase mouse-press edges for that tick in chronological input-event order. The first eligible priced edge wins; later priced or field presses for the same tick are ignored. Held or repeated frames never synthesize another press edge.
 
-On the next due planning tick, the controller dequeues that one edge and performs the canonical staged affordability/limit check. Insufficient funds or a reached limit consumes the transient edge but changes no authoritative gameplay state under the byte-unchanged comparison boundary. Skipped real ticks never consume it. This queue is input transport, not a domain command log or gameplay observation.
+The controller performs the canonical staged affordability and limit check on that same due tick. Insufficient funds or a reached limit consumes only the current input edge and changes no authoritative gameplay state under the byte-unchanged comparison boundary. A press while a field gesture is active or after completion is ignored. No priced-action slot or queue survives across real ticks, and skipped planning ticks neither accept nor retain paid inputs.
 
 ## 10. Tick Order
 
@@ -254,9 +256,9 @@ The current deterministic tick order is extended, not replaced:
 
 1. Determine whether the planning simulation tick is due.
 2. Begin the due Warp tick and install authoritative anchors.
-3. Apply right-click abort, free cancellation, or one staged paid demolition.
-4. Apply left route input, including pending crossing validation.
-5. Apply one queued temporary purchase when no field gesture owns input.
+3. Apply right-click abort or free cancellation, or classify one exact same-tick paid-demolition edge while arbitrating the first current-tick priced edge.
+4. Apply left route input, including pending crossing validation, only when the right/priced input path does not own the field frame.
+5. Commit at most one same-tick staged paid demolition or temporary purchase when no field gesture owns input.
 6. Advance ordered construction.
 7. Prepare immutable train sampling and move the train once.
 8. Resolve Warp/Cargo contacts from the actual movement sweep.
@@ -267,7 +269,7 @@ The current deterministic tick order is extended, not replaced:
 13. Advance session time and choose regular expiry before track-end completion, preserving the existing non-durability tie order.
 14. Publish one detached snapshot and at most one terminal result.
 
-Skipped planning real ticks process responsive pointer presentation, immediate free gesture abort, and immediate free ghost cancellation. They may retain one transient paid-demolition or purchase input edge, but perform no paid demolition, purchase, movement, hazard damage, Warp lifecycle, recovery, or session-time transition.
+Skipped planning real ticks process responsive pointer presentation, immediate free gesture abort, and immediate free ghost cancellation. They do not accept or retain paid-demolition or purchase input and perform no paid demolition, purchase, movement, hazard damage, Warp lifecycle, recovery, or session-time transition. Gesture release or abort returns the following real tick to normal cadence.
 
 ## 11. Balance Resources and Validation
 

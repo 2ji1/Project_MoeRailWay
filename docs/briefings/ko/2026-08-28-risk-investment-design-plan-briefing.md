@@ -44,7 +44,7 @@ grade-separated crossing도 같은 주요 선로 행동 비용 50을 사용합�
 
 crossing 셀에는 두 occurrence가 있으므로 셀 좌표만으로 철거 대상을 정하지 않습니다. 셀 안의 마우스 위치에서 visual gap이 아닌 각 canonical centerline까지의 거리 `a`, `b`를 계산합니다. `abs(a - b) <= 0.01`이면 모호한 입력으로 보고 아무것도 바꾸지 않으며, 그보다 크면 더 가까운 가로 또는 세로 occurrence를 선택합니다. hover에는 실제로 선택될 occurrence와 prefix/suffix를 그대로 표시합니다.
 
-planning slow tick 중 우클릭도 잃지 않습니다. gesture abort와 ghost suffix 취소는 기존처럼 즉시 무료 처리합니다. `BUILDING`·`BUILT` 철거는 정확한 route serial과 crossing occurrence 정체성을 하나만 보관하고 다음 due tick에 다시 검증해 한 번 실행합니다. 그 사이 pointer가 움직여도 대상을 바꾸지 않고, 추가 field press는 무시합니다.
+기존 Warp 조작감 계약을 그대로 유지합니다. gesture release 또는 우클릭 abort가 발생하면 planning slowdown은 즉시 끝나고 다음 real tick부터 정상 cadence로 돌아갑니다. 유료 `BUILDING`·`BUILT` 철거는 field gesture가 없는 due tick에서만 입력 가능하며, 정확한 route serial과 이후 crossing occurrence 정체성을 같은 controller call 안에서 검증해 한 번 실행합니다. 유료 입력을 다음 tick까지 보관하지 않습니다.
 
 ## 임시 구매
 
@@ -53,7 +53,7 @@ planning slow tick 중 우클릭도 잃지 않습니다. gesture abort와 ghost 
 
 두 증분은 정규 종료, track-end 종료, 내구도 0 종료에서 모두 소멸합니다. 사용한 현금은 환불하지 않으며 새 세션은 기본 용량에서 다시 시작합니다.
 
-유료 철거와 두 구매 입력이 같은 simulation tick 전에 들어오면 이 세 행동이 공유하는 pending slot에 실제 입력 이벤트 순서의 첫 mouse press 하나만 유지합니다. 나머지 field·purchase press와 반복 pressed frame은 무시하고, field gesture 중인 구매 press는 pending에 넣지 않습니다.
+유료 철거와 두 구매 입력은 field gesture가 없는 하나의 정상 due tick 안에서만 경쟁합니다. 실제 입력 이벤트 순서의 첫 eligible mouse press 하나만 그 tick에 처리하고, 뒤의 field·purchase press와 held/repeated frame은 추가 행동을 만들지 않습니다. real tick 사이를 잇는 pending slot은 두지 않으며, field gesture 중인 구매 press는 받지 않습니다.
 
 ## 구현 작업 순서
 
@@ -82,8 +82,8 @@ hazard는 색상 외에도 반복되는 primitive mark 또는 border로 항상 �
 4. crossing 셀의 여러 route occurrence를 위해 기존 최초 접촉 거리와 함께 ordered contact-distance 목록을 추가합니다.
 5. crossing 셀 우클릭은 canonical pointer-to-centerline 거리 차의 절댓값이 `0.01` 이하이면 no-op, 아니면 더 가까운 가로·세로 occurrence를 선택합니다.
 6. 유료 행동은 영향받는 concrete owner의 복사본에서 후보와 post-cash를 모두 검증한 뒤, 관찰 불가능한 한 controller call 안에서 실패하지 않는 교체로 설치합니다. 범용 transaction framework는 만들지 않습니다.
-7. 부족 자금의 byte-unchanged 비교에는 route, geometry, ledger, anchor, inventory, cash, train, hazard, Warp, cargo, 구매 counter, session 종료 상태를 포함하며, 이미 dequeue된 raw input과 hover 표시는 제외합니다.
-8. skipped planning tick에서는 무료 우클릭만 즉시 처리하고 유료 철거는 정확한 occurrence를 다음 due tick까지 한 번 보관합니다.
+7. 부족 자금의 byte-unchanged 비교에는 route, geometry, ledger, anchor, inventory, cash, train, hazard, Warp, cargo, 구매 counter, session 종료 상태를 포함하며, 현재 tick에서 이미 arbitration된 raw input edge와 hover 표시는 제외합니다.
+8. skipped planning tick에서는 무료 우클릭만 즉시 처리하고 유료 철거·구매 입력은 받거나 보관하지 않습니다. gesture release 또는 abort 뒤의 다음 real tick은 정상 cadence입니다.
 
 ## 명시적 보류
 
