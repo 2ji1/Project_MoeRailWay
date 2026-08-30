@@ -45,7 +45,6 @@ var _snapshot: SessionSnapshotScript
 var _cached_tick_pose: Dictionary = {"position": Vector2.ZERO, "heading": Vector2.RIGHT}
 var _planning_accumulator_percent := 0
 var _did_advance_simulation_tick := true
-var _pending_paid_demolition_route_serial := -1
 var _paid_track_actions_enabled := false
 
 
@@ -121,21 +120,19 @@ func advance_tick(input_frame: TrackInputFrameScript = null) -> void:
 	var frame: TrackInputFrameScript = (
 		input_frame if input_frame != null else TrackInputFrameScript.empty()
 	)
-	if _pending_paid_demolition_route_serial < 0:
-		var right_won := _track_system.apply_right_input(frame)
-		if right_won:
-			_pending_paid_demolition_route_serial = _track_system.take_paid_demolition_request()
-		else:
-			_track_system.apply_left_input(frame)
+	var paid_demolition_route_serial := -1
+	var right_won := _track_system.apply_right_input(frame)
+	if right_won:
+		paid_demolition_route_serial = _track_system.take_paid_demolition_request()
+	else:
+		_track_system.apply_left_input(frame)
 	if not simulation_tick_due:
 		if not _track_system.is_runtime_gesture_active():
 			_planning_accumulator_percent = 0
 		_publish_snapshot(false)
 		return
 
-	if _pending_paid_demolition_route_serial >= 0:
-		var requested_serial := _pending_paid_demolition_route_serial
-		_pending_paid_demolition_route_serial = -1
+	if paid_demolition_route_serial >= 0:
 		var train_distance := (
 			_train_system.get_route_distance_cells()
 			if _train_system.is_active()
@@ -143,7 +140,7 @@ func advance_tick(input_frame: TrackInputFrameScript = null) -> void:
 		)
 		if _paid_track_actions_enabled:
 			_track_system.try_commit_paid_demolition(
-				requested_serial,
+				paid_demolition_route_serial,
 				train_distance,
 				_start_config.major_track_action_cost,
 				_session_economy
@@ -259,7 +256,6 @@ func _restore_aborted_warp_running_tick(
 func _complete(reason: SessionResultScript.Reason) -> void:
 	if _state == State.COMPLETED:
 		return
-	_pending_paid_demolition_route_serial = -1
 	if _warp_cargo_enabled():
 		_warp_pair_system.void_nonterminal(_running_tick_index, _cargo_system)
 		_install_warp_anchors()

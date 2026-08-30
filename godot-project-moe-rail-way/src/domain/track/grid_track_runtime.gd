@@ -23,6 +23,7 @@ var _locked_ledger: Array[TrackGeometryPieceScript] = []
 var _anchors: Array[RouteContactAnchorScript] = []
 var _contact_observations: Array[Dictionary] = []
 var _recovered_cells_by_piece: Dictionary = {}
+var _exit_support_cells_by_piece: Dictionary = {}
 var _recovered_end_distance_cells := 0.0
 var _gesture_active := false
 var _gesture_origin_sequence: TrackCellSequenceScript
@@ -30,6 +31,7 @@ var _gesture_origin_pieces: Array[TrackGeometryPieceScript] = []
 var _gesture_origin_locked_ledger: Array[TrackGeometryPieceScript] = []
 var _gesture_origin_anchors: Array[RouteContactAnchorScript] = []
 var _gesture_origin_recovered_cells_by_piece: Dictionary = {}
+var _gesture_origin_exit_support_cells_by_piece: Dictionary = {}
 var _gesture_origin_recovered_end_distance_cells := 0.0
 var _gesture_origin_contacts: Array[Dictionary] = []
 var _gesture_editable_span: Dictionary = {}
@@ -71,6 +73,22 @@ func get_last_gesture_rejection() -> Dictionary:
     return _last_gesture_rejection.duplicate(true)
 
 
+func get_retired_exit_support_observation() -> Dictionary:
+    var retired := {}
+    var active_serials := {}
+    for record in _sequence.get_records():
+        active_serials[record.route_serial] = true
+    for key in _exit_support_cells_by_piece:
+        var retired_for_piece := {}
+        var identities: Dictionary = _exit_support_cells_by_piece[key]
+        for route_serial in identities:
+            if not active_serials.has(route_serial):
+                retired_for_piece[route_serial] = identities[route_serial]
+        if not retired_for_piece.is_empty():
+            retired[key] = retired_for_piece
+    return retired.duplicate(true)
+
+
 func set_gesture_rejection_diagnostics_enabled(enabled: bool) -> void:
     _gesture_rejection_diagnostics_enabled = enabled
     if not enabled:
@@ -107,7 +125,11 @@ func gesture_has_legal_operation(endpoint: Vector2i = Vector2i(-1, -1)) -> bool:
             continue
         _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
         candidate_sequence.apply_resolved_geometry(resolution.pieces)
-        if _validate_candidate(candidate_sequence, candidate_ledger, resolution):
+        if _validate_candidate(
+            candidate_sequence, candidate_ledger, resolution,
+            _recovered_cells_by_piece, _exit_support_cells_by_piece,
+            _recovered_end_distance_cells
+        ):
             return true
     return false
 
@@ -120,6 +142,7 @@ func gesture_begin(endpoint: Vector2i) -> Dictionary:
     _gesture_origin_locked_ledger = _duplicate_pieces(_locked_ledger)
     _gesture_origin_anchors = _duplicate_anchors(_anchors)
     _gesture_origin_recovered_cells_by_piece = _recovered_cells_by_piece.duplicate(true)
+    _gesture_origin_exit_support_cells_by_piece = _exit_support_cells_by_piece.duplicate(true)
     _gesture_origin_recovered_end_distance_cells = _recovered_end_distance_cells
     _gesture_origin_contacts = _contact_observations.duplicate(true)
     _gesture_editable_span = _discover_editable_span()
@@ -164,6 +187,7 @@ func gesture_finalize() -> bool:
         candidate_ledger,
         resolution,
         _recovered_cells_by_piece,
+        _exit_support_cells_by_piece,
         _recovered_end_distance_cells
     ):
         _clear_gesture_state()
@@ -189,6 +213,7 @@ func gesture_abort() -> bool:
     _sequence.apply_resolved_geometry(_pieces)
     _anchors = _duplicate_anchors(_gesture_origin_anchors)
     _recovered_cells_by_piece = _gesture_origin_recovered_cells_by_piece.duplicate(true)
+    _exit_support_cells_by_piece = _gesture_origin_exit_support_cells_by_piece.duplicate(true)
     _recovered_end_distance_cells = _gesture_origin_recovered_end_distance_cells
     _contact_observations = _gesture_origin_contacts.duplicate(true)
     _clear_gesture_state()
@@ -362,7 +387,12 @@ func gesture_update(
         return false
     _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
     candidate_sequence.apply_resolved_geometry(resolution.pieces)
-    if not _validate_candidate(candidate_sequence, candidate_ledger, resolution):
+    if not _validate_candidate(
+        candidate_sequence, candidate_ledger, resolution,
+        _gesture_origin_recovered_cells_by_piece,
+        _gesture_origin_exit_support_cells_by_piece,
+        _gesture_origin_recovered_end_distance_cells
+    ):
         _record_gesture_rejection(
             &"candidate_validation", &"candidate_invariant",
             live_path, current_pointer_cell, next_template_index,
@@ -700,7 +730,12 @@ func _gesture_update_from_live_warp_latch(
         return false
     _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
     candidate_sequence.apply_resolved_geometry(resolution.pieces)
-    if not _validate_candidate(candidate_sequence, candidate_ledger, resolution):
+    if not _validate_candidate(
+        candidate_sequence, candidate_ledger, resolution,
+        _gesture_origin_recovered_cells_by_piece,
+        _gesture_origin_exit_support_cells_by_piece,
+        _gesture_origin_recovered_end_distance_cells
+    ):
         _record_gesture_rejection(
             &"candidate_validation", &"candidate_invariant",
             live_path, current_pointer_cell, -1,
@@ -1032,7 +1067,11 @@ func append_cells(cells: Array[Vector2i]) -> int:
             break
         _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
         candidate_sequence.apply_resolved_geometry(resolution.pieces)
-        if not _validate_candidate(candidate_sequence, candidate_ledger, resolution):
+        if not _validate_candidate(
+            candidate_sequence, candidate_ledger, resolution,
+            _recovered_cells_by_piece, _exit_support_cells_by_piece,
+            _recovered_end_distance_cells
+        ):
             break
         _commit_candidate(candidate_sequence, candidate_ledger, resolution)
         accepted_count += 1
@@ -1075,7 +1114,11 @@ func cancel_ghost_suffix(cell: Vector2i) -> bool:
         return false
     _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
     candidate_sequence.apply_resolved_geometry(resolution.pieces)
-    if not _validate_candidate(candidate_sequence, candidate_ledger, resolution):
+    if not _validate_candidate(
+        candidate_sequence, candidate_ledger, resolution,
+        _recovered_cells_by_piece, _exit_support_cells_by_piece,
+        _recovered_end_distance_cells
+    ):
         return false
     _commit_candidate(candidate_sequence, candidate_ledger, resolution)
     _refresh_contact_observations()
@@ -1097,6 +1140,7 @@ func duplicate_runtime() -> GridTrackRuntime:
     copy._anchors = _duplicate_anchors(_anchors)
     copy._contact_observations = _contact_observations.duplicate(true)
     copy._recovered_cells_by_piece = _recovered_cells_by_piece.duplicate(true)
+    copy._exit_support_cells_by_piece = _exit_support_cells_by_piece.duplicate(true)
     copy._recovered_end_distance_cells = _recovered_end_distance_cells
     copy._gesture_rejection_diagnostics_enabled = _gesture_rejection_diagnostics_enabled
     copy._last_gesture_rejection = _last_gesture_rejection.duplicate(true)
@@ -1112,6 +1156,7 @@ func replace_with(source: GridTrackRuntime) -> void:
     _anchors = _duplicate_anchors(source._anchors)
     _contact_observations = source._contact_observations.duplicate(true)
     _recovered_cells_by_piece = source._recovered_cells_by_piece.duplicate(true)
+    _exit_support_cells_by_piece = source._exit_support_cells_by_piece.duplicate(true)
     _recovered_end_distance_cells = source._recovered_end_distance_cells
     _gesture_rejection_diagnostics_enabled = source._gesture_rejection_diagnostics_enabled
     _last_gesture_rejection = source._last_gesture_rejection.duplicate(true)
@@ -1188,6 +1233,7 @@ func _try_paid_front_suffix_demolition(
         candidate_ledger,
         resolution,
         candidate_recovered_cells,
+        _exit_support_cells_by_piece,
         _recovered_end_distance_cells
     ):
         return false
@@ -1227,6 +1273,7 @@ func set_contact_anchors(anchors: Array[RouteContactAnchorScript]) -> void:
         _locked_ledger,
         candidate_anchors,
         _recovered_cells_by_piece,
+        _exit_support_cells_by_piece,
         _recovered_end_distance_cells
     )
     if current_stage.get("valid", false):
@@ -1243,12 +1290,18 @@ func set_contact_anchors(anchors: Array[RouteContactAnchorScript]) -> void:
             _gesture_origin_locked_ledger,
             candidate_anchors,
             _gesture_origin_recovered_cells_by_piece,
+            _gesture_origin_exit_support_cells_by_piece,
             _gesture_origin_recovered_end_distance_cells
         )
         if origin_stage.get("valid", false):
             _gesture_origin_sequence = origin_stage["sequence"]
             _gesture_origin_locked_ledger = origin_stage["ledger"]
             _gesture_origin_pieces = _duplicate_pieces(origin_stage["resolution"].pieces)
+            _gesture_origin_exit_support_cells_by_piece = _updated_exit_support_cells_for(
+                _gesture_origin_locked_ledger,
+                _gesture_origin_sequence.get_records(),
+                _gesture_origin_exit_support_cells_by_piece
+            )
         _gesture_origin_anchors = _duplicate_anchors(candidate_anchors)
         _gesture_origin_contacts = _build_contact_observations(
             _gesture_origin_pieces,
@@ -1267,6 +1320,7 @@ func _stage_anchor_update(
     source_ledger: Array[TrackGeometryPieceScript],
     anchors: Array[RouteContactAnchorScript],
     recovered_cells_by_piece: Dictionary,
+    exit_support_cells_by_piece: Dictionary,
     recovered_end_distance_cells: float
 ) -> Dictionary:
     var candidate_sequence = source_sequence.duplicate_sequence()
@@ -1286,6 +1340,7 @@ func _stage_anchor_update(
         candidate_ledger,
         resolution,
         recovered_cells_by_piece,
+        exit_support_cells_by_piece,
         recovered_end_distance_cells
     ):
         return {"valid": false}
@@ -1391,6 +1446,7 @@ func recover_behind(cutoff_distance_cells: float) -> int:
         _sequence,
         _locked_ledger,
         _recovered_cells_by_piece,
+        _exit_support_cells_by_piece,
         _recovered_end_distance_cells,
         _anchors,
         cutoff_distance_cells
@@ -1411,6 +1467,7 @@ func recover_behind(cutoff_distance_cells: float) -> int:
             _gesture_origin_sequence,
             _gesture_origin_locked_ledger,
             _gesture_origin_recovered_cells_by_piece,
+            _gesture_origin_exit_support_cells_by_piece,
             _gesture_origin_recovered_end_distance_cells,
             _gesture_origin_anchors,
             cutoff_distance_cells
@@ -1426,6 +1483,7 @@ func recover_behind(cutoff_distance_cells: float) -> int:
         candidate_stage["resolution"]
     )
     _recovered_cells_by_piece = candidate_stage["recovered_cells_by_piece"].duplicate(true)
+    _exit_support_cells_by_piece = candidate_stage["exit_support_cells_by_piece"].duplicate(true)
     _recovered_end_distance_cells = candidate_stage["recovered_end_distance_cells"]
     _contact_observations = candidate_stage["contacts"].duplicate(true)
     if _gesture_active:
@@ -1433,6 +1491,7 @@ func recover_behind(cutoff_distance_cells: float) -> int:
         _gesture_origin_locked_ledger = _duplicate_pieces(origin_stage["ledger"])
         _gesture_origin_pieces = _duplicate_pieces(origin_stage["resolution"].pieces)
         _gesture_origin_recovered_cells_by_piece = origin_stage["recovered_cells_by_piece"].duplicate(true)
+        _gesture_origin_exit_support_cells_by_piece = origin_stage["exit_support_cells_by_piece"].duplicate(true)
         _gesture_origin_recovered_end_distance_cells = origin_stage["recovered_end_distance_cells"]
         _gesture_origin_contacts = origin_stage["contacts"].duplicate(true)
     return recovered.size()
@@ -1442,6 +1501,7 @@ func _stage_recovery_for_route(
     source_sequence: TrackCellSequenceScript,
     source_ledger: Array[TrackGeometryPieceScript],
     source_recovered_cells_by_piece: Dictionary,
+    source_exit_support_cells_by_piece: Dictionary,
     source_recovered_end_distance_cells: float,
     source_anchors: Array[RouteContactAnchorScript],
     cutoff_distance_cells: float
@@ -1484,6 +1544,7 @@ func _stage_recovery_for_route(
         candidate_ledger,
         resolution,
         candidate_recovered_cells_by_piece,
+        source_exit_support_cells_by_piece,
         candidate_recovered_end_distance_cells
     ):
         return {}
@@ -1492,6 +1553,11 @@ func _stage_recovery_for_route(
         "ledger": candidate_ledger,
         "resolution": resolution,
         "recovered_cells_by_piece": candidate_recovered_cells_by_piece,
+        "exit_support_cells_by_piece": _updated_exit_support_cells_for(
+            candidate_ledger,
+            candidate_sequence.get_records(),
+            source_exit_support_cells_by_piece
+        ),
         "recovered_end_distance_cells": candidate_recovered_end_distance_cells,
         "contacts": _build_contact_observations(
             resolution.pieces,
@@ -1619,7 +1685,11 @@ func prepare_for_train_sampling(current_distance: float, through_distance: float
         return false
     _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
     candidate_sequence.apply_resolved_geometry(resolution.pieces)
-    if not _validate_candidate(candidate_sequence, candidate_ledger, resolution):
+    if not _validate_candidate(
+        candidate_sequence, candidate_ledger, resolution,
+        _recovered_cells_by_piece, _exit_support_cells_by_piece,
+        _recovered_end_distance_cells
+    ):
         return false
     var staged_origin := {}
     if _gesture_active:
@@ -2184,6 +2254,7 @@ func _gesture_origin_observation() -> Dictionary:
         "anchors": _duplicate_anchors(_gesture_origin_anchors),
         "recovery": {
             "recovered_cells_by_piece": _gesture_origin_recovered_cells_by_piece.duplicate(true),
+            "exit_support_cells_by_piece": _gesture_origin_exit_support_cells_by_piece.duplicate(true),
             "recovered_end_distance_cells": _gesture_origin_recovered_end_distance_cells,
         },
         "construction": _gesture_origin_sequence.get_records(),
@@ -2201,6 +2272,7 @@ func _clear_gesture_state() -> void:
     _gesture_origin_locked_ledger.clear()
     _gesture_origin_anchors.clear()
     _gesture_origin_recovered_cells_by_piece.clear()
+    _gesture_origin_exit_support_cells_by_piece.clear()
     _gesture_origin_recovered_end_distance_cells = 0.0
     _gesture_origin_contacts.clear()
     _gesture_editable_span.clear()
@@ -2351,6 +2423,7 @@ func _gesture_candidate_can_finalize(
         final_ledger,
         final_resolution,
         _gesture_origin_recovered_cells_by_piece,
+        _gesture_origin_exit_support_cells_by_piece,
         _gesture_origin_recovered_end_distance_cells
     )
 
@@ -2441,6 +2514,7 @@ func _validate_candidate(
     ledger: Array[TrackGeometryPieceScript],
     resolution: RefCounted,
     recovered_cells_by_piece: Dictionary = {},
+    exit_support_cells_by_piece: Dictionary = {},
     recovered_end_distance_cells := 0.0
 ) -> bool:
     if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
@@ -2487,16 +2561,31 @@ func _validate_candidate(
         if matched_piece.exit_support_route_serial != locked.exit_support_route_serial:
             return false
         if locked.exit_support_route_serial >= 0:
-            var support_exists := false
+            var support_record = null
             for record in records:
                 if record.route_serial == locked.exit_support_route_serial:
-                    support_exists = true
+                    support_record = record
                     break
             var recovered_support: Dictionary = recovered_cells_by_piece.get(
                 _piece_key(locked), {}
             )
-            if not support_exists and recovered_support.is_empty():
-                return false
+            var support_identities: Dictionary = exit_support_cells_by_piece.get(
+                _piece_key(locked), {}
+            )
+            if support_record != null:
+                if (
+                    support_identities.has(locked.exit_support_route_serial)
+                    and support_identities[locked.exit_support_route_serial] != support_record.cell
+                ):
+                    return false
+            else:
+                if not support_identities.has(locked.exit_support_route_serial):
+                    return false
+                var retired_cell: Vector2i = support_identities[
+                    locked.exit_support_route_serial
+                ]
+                if not recovered_support.has(retired_cell):
+                    return false
     for key in recovered_cells_by_piece:
         var has_active_ledger_piece := false
         for locked in ledger:
@@ -2520,6 +2609,35 @@ func _commit_candidate(
     _sequence.replace_with(sequence)
     _locked_ledger = _duplicate_pieces(ledger)
     _pieces = _duplicate_pieces(resolution.pieces)
+    _exit_support_cells_by_piece = _updated_exit_support_cells_for(
+        _locked_ledger,
+        _sequence.get_records(),
+        _exit_support_cells_by_piece
+    )
+
+
+func _updated_exit_support_cells_for(
+    ledger: Array[TrackGeometryPieceScript],
+    records: Array,
+    source_identities: Dictionary
+) -> Dictionary:
+    var updated := {}
+    for locked in ledger:
+        if locked.exit_support_route_serial < 0:
+            continue
+        var key := _piece_key(locked)
+        var identities: Dictionary = source_identities.get(key, {}).duplicate(true)
+        for record in records:
+            if record.route_serial == locked.exit_support_route_serial:
+                identities[record.route_serial] = record.cell
+                break
+        if identities.has(locked.exit_support_route_serial):
+            var retained_identity := {}
+            retained_identity[locked.exit_support_route_serial] = identities[
+                locked.exit_support_route_serial
+            ]
+            updated[key] = retained_identity
+    return updated
 
 
 func _stage_active_gesture_train_safety_origin(
@@ -2564,6 +2682,11 @@ func _apply_active_gesture_train_safety_origin(staged_origin: Dictionary) -> voi
     _gesture_origin_sequence = staged_origin["sequence"]
     _gesture_origin_locked_ledger = _duplicate_pieces(staged_origin["ledger"])
     _gesture_origin_pieces = _duplicate_pieces(staged_origin["pieces"])
+    _gesture_origin_exit_support_cells_by_piece = _updated_exit_support_cells_for(
+        _gesture_origin_locked_ledger,
+        _gesture_origin_sequence.get_records(),
+        _gesture_origin_exit_support_cells_by_piece
+    )
     _gesture_origin_sequence._next_route_serial = maxi(
         _gesture_origin_sequence._next_route_serial,
         int(staged_origin["next_route_serial"])
@@ -2637,12 +2760,15 @@ func _remember_recovered_piece_cell_in(
     record
 ) -> void:
     for locked in ledger:
-        if locked.contains_serial(record.route_serial):
-            var key := _piece_key(locked)
-            if not recovered_cells_by_piece.has(key):
-                recovered_cells_by_piece[key] = {}
-            recovered_cells_by_piece[key][record.cell] = true
-            return
+        if (
+            not locked.contains_serial(record.route_serial)
+            and locked.exit_support_route_serial != record.route_serial
+        ):
+            continue
+        var key := _piece_key(locked)
+        if not recovered_cells_by_piece.has(key):
+            recovered_cells_by_piece[key] = {}
+        recovered_cells_by_piece[key][record.cell] = true
 
 
 func _piece_key(piece) -> String:

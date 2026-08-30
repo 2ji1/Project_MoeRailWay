@@ -2,8 +2,8 @@ extends "res://tests/support/prototype_test.gd"
 
 const SessionEconomyScript = preload("res://src/domain/economy/session_economy.gd")
 const SessionControllerScript = preload("res://src/domain/session/session_controller.gd")
-const SessionResultScript = preload("res://src/domain/session/session_result.gd")
 const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
+const GridTrackRuntimeScript = preload("res://src/domain/track/grid_track_runtime.gd")
 const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
 const TrackSystemScript = preload("res://src/domain/track/track_system.gd")
 const TrainSystemScript = preload("res://src/domain/train/train_system.gd")
@@ -16,6 +16,7 @@ func run() -> PackedStringArray:
 	_test_free_ghost_cancellation_never_spends()
 	_test_front_suffix_demolition_is_atomic()
 	_test_rear_prefix_and_unsafe_spans()
+	_test_curve_exit_support_retirement_and_exact_evidence()
 	_test_controller_consumes_one_paid_request_and_publishes_cash()
 	return finish()
 
@@ -58,6 +59,12 @@ func _test_front_suffix_demolition_is_atomic() -> void:
 	assert_equal(track.get_available_track_cells(), 5, "Paid suffix returns all removed inventory")
 	assert_equal(economy.get_cash(), 250, "Paid suffix charges exactly once")
 	assert_equal(_locked_ledger_observation(track), locked_before, "Front suffix preserves immutable locked history")
+	assert_true(track._runtime.has_method("get_retired_exit_support_observation"), "Runtime exposes detached exact exit-support retirement evidence")
+	if track._runtime.has_method("get_retired_exit_support_observation"):
+		var retired_supports: Dictionary = track._runtime.call("get_retired_exit_support_observation")
+		assert_equal(retired_supports.size(), 1, "Front suffix records exactly one retired exit support")
+		var retired_by_serial: Dictionary = retired_supports.values()[0]
+		assert_equal(retired_by_serial, {4: Vector2i(4, 0)}, "Retired evidence binds exact support serial to exact cell")
 	assert_false(track.call("try_commit_paid_demolition", request, 0.0, 50, economy), "Consumed identity cannot spend twice")
 	assert_equal(economy.get_cash(), 250, "Repeated request cannot charge twice")
 
@@ -123,24 +130,85 @@ func _test_controller_consumes_one_paid_request_and_publishes_cash() -> void:
 	)
 	controller.start()
 	controller.advance_tick(_right_frame(Vector2i(4, 0)))
-	assert_equal(economy.get_cash(), 250, "Due controller tick charges one retained paid request")
+	assert_equal(economy.get_cash(), 250, "Due controller tick charges one same-tick paid edge")
 	assert_equal(track.get_cell_records().size(), 3, "Due controller tick installs one staged demolition")
-	assert_equal(controller._pending_paid_demolition_route_serial, -1, "Due tick dequeues the request exactly once")
 	var snapshot = controller.get_snapshot()
 	assert_equal(snapshot.get_starting_session_cash(), 300, "Snapshot exposes starting provisional cash")
 	assert_equal(snapshot.get_current_session_cash(), 250, "Snapshot exposes current provisional cash")
 	assert_equal(snapshot.get_total_session_cash_spent(), 50, "Snapshot exposes exact spending")
+	controller.advance_tick(_right_frame(Vector2i(4, 0)))
+	assert_equal(economy.get_cash(), 250, "Repeated frame cannot charge an already consumed route identity")
+	assert_equal(track.get_cell_records().size(), 3, "Repeated frame cannot duplicate demolition")
 
-	track._runtime._gesture_active = true
-	controller._state = SessionControllerScript.State.RUNNING
-	controller._pending_paid_demolition_route_serial = track.get_cell_records()[0].route_serial
-	controller.advance_tick()
-	assert_equal(controller._pending_paid_demolition_route_serial, track.get_cell_records()[0].route_serial, "Skipped planning tick retains the exact pending serial")
-	assert_equal(economy.get_cash(), 250, "Skipped planning tick cannot spend pending cash")
-	track._runtime._gesture_active = false
-	controller._complete(SessionResultScript.Reason.REGULAR_TIME_EXPIRED)
-	assert_equal(controller._pending_paid_demolition_route_serial, -1, "Completion clears pending paid input without action")
-	assert_equal(economy.get_cash(), 250, "Completion never consumes a pending demolition")
+	var cadence_track = TrackSystemScript.new(config)
+	_append(cadence_track, [Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0), Vector2i(4, 0), Vector2i(5, 0), Vector2i(6, 0)])
+	cadence_track.advance_construction(4.0)
+	var cadence_economy = SessionEconomyScript.new(300)
+	var cadence_controller = SessionControllerScript.new(
+		config, cadence_track, TrainSystemScript.new(1.0, 100.0),
+		null, null, null, cadence_economy
+	)
+	cadence_controller.start()
+	cadence_controller._state = SessionControllerScript.State.RUNNING
+	var endpoint := cadence_track.get_endpoint_cell()
+	cadence_track.apply_left_input(TrackInputFrameScript.new(
+		[], endpoint, true, Vector2i(-1, -1), false,
+		true, true, false, false, endpoint, true
+	))
+	assert_true(cadence_track.is_runtime_gesture_active(), "Public field input starts the slowdown fixture gesture")
+	cadence_controller.advance_tick(TrackInputFrameScript.new(
+		[], Vector2i(-1, -1), false, Vector2i(-1, -1), false,
+		false, false, true, false, endpoint, true
+	))
+	assert_false(cadence_controller.get_snapshot().did_advance_simulation_tick(), "Public release consumes only its current skipped planning tick")
+	assert_false(cadence_track.is_runtime_gesture_active(), "Public release ends the gesture on that skipped tick")
+	cadence_controller.advance_tick(_right_frame(Vector2i(4, 0)))
+	assert_true(cadence_controller.get_snapshot().did_advance_simulation_tick(), "First post-release real tick restores normal cadence")
+	assert_equal(cadence_track.get_cell_records().size(), 3, "Post-release paid edge commits on that same due tick")
+	assert_equal(cadence_economy.get_cash(), 250, "Post-release paid edge charges exactly once on that due tick")
+
+
+func _test_curve_exit_support_retirement_and_exact_evidence() -> void:
+	var curve = GridTrackRuntimeScript.new(
+		Vector2i(-1, 0), 18, Vector2.ZERO, Vector2i(8, 8), 40.0
+	)
+	assert_equal(curve.append_cells([
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0),
+		Vector2i(2, 1), Vector2i(2, 2), Vector2i(2, 3),
+	]), 6, "Curve support fixture appends its route")
+	assert_equal(curve.advance_construction(6.0), 6.0, "Curve support fixture builds its route")
+	var ledger_before := JSON.stringify(_locked_ledger_values_from_runtime(curve))
+	var support_identities_before: Dictionary = curve._exit_support_cells_by_piece.duplicate(true)
+	assert_equal(support_identities_before.values()[0], {6: Vector2i(2, 3)}, "Locked curve captures its exact active support identity")
+	assert_true(curve.try_paid_demolition(6, 0.0), "Exact locked-curve exit support can be retired")
+	assert_equal(curve.get_available_track_cells(), 13, "Curve support demolition returns one inventory cell")
+	assert_equal(JSON.stringify(_locked_ledger_values_from_runtime(curve)), ledger_before, "Curve support retirement preserves locked ledger bytes")
+	assert_equal(curve._exit_support_cells_by_piece, support_identities_before, "Support retirement preserves the captured immutable identity")
+	var retired: Dictionary = curve.get_retired_exit_support_observation()
+	assert_equal(retired.values()[0], {6: Vector2i(2, 3)}, "Curve evidence retains exact support serial and cell")
+	assert_equal(curve.append_cells([Vector2i(2, 3)]), 1, "Retired support terrain can be reused by later geometry")
+
+	var invalid = curve.duplicate_runtime()
+	invalid._sequence.remove_suffix_from_serial(7)
+	invalid._exit_support_cells_by_piece.clear()
+	var resolution = invalid._resolve_candidate(
+		invalid._sequence,
+		invalid._locked_ledger,
+		invalid._anchors,
+		invalid._recovered_cells_by_piece
+	)
+	assert_true(resolution.is_valid, "Negative fixture resolves before exact support validation")
+	if resolution.is_valid:
+		invalid._assign_unique_unlocked_group_ids(resolution.pieces, invalid._locked_ledger)
+		invalid._sequence.apply_resolved_geometry(resolution.pieces)
+		assert_false(invalid._validate_candidate(
+			invalid._sequence,
+			invalid._locked_ledger,
+			resolution,
+			invalid._recovered_cells_by_piece,
+			invalid._exit_support_cells_by_piece,
+			invalid._recovered_end_distance_cells
+		), "A recovered support cell without its captured serial identity cannot validate")
 
 
 func _append(track, cells: Array[Vector2i]) -> void:
@@ -181,6 +249,21 @@ func _track_observation(track) -> String:
 			"centerline": piece.centerline,
 		}),
 		"contacts": track.get_contact_observations(),
+		"anchors": track._runtime._anchors.map(func(anchor): return {
+			"id": anchor.anchor_id,
+			"cell": anchor.cell,
+			"mode": anchor.contact_mode,
+		}),
+		"recovered": track._runtime._recovered_cells_by_piece,
+		"recovered_end": track._runtime._recovered_end_distance_cells,
+		"exit_support_identities": track._runtime._exit_support_cells_by_piece,
+		"retired_supports": track._runtime.get_retired_exit_support_observation(),
+		"next_serial": track._runtime._sequence._next_route_serial,
+		"next_distance": track._runtime._sequence._next_nominal_start_cells,
+		"predecessor": track._runtime._sequence._active_predecessor_cell,
+		"left_capture": track._left_capture_active,
+		"left_latched": track._left_press_latched,
+		"paid_request": track._paid_demolition_request_serial,
 		"available": track.get_available_track_cells(),
 		"total": track.get_total_track_cells(),
 		"ledger": _locked_ledger_observation(track),
@@ -192,7 +275,11 @@ func _locked_ledger_observation(track) -> String:
 
 
 func _locked_ledger_values(track) -> Array:
-	return track._runtime._locked_ledger.map(func(piece): return {
+	return _locked_ledger_values_from_runtime(track._runtime)
+
+
+func _locked_ledger_values_from_runtime(runtime) -> Array:
+	return runtime._locked_ledger.map(func(piece): return {
 		"group": piece.group_id,
 		"first": piece.first_route_serial,
 		"last": piece.last_route_serial,
