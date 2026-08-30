@@ -49,6 +49,9 @@ var _repair_cost_basis: int
 var _starting_session_cash: int
 var _current_session_cash: int
 var _total_session_cash_spent: int
+var _pending_crossing_count: int
+var _pending_crossing_total_cost: int
+var _pending_crossing_affordable: bool
 
 
 func _init(
@@ -94,7 +97,10 @@ func _init(
 	repair_cost_basis_value: int = 0,
 	starting_session_cash_value: int = 0,
 	current_session_cash_value: int = 0,
-	total_session_cash_spent_value: int = 0
+	total_session_cash_spent_value: int = 0,
+	pending_crossing_count_value: int = 0,
+	pending_crossing_total_cost_value: int = 0,
+	pending_crossing_affordable_value: bool = true
 ) -> void:
 	_total_ticks = total_ticks_value
 	_elapsed_ticks = elapsed_ticks_value
@@ -139,6 +145,9 @@ func _init(
 	_starting_session_cash = starting_session_cash_value
 	_current_session_cash = current_session_cash_value
 	_total_session_cash_spent = total_session_cash_spent_value
+	_pending_crossing_count = pending_crossing_count_value
+	_pending_crossing_total_cost = pending_crossing_total_cost_value
+	_pending_crossing_affordable = pending_crossing_affordable_value
 
 
 func get_total_ticks() -> int:
@@ -317,6 +326,18 @@ func get_current_session_cash() -> int:
 
 func get_total_session_cash_spent() -> int:
 	return _total_session_cash_spent
+
+
+func get_pending_crossing_count() -> int:
+	return _pending_crossing_count
+
+
+func get_pending_crossing_total_cost() -> int:
+	return _pending_crossing_total_cost
+
+
+func is_pending_crossing_affordable() -> bool:
+	return _pending_crossing_affordable
 
 
 func _duplicate_records(source: Array[TrackCellRecordScript]) -> Array[TrackCellRecordScript]:

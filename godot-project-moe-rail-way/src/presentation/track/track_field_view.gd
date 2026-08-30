@@ -29,6 +29,8 @@ const INTERVAL_SAMPLE_COUNT := 9
 const WARP_FORECAST_ALPHA := 0.35
 const PLANNING_BACK_COLOR := Color(0.04, 0.07, 0.08, 0.82)
 const PLANNING_TEXT_COLOR := Color(0.91, 0.73, 0.29, 1.0)
+const CROSSING_GAP_COLOR := Color(0.80, 0.84, 0.75, 1.0)
+const CROSSING_GAP_WIDTH := BUILT_WIDTH + 5.0
 const WARP_STYLE_COLORS := [
 	Color("2ec4b6"), Color("ff9f1c"), Color("9b5de5"),
 	Color("f4d35e"), Color("3a86ff"), Color("ff5d8f"),
@@ -57,6 +59,8 @@ var _left_press_cell := INVALID_CELL
 var _left_press_inside_grid := false
 var _right_press_cell := INVALID_CELL
 var _right_press_inside_grid := false
+var _right_press_position_units := Vector2.ZERO
+var _right_press_position_available := false
 var _left_pressed_pending := false
 var _left_held := false
 var _left_released_pending := false
@@ -92,6 +96,9 @@ var _departure_marker_alpha := 1.0
 var _departure_dissolve_started := false
 var _planning_indicator_visible := false
 var _planning_indicator_text := ""
+var _presented_pending_crossing_count := 0
+var _presented_pending_crossing_total_cost := 0
+var _presented_pending_crossing_affordable := true
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -123,6 +130,8 @@ func _gui_input(event: InputEvent) -> void:
 			_right_pressed_pending = true
 			_right_press_inside_grid = mapping.inside_grid
 			_right_press_cell = mapping.cell
+			_right_press_position_units = mapping.logical
+			_right_press_position_available = mapping.inside_grid
 		_update_hover_cell(event.position)
 		if event.pressed:
 			_clear_hover_cell()
@@ -203,7 +212,9 @@ func consume_input_frame():
 		frame_release_path,
 		frame_release_pointer_cell,
 		frame_release_pointer_inside_grid,
-		true
+		true,
+		_right_press_position_units,
+		_right_press_position_available
 	)
 	if _left_released_pending and not _left_held:
 		_live_gesture_path.clear()
@@ -219,6 +230,8 @@ func consume_input_frame():
 	_right_pressed_pending = false
 	_right_press_cell = INVALID_CELL
 	_right_press_inside_grid = false
+	_right_press_position_units = Vector2.ZERO
+	_right_press_position_available = false
 	if _release_clears_capture:
 		_left_capture_active = false
 		_release_clears_capture = false
@@ -394,8 +407,11 @@ func present(snapshot: SessionSnapshotScript) -> void:
 		_presented_state == SessionControllerScript.State.RUNNING
 		and snapshot.is_planning_slowdown_active()
 	)
+	_presented_pending_crossing_count = snapshot.get_pending_crossing_count()
+	_presented_pending_crossing_total_cost = snapshot.get_pending_crossing_total_cost()
+	_presented_pending_crossing_affordable = snapshot.is_pending_crossing_affordable()
 	_planning_indicator_text = (
-		"PLANNING %d%%" % snapshot.get_planning_time_scale_percent()
+		_build_planning_indicator_text(snapshot.get_planning_time_scale_percent())
 		if _planning_indicator_visible
 		else ""
 	)
@@ -453,6 +469,7 @@ func _build_intervals(records: Array, pieces: Array) -> Array[Dictionary]:
 			"nominal_end_cells": nominal_end,
 			"points": points,
 			"locked": owner.locked,
+			"grade_separated_crossing": record.grade_separated_crossing,
 		})
 	return intervals
 
@@ -491,6 +508,18 @@ func get_render_observation() -> Dictionary:
 	if _hover_extend_cell != INVALID_CELL:
 		observation["hover_extend_cell"] = Vector2i(_hover_extend_cell)
 	return observation
+
+
+func _build_planning_indicator_text(planning_percent: int) -> String:
+	var text := "PLANNING %d%%" % planning_percent
+	if _presented_pending_crossing_count <= 0:
+		return text
+	var affordability := "READY" if _presented_pending_crossing_affordable else "NO CASH"
+	return "%s | CROSSING %d (%s)" % [
+		text,
+		_presented_pending_crossing_total_cost,
+		affordability,
+	]
 
 
 func _get_valid_start_cell() -> Vector2i:
@@ -627,6 +656,7 @@ func _duplicate_intervals(source: Array) -> Array:
 			"nominal_end_cells": interval.nominal_end_cells,
 			"points": interval.points.duplicate(),
 			"locked": interval.locked,
+			"grade_separated_crossing": interval.get("grade_separated_crossing", false),
 		})
 	return copies
 
@@ -651,6 +681,10 @@ func _draw() -> void:
 		var points: PackedVector2Array = interval.points
 		if points.size() < 2:
 			continue
+		if interval.get("grade_separated_crossing", false):
+			var gap_points := _crossing_gap_points(points)
+			if gap_points.size() >= 2:
+				draw_polyline(gap_points, CROSSING_GAP_COLOR, CROSSING_GAP_WIDTH, true)
 		if interval.state == TrackCellRecordScript.State.BUILT:
 			draw_polyline(points, BUILT_COLOR, BUILT_WIDTH, true)
 		elif interval.state == TrackCellRecordScript.State.BUILDING:
@@ -694,6 +728,18 @@ func _draw() -> void:
 	if _planning_indicator_visible:
 		_draw_planning_indicator()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _crossing_gap_points(points: PackedVector2Array) -> PackedVector2Array:
+	if points.size() < 2:
+		return PackedVector2Array()
+	var midpoint := int((points.size() - 1) / 2)
+	var first := maxi(0, midpoint - 1)
+	var last := mini(points.size() - 1, midpoint + 1)
+	var gap := PackedVector2Array()
+	for index in range(first, last + 1):
+		gap.append(points[index])
+	return gap
 
 
 func _draw_planning_indicator() -> void:
@@ -888,5 +934,7 @@ func _clear_view_capture_after_termination() -> void:
 	_right_pressed_pending = false
 	_right_press_cell = INVALID_CELL
 	_right_press_inside_grid = false
+	_right_press_position_units = Vector2.ZERO
+	_right_press_position_available = false
 	_previous_pointer_cell = INVALID_CELL
 	_release_clears_capture = false

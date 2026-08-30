@@ -125,7 +125,14 @@ func advance_tick(input_frame: TrackInputFrameScript = null) -> void:
 	if right_won:
 		paid_demolition_route_serial = _track_system.take_paid_demolition_request()
 	else:
-		_track_system.apply_left_input(frame)
+		if _paid_track_actions_enabled:
+			_track_system.apply_left_input_with_paid_crossings(
+				frame,
+				_session_economy,
+				_start_config.major_track_action_cost
+			)
+		else:
+			_track_system.apply_left_input(frame)
 	if not simulation_tick_due:
 		if not _track_system.is_runtime_gesture_active():
 			_planning_accumulator_percent = 0
@@ -325,6 +332,10 @@ func _create_snapshot(include_warp_events: bool = true) -> SessionSnapshotScript
 		base_delivery_reward_total = _cargo_system.get_base_delivery_reward_total()
 		if include_warp_events:
 			warp_cargo_events = _warp_pair_system.get_tick_events()
+	var pending_crossing_count := _track_system.get_pending_crossing_count()
+	var pending_crossing_total_cost := (
+		pending_crossing_count * _start_config.major_track_action_cost
+	)
 	return SessionSnapshotScript.new(
 		_total_ticks,
 		_elapsed_ticks,
@@ -368,7 +379,10 @@ func _create_snapshot(include_warp_events: bool = true) -> SessionSnapshotScript
 		_calculate_repair_cost_basis(),
 		_session_economy.get_starting_cash(),
 		_session_economy.get_cash(),
-		_session_economy.get_total_spent()
+		_session_economy.get_total_spent(),
+		pending_crossing_count,
+		pending_crossing_total_cost,
+		_session_economy.get_cash() >= pending_crossing_total_cost
 	)
 
 

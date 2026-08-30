@@ -46,6 +46,7 @@ var _gesture_live_warp_latches: Array[Dictionary] = []
 var _gesture_latched_suffix_input_facts: Array[Dictionary] = []
 var _gesture_preexisting_nonendpoint_anchor_ids: Dictionary = {}
 var _gesture_press_anchor_ids: Dictionary = {}
+var _gesture_initial_next_route_serial := -1
 var _gesture_rejection_diagnostics_enabled := false
 var _last_gesture_rejection: Dictionary = {}
 var _last_stage_rejection_reason := StringName()
@@ -131,6 +132,50 @@ func gesture_has_legal_operation(endpoint: Vector2i = Vector2i(-1, -1)) -> bool:
             _recovered_end_distance_cells
         ):
             return true
+    if _sequence.get_available_track_cells() < 2:
+        return false
+    for offset in [Vector2i.RIGHT, Vector2i.LEFT, Vector2i.DOWN, Vector2i.UP]:
+        var crossing_cell: Vector2i = requested_endpoint + Vector2i(offset)
+        var exit_cell: Vector2i = crossing_cell + Vector2i(offset)
+        if not _cell_in_grid(crossing_cell) or not _cell_in_grid(exit_cell):
+            continue
+        var crossing_partner_serial := _crossing_partner_for_candidate(
+            _sequence,
+            crossing_cell,
+            exit_cell
+        )
+        if crossing_partner_serial < 0:
+            continue
+        var candidate_sequence = _sequence.duplicate_sequence()
+        if candidate_sequence.try_append_candidate(
+            crossing_cell,
+            true,
+            crossing_partner_serial
+        ) == null:
+            continue
+        if candidate_sequence.try_append_candidate(exit_cell) == null:
+            continue
+        var candidate_ledger = _duplicate_pieces(_locked_ledger)
+        var candidate_anchors = _duplicate_anchors(_anchors)
+        var resolution = _stage_stable_retirement(
+            candidate_sequence,
+            candidate_ledger,
+            candidate_anchors,
+            _recovered_cells_by_piece
+        )
+        if not resolution.is_valid:
+            continue
+        _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
+        candidate_sequence.apply_resolved_geometry(resolution.pieces)
+        if _validate_candidate(
+            candidate_sequence,
+            candidate_ledger,
+            resolution,
+            _recovered_cells_by_piece,
+            _exit_support_cells_by_piece,
+            _recovered_end_distance_cells
+        ):
+            return true
     return false
 
 
@@ -145,6 +190,7 @@ func gesture_begin(endpoint: Vector2i) -> Dictionary:
     _gesture_origin_exit_support_cells_by_piece = _exit_support_cells_by_piece.duplicate(true)
     _gesture_origin_recovered_end_distance_cells = _recovered_end_distance_cells
     _gesture_origin_contacts = _contact_observations.duplicate(true)
+    _gesture_initial_next_route_serial = _gesture_origin_sequence._next_route_serial
     _gesture_editable_span = _discover_editable_span()
     _gesture_target_endpoints = _calculate_target_endpoints(_gesture_editable_span)
     _gesture_selected_template_index = _matching_template_index(_gesture_editable_span)
@@ -166,7 +212,19 @@ func gesture_begin(endpoint: Vector2i) -> Dictionary:
 
 
 func gesture_finalize() -> bool:
+    return _gesture_finalize(false)
+
+
+func gesture_finalize_paid_crossings() -> bool:
+    return _gesture_finalize(true)
+
+
+func _gesture_finalize(paid_crossings_authorized: bool) -> bool:
     if not _gesture_active:
+        return false
+    var pending_crossing_count := get_pending_crossing_count()
+    if pending_crossing_count > 0 and not paid_crossings_authorized:
+        gesture_abort(true)
         return false
     var candidate_sequence = _sequence.duplicate_sequence()
     var candidate_ledger = _duplicate_pieces(_locked_ledger)
@@ -178,7 +236,10 @@ func gesture_finalize() -> bool:
         _recovered_cells_by_piece
     )
     if not resolution.is_valid or not _pieces_are_continuous(resolution.pieces):
-        _clear_gesture_state()
+        if pending_crossing_count > 0:
+            gesture_abort(true)
+        else:
+            _clear_gesture_state()
         return false
     _assign_unique_unlocked_group_ids(resolution.pieces, candidate_ledger)
     candidate_sequence.apply_resolved_geometry(resolution.pieces)
@@ -190,7 +251,10 @@ func gesture_finalize() -> bool:
         _exit_support_cells_by_piece,
         _recovered_end_distance_cells
     ):
-        _clear_gesture_state()
+        if pending_crossing_count > 0:
+            gesture_abort(true)
+        else:
+            _clear_gesture_state()
         return false
     var candidate_contacts := _build_contact_observations(
         resolution.pieces,
@@ -204,9 +268,11 @@ func gesture_finalize() -> bool:
     return true
 
 
-func gesture_abort() -> bool:
+func gesture_abort(restore_initial_route_serial: bool = false) -> bool:
     if not _gesture_active or _gesture_origin_sequence == null:
         return false
+    if restore_initial_route_serial and _gesture_initial_next_route_serial >= 0:
+        _gesture_origin_sequence._next_route_serial = _gesture_initial_next_route_serial
     _sequence.replace_with(_gesture_origin_sequence)
     _locked_ledger = _duplicate_pieces(_gesture_origin_locked_ledger)
     _pieces = _duplicate_pieces(_gesture_origin_pieces)
@@ -218,6 +284,19 @@ func gesture_abort() -> bool:
     _contact_observations = _gesture_origin_contacts.duplicate(true)
     _clear_gesture_state()
     return true
+
+
+func get_pending_crossing_count() -> int:
+    if not _gesture_active or _gesture_origin_sequence == null:
+        return 0
+    var origin_serials := {}
+    for record in _gesture_origin_sequence.get_records():
+        origin_serials[record.route_serial] = true
+    var count := 0
+    for record in _sequence.get_records():
+        if record.grade_separated_crossing and not origin_serials.has(record.route_serial):
+            count += 1
+    return count
 
 
 func gesture_update(
@@ -495,7 +574,7 @@ func _capture_candidate_warp_latches(
         ):
             continue
         var cell: Vector2i = observation.get("cell", Vector2i(-1, -1))
-        var occurrence := _route_occurrence_for_cell(candidate_sequence, cell)
+        var occurrence := _route_occurrence_for_cell(candidate_sequence, cell, true)
         if occurrence.is_empty():
             continue
         var preexisting: Dictionary = _gesture_preexisting_nonendpoint_anchor_ids.get(
@@ -557,10 +636,14 @@ func _gesture_has_warp_latch(anchor_id: StringName) -> bool:
 
 func _route_occurrence_for_cell(
     sequence: TrackCellSequenceScript,
-    cell: Vector2i
+    cell: Vector2i,
+    prefer_latest: bool = false
 ) -> Dictionary:
     var records := sequence.get_records()
-    for index in range(records.size()):
+    var indices := range(records.size())
+    if prefer_latest:
+        indices = range(records.size() - 1, -1, -1)
+    for index in indices:
         if records[index].cell == cell:
             return {
                 "route_serial": records[index].route_serial,
@@ -1081,9 +1164,20 @@ func append_cells(cells: Array[Vector2i]) -> int:
 
 func cancel_ghost_suffix(cell: Vector2i) -> bool:
     var records = _sequence.get_records()
+    var matching_serials: Array[int] = []
+    for record in records:
+        if record.cell == cell:
+            matching_serials.append(record.route_serial)
+    if matching_serials.size() != 1:
+        return false
+    return cancel_ghost_suffix_by_serial(matching_serials[0])
+
+
+func cancel_ghost_suffix_by_serial(route_serial: int) -> bool:
+    var records = _sequence.get_records()
     var target_index := -1
     for index in range(records.size()):
-        if records[index].cell == cell:
+        if records[index].route_serial == route_serial:
             target_index = index
             break
     if target_index < 0:
@@ -1100,7 +1194,7 @@ func cancel_ghost_suffix(cell: Vector2i) -> bool:
             if piece.contains_serial(record.route_serial) and piece.locked:
                 return false
     var candidate_sequence = _sequence.duplicate_sequence()
-    if candidate_sequence.cancel_ghost_suffix(cell) <= 0:
+    if candidate_sequence.cancel_ghost_suffix_from_serial(route_serial) <= 0:
         return false
     var candidate_ledger = _duplicate_pieces(_locked_ledger)
     var candidate_anchors = _duplicate_anchors(_anchors)
@@ -1123,6 +1217,91 @@ func cancel_ghost_suffix(cell: Vector2i) -> bool:
     _commit_candidate(candidate_sequence, candidate_ledger, resolution)
     _refresh_contact_observations()
     return true
+
+
+func select_route_serial_at_position(
+    cell: Vector2i,
+    pointer_position_units: Vector2 = Vector2.ZERO,
+    pointer_position_available: bool = false,
+    tie_epsilon_cells: float = 0.01
+) -> int:
+    var matching_records: Array[TrackCellRecordScript] = []
+    for record in _sequence.get_records():
+        if record.cell == cell:
+            matching_records.append(record)
+    if matching_records.is_empty():
+        return -1
+    if matching_records.size() == 1:
+        return matching_records[0].route_serial
+    if (
+        not pointer_position_available
+        or not is_finite(pointer_position_units.x)
+        or not is_finite(pointer_position_units.y)
+        or tie_epsilon_cells < 0.0
+    ):
+        return -1
+    var candidates: Array[Dictionary] = []
+    for record in matching_records:
+        var distance_units := _distance_to_route_occurrence_units(
+            record,
+            pointer_position_units
+        )
+        if not is_finite(distance_units):
+            continue
+        candidates.append({
+            "route_serial": record.route_serial,
+            "distance_cells": distance_units / _cell_size_units,
+        })
+    if candidates.size() != matching_records.size():
+        return -1
+    candidates.sort_custom(func(first: Dictionary, second: Dictionary) -> bool:
+        if not is_equal_approx(first["distance_cells"], second["distance_cells"]):
+            return first["distance_cells"] < second["distance_cells"]
+        return first["route_serial"] < second["route_serial"]
+    )
+    if absf(
+        float(candidates[0]["distance_cells"])
+        - float(candidates[1]["distance_cells"])
+    ) <= tie_epsilon_cells:
+        return -1
+    return int(candidates[0]["route_serial"])
+
+
+func _distance_to_route_occurrence_units(
+    record: TrackCellRecordScript,
+    pointer_position_units: Vector2
+) -> float:
+    var owner = null
+    for piece in _pieces:
+        if piece.contains_serial(record.route_serial):
+            owner = piece
+            break
+    if owner == null:
+        return INF
+    var local_start: float = (
+        record.route_distance_start_cells
+        - owner.absolute_start_distance_cells
+    )
+    var minimum_distance := INF
+    var previous: Vector2 = owner.sample_nominal(local_start).position
+    for sample_index in range(1, 17):
+        var local_distance: float = local_start + float(sample_index) / 16.0
+        var current: Vector2 = owner.sample_nominal(local_distance).position
+        minimum_distance = minf(
+            minimum_distance,
+            _distance_to_segment(pointer_position_units, previous, current)
+        )
+        previous = current
+    return minimum_distance
+
+
+func _distance_to_segment(point: Vector2, start: Vector2, finish: Vector2) -> float:
+    var segment := finish - start
+    var length_squared := segment.length_squared()
+    if length_squared <= 0.000001:
+        return point.distance_to(start)
+    var weight := clampf((point - start).dot(segment) / length_squared, 0.0, 1.0)
+    return point.distance_to(start + segment * weight)
 
 
 func duplicate_runtime() -> GridTrackRuntime:
@@ -1807,22 +1986,29 @@ func get_contact_hits_between(
         var observation: Dictionary = observations_by_id.get(anchor.anchor_id, {})
         if not observation.get("contact_possible", false):
             continue
-        var contact_distance: float = observation.get("contact_distance_cells", -1.0)
-        var departure_hit := (
-            contact_distance == 0.0
-            and previous_distance_cells == 0.0
-            and through_distance_cells > 0.0
-        )
-        if not departure_hit and (
-            contact_distance <= previous_distance_cells
-            or contact_distance > through_distance_cells
-        ):
-            continue
-        hits.append({
-            "anchor_id": anchor.anchor_id,
-            "cell": anchor.cell,
-            "contact_distance_cells": contact_distance,
-        })
+        var contact_distances: Array = observation.get("contact_distances_cells", [])
+        if contact_distances.is_empty():
+            var legacy_distance: float = observation.get("contact_distance_cells", -1.0)
+            if legacy_distance >= 0.0:
+                contact_distances = [legacy_distance]
+        for distance_value in contact_distances:
+            var contact_distance := float(distance_value)
+            var departure_hit := (
+                contact_distance == 0.0
+                and previous_distance_cells == 0.0
+                and through_distance_cells > 0.0
+            )
+            if not departure_hit and (
+                contact_distance <= previous_distance_cells
+                or contact_distance > through_distance_cells
+            ):
+                continue
+            hits.append({
+                "anchor_id": anchor.anchor_id,
+                "cell": anchor.cell,
+                "contact_distance_cells": contact_distance,
+            })
+            break
 
     if anchors_by_id.is_empty():
         hits.sort_custom(_contact_hit_less)
@@ -2287,6 +2473,7 @@ func _clear_gesture_state() -> void:
     _gesture_latched_suffix_input_facts.clear()
     _gesture_preexisting_nonendpoint_anchor_ids.clear()
     _gesture_press_anchor_ids.clear()
+    _gesture_initial_next_route_serial = -1
     _last_gesture_rejection.clear()
 
 
@@ -2720,15 +2907,78 @@ func _append_gesture_input_facts(
     facts: Array[Dictionary]
 ) -> bool:
     var watermark: int = sequence._next_route_serial
-    for fact in facts:
+    for fact_index in range(facts.size()):
+        var fact: Dictionary = facts[fact_index]
         var serial: int = fact["serial"]
         var cell: Vector2i = fact["cell"]
         sequence._next_route_serial = serial
-        var appended = sequence.try_append_candidate(cell)
+        var crossing_partner_serial := -1
+        if sequence.get_active_occurrence_count(cell) > 0:
+            if fact_index + 1 >= facts.size():
+                return false
+            crossing_partner_serial = _crossing_partner_for_candidate(
+                sequence,
+                cell,
+                Vector2i(facts[fact_index + 1]["cell"])
+            )
+            if crossing_partner_serial < 0:
+                return false
+        var appended = sequence.try_append_candidate(
+            cell,
+            crossing_partner_serial >= 0,
+            crossing_partner_serial
+        )
         if appended == null or appended.route_serial != serial:
             return false
     sequence._next_route_serial = maxi(watermark, sequence._next_route_serial)
     return true
+
+
+func _crossing_partner_for_candidate(
+    sequence: TrackCellSequenceScript,
+    crossing_cell: Vector2i,
+    exit_cell: Vector2i
+) -> int:
+    if sequence.get_active_occurrence_count(crossing_cell) != 1:
+        return -1
+    if sequence.get_active_occurrence_count(exit_cell) > 0:
+        return -1
+    var entry_cell := sequence.get_endpoint_cell()
+    var new_incoming := crossing_cell - entry_cell
+    var new_outgoing := exit_cell - crossing_cell
+    if (
+        absi(new_incoming.x) + absi(new_incoming.y) != 1
+        or absi(new_outgoing.x) + absi(new_outgoing.y) != 1
+        or new_incoming != new_outgoing
+    ):
+        return -1
+    var records := sequence.get_records()
+    var partner_index := -1
+    for index in range(records.size()):
+        if records[index].cell == crossing_cell:
+            partner_index = index
+            break
+    if partner_index < 0 or partner_index + 1 >= records.size():
+        return -1
+    var partner = records[partner_index]
+    if partner.grade_separated_crossing or not partner.geometry_locked:
+        return -1
+    var previous_cell: Vector2i = (
+        sequence.get_active_predecessor_cell()
+        if partner_index == 0
+        else records[partner_index - 1].cell
+    )
+    var existing_incoming := crossing_cell - previous_cell
+    var existing_outgoing: Vector2i = records[partner_index + 1].cell - crossing_cell
+    if (
+        absi(existing_incoming.x) + absi(existing_incoming.y) != 1
+        or absi(existing_outgoing.x) + absi(existing_outgoing.y) != 1
+        or existing_incoming != existing_outgoing
+    ):
+        return -1
+    if existing_incoming.x * new_incoming.x + existing_incoming.y * new_incoming.y != 0:
+        return -1
+    return partner.route_serial
 
 
 func _first_unbuilt_record():
@@ -2822,25 +3072,31 @@ func _build_contact_observations(
     for anchor in anchors:
         var contacted := false
         var contact_distance := -1.0
+        var contact_distances: Array[float] = []
         if anchor.contact_mode == RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER:
             var exact_fact := _exact_anchor_contact_fact(
                 pieces, records, anchor.cell, recovered_cells_by_piece
             )
             contacted = exact_fact.get("contact_possible", false)
             contact_distance = exact_fact.get("contact_distance_cells", -1.0)
+            for distance_value in exact_fact.get("contact_distances_cells", []):
+                contact_distances.append(float(distance_value))
         else:
             for piece in pieces:
                 if _active_piece_contacts_cell(piece, anchor.cell, recovered_cells_by_piece):
                     contacted = true
                     break
-        observations.append({
+        var observation := {
             "anchor_id": anchor.anchor_id,
             "cell": anchor.cell,
             "contact_possible": contacted,
             "contacted": contacted,
             "contact_mode": anchor.contact_mode,
             "contact_distance_cells": contact_distance,
-        })
+        }
+        if anchor.contact_mode == RouteContactAnchorScript.ContactMode.EXACT_CELL_CENTER:
+            observation["contact_distances_cells"] = contact_distances
+        observations.append(observation)
     return observations
 
 
@@ -2850,14 +3106,56 @@ func _exact_anchor_contact_fact(
     cell: Vector2i,
     recovered_cells_by_piece: Dictionary
 ) -> Dictionary:
-    var required_serial := -1
+    var required_serials: Array[int] = []
     for record in records:
         if record.cell == cell:
-            required_serial = record.route_serial
-            break
-    if required_serial < 0 and cell != _departure_cell:
-        return {"contact_possible": false, "contact_distance_cells": -1.0}
+            required_serials.append(record.route_serial)
+    if required_serials.is_empty() and cell != _departure_cell:
+        return {
+            "contact_possible": false,
+            "contact_distance_cells": -1.0,
+            "contact_distances_cells": [],
+        }
     var target := _grid_origin_units + (Vector2(cell) + Vector2(0.5, 0.5)) * _cell_size_units
+    var distances: Array[float] = []
+    if cell == _departure_cell:
+        _append_exact_contact_distance_for_serial(
+            distances,
+            pieces,
+            -1,
+            cell,
+            target,
+            recovered_cells_by_piece
+        )
+    for required_serial in required_serials:
+        _append_exact_contact_distance_for_serial(
+            distances,
+            pieces,
+            required_serial,
+            cell,
+            target,
+            recovered_cells_by_piece
+        )
+    distances.sort()
+    var unique_distances: Array[float] = []
+    for distance in distances:
+        if unique_distances.is_empty() or absf(distance - unique_distances[-1]) > NOMINAL_BOUNDARY_EPSILON:
+            unique_distances.append(distance)
+    return {
+        "contact_possible": not unique_distances.is_empty(),
+        "contact_distance_cells": -1.0 if unique_distances.is_empty() else unique_distances[0],
+        "contact_distances_cells": unique_distances,
+    }
+
+
+func _append_exact_contact_distance_for_serial(
+    distances: Array[float],
+    pieces: Array[TrackGeometryPieceScript],
+    required_serial: int,
+    cell: Vector2i,
+    target: Vector2,
+    recovered_cells_by_piece: Dictionary
+) -> void:
     for piece in pieces:
         if required_serial >= 0 and not piece.contains_serial(required_serial):
             continue
@@ -2873,11 +3171,8 @@ func _exact_anchor_contact_fact(
             or local_distance > piece.active_local_end_cells + NOMINAL_BOUNDARY_EPSILON
         ):
             continue
-        return {
-            "contact_possible": true,
-            "contact_distance_cells": piece.absolute_start_distance_cells + local_distance,
-        }
-    return {"contact_possible": false, "contact_distance_cells": -1.0}
+        distances.append(piece.absolute_start_distance_cells + local_distance)
+        return
 
 
 func _active_piece_contacts_cell(
