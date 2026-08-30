@@ -200,6 +200,7 @@ Modify:
 - `godot-project-moe-rail-way/tests/unit/test_session_economy.gd`
 - `godot-project-moe-rail-way/tests/unit/test_warp_cargo_session_controller.gd`
 - `godot-project-moe-rail-way/tests/unit/test_risk_session_controller.gd`
+- `godot-project-moe-rail-way/tests/integration/run_risk_investment_integration.gd`
 - `godot-project-moe-rail-way/tests/run_all.gd`
 
 ### Regressions and reviews
