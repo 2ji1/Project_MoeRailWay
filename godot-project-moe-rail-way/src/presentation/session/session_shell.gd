@@ -73,6 +73,7 @@ var _profile: UILayoutProfileScript
 var _showing_result := false
 var _track_end_urgent := false
 var _pending_priced_actions: Array[StringName] = []
+var _tick_input_claimed := false
 
 
 func _ready() -> void:
@@ -82,10 +83,10 @@ func _ready() -> void:
     var track_field_view = get_track_field_view()
     if (
         track_field_view != null
-        and track_field_view.has_signal("paid_demolition_edge_captured")
+        and track_field_view.has_signal("field_press_edge_captured")
     ):
-        track_field_view.paid_demolition_edge_captured.connect(
-            _on_paid_demolition_edge_captured
+        track_field_view.field_press_edge_captured.connect(
+            _on_field_press_edge_captured
         )
 
 
@@ -183,6 +184,7 @@ func show_result(result: SessionResultScript) -> void:
         return
     _showing_result = true
     _pending_priced_actions.clear()
+    _release_tick_input_claim()
     %ResultReason.text = reason_text
     %ResultNotice.text = (
         "CASH %d | DURABILITY %s / %s | REPAIR %d\n"
@@ -229,8 +231,11 @@ func get_cargo_slot_strip() -> CargoSlotStripScript:
 func consume_track_input_frame() -> TrackInputFrameScript:
     var track_field_view = get_track_field_view()
     if track_field_view == null:
+        _release_tick_input_claim()
         return null
-    return track_field_view.consume_input_frame()
+    var input_frame = track_field_view.consume_input_frame()
+    _release_tick_input_claim()
+    return input_frame
 
 
 func consume_investment_input() -> SessionInvestmentInputScript:
@@ -238,6 +243,7 @@ func consume_investment_input() -> SessionInvestmentInputScript:
         _pending_priced_actions
     )
     _pending_priced_actions.clear()
+    _release_tick_input_claim()
     return investment_input
 
 
@@ -328,7 +334,7 @@ func get_layout_observation() -> Dictionary:
 func _on_track_purchase_pressed() -> void:
     if _track_purchase_button.disabled or _showing_result:
         return
-    _pending_priced_actions.append(
+    _claim_tick_input(
         SessionInvestmentInputScript.ACTION_TEMPORARY_TRACK_PURCHASE
     )
 
@@ -336,17 +342,37 @@ func _on_track_purchase_pressed() -> void:
 func _on_cargo_purchase_pressed() -> void:
     if _cargo_purchase_button.disabled or _showing_result:
         return
-    _pending_priced_actions.append(
+    _claim_tick_input(
         SessionInvestmentInputScript.ACTION_TEMPORARY_CARGO_PURCHASE
     )
 
 
-func _on_paid_demolition_edge_captured() -> void:
-    if _showing_result:
+func _on_field_press_edge_captured(priced_action: StringName) -> void:
+    _claim_tick_input(priced_action)
+
+
+func _claim_tick_input(priced_action: StringName) -> void:
+    if _showing_result or _tick_input_claimed:
         return
-    _pending_priced_actions.append(
-        SessionInvestmentInputScript.ACTION_PAID_DEMOLITION
-    )
+    _tick_input_claimed = true
+    if not priced_action.is_empty():
+        _pending_priced_actions.append(priced_action)
+    var track_field_view = get_track_field_view()
+    if (
+        track_field_view != null
+        and track_field_view.has_method("set_new_press_edges_blocked")
+    ):
+        track_field_view.set_new_press_edges_blocked(true)
+
+
+func _release_tick_input_claim() -> void:
+    _tick_input_claimed = false
+    var track_field_view = get_track_field_view()
+    if (
+        track_field_view != null
+        and track_field_view.has_method("set_new_press_edges_blocked")
+    ):
+        track_field_view.set_new_press_edges_blocked(false)
 
 
 func _format_number(value: float) -> String:

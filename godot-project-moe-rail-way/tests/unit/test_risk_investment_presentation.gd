@@ -34,8 +34,10 @@ const CROSSING_PATH: Array[Vector2i] = [
 
 func run() -> PackedStringArray:
 	_test_shell_hud_buttons_and_ordered_input()
+	_test_same_tick_field_purchase_chronology()
 	_test_hazard_primitives_and_resize_mapping()
 	_test_free_paid_and_crossing_occurrence_feedback()
+	_test_demolition_feedback_matches_strict_train_boundaries()
 	_test_durability_result_surface()
 	return finish()
 
@@ -101,24 +103,24 @@ func _test_shell_hud_buttons_and_ordered_input() -> void:
 	if ordered_input is SessionInvestmentInputScript:
 		assert_equal(
 			ordered_input.get_ordered_priced_actions(),
-			[ACTION_TRACK, ACTION_CARGO],
-			"Button edges retain same-call chronological order"
+			[ACTION_TRACK],
+			"The first button edge suppresses later same-tick presses"
 		)
 	var consumed_again = shell.call("consume_investment_input")
 	if consumed_again is SessionInvestmentInputScript:
 		assert_equal(consumed_again.get_ordered_priced_actions(), [], "Consumed button edges never queue across ticks")
 
 	var view = shell.get_track_field_view()
-	assert_true(view != null and view.has_signal("paid_demolition_edge_captured"), "Field exposes the priced right-click edge to shell arbitration")
-	if view != null and view.has_signal("paid_demolition_edge_captured"):
-		view.emit_signal("paid_demolition_edge_captured")
+	assert_true(view != null and view.has_signal("field_press_edge_captured"), "Every field press shares shell arbitration")
+	if view != null and view.has_signal("field_press_edge_captured"):
+		view.emit_signal("field_press_edge_captured", ACTION_DEMOLITION)
 		track_button.emit_signal("pressed")
 		var right_first = shell.call("consume_investment_input")
 		if right_first is SessionInvestmentInputScript:
 			assert_equal(
 				right_first.get_ordered_priced_actions(),
-				[ACTION_DEMOLITION, ACTION_TRACK],
-				"Paid right-click and button edges share one chronological list"
+				[ACTION_DEMOLITION],
+				"The first paid field edge suppresses a later purchase"
 			)
 
 	shell.present(_snapshot(config, [], [], hazards, 39, 64.0, 36, 37, 1, 1, 65, 3, false, false))
@@ -154,6 +156,71 @@ func _test_hazard_primitives_and_resize_mapping() -> void:
 		if mapped != null:
 			assert_true(Vector2(mapped).is_equal_approx(config.logical_field_size * 0.5), "Resize preserves logical field center at %s" % view_size)
 	view.free()
+
+
+func _test_same_tick_field_purchase_chronology() -> void:
+	var config = _config()
+	var free_track := TrackSystemScript.new(config)
+	var free_cells: Array[Vector2i] = [Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2)]
+	_append_and_release(free_track, free_cells)
+
+	var purchase_first_shell = _new_shell()
+	if purchase_first_shell == null:
+		return
+	purchase_first_shell.configure(
+		UILayoutProfileScript.new(),
+		_snapshot(config, free_track.get_cell_records(), free_track.get_geometry_pieces()),
+		config
+	)
+	var purchase_first_view = purchase_first_shell.get_track_field_view()
+	var purchase_first_button = purchase_first_shell.get_node(
+		"OuterMargin/MainColumn/BottomHud/BottomContent/BottomItems/TrackPurchaseButton"
+	)
+	purchase_first_button.emit_signal("pressed")
+	_send_right_click(purchase_first_view, config, Vector2i(2, 2))
+	var purchase_first_frame = purchase_first_shell.consume_track_input_frame()
+	var purchase_first_input = purchase_first_shell.consume_investment_input()
+	assert_false(
+		purchase_first_frame.right_pressed,
+		"A purchase edge suppresses a later free field press in the same tick"
+	)
+	assert_equal(
+		purchase_first_input.get_ordered_priced_actions(),
+		[ACTION_TRACK],
+		"The chronologically first purchase remains the only same-tick action"
+	)
+	purchase_first_shell.free()
+
+	var field_first_shell = _new_shell()
+	if field_first_shell == null:
+		return
+	field_first_shell.configure(
+		UILayoutProfileScript.new(),
+		_snapshot(config, free_track.get_cell_records(), free_track.get_geometry_pieces()),
+		config
+	)
+	var field_first_view = field_first_shell.get_track_field_view()
+	var field_first_button = field_first_shell.get_node(
+		"OuterMargin/MainColumn/BottomHud/BottomContent/BottomItems/TrackPurchaseButton"
+	)
+	_send_right_click(field_first_view, config, Vector2i(2, 2))
+	field_first_button.emit_signal("pressed")
+	var field_first_frame = field_first_shell.consume_track_input_frame()
+	var field_first_input = field_first_shell.consume_investment_input()
+	assert_true(
+		field_first_frame.right_pressed,
+		"A chronologically first free field press retains the same-tick frame"
+	)
+	assert_true(
+		field_first_frame.right_press_inside_grid,
+		"The chronology fixture presses a valid grid cell"
+	)
+	assert_equal(
+		field_first_input.get_ordered_priced_actions(),
+		[],
+		"A chronologically first free field press suppresses a later purchase"
+	)
+	field_first_shell.free()
 
 
 func _test_free_paid_and_crossing_occurrence_feedback() -> void:
@@ -219,6 +286,53 @@ func _test_free_paid_and_crossing_occurrence_feedback() -> void:
 		assert_equal(render.crossing_preview.get("count"), 1, "Crossing preview reports occurrence count")
 		assert_equal(render.crossing_preview.get("cost"), 50, "Crossing preview reports total cost")
 		assert_false(render.crossing_preview.get("affordable", true), "Crossing preview reports affordability")
+	view.free()
+
+
+func _test_demolition_feedback_matches_strict_train_boundaries() -> void:
+	var view := _new_view()
+	var config = _config()
+	view.configure_session(config)
+	var track := TrackSystemScript.new(config)
+	var cells: Array[Vector2i] = [Vector2i(1, 2), Vector2i(2, 2), Vector2i(3, 2)]
+	_append_and_release(track, cells)
+	track.advance_construction(100.0)
+	var records: Array[TrackCellRecordScript] = track.get_cell_records()
+	var pieces: Array[TrackGeometryPieceScript] = track.get_geometry_pieces()
+	var selected: TrackCellRecordScript = records[1]
+	var point := _cell_center(config, selected.cell)
+	var selected_start := selected.route_distance_start_cells
+	var selected_end := selected_start + 1.0
+
+	_present_train_distance(view, config, records, pieces, selected_start - 0.00005)
+	var before_start: Dictionary = view.call("_build_right_click_feedback", point)
+	assert_equal(
+		before_start.get("mode"),
+		&"paid_demolition",
+		"Any train distance strictly before the selected start exposes the front suffix"
+	)
+
+	_present_train_distance(view, config, records, pieces, selected_start)
+	var at_start: Dictionary = view.call("_build_right_click_feedback", point)
+	assert_false(
+		at_start.get("visible", true),
+		"A train exactly at the selected start makes the containing span ineligible"
+	)
+
+	_present_train_distance(view, config, records, pieces, selected_end - 0.00005)
+	var before_end: Dictionary = view.call("_build_right_click_feedback", point)
+	assert_false(
+		before_end.get("visible", true),
+		"A train strictly before the selected end keeps the containing span ineligible"
+	)
+
+	_present_train_distance(view, config, records, pieces, selected_end)
+	var at_end: Dictionary = view.call("_build_right_click_feedback", point)
+	assert_equal(
+		at_end.get("mode"),
+		&"paid_demolition",
+		"A train exactly at the selected end exposes the retained rear prefix"
+	)
 	view.free()
 
 
@@ -312,7 +426,9 @@ func _snapshot(
 	cargo_affordable: bool = true,
 	pending_crossing_count: int = 0,
 	pending_crossing_cost: int = 0,
-	pending_crossing_affordable: bool = true
+	pending_crossing_affordable: bool = true,
+	train_active: bool = false,
+	train_route_distance_cells: float = 0.0
 ) -> SessionSnapshotScript:
 	var typed_records: Array[TrackCellRecordScript] = []
 	for record in records:
@@ -331,7 +447,7 @@ func _snapshot(
 		config.grid_origin_units,
 		1, config.departure_required_built_cells,
 		float(typed_records.size()),
-		false, 0.0, config.departure_position, Vector2.RIGHT,
+		train_active, train_route_distance_cells, config.departure_position, Vector2.RIGHT,
 		0.0, false, config.departure_candidate_id, config.departure_cell,
 		true, false,
 		warp_pairs, cargo_slots, 1 if total_cargo_slots > 0 else 0, total_cargo_slots,
@@ -343,6 +459,38 @@ func _snapshot(
 		track_purchase_count, 6, 40, 5, true, track_affordable,
 		cargo_purchase_count, 4, 80, 1, true, cargo_affordable
 	)
+
+
+func _present_train_distance(
+	view: TrackFieldViewScript,
+	config,
+	records: Array[TrackCellRecordScript],
+	pieces: Array[TrackGeometryPieceScript],
+	train_distance: float
+) -> void:
+	view.present(_snapshot(
+		config, records, pieces, [], 300, 100.0, 0, 0, 0, 0, 80, 2,
+		true, true, 0, 0, true, true, train_distance
+	))
+
+
+func _send_right_click(
+	view: TrackFieldViewScript,
+	config,
+	cell: Vector2i
+) -> void:
+	view.size = config.logical_field_size
+	var logical := _cell_center(config, cell)
+	var content := view.get_logical_content_rect()
+	var local: Vector2 = content.position + logical * (content.size / config.logical_field_size)
+	var motion := InputEventMouseMotion.new()
+	motion.position = local
+	view.call("_gui_input", motion)
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_RIGHT
+	click.pressed = true
+	click.position = local
+	view.call("_gui_input", click)
 
 
 func _append_and_release(track: TrackSystemScript, cells: Array[Vector2i]) -> void:

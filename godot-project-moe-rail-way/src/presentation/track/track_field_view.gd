@@ -2,6 +2,7 @@ class_name TrackFieldView
 extends Control
 
 signal paid_demolition_edge_captured
+signal field_press_edge_captured(priced_action: StringName)
 
 const SessionStartConfigScript = preload("res://src/domain/session/session_start_config.gd")
 const SessionControllerScript = preload("res://src/domain/session/session_controller.gd")
@@ -41,7 +42,6 @@ const PAID_DEMOLITION_COLOR := Color(0.95, 0.49, 0.20, 0.95)
 const UNAFFORDABLE_COLOR := Color(0.82, 0.26, 0.20, 0.95)
 const RIGHT_ACTION_BACK_COLOR := Color(0.04, 0.07, 0.08, 0.84)
 const DEMOLITION_TIE_EPSILON_CELLS := 0.01
-const ROUTE_DISTANCE_EPSILON := 0.0001
 const WARP_STYLE_COLORS := [
 	Color("2ec4b6"), Color("ff9f1c"), Color("9b5de5"),
 	Color("f4d35e"), Color("3a86ff"), Color("ff5d8f"),
@@ -79,6 +79,7 @@ var _left_released_pending := false
 var _left_release_pointer_cell := INVALID_CELL
 var _left_release_pointer_inside_grid := false
 var _right_pressed_pending := false
+var _new_press_edges_blocked := false
 var _left_capture_active := false
 var _release_clears_capture := false
 var _last_pointer_logical := Vector2.ZERO
@@ -137,6 +138,9 @@ func _gui_input(event: InputEvent) -> void:
 		return
 	if not event is InputEventMouseButton:
 		return
+	if event.pressed and _new_press_edges_blocked:
+		accept_event()
+		return
 
 	_latest_cursor_local = event.position
 	_cursor_observed = true
@@ -144,6 +148,8 @@ func _gui_input(event: InputEvent) -> void:
 	_set_current_pointer(button_mapping)
 	if event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
+			if button_mapping.inside_grid:
+				field_press_edge_captured.emit(StringName())
 			_begin_left_press(event.position)
 		else:
 			_end_left_press(event.position)
@@ -159,6 +165,10 @@ func _gui_input(event: InputEvent) -> void:
 				and StringName(_right_click_feedback.get("mode", StringName()))
 					== &"paid_demolition"
 			)
+			if mapping.inside_grid:
+				field_press_edge_captured.emit(
+					&"paid_demolition" if paid_demolition_selected else StringName()
+				)
 			_right_pressed_pending = true
 			_right_press_inside_grid = mapping.inside_grid
 			_right_press_cell = mapping.cell
@@ -271,6 +281,10 @@ func consume_input_frame():
 		_release_clears_capture = false
 		_previous_pointer_cell = INVALID_CELL
 	return frame
+
+
+func set_new_press_edges_blocked(blocked: bool) -> void:
+	_new_press_edges_blocked = blocked
 
 
 func _apply_live_gesture_cell(cell: Vector2i) -> void:
@@ -1060,10 +1074,10 @@ func _build_right_click_feedback(logical_position: Vector2) -> Dictionary:
 		var train_distance := _train_route_distance_cells if _train_active else 0.0
 		var selected_start: float = selected.route_distance_start_cells
 		var selected_end := selected_start + 1.0
-		if selected_start > train_distance + ROUTE_DISTANCE_EPSILON:
+		if selected_start > train_distance:
 			for index in range(selected_index, _presented_cells.size()):
 				affected.append(_presented_cells[index].route_serial)
-		elif selected_end <= train_distance + ROUTE_DISTANCE_EPSILON:
+		elif selected_end <= train_distance:
 			for index in range(selected_index + 1):
 				affected.append(_presented_cells[index].route_serial)
 		else:
