@@ -37,6 +37,7 @@ const SUITES = [
     preload("res://tests/unit/test_contract_system.gd"),
     preload("res://tests/unit/test_contract_session_controller.gd"),
     preload("res://tests/unit/test_prototype_run_controller.gd"),
+    preload("res://tests/unit/test_contract_economy_presentation.gd"),
 ]
 
 const GridTrackRuntimeSuiteScript = preload("res://tests/unit/test_grid_track_runtime.gd")

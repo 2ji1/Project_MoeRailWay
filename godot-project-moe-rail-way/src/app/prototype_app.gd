@@ -18,6 +18,8 @@ const ContractSystemScript = preload("res://src/domain/contract/contract_system.
 const RunStateScript = preload("res://src/domain/run/run_state.gd")
 const PrototypeRunControllerScript = preload("res://src/domain/run/prototype_run_controller.gd")
 const SettlementResultScript = preload("res://src/domain/run/settlement_result.gd")
+const OperationsScreenScript = preload("res://src/presentation/operations/operations_screen.gd")
+const ContractResultPanelScript = preload("res://src/presentation/results/contract_result_panel.gd")
 const SessionShellScript = preload("res://src/presentation/session/session_shell.gd")
 const UILayoutProfileScript = preload("res://src/presentation/layout/ui_layout_profile.gd")
 const UILayoutValidatorScript = preload("res://src/presentation/layout/ui_layout_validator.gd")
@@ -27,6 +29,7 @@ signal session_result_presented(result: SessionResultScript)
 @export var balance: PrototypeBalanceScript
 @export var startup_seed := 1
 @export var layout_profile: UILayoutProfileScript
+@export var start_in_operations := false
 
 var session_start_config: SessionStartConfigScript
 var session_rng: SessionRngScript
@@ -43,12 +46,19 @@ var settlement_result: SettlementResultScript
 var session_controller: SessionControllerScript
 
 @onready var _session_shell: SessionShellScript = $SessionShell
+@onready var _operations_screen: OperationsScreenScript = $OperationsScreen
+@onready var _contract_result_panel: ContractResultPanelScript = $ContractResultPanel
 
 var _session_result_was_presented := false
+var _runs_as_project_main_scene := false
 
 
 func _ready() -> void:
 	set_physics_process(false)
+	_runs_as_project_main_scene = get_tree().current_scene == self
+	_operations_screen.company_selected.connect(_on_company_selected)
+	_operations_screen.start_requested.connect(_on_start_requested)
+	_contract_result_panel.continue_requested.connect(_on_continue_requested)
 	var errors := compose_session_dependencies()
 	if not errors.is_empty():
 		for error_message in errors:
@@ -57,23 +67,10 @@ func _ready() -> void:
 			get_tree().quit(2)
 		return
 
-	Engine.physics_ticks_per_second = session_start_config.simulation_ticks_per_second
-	session_controller.snapshot_published.connect(_on_snapshot_published)
-	session_controller.session_completed.connect(_on_session_completed)
-	_session_shell.configure(
-		layout_profile,
-		session_controller.get_snapshot(),
-		session_start_config
-	)
-	session_controller.start()
-	set_physics_process(true)
-	print(
-        "Moe Rail Way session shell ready | duration=%d ticks=%d"
-		% [
-			int(session_start_config.session_duration_seconds),
-			session_start_config.simulation_ticks_per_second,
-		]
-	)
+	if _starts_in_operations():
+		_present_operations()
+		return
+	_activate_composed_session()
 
 
 func compose_session_dependencies() -> PackedStringArray:
@@ -116,8 +113,8 @@ func compose_session_dependencies() -> PackedStringArray:
 
 	var base_config = balance.create_session_start_config(startup_seed)
 	var records: Array[Dictionary] = logical_track_field.get_sorted_candidate_records()
-	session_rng = SessionRngScript.new(base_config.seed)
-	var selected_index := session_rng.peek_index(records.size())
+	var departure_rng := SessionRngScript.new(base_config.seed)
+	var selected_index := departure_rng.peek_index(records.size())
 	if selected_index < 0:
 		errors.append("logical_track_field.DepartureCandidates must select one candidate")
 		session_rng = null
@@ -165,14 +162,33 @@ func compose_session_dependencies() -> PackedStringArray:
 		run_state,
 		balance.contract_economy_balance.base_operating_cost
 	)
-	assert(
-		run_controller.try_select_contract(session_start_config.selected_contract),
-		"Default prototype contract must select"
-	)
+	if not _starts_in_operations():
+		assert(
+			run_controller.try_select_contract(session_start_config.selected_contract),
+			"Default prototype contract must select"
+		)
 	session_start_config.starting_session_cash = run_state.get_cash()
 	errors.append_array(ValidatorScript.validate_completed_session_start_config(session_start_config))
 	if not errors.is_empty():
 		return errors
+	if _starts_in_operations():
+		return errors
+	errors.append_array(_compose_transient_session())
+	return errors
+
+
+func _compose_transient_session() -> PackedStringArray:
+	var errors := PackedStringArray()
+	var selected_contract := run_controller.get_selected_contract()
+	if selected_contract.is_empty():
+		errors.append("prototype_run_controller requires one selected contract")
+		return errors
+	session_start_config.selected_contract = selected_contract
+	session_start_config.starting_session_cash = run_state.get_cash()
+	errors.append_array(ValidatorScript.validate_completed_session_start_config(session_start_config))
+	if not errors.is_empty():
+		return errors
+	session_rng = SessionRngScript.new(session_start_config.seed)
 	track_system = TrackSystemScript.new(session_start_config)
 	train_system = TrainSystemScript.new(
 		session_start_config.train_speed_cells_per_second,
@@ -197,6 +213,25 @@ func compose_session_dependencies() -> PackedStringArray:
 		contract_system
 	)
 	return errors
+
+
+func _activate_composed_session() -> void:
+	Engine.physics_ticks_per_second = session_start_config.simulation_ticks_per_second
+	session_controller.snapshot_published.connect(_on_snapshot_published)
+	session_controller.session_completed.connect(_on_session_completed)
+	_session_shell.reset_for_session()
+	_session_shell.configure(layout_profile, session_controller.get_snapshot(), session_start_config)
+	_operations_screen.hide()
+	_contract_result_panel.hide()
+	_session_shell.show()
+	_session_result_was_presented = false
+	settlement_result = null
+	session_controller.start()
+	set_physics_process(true)
+	print(
+		"Moe Rail Way session shell ready | duration=%d ticks=%d"
+		% [int(session_start_config.session_duration_seconds), session_start_config.simulation_ticks_per_second]
+	)
 
 
 func _physics_process(_delta: float) -> void:
@@ -242,3 +277,59 @@ func _on_session_completed(result: SessionResultScript) -> void:
 		push_error("Prototype run settlement must accept the completed session result")
 		return
 	present_session_result(result)
+	_contract_result_panel.present(settlement_result)
+
+
+func _on_company_selected(company_id: StringName) -> void:
+	var contract := _contract_for_company(company_id)
+	if contract.is_empty() or not run_controller.try_select_contract(contract):
+		return
+	_present_operations()
+
+
+func _on_start_requested() -> void:
+	if not run_controller.can_start_session():
+		_present_operations()
+		return
+	var errors := _compose_transient_session()
+	if not errors.is_empty():
+		for error_message in errors:
+			push_error(error_message)
+		return
+	_activate_composed_session()
+
+
+func _on_continue_requested() -> void:
+	if not run_controller.try_continue_to_operations():
+		return
+	_present_operations()
+
+
+func _present_operations() -> void:
+	set_physics_process(false)
+	_session_shell.set_contract_presentation_enabled(true)
+	_session_shell.hide()
+	_contract_result_panel.hide()
+	_operations_screen.show()
+	_operations_screen.present(
+		balance.contract_economy_balance.companies,
+		run_controller.get_run_state_observation(),
+		StringName(run_controller.get_selected_contract().get("company_id", StringName()))
+	)
+
+
+func _contract_for_company(company_id: StringName) -> Dictionary:
+	for company in balance.contract_economy_balance.companies:
+		if company.company_id == company_id:
+			return {
+				"company_id": company.company_id,
+				"quota": company.quota,
+				"maximum_shortfall_penalty": company.maximum_shortfall_penalty,
+				"completion_bonus_at_quota": company.completion_bonus_at_quota,
+				"trust_per_excess_delivery_milli": company.trust_per_excess_delivery_milli,
+			}
+	return {}
+
+
+func _starts_in_operations() -> bool:
+	return start_in_operations or _runs_as_project_main_scene

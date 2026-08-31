@@ -38,6 +38,8 @@ func get_render_observation() -> Dictionary:
         rendered_slots.append({
             "slot_index": slot.slot_index,
             "pair_id": StringName(slot.pair_id),
+            "company_id": StringName(slot.company_id) if filled else StringName(),
+            "company_marker": _company_marker(StringName(slot.company_id)) if filled else "",
             "style_index": style_index,
             "shape": STYLE_SHAPES[style_index] if filled else &"square",
             "color": Color(STYLE_COLORS[style_index]) if filled else Color(EMPTY_COLOR),
@@ -61,6 +63,16 @@ func _draw() -> void:
         var slot: Dictionary = observations[index]
         var center := Vector2(slot_width * (float(index) + 0.5), size.y * 0.5)
         _draw_slot_shape(center, radius, slot.shape, slot.color, slot.filled)
+        if slot.filled and not String(slot.company_marker).is_empty():
+            draw_string(
+                ThemeDB.fallback_font,
+                center + Vector2(-radius * 0.75, radius * 0.45),
+                String(slot.company_marker),
+                HORIZONTAL_ALIGNMENT_LEFT,
+                -1.0,
+                9,
+                Color(0.05, 0.07, 0.08, 1.0)
+            )
 
 
 func _draw_slot_shape(
@@ -89,3 +101,10 @@ func _draw_slot_shape(
         return
     points.append(points[0])
     draw_polyline(points, color, 2.0, true)
+
+
+func _company_marker(company_id: StringName) -> String:
+    var text := String(company_id)
+    if text.begins_with("company_"):
+        return "C%d" % int(text.trim_prefix("company_"))
+    return text.left(3).to_upper()
