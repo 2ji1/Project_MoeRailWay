@@ -7,10 +7,10 @@ const MAX_SLOT_COUNT := 8
 var _slots: Array[CargoSlotRecordScript] = []
 var _base_delivery_reward: int
 var _delivered_pair_count := 0
-var _base_delivery_reward_total := 0
+var _delivery_fee_total := 0
 
 
-func _init(base_slot_count: int, base_delivery_reward: int) -> void:
+func _init(base_slot_count: int, base_delivery_reward: int = 0) -> void:
     assert(
         base_slot_count >= 1 and base_slot_count <= 8,
         "Cargo slot count must be between 1 and 8"
@@ -26,8 +26,20 @@ func _init(base_slot_count: int, base_delivery_reward: int) -> void:
         _slots.append(slot)
 
 
-func try_load(pair_id: StringName, style_index: int) -> int:
+func try_load(
+    pair_id: StringName,
+    style_index: int,
+    company_id: StringName = StringName(),
+    base_delivery_fee: int = -1
+) -> int:
     if pair_id.is_empty():
+        return -1
+    var resolved_company_id := company_id
+    var resolved_fee := base_delivery_fee
+    if resolved_company_id.is_empty() and resolved_fee < 0:
+        resolved_company_id = &"legacy"
+        resolved_fee = _base_delivery_reward
+    if resolved_company_id.is_empty() or resolved_fee < 0 or resolved_fee > 1000000:
         return -1
     for slot in _slots:
         if slot.pair_id == pair_id:
@@ -37,6 +49,8 @@ func try_load(pair_id: StringName, style_index: int) -> int:
             continue
         slot.pair_id = pair_id
         slot.style_index = style_index
+        slot.company_id = resolved_company_id
+        slot.base_delivery_fee = resolved_fee
         return slot.slot_index
     return -1
 
@@ -48,13 +62,22 @@ func try_deliver(pair_id: StringName) -> Dictionary:
         if slot.pair_id != pair_id:
             continue
         var slot_index := slot.slot_index
+        var company_id := slot.company_id
+        var base_delivery_fee := slot.base_delivery_fee
+        if (
+            _delivered_pair_count == 9223372036854775807
+            or _delivery_fee_total > 9223372036854775807 - base_delivery_fee
+        ):
+            return _empty_delivery_result()
         _clear_slot(slot)
         _delivered_pair_count += 1
-        _base_delivery_reward_total += _base_delivery_reward
+        _delivery_fee_total += base_delivery_fee
         return {
             "delivered": true,
             "slot_index": slot_index,
-            "amount": _base_delivery_reward,
+            "amount": base_delivery_fee,
+            "company_id": company_id,
+            "base_delivery_fee": base_delivery_fee,
         }
     return _empty_delivery_result()
 
@@ -112,7 +135,7 @@ func duplicate_cargo() -> CargoSystem:
     for slot in _slots:
         copy._slots.append(slot.duplicate_record())
     copy._delivered_pair_count = _delivered_pair_count
-    copy._base_delivery_reward_total = _base_delivery_reward_total
+    copy._delivery_fee_total = _delivery_fee_total
     return copy
 
 
@@ -123,7 +146,7 @@ func replace_with(source: CargoSystem) -> void:
         _slots.append(slot.duplicate_record())
     _base_delivery_reward = source._base_delivery_reward
     _delivered_pair_count = source._delivered_pair_count
-    _base_delivery_reward_total = source._base_delivery_reward_total
+    _delivery_fee_total = source._delivery_fee_total
 
 
 func get_delivered_pair_count() -> int:
@@ -131,12 +154,18 @@ func get_delivered_pair_count() -> int:
 
 
 func get_base_delivery_reward_total() -> int:
-    return _base_delivery_reward_total
+    return _delivery_fee_total
+
+
+func get_delivery_fee_total() -> int:
+    return _delivery_fee_total
 
 
 func _clear_slot(slot: CargoSlotRecordScript) -> void:
     slot.pair_id = StringName()
     slot.style_index = -1
+    slot.company_id = StringName()
+    slot.base_delivery_fee = 0
 
 
 func _empty_delivery_result() -> Dictionary:
@@ -144,4 +173,6 @@ func _empty_delivery_result() -> Dictionary:
         "delivered": false,
         "slot_index": -1,
         "amount": 0,
+        "company_id": StringName(),
+        "base_delivery_fee": 0,
     }

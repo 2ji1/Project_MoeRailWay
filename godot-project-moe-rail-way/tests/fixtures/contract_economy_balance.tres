@@ -1,0 +1,156 @@
+[gd_resource type="Resource" script_class="PrototypeBalance" load_steps=34 format=3]
+
+[ext_resource type="Script" path="res://src/config/prototype_balance.gd" id="1_balance"]
+[ext_resource type="Script" path="res://src/config/session_balance.gd" id="2_session"]
+[ext_resource type="Script" path="res://src/config/train_balance.gd" id="3_train"]
+[ext_resource type="Script" path="res://src/config/track_inventory_balance.gd" id="4_inventory"]
+[ext_resource type="Script" path="res://src/config/track_construction_balance.gd" id="5_construction"]
+[ext_resource type="Script" path="res://src/config/departure_balance.gd" id="6_departure"]
+[ext_resource type="Script" path="res://src/config/warp_lifecycle_balance.gd" id="7_warp"]
+[ext_resource type="Script" path="res://src/config/cargo_balance.gd" id="8_cargo"]
+[ext_resource type="Script" path="res://src/config/contract_economy_balance.gd" id="9_contract"]
+[ext_resource type="Script" path="res://src/config/company_contract_balance.gd" id="10_company"]
+[ext_resource type="Script" path="res://src/config/hazard_generation_balance.gd" id="11_hazard"]
+[ext_resource type="Script" path="res://src/config/durability_balance.gd" id="12_durability"]
+[ext_resource type="Script" path="res://src/config/track_investment_balance.gd" id="13_track_investment"]
+[ext_resource type="Script" path="res://src/config/cargo_investment_balance.gd" id="14_cargo_investment"]
+
+[sub_resource type="Resource" id="Session"]
+script = ExtResource("2_session")
+session_duration_seconds = 20.0
+simulation_ticks_per_second = 10
+
+[sub_resource type="Resource" id="Train"]
+script = ExtResource("3_train")
+speed_cells_per_second = 5.0
+
+[sub_resource type="Resource" id="Inventory"]
+script = ExtResource("4_inventory")
+urgent_warning_seconds = 0.5
+total_track_cells = 80
+recovery_lag_cells = 20
+
+[sub_resource type="Resource" id="Construction"]
+script = ExtResource("5_construction")
+build_cells_per_second = 100.0
+
+[sub_resource type="Resource" id="Departure"]
+script = ExtResource("6_departure")
+required_built_cells = 1
+
+[sub_resource type="Resource" id="Warp"]
+script = ExtResource("7_warp")
+forecast_duration_seconds = 0.1
+generation_interval_seconds = 0.5
+lifetime_min_seconds = 20.0
+lifetime_max_seconds = 20.0
+max_live_pairs = 6
+
+[sub_resource type="Resource" id="Cargo"]
+script = ExtResource("8_cargo")
+base_slot_count = 6
+base_delivery_reward = 999999
+
+[sub_resource type="Resource" id="Company01"]
+script = ExtResource("10_company")
+company_id = &"company_01"
+display_name = "Company 1"
+base_delivery_fee = 100
+quota = 1
+maximum_shortfall_penalty = 120
+completion_bonus_at_quota = 60
+trust_per_excess_delivery_milli = 125
+
+[sub_resource type="Resource" id="Company02"]
+script = ExtResource("10_company")
+company_id = &"company_02"
+display_name = "Company 2"
+base_delivery_fee = 40
+quota = 1
+maximum_shortfall_penalty = 120
+completion_bonus_at_quota = 60
+trust_per_excess_delivery_milli = 125
+
+[sub_resource type="Resource" id="Company03"]
+script = ExtResource("10_company")
+company_id = &"company_03"
+display_name = "Company 3"
+base_delivery_fee = 60
+quota = 1
+maximum_shortfall_penalty = 120
+completion_bonus_at_quota = 60
+trust_per_excess_delivery_milli = 125
+
+[sub_resource type="Resource" id="Company04"]
+script = ExtResource("10_company")
+company_id = &"company_04"
+display_name = "Company 4"
+base_delivery_fee = 70
+quota = 1
+maximum_shortfall_penalty = 120
+completion_bonus_at_quota = 60
+trust_per_excess_delivery_milli = 125
+
+[sub_resource type="Resource" id="Company05"]
+script = ExtResource("10_company")
+company_id = &"company_05"
+display_name = "Company 5"
+base_delivery_fee = 80
+quota = 1
+maximum_shortfall_penalty = 120
+completion_bonus_at_quota = 60
+trust_per_excess_delivery_milli = 125
+
+[sub_resource type="Resource" id="Company06"]
+script = ExtResource("10_company")
+company_id = &"company_06"
+display_name = "Company 6"
+base_delivery_fee = 90
+quota = 1
+maximum_shortfall_penalty = 120
+completion_bonus_at_quota = 60
+trust_per_excess_delivery_milli = 125
+
+[sub_resource type="Resource" id="Contract"]
+script = ExtResource("9_contract")
+initial_run_cash = 0
+base_operating_cost = 50
+companies = Array[ExtResource("10_company")]([SubResource("Company01"), SubResource("Company02"), SubResource("Company03"), SubResource("Company04"), SubResource("Company05"), SubResource("Company06")])
+
+[sub_resource type="Resource" id="Hazard"]
+script = ExtResource("11_hazard")
+hazard_cell_count = 0
+
+[sub_resource type="Resource" id="Durability"]
+script = ExtResource("12_durability")
+maximum_durability = 100.0
+damage_per_traveled_cell = 0.0
+repair_cost_per_durability = 1.0
+
+[sub_resource type="Resource" id="TrackInvestment"]
+script = ExtResource("13_track_investment")
+major_track_action_cost = 50
+temporary_track_purchase_cost = 40
+temporary_track_cells_per_purchase = 5
+maximum_temporary_track_purchases = 6
+
+[sub_resource type="Resource" id="CargoInvestment"]
+script = ExtResource("14_cargo_investment")
+temporary_cargo_purchase_cost = 40
+temporary_cargo_slots_per_purchase = 1
+maximum_temporary_cargo_purchases = 2
+
+[resource]
+script = ExtResource("1_balance")
+session_balance = SubResource("Session")
+train_balance = SubResource("Train")
+track_inventory_balance = SubResource("Inventory")
+track_construction_balance = SubResource("Construction")
+departure_balance = SubResource("Departure")
+warp_lifecycle_balance = SubResource("Warp")
+cargo_balance = SubResource("Cargo")
+contract_economy_balance = SubResource("Contract")
+hazard_generation_balance = SubResource("Hazard")
+durability_balance = SubResource("Durability")
+track_investment_balance = SubResource("TrackInvestment")
+cargo_investment_balance = SubResource("CargoInvestment")

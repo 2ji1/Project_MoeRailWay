@@ -9,7 +9,7 @@ const TrackConstructionBalanceScript = preload("res://src/config/track_construct
 const DepartureBalanceScript = preload("res://src/config/departure_balance.gd")
 const WarpLifecycleBalanceScript = preload("res://src/config/warp_lifecycle_balance.gd")
 const CargoBalanceScript = preload("res://src/config/cargo_balance.gd")
-const SessionCashBalanceScript = preload("res://src/config/session_cash_balance.gd")
+const ContractEconomyBalanceScript = preload("res://src/config/contract_economy_balance.gd")
 const HazardGenerationBalanceScript = preload("res://src/config/hazard_generation_balance.gd")
 const DurabilityBalanceScript = preload("res://src/config/durability_balance.gd")
 const TrackInvestmentBalanceScript = preload("res://src/config/track_investment_balance.gd")
@@ -22,7 +22,7 @@ const CargoInvestmentBalanceScript = preload("res://src/config/cargo_investment_
 @export var departure_balance: DepartureBalanceScript = DepartureBalanceScript.new()
 @export var warp_lifecycle_balance: WarpLifecycleBalanceScript = WarpLifecycleBalanceScript.new()
 @export var cargo_balance: CargoBalanceScript = CargoBalanceScript.new()
-@export var session_cash_balance: SessionCashBalanceScript = SessionCashBalanceScript.new()
+@export var contract_economy_balance: ContractEconomyBalanceScript = ContractEconomyBalanceScript.new()
 @export var hazard_generation_balance: HazardGenerationBalanceScript = HazardGenerationBalanceScript.new()
 @export var durability_balance: DurabilityBalanceScript = DurabilityBalanceScript.new()
 @export var track_investment_balance: TrackInvestmentBalanceScript = TrackInvestmentBalanceScript.new()
@@ -57,7 +57,7 @@ func create_session_start_config(seed_value: int) -> SessionStartConfigScript:
         StringName(), Vector2.ZERO, Vector2i(-1, -1),
         0, 0, 0, 0, 0, 0, 0,
         planning_time_scale_percent,
-        session_cash_balance.starting_session_cash,
+        contract_economy_balance.initial_run_cash,
         hazard_generation_balance.hazard_cell_count,
         durability_balance.maximum_durability,
         durability_balance.damage_per_traveled_cell,
@@ -88,7 +88,7 @@ func create_session_start_config(seed_value: int) -> SessionStartConfigScript:
     )
     config.warp_max_live_pairs = warp_lifecycle_balance.max_live_pairs
     config.cargo_base_slot_count = cargo_balance.base_slot_count
-    config.cargo_base_delivery_reward = cargo_balance.base_delivery_reward
+    config.company_definitions = _company_definitions()
     return config
 
 
@@ -102,7 +102,7 @@ func complete_session_start_config(
     grid_origin_value: Vector2 = Vector2.ZERO,
     departure_cell_value: Vector2i = Vector2i(-1, -1)
 ) -> SessionStartConfigScript:
-    return SessionStartConfigScript.new(
+    var completed := SessionStartConfigScript.new(
         base_config.seed,
         base_config.session_duration_seconds,
         base_config.simulation_ticks_per_second,
@@ -140,6 +140,19 @@ func complete_session_start_config(
         base_config.temporary_cargo_slots_per_purchase,
         base_config.maximum_temporary_cargo_purchases
     )
+    completed.company_definitions = base_config.company_definitions.duplicate(true)
+    return completed
+
+
+func _company_definitions() -> Array[Dictionary]:
+    var definitions: Array[Dictionary] = []
+    for company in contract_economy_balance.companies:
+        definitions.append({
+            "company_id": company.company_id,
+            "generation_weight": company.generation_weight,
+            "base_delivery_fee": company.base_delivery_fee,
+        })
+    return definitions
 
 
 func _seconds_to_ticks(seconds: float, require_positive: bool) -> int:

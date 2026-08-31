@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="ContractEconomyBalance" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://src/config/contract_economy_balance.gd" id="1_contract"]
+[ext_resource type="Script" path="res://src/config/company_contract_balance.gd" id="2_company"]
+
+[sub_resource type="Resource" id="Company_01"]
+script = ExtResource("2_company")
+company_id = &"company_01"
+display_name = "Company 1"
+
+[sub_resource type="Resource" id="Company_02"]
+script = ExtResource("2_company")
+company_id = &"company_02"
+display_name = "Company 2"
+
+[sub_resource type="Resource" id="Company_03"]
+script = ExtResource("2_company")
+company_id = &"company_03"
+display_name = "Company 3"
+
+[sub_resource type="Resource" id="Company_04"]
+script = ExtResource("2_company")
+company_id = &"company_04"
+display_name = "Company 4"
+
+[sub_resource type="Resource" id="Company_05"]
+script = ExtResource("2_company")
+company_id = &"company_05"
+display_name = "Company 5"
+
+[sub_resource type="Resource" id="Company_06"]
+script = ExtResource("2_company")
+company_id = &"company_06"
+display_name = "Company 6"
+
+[resource]
+script = ExtResource("1_contract")
+companies = Array[ExtResource("2_company")]([SubResource("Company_01"), SubResource("Company_02"), SubResource("Company_03"), SubResource("Company_04"), SubResource("Company_05"), SubResource("Company_06")])

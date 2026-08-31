@@ -129,6 +129,9 @@ func _run() -> void:
     _assert_equal(app.session_start_config.grid_size, Vector2i(12, 12), "Scene uses the custom grid")
     _assert_true(app.session_start_config.grid_origin_units.is_equal_approx(Vector2(160.0, 0.0)), "Scene uses centered logical mapping")
     _assert_equal(app.session_start_config.departure_cell, Vector2i(5, 2), "Scene authors the deterministic departure cell")
+    _assert_equal(app.session_start_config.cargo_base_delivery_reward, 0, "Real app config does not copy the legacy global reward")
+    _assert_equal(app.cargo_system._base_delivery_reward, 0, "Real app composition does not pass the legacy global reward")
+    _assert_equal(app.session_start_config.company_definitions.size(), 6, "Real app carries six company definitions")
 
     var controller = app.session_controller
     var shell = app.get_node("SessionShell")
@@ -139,6 +142,7 @@ func _run() -> void:
     var actual_state_trace: Array[Dictionary] = []
     var trace_ticks := {1: true, 3: true, 4: true, 8: true, 10: true, 13: true, 64: true, 119: true, 120: true, 121: true, 123: true, 124: true, 138: true, 139: true}
     var results: Array = []
+    var company_by_pair := {}
     var result_observer := func(result): results.append(result)
     app.session_result_presented.connect(result_observer)
 
@@ -146,6 +150,14 @@ func _run() -> void:
         var frame = _route_frame() if tick == 1 else TrackInputFrameScript.empty()
         controller.advance_tick(frame)
         var snapshot = controller.get_snapshot()
+        for pair in snapshot.get_warp_pair_records():
+            var identity := [pair.company_id, pair.base_delivery_fee]
+            if company_by_pair.has(pair.pair_id):
+                _assert_equal(identity, company_by_pair[pair.pair_id], "Pair company and fee persist through lifecycle")
+            else:
+                company_by_pair[pair.pair_id] = identity
+            _assert_true(not pair.company_id.is_empty(), "Generated pair has company identity")
+            _assert_equal(pair.base_delivery_fee, 100, "Generated pair uses company fee instead of legacy global reward")
         actual_events_by_tick.append(_event_signatures(snapshot))
         if trace_ticks.has(tick):
             actual_state_trace.append(_state_trace_entry(tick, snapshot))

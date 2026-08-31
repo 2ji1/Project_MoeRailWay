@@ -20,7 +20,44 @@ func run() -> PackedStringArray:
 	_test_standard_curve_intervals_and_integer_hud()
 	_test_render_observations_are_recursively_detached()
 	_test_result_surface_remains_single_shot()
+	_test_operations_mode_starts_selected_session()
 	return finish()
+
+
+func _test_operations_mode_starts_selected_session() -> void:
+	var app = _new_app()
+	if app == null:
+		return
+	app.start_in_operations = true
+	Engine.get_main_loop().root.add_child(app)
+	var operations = app.get_node("OperationsScreen")
+	assert_true(operations.visible, "Operations mode presents the selection screen")
+	assert_true(app.session_controller == null, "Operations mode creates no hidden running session")
+	var initial_operations: Dictionary = operations.get_presentation_observation()
+	assert_equal(initial_operations.rows.size(), 6, "Operations mode shows all six companies")
+	assert_true(initial_operations.start_disabled, "Operations requires an explicit company selection")
+	operations.get_node("Center/Panel/Margin/Rows/StartButton").emit_signal("pressed")
+	assert_true(app.session_controller == null, "Disabled start creates no session before selection")
+	var company_rows = operations.get_node("Center/Panel/Margin/Rows/CompanyRows")
+	company_rows.get_child(2).emit_signal("pressed")
+	assert_true(operations.get_presentation_observation().rows[2].selected, "Mouse selection updates the explicit selected row")
+	operations.get_node("Center/Panel/Margin/Rows/StartButton").emit_signal("pressed")
+	assert_true(app.session_controller != null, "Start command composes the selected session")
+	if app.session_controller != null:
+		assert_equal(app.session_controller.get_state(), SessionControllerScript.State.PREPARING_DEPARTURE, "Start command enters departure preparation")
+	assert_false(operations.visible, "Starting hides operations")
+	assert_true(app.get_node("SessionShell").visible, "Starting reveals the map-dominant session shell")
+	assert_true(
+		app.get_node("SessionShell").get_layout_observation().contract_text.begins_with("C3 0/"),
+		"Operations-selected company is readable in the session contract HUD"
+	)
+	app.session_controller.call("_complete", SessionResultScript.Reason.REGULAR_TIME_EXPIRED)
+	var results = app.get_node("ContractResultPanel")
+	assert_true(results.visible, "Session completion presents ordered contract results")
+	results.get_node("Center/Panel/Margin/Rows/ContinueButton").emit_signal("pressed")
+	assert_true(operations.visible, "Continue returns once to operations")
+	assert_equal(app.run_state.get_completed_cycle_count(), 1, "Presented cycle persists one completed settlement")
+	app.free()
 
 
 func _new_app():

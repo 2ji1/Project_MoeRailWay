@@ -718,6 +718,8 @@ func _warp_endpoint(
 	)
 	return {
 		"pair_id": StringName(pair.pair_id),
+		"company_id": StringName(pair.company_id),
+		"company_marker": _company_marker(StringName(pair.company_id)),
 		"role": role,
 		"state": pair.state,
 		"style_index": style_index,
@@ -947,6 +949,17 @@ func _draw_warp_endpoint(endpoint: Dictionary) -> void:
 			12,
 			color
 		)
+	var company_marker: String = endpoint.get("company_marker", "")
+	if not company_marker.is_empty():
+		draw_string(
+			ThemeDB.fallback_font,
+			center + Vector2(-radius * 0.7, radius * 0.35),
+			company_marker,
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1.0,
+			9,
+			Color(0.05, 0.07, 0.08, endpoint.alpha)
+		)
 
 
 func _draw_warp_polygon(points: PackedVector2Array, color: Color, filled: bool) -> void:
@@ -956,6 +969,13 @@ func _draw_warp_polygon(points: PackedVector2Array, color: Color, filled: bool) 
 	var outline := points.duplicate()
 	outline.append(points[0])
 	draw_polyline(outline, color, 2.5, true)
+
+
+func _company_marker(company_id: StringName) -> String:
+	var text := String(company_id)
+	if text.begins_with("company_"):
+		return "C%d" % int(text.trim_prefix("company_"))
+	return text.left(3).to_upper()
 
 
 func _polyline_prefix(points: PackedVector2Array, progress: float) -> PackedVector2Array:

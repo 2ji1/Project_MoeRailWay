@@ -3,7 +3,7 @@ extends "res://tests/support/prototype_test.gd"
 const PrototypeBalanceScript = preload("res://src/config/prototype_balance.gd")
 const ValidatorScript = preload("res://src/config/prototype_config_validator.gd")
 
-const CASH_BALANCE_PATH := "res://src/config/session_cash_balance.gd"
+const CONTRACT_BALANCE_PATH := "res://src/config/contract_economy_balance.gd"
 const SESSION_ECONOMY_PATH := "res://src/domain/economy/session_economy.gd"
 
 
@@ -14,29 +14,30 @@ func run() -> PackedStringArray:
 
 
 func _test_session_cash_resource_and_copy() -> void:
-	assert_true(ResourceLoader.exists(CASH_BALANCE_PATH), "Session cash balance script exists")
+	assert_true(ResourceLoader.exists(CONTRACT_BALANCE_PATH), "Contract economy balance script exists")
 	var balance := PrototypeBalanceScript.new()
-	if not _object_has_property(balance, &"session_cash_balance"):
-		assert_true(false, "Prototype balance exposes session_cash_balance")
+	assert_false(_object_has_property(balance, &"session_cash_balance"), "Prototype balance retires session_cash_balance")
+	if not _object_has_property(balance, &"contract_economy_balance"):
+		assert_true(false, "Prototype balance exposes contract_economy_balance")
 		return
-	var cash_balance: Variant = balance.get("session_cash_balance")
-	assert_not_null(cash_balance, "Default session cash balance is concrete")
-	if cash_balance == null or not _object_has_property(cash_balance, &"starting_session_cash"):
-		assert_true(false, "Session cash balance exposes starting_session_cash")
+	var contract_balance: Variant = balance.get("contract_economy_balance")
+	assert_not_null(contract_balance, "Default contract economy balance is concrete")
+	if contract_balance == null or not _object_has_property(contract_balance, &"initial_run_cash"):
+		assert_true(false, "Contract economy balance exposes initial_run_cash")
 		return
-	assert_equal(cash_balance.get("starting_session_cash"), 300, "Session cash defaults to 300")
+	assert_equal(contract_balance.get("initial_run_cash"), 300, "Run cash defaults to 300")
 
-	cash_balance.set("starting_session_cash", -1)
+	contract_balance.set("initial_run_cash", -1)
 	_assert_contains(
 		ValidatorScript.validate(balance),
-		"prototype_balance.session_cash_balance.starting_session_cash"
+		"prototype_balance.contract_economy_balance.initial_run_cash"
 	)
-	cash_balance.set("starting_session_cash", 1000001)
+	contract_balance.set("initial_run_cash", 1000001)
 	_assert_contains(
 		ValidatorScript.validate(balance),
-		"prototype_balance.session_cash_balance.starting_session_cash"
+		"prototype_balance.contract_economy_balance.initial_run_cash"
 	)
-	cash_balance.set("starting_session_cash", 417)
+	contract_balance.set("initial_run_cash", 417)
 	assert_equal(ValidatorScript.validate(balance), PackedStringArray(), "Valid cash is accepted")
 
 	var config: Variant = balance.create_session_start_config(901)
@@ -44,7 +45,7 @@ func _test_session_cash_resource_and_copy() -> void:
 		assert_true(false, "Session start config copies starting_session_cash")
 		return
 	assert_equal(config.get("starting_session_cash"), 417, "Start config receives exact cash")
-	cash_balance.set("starting_session_cash", 12)
+	contract_balance.set("initial_run_cash", 12)
 	assert_equal(config.get("starting_session_cash"), 417, "Start config is detached from Resource")
 
 
@@ -54,12 +55,15 @@ func _test_session_economy_atomic_spending() -> void:
 		return
 	var economy_script: Script = load(SESSION_ECONOMY_PATH)
 	var economy: Variant = economy_script.new(300)
-	for method_name in [&"try_spend", &"get_cash", &"get_total_spent", &"get_observation"]:
+	for method_name in [&"try_spend", &"try_credit", &"get_cash", &"get_total_spent", &"get_total_credited", &"get_observation"]:
 		if not economy.has_method(method_name):
 			assert_true(false, "Session economy exposes %s" % method_name)
 			return
 
 	assert_equal(economy.call("get_cash"), 300, "Economy starts from copied cash")
+	var high_cash_economy: Variant = economy_script.new(1000000000000)
+	assert_equal(high_cash_economy.call("get_starting_cash"), 1000000000000, "Economy accepts the complete RunState cash range")
+	assert_equal(high_cash_economy.call("get_cash"), 1000000000000, "High RunState cash copies without synthetic credit")
 	assert_equal(economy.call("get_total_spent"), 0, "Economy starts with zero spending")
 	var before_rejection := JSON.stringify(economy.call("get_observation"))
 	assert_false(economy.call("try_spend", 301), "Insufficient spend rejects")
@@ -89,6 +93,19 @@ func _test_session_economy_atomic_spending() -> void:
 		economy.call("replace_with", candidate)
 		assert_equal(economy.call("get_cash"), 200, "Validated staged economy installs exactly")
 		assert_equal(economy.call("get_total_spent"), 100, "Staged install preserves exact spending total")
+
+	var credit_economy: Variant = economy_script.new(300)
+	assert_true(credit_economy.call("try_credit", 75), "Checked credit succeeds")
+	assert_equal(credit_economy.call("get_cash"), 375, "Credit is immediately spendable")
+	assert_equal(credit_economy.call("get_total_credited"), 75, "Credit total records exact fees")
+	var before_invalid_credit := JSON.stringify(credit_economy.call("get_observation"))
+	assert_false(credit_economy.call("try_credit", -1), "Negative credit rejects")
+	assert_equal(JSON.stringify(credit_economy.call("get_observation")), before_invalid_credit, "Invalid credit is byte-identical")
+	var overflow_economy: Variant = economy_script.new(300)
+	assert_true(overflow_economy.call("try_credit", 9223372036854775507), "Largest safe cash credit succeeds")
+	var before_overflow := JSON.stringify(overflow_economy.call("get_observation"))
+	assert_false(overflow_economy.call("try_credit", 1), "Cash overflow credit rejects")
+	assert_equal(JSON.stringify(overflow_economy.call("get_observation")), before_overflow, "Overflow rejection is byte-identical")
 
 
 func _assert_contains(errors: PackedStringArray, fragment: String) -> void:

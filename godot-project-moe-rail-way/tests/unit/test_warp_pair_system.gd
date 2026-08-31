@@ -20,7 +20,83 @@ func run() -> PackedStringArray:
     _test_expiry_void_and_idempotence()
     _test_contact_loading_delivery_and_removal()
     _test_fixed_seed_replay_and_detached_observations()
+    _test_company_rng_identity_and_spatial_isolation()
     return finish()
+
+
+func _test_company_rng_identity_and_spatial_isolation() -> void:
+    var balance := _make_warp_balance(0.0, 1.0, 5.0, 5.0, 3)
+    for index in range(balance.contract_economy_balance.companies.size()):
+        balance.contract_economy_balance.companies[index].generation_weight = index + 1
+        balance.contract_economy_balance.companies[index].base_delivery_fee = 40 + index
+    var config = _complete_config(balance, 424242, Vector2i(4, 3))
+    var has_definitions := _object_has_property(config, &"company_definitions")
+    assert_true(has_definitions, "Completed session config carries six detached company definitions")
+    if not has_definitions:
+        return
+    var definitions: Array = config.get("company_definitions")
+    assert_equal(definitions.size(), 6, "Completed config carries exactly six companies")
+    balance.contract_economy_balance.companies[0].base_delivery_fee = 999
+    assert_equal(definitions[0]["base_delivery_fee"], 40, "Completed company definitions detach from Inspector Resources")
+    var expected_spatial_rng := SessionRngScript.new(config.seed)
+    var first_origin_index := expected_spatial_rng.next_index(config.grid_size.x * config.grid_size.y)
+    var first_destination_index := expected_spatial_rng.next_index(config.grid_size.x * config.grid_size.y)
+    var first_lifetime_draw := expected_spatial_rng.next_index(1)
+
+    var first := WarpPairSystemScript.new(config, SessionRngScript.new(config.seed))
+    var second := WarpPairSystemScript.new(config, SessionRngScript.new(config.seed))
+    for tick in range(1, 4):
+        first.begin_running_tick(tick)
+        second.begin_running_tick(tick)
+    var first_records: Array = first.get_pair_records()
+    var second_records: Array = second.get_pair_records()
+    assert_equal(first_records.size(), second_records.size(), "Same seed creates same pair count")
+    assert_true(not first_records.is_empty(), "Company assignment fixture creates records")
+    if first_records.is_empty():
+        return
+    assert_true(_object_has_property(first_records[0], &"company_id"), "Warp pair carries company identity")
+    assert_true(_object_has_property(first_records[0], &"base_delivery_fee"), "Warp pair carries copied company fee")
+    if not _object_has_property(first_records[0], &"company_id"):
+        return
+    var expected_company_rng := SessionRngScript.new(config.seed ^ 0x434F4D50414E5952)
+    assert_equal(first_records[0].company_id, _expected_company(definitions, expected_company_rng.next_index(21))["company_id"], "Weighted company selection uses stable order and independent salted draw")
+    assert_equal(first_records[0].origin_cell, WarpPairSystemScript.cell_from_row_major_index(first_origin_index, config.grid_size), "Company RNG does not shift first origin draw")
+    assert_equal(first_records[0].destination_cell, WarpPairSystemScript.cell_from_row_major_index(first_destination_index, config.grid_size), "Company RNG does not shift first destination draw")
+    assert_equal(first_records[0].lifetime_total_ticks, config.warp_lifetime_min_ticks + first_lifetime_draw, "Company RNG does not shift lifetime draw")
+    for index in range(first_records.size()):
+        assert_equal(first_records[index].company_id, second_records[index].company_id, "Same seed replays company identity")
+        assert_equal(first_records[index].base_delivery_fee, second_records[index].base_delivery_fee, "Same seed replays copied fee")
+        var definition: Dictionary = definitions.filter(func(item): return item["company_id"] == first_records[index].company_id)[0]
+        assert_equal(first_records[index].base_delivery_fee, definition["base_delivery_fee"], "Pair fee comes from selected company")
+
+    var replay_a := _company_sequence_for_seed(7001, 8)
+    var replay_b := _company_sequence_for_seed(7001, 8)
+    var changed_seed := _company_sequence_for_seed(7002, 8)
+    assert_equal(replay_a, replay_b, "Same seed replays the full company sequence")
+    assert_false(replay_a == changed_seed, "Different approved seed changes the company sequence")
+
+
+func _expected_company(definitions: Array, draw: int) -> Dictionary:
+    var cumulative := 0
+    for definition in definitions:
+        cumulative += int(definition["generation_weight"])
+        if draw < cumulative:
+            return definition
+    return {}
+
+
+func _company_sequence_for_seed(seed_value: int, count: int) -> Array[StringName]:
+    var balance := _make_warp_balance(0.0, 1.0, 1.0, 1.0, 1)
+    var config = _complete_config(balance, seed_value, Vector2i(3, 3))
+    var system := WarpPairSystemScript.new(config, SessionRngScript.new(seed_value))
+    var cargo := CargoSystemScript.new(1, 999)
+    var sequence: Array[StringName] = []
+    for tick in range(1, count + 1):
+        system.begin_running_tick(tick)
+        var records: Array = system.get_pair_records()
+        sequence.append(records[-1].company_id)
+        system.expire_after_contact(tick, cargo)
+    return sequence
 
 
 func _test_active_warp_anchors_use_exact_center_mode() -> void:
@@ -157,8 +233,8 @@ func _test_balance_defaults_and_copy() -> void:
     assert_equal(config.cargo_base_slot_count, 5, "Cargo slot count must copy by value")
     assert_equal(
         config.cargo_base_delivery_reward,
-        37,
-        "Cargo reward must copy by value"
+        0,
+        "Real composed config does not copy the retired global reward"
     )
     balance.warp_lifecycle_balance.max_live_pairs = 1
     balance.cargo_balance.base_slot_count = 1
@@ -227,13 +303,11 @@ func _test_balance_validation() -> void:
             "prototype_balance.cargo_balance.base_slot_count"
         )
 
-    for invalid_reward in [-1, 1000001]:
-        var balance := PrototypeBalanceScript.new()
-        balance.cargo_balance.base_delivery_reward = invalid_reward
-        _assert_contains(
-            PrototypeConfigValidatorScript.validate(balance),
-            "prototype_balance.cargo_balance.base_delivery_reward"
-        )
+    for retired_reward in [-1, 1000001]:
+        var retired_balance := PrototypeBalanceScript.new()
+        retired_balance.cargo_balance.base_delivery_reward = retired_reward
+        assert_equal(PrototypeConfigValidatorScript.validate(retired_balance), PackedStringArray(), "Retired global reward is not a real-composition authority")
+        assert_equal(retired_balance.create_session_start_config(91).cargo_base_delivery_reward, 0, "Retired global reward is not copied into real config")
 
 
 func _test_row_major_mapping() -> void:
@@ -563,7 +637,9 @@ func _test_contact_loading_delivery_and_removal() -> void:
         )
         assert_equal(equal_cargo.get_occupied_slot_count(), 0, "Delivery clears equal-cell cargo")
         assert_equal(equal_cargo.get_delivered_pair_count(), 1, "Equal-cell delivery counts once")
-        assert_equal(equal_cargo.get_base_delivery_reward_total(), 37, "Delivery pays once")
+        assert_equal(equal_cargo.get_base_delivery_reward_total(), equal_records[0].base_delivery_fee, "Delivery pays copied company fee once")
+        assert_equal(delivered_records[0].company_id, equal_records[0].company_id, "Delivered pair preserves forecast company")
+        assert_equal(delivered_records[0].base_delivery_fee, equal_records[0].base_delivery_fee, "Delivered pair preserves forecast fee")
         _assert_event_types(
             equal_system.get_tick_events(),
             [&"FORECASTED", &"ACTIVATED", &"LOADED", &"DELIVERED"],
@@ -574,11 +650,13 @@ func _test_contact_loading_delivery_and_removal() -> void:
             assert_equal(equal_events[2]["slot_index"], 0, "Load event names the occupied slot")
             assert_equal(equal_events[2]["amount"], 0, "Load event has no reward")
             assert_equal(equal_events[3]["slot_index"], 0, "Delivery event names the cleared slot")
-            assert_equal(equal_events[3]["amount"], 37, "Delivery event names exact reward")
+            assert_equal(equal_events[3]["amount"], equal_records[0].base_delivery_fee, "Delivery event names exact company fee")
+            assert_equal(equal_events[3]["company_id"], equal_records[0].company_id, "Delivery event preserves company")
+            assert_equal(equal_events[3]["base_delivery_fee"], equal_records[0].base_delivery_fee, "Delivery event preserves copied fee")
         equal_system.resolve_contact_hits(1, equal_hits, equal_cargo)
         equal_system.resolve_contact_hits(2, equal_hits, equal_cargo)
         assert_equal(equal_cargo.get_delivered_pair_count(), 1, "Repeated contacts cannot redeliver")
-        assert_equal(equal_cargo.get_base_delivery_reward_total(), 37, "Repeated contacts cannot repay")
+        assert_equal(equal_cargo.get_base_delivery_reward_total(), equal_records[0].base_delivery_fee, "Repeated contacts cannot repay")
         assert_equal(
             equal_system.get_route_contact_anchors().size(),
             0,
@@ -624,6 +702,8 @@ func _test_contact_loading_delivery_and_removal() -> void:
         assert_equal(loaded_slots.size(), 1, "Loaded fixture must retain one slot")
         if loaded_slots.size() == 1:
             assert_equal(loaded_slots[0].pair_id, &"warp_pair_1", "Loaded pair owns slot")
+            assert_equal(loaded_slots[0].company_id, full_records[0].company_id, "Full-slot retry preserves company identity")
+            assert_equal(loaded_slots[0].base_delivery_fee, full_records[0].base_delivery_fee, "Full-slot retry preserves copied fee")
         full_system.resolve_contact_hits(
             3,
             [_contact_hit(full_records[0], "origin", 1.0)],
@@ -664,6 +744,8 @@ func _test_contact_loading_delivery_and_removal() -> void:
                 &"warp_pair_2",
                 "Physical hit order controls same-sweep slot turnover"
             )
+            assert_equal(ordered_slots[0].company_id, ordered_records[1].company_id, "Same-sweep slot turnover preserves later company")
+            assert_equal(ordered_slots[0].base_delivery_fee, ordered_records[1].base_delivery_fee, "Same-sweep slot turnover preserves later fee")
         ordered_system.expire_after_contact(2, ordered_cargo)
         var after_expiry: Array = ordered_system.get_pair_records()
         assert_equal(
@@ -673,7 +755,7 @@ func _test_contact_loading_delivery_and_removal() -> void:
         )
         assert_equal(ordered_cargo.get_occupied_slot_count(), 0, "In-transit expiry clears slot")
         assert_equal(ordered_cargo.get_delivered_pair_count(), 1, "Expiry adds no delivery")
-        assert_equal(ordered_cargo.get_base_delivery_reward_total(), 37, "Expiry adds no reward")
+        assert_equal(ordered_cargo.get_base_delivery_reward_total(), ordered_records[0].base_delivery_fee, "Expiry adds no reward")
         var expiry_events: Array[Dictionary] = ordered_system.get_tick_events()
         assert_equal(expiry_events[-1]["type"], &"EXPIRED", "Expiry event is published")
         assert_equal(expiry_events[-1]["slot_index"], 0, "Expiry event names cleared slot")
@@ -862,6 +944,8 @@ func _system_observation(system: RefCounted) -> Dictionary:
             "lifetime_total_ticks": record.lifetime_total_ticks,
             "lifetime_remaining_ticks": record.lifetime_remaining_ticks,
             "style_index": record.style_index,
+            "company_id": record.company_id,
+            "base_delivery_fee": record.base_delivery_fee,
         })
     return {
         "records": serialized_records,

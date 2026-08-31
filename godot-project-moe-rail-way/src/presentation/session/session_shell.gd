@@ -74,6 +74,7 @@ var _showing_result := false
 var _track_end_urgent := false
 var _pending_priced_actions: Array[StringName] = []
 var _tick_input_claimed := false
+var _contract_presentation_enabled := false
 
 
 func _ready() -> void:
@@ -116,6 +117,21 @@ func present(snapshot: SessionSnapshotScript) -> void:
         track_field_view.present(snapshot)
     _cash_value.text = str(snapshot.get_current_session_cash())
     _base_reward_value.text = str(snapshot.get_base_delivery_reward_total())
+    if (
+        not _contract_presentation_enabled
+        or
+        snapshot.get_selected_contract_company_id().is_empty()
+        or snapshot.get_contract_quota() <= 0
+    ):
+        %ContractValue.text = "—"
+    else:
+        %ContractValue.text = "%s %d/%d %.2f%% | FEE %d" % [
+            _company_marker(snapshot.get_selected_contract_company_id()),
+            snapshot.get_contracted_delivery_count(),
+            snapshot.get_contract_quota(),
+            float(snapshot.get_contract_attainment_basis_points()) / 100.0,
+            snapshot.get_delivery_fee_total(),
+        ]
     _durability_value.text = "%s / %s" % [
         _format_number(snapshot.get_current_durability()),
         _format_number(snapshot.get_maximum_durability()),
@@ -204,6 +220,17 @@ func is_showing_result() -> bool:
     return _showing_result
 
 
+func reset_for_session() -> void:
+    _showing_result = false
+    _result_overlay.hide()
+    _pending_priced_actions.clear()
+    _release_tick_input_claim()
+
+
+func set_contract_presentation_enabled(enabled: bool) -> void:
+    _contract_presentation_enabled = enabled
+
+
 func get_field_global_rect() -> Rect2:
     return _field.get_global_rect()
 
@@ -286,7 +313,8 @@ func get_layout_observation() -> Dictionary:
         "root_separation": float(_main_column.get_theme_constant("separation")),
         "time_text": _time_value.text,
         "cash_text": _cash_value.text,
-        "base_reward_text": _base_reward_value.text,
+		"base_reward_text": _base_reward_value.text,
+        "contract_text": %ContractValue.text,
         "durability_text": _durability_value.text,
         "repair_basis_text": _repair_basis_value.text,
         "track_end_urgent": _track_end_urgent,
@@ -380,6 +408,13 @@ func _format_number(value: float) -> String:
     if is_equal_approx(value, rounded):
         return str(int(rounded))
     return "%.1f" % value
+
+
+func _company_marker(company_id: StringName) -> String:
+    var text := String(company_id)
+    if text.begins_with("company_"):
+        return "C%d" % int(text.trim_prefix("company_"))
+    return text.left(3).to_upper()
 
 
 func _set_track_end_urgent(urgent: bool) -> void:

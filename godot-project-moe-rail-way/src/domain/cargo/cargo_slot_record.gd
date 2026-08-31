@@ -4,6 +4,8 @@ extends RefCounted
 var slot_index: int
 var pair_id: StringName
 var style_index: int = -1
+var company_id: StringName
+var base_delivery_fee: int
 
 
 func is_empty() -> bool:
@@ -15,4 +17,6 @@ func duplicate_record() -> RefCounted:
     copy.slot_index = slot_index
     copy.pair_id = pair_id
     copy.style_index = style_index
+    copy.company_id = company_id
+    copy.base_delivery_fee = base_delivery_fee
     return copy

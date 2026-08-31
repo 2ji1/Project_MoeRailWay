@@ -37,6 +37,8 @@ var maximum_temporary_track_purchases: int
 var temporary_cargo_purchase_cost: int
 var temporary_cargo_slots_per_purchase: int
 var maximum_temporary_cargo_purchases: int
+var company_definitions: Array[Dictionary] = []
+var selected_contract: Dictionary = {}
 
 
 func _init(
