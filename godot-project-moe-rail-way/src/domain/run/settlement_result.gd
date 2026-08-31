@@ -16,6 +16,8 @@ var _repair_cost: int
 var _operating_cost: int
 var _debt_principal_paid: int
 var _debt_interest_paid: int
+var _debt_service_share_numerator: int
+var _debt_service_share_denominator: int
 var _closing_cash: int
 var _completed_cycle_count: int
 var _next_session_starts_full_durability: bool
@@ -43,7 +45,9 @@ func _init(
 	session_only_increases_cleared_value: bool,
 	credit_survival_observation_value: Dictionary,
 	debt_principal_paid_value: int = 0,
-	debt_interest_paid_value: int = 0
+	debt_interest_paid_value: int = 0,
+	debt_service_share_numerator_value: int = 0,
+	debt_service_share_denominator_value: int = 0
 ) -> void:
 	_completion_reason = completion_reason_value
 	_selected_company_id = selected_company_id_value
@@ -65,6 +69,8 @@ func _init(
 	_credit_survival_observation = credit_survival_observation_value.duplicate(true)
 	_debt_principal_paid = debt_principal_paid_value
 	_debt_interest_paid = debt_interest_paid_value
+	_debt_service_share_numerator = debt_service_share_numerator_value
+	_debt_service_share_denominator = debt_service_share_denominator_value
 
 
 func get_completion_reason() -> int:
@@ -127,6 +133,13 @@ func get_debt_interest_paid() -> int:
 	return _debt_interest_paid
 
 
+func get_debt_service_share_observation() -> Dictionary:
+	return {
+		"numerator": _debt_service_share_numerator,
+		"denominator": _debt_service_share_denominator,
+	}
+
+
 func get_closing_cash() -> int:
 	return _closing_cash
 
@@ -177,4 +190,5 @@ func get_observation() -> Dictionary:
 		"next_session_starts_full_durability": _next_session_starts_full_durability,
 		"session_only_increases_cleared": _session_only_increases_cleared,
 		"credit_survival": get_credit_survival_observation(),
+		"debt_service_share": get_debt_service_share_observation(),
 	}

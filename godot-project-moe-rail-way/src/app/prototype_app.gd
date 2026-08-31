@@ -284,6 +284,26 @@ func is_showing_result() -> bool:
 	return _session_shell.is_showing_result()
 
 
+func get_playtest_observation() -> Dictionary:
+	if run_controller == null or run_state == null or balance == null:
+		return {}
+	var eligible_cells := 0
+	if session_start_config != null:
+		eligible_cells = session_start_config.grid_size.x * session_start_config.grid_size.y - 1
+	var difficulty := run_controller.get_cycle_difficulty(
+		balance.hazard_generation_balance.hazard_cell_count,
+		maxi(eligible_cells, 0),
+		balance.durability_balance.damage_per_traveled_cell
+	)
+	return {
+		"run": run_state.get_observation(),
+		"operations": run_controller.get_operations_observation(),
+		"difficulty": difficulty,
+		"settlement": run_controller.get_settlement_result().get_observation() if run_controller.get_settlement_result() != null else {},
+		"terminal": run_controller.get_terminal_result().get_observation() if run_controller.get_terminal_result() != null else {},
+	}.duplicate(true)
+
+
 func _on_snapshot_published(snapshot: SessionSnapshotScript) -> void:
 	_session_shell.present(snapshot)
 

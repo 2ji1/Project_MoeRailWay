@@ -144,6 +144,9 @@ func try_settle_session(session_result: SessionResultScript, supplied_quote = nu
 	var debt_total: Variant = _checked_nonnegative_sum(debt_quote.get_principal_total(), debt_quote.get_interest_total())
 	if debt_total == null:
 		return null
+	var share_denominator: Variant = _checked_nonnegative_sum(session_result.get_delivery_fee_total(), maxi(contract_adjustment, 0))
+	if share_denominator == null:
+		return null
 	var closing_cash: Variant = _cash_after_delta(int(after_operating), -int(debt_total))
 	if closing_cash == null:
 		return null
@@ -169,6 +172,8 @@ func try_settle_session(session_result: SessionResultScript, supplied_quote = nu
 	credit_observation["debt_service"] = debt_quote.get_observation()
 	credit_observation["debt_principal_paid"] = debt_quote.get_principal_total()
 	credit_observation["debt_interest_paid"] = debt_quote.get_interest_total()
+	credit_observation["debt_service_share_numerator"] = int(debt_total)
+	credit_observation["debt_service_share_denominator"] = int(share_denominator)
 	credit_observation["closing_cash"] = int(closing_cash)
 	credit_observation["session_start_blocked"] = int(closing_cash) < 0
 	var settlement := SettlementResultScript.new(
@@ -191,7 +196,9 @@ func try_settle_session(session_result: SessionResultScript, supplied_quote = nu
 		true,
 		credit_observation,
 		debt_quote.get_principal_total(),
-		debt_quote.get_interest_total()
+		debt_quote.get_interest_total(),
+		int(debt_total),
+		int(share_denominator)
 	)
 	if inject_pre_install_failure:
 		return null
@@ -292,6 +299,7 @@ func get_operations_observation() -> Dictionary:
 	observation["contract_selected"] = not _selected_contract.is_empty()
 	observation["recovery_mode"] = _recovery_mode
 	observation["recovery"] = recovery
+	observation["last_borrow"] = get_last_borrow_result()
 	observation["company_credit"] = companies
 	observation["projected_operating_cost"] = _base_operating_cost
 	observation["projected_repair_known"] = false
