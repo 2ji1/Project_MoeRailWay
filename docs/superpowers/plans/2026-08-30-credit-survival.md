@@ -287,6 +287,7 @@ Task 0 may rename these only when the actual Contract structure requires it, and
 - `godot-project-moe-rail-way/src/config/prototype_config_validator.gd`
 - `godot-project-moe-rail-way/src/domain/credit/credit_system.gd`
 - `godot-project-moe-rail-way/tests/run_all.gd`
+- `godot-project-moe-rail-way/tests/unit/test_prototype_run_controller.gd`
 
 **Regressions:** Focused cycle/recovery/bankruptcy suites, Risk hazard/config tests, Contract loop tests, registered full runner, and all integrations.
 
