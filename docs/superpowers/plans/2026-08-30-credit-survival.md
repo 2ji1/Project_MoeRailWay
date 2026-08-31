@@ -120,7 +120,11 @@ Invoke-MoeRailGate 'res://tests/integration/run_contract_economy_integration.gd'
 Invoke-MoeRailGate 'res://tests/integration/run_credit_survival_integration.gd' '^PASS: credit survival integration$'
 ```
 
-For each additional focused filename in the task matrix, replace only the literal `--suite=test_credit_limit.gd` argument. Task 6 creates `godot-project-moe-rail-way/tools/credit_survival/verify_feature.ps1` with the literal union of every Credit Create/Modify path. The final executable structural gate is `pwsh -NoProfile -File .\godot-project-moe-rail-way\tools\credit_survival\verify_feature.ps1 -BaseCommit (git merge-base HEAD origin/main)`. That script must fail unless the feature diff is a subset of its literal allowlist, every planned Create path exists, every tracked `.gd` has exactly one tracked adjacent `.gd.uid` and vice versa, `git diff --check` passes, and `git diff --name-status --diff-filter=RD <base>...HEAD` is empty.
+For each additional focused filename in the task matrix, replace only the literal `--suite=test_credit_limit.gd` argument. Task 6 creates `godot-project-moe-rail-way/tools/credit_survival/verify_feature.ps1` with the literal union of every Credit Create/Modify path plus the canonical plan path used for approved implementation corrections. The final executable structural gate is `pwsh -NoProfile -File .\godot-project-moe-rail-way\tools\credit_survival\verify_feature.ps1 -BaseCommit (git merge-base HEAD origin/main)`. That script must fail unless the feature diff is a subset of its literal allowlist, every planned Create path exists, every tracked `.gd` has exactly one tracked adjacent `.gd.uid` and vice versa, `git diff --check` passes, and `git diff --name-status --diff-filter=RD <base>...HEAD` is empty.
+
+**Implementation-plan correction modify allowlist:**
+
+- `docs/superpowers/plans/2026-08-30-credit-survival.md`
 
 ## 4. Anticipated Credit-Owned Paths
 
