@@ -319,6 +319,9 @@ Task 0 may rename these only when the actual Contract structure requires it, and
 - `godot-project-moe-rail-way/src/presentation/results/contract_result_panel.gd`
 - `godot-project-moe-rail-way/src/presentation/results/contract_result_panel.tscn`
 - `godot-project-moe-rail-way/tests/run_all.gd`
+- `godot-project-moe-rail-way/tests/unit/test_contract_economy_presentation.gd`
+
+The existing Contract presentation regression is included because the required bounded company-list scroller changes the concrete node path used by that test. Its assertions remain regression-only: the correction may update the path to the same six company buttons but may not weaken, remove, or reinterpret any Contract behavior.
 
 **Regressions:** Focused presentation/input suites, all Contract layout/input/results tests, session-shell tests, registered full runner, and all integrations.
 
