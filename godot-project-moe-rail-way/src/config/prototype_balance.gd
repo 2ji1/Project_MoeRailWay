@@ -30,6 +30,12 @@ const CargoInvestmentBalanceScript = preload("res://src/config/cargo_investment_
 @export var track_investment_balance: TrackInvestmentBalanceScript = TrackInvestmentBalanceScript.new()
 @export var cargo_investment_balance: CargoInvestmentBalanceScript = CargoInvestmentBalanceScript.new()
 
+@export_group("Credit Survival Progression")
+@export_range(1, 1000000, 1) var hazard_growth_interval_cycles := 2
+@export_range(0, 4096, 1) var hazard_cells_per_step := 1
+@export_range(0.0, 1000000.0, 0.1) var damage_per_cell_per_cycle := 1.0
+@export_range(0.0, 1000000.0, 0.1) var maximum_damage_per_cell := 10.0
+
 var session_duration_seconds: float:
     get:
         return session_balance.session_duration_seconds

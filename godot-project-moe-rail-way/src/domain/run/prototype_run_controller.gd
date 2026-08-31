@@ -7,12 +7,14 @@ const SessionResultScript = preload("res://src/domain/session/session_result.gd"
 const SettlementResultScript = preload("res://src/domain/run/settlement_result.gd")
 const ContractSystemScript = preload("res://src/domain/contract/contract_system.gd")
 const CreditSystemScript = preload("res://src/domain/credit/credit_system.gd")
+const TerminalRunResultScript = preload("res://src/domain/run/terminal_run_result.gd")
 const MAX_INT := 9223372036854775807
 
 enum Phase {
 	OPERATIONS,
 	SESSION,
 	RESULTS,
+	TERMINAL,
 }
 
 var _run_state: RunStateScript
@@ -25,14 +27,19 @@ var _credit_balance: Resource
 var _last_borrow_result: Dictionary = {}
 var _next_settlement_identity := 1
 var _active_settlement_identity := 0
+var _selected_cycle := 0
+var _recovery_mode := false
+var _terminal_result: TerminalRunResultScript
+var _cycle_progression: RefCounted
 
 
-func _init(run_state: RunStateScript, base_operating_cost: int, credit_balance: Resource = null) -> void:
+func _init(run_state: RunStateScript, base_operating_cost: int, credit_balance: Resource = null, cycle_progression: RefCounted = null) -> void:
 	assert(run_state != null, "Prototype run state is required")
 	assert(base_operating_cost >= 0 and base_operating_cost <= 1000000, "Base operating cost must be between 0 and 1000000")
 	_run_state = run_state
 	_base_operating_cost = base_operating_cost
 	_credit_balance = credit_balance
+	_cycle_progression = cycle_progression
 
 
 func try_borrow(company_id: StringName, amount: int) -> bool:
@@ -50,6 +57,8 @@ func try_borrow(company_id: StringName, amount: int) -> bool:
 	}
 	_run_state.replace_with(candidate)
 	_last_borrow_result = borrow_result
+	if _recovery_mode and _run_state.get_cash() >= 0:
+		_recovery_mode = false
 	return true
 
 
@@ -58,9 +67,17 @@ func get_last_borrow_result() -> Dictionary:
 
 
 func try_select_contract(contract: Dictionary) -> bool:
-	if _phase != Phase.OPERATIONS or not _is_valid_contract(contract):
+	if _phase != Phase.OPERATIONS or _recovery_mode or not _run_state.can_increment_completed_cycle() or not _is_valid_contract(contract):
 		return false
 	_selected_contract = contract.duplicate(true)
+	_selected_cycle = _run_state.get_completed_cycle_count() + 1
+	return true
+
+
+func try_cancel_contract() -> bool:
+	if _phase != Phase.OPERATIONS or _recovery_mode or _selected_contract.is_empty(): return false
+	_selected_contract = {}
+	_selected_cycle = 0
 	return true
 
 
@@ -68,6 +85,7 @@ func can_start_session() -> bool:
 	return (
 		_phase == Phase.OPERATIONS
 		and not _selected_contract.is_empty()
+		and _selected_cycle == _run_state.get_completed_cycle_count() + 1
 		and _run_state.get_cash() >= 0
 	)
 
@@ -93,6 +111,7 @@ func try_settle_session(session_result: SessionResultScript, supplied_quote = nu
 		_phase != Phase.SESSION
 		or _settlement_result != null
 		or not _is_valid_session_result(session_result)
+		or _selected_cycle != _run_state.get_completed_cycle_count() + 1
 	):
 		return null
 	var opening_cash := session_result.get_final_session_cash()
@@ -116,7 +135,7 @@ func try_settle_session(session_result: SessionResultScript, supplied_quote = nu
 		or not _run_state.can_increment_completed_cycle()
 	):
 		return null
-	var settlement_cycle := _run_state.get_completed_cycle_count() + 1
+	var settlement_cycle := _selected_cycle
 	var debt_quote = supplied_quote if supplied_quote != null else create_debt_service_quote()
 	if not CreditSystemScript.is_debt_service_quote_valid(_run_state, debt_quote, _active_settlement_identity, settlement_cycle):
 		return null
@@ -184,12 +203,29 @@ func try_settle_session(session_result: SessionResultScript, supplied_quote = nu
 	return _settlement_result
 
 
-func try_continue_to_operations() -> bool:
+func try_continue_to_operations(inject_terminal_failure: bool = false) -> bool:
 	if _phase != Phase.RESULTS:
 		return false
+	if _run_state.get_cash() < 0:
+		var recovery := CreditSystemScript.get_recovery_observation(_run_state, _credit_balance)
+		if recovery.is_empty() or not bool(recovery.get("recovery_possible", false)):
+			return _commit_terminal(TerminalRunResultScript.Reason.CREDIT_EXHAUSTED, recovery, inject_terminal_failure)
+		_phase = Phase.OPERATIONS
+		_recovery_mode = true
+		_selected_contract = {}
+		_selected_cycle = 0
+		return true
 	_phase = Phase.OPERATIONS
+	_recovery_mode = false
 	_selected_contract = {}
+	_selected_cycle = 0
 	return true
+
+
+func try_decline_recovery(inject_terminal_failure: bool = false) -> bool:
+	if _phase != Phase.OPERATIONS or not _recovery_mode or _run_state.get_cash() >= 0: return false
+	var recovery := CreditSystemScript.get_recovery_observation(_run_state, _credit_balance)
+	return _commit_terminal(TerminalRunResultScript.Reason.RECOVERY_DECLINED, recovery, inject_terminal_failure)
 
 
 func get_phase() -> Phase:
@@ -206,6 +242,24 @@ func get_selected_contract() -> Dictionary:
 
 func get_settlement_result() -> SettlementResultScript:
 	return _settlement_result
+
+
+func get_terminal_result(): return _terminal_result
+func is_recovery_mode() -> bool: return _recovery_mode
+func get_selected_cycle() -> int: return _selected_cycle
+func get_pending_cycle() -> int:
+	if _phase != Phase.OPERATIONS or _selected_cycle > 0 or not _run_state.can_increment_completed_cycle(): return 0
+	return _run_state.get_completed_cycle_count() + 1
+
+
+func get_recovery_observation() -> Dictionary:
+	return CreditSystemScript.get_recovery_observation(_run_state, _credit_balance)
+
+
+func get_cycle_difficulty(base_hazard_count: int, eligible_cells: int, base_damage: float) -> Dictionary:
+	if _cycle_progression == null: return {}
+	var cycle := _selected_cycle if _selected_cycle > 0 else get_pending_cycle()
+	return _cycle_progression.compose(cycle, base_hazard_count, eligible_cells, base_damage) if cycle > 0 else {}
 
 
 func get_active_settlement_identity() -> int:
@@ -297,3 +351,15 @@ func _cash_after_delta(cash: int, delta: int) -> Variant:
 func _checked_nonnegative_sum(left: int, right: int) -> Variant:
 	if left < 0 or right < 0 or right > MAX_INT - left: return null
 	return left + right
+
+
+func _commit_terminal(reason: int, recovery: Dictionary, inject_failure: bool) -> bool:
+	var settlement_observation := _settlement_result.get_observation() if _settlement_result != null else {}
+	var candidate := TerminalRunResultScript.new(reason, _run_state.get_observation(), settlement_observation, recovery)
+	if inject_failure: return false
+	_terminal_result = candidate
+	_phase = Phase.TERMINAL
+	_recovery_mode = false
+	_selected_contract = {}
+	_selected_cycle = 0
+	return true

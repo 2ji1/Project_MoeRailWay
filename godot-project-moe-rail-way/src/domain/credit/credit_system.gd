@@ -81,3 +81,25 @@ static func is_debt_service_quote_valid(run_state: RefCounted, quote: RefCounted
 	if quote.get_settlement_identity() != settlement_identity or quote.get_cycle() != cycle or quote.get_credit_revision() != run_state.get_credit_revision(): return false
 	var expected = create_debt_service_quote(run_state, settlement_identity, cycle)
 	return expected != null and JSON.stringify(expected.get_observation()) == JSON.stringify(quote.get_observation())
+
+
+static func get_recovery_observation(run_state: RefCounted, credit_balance: Resource) -> Dictionary:
+	if run_state == null or credit_balance == null: return {}
+	var deficit := maxi(-run_state.get_cash(), 0)
+	var comparison_capacity := 0
+	var aggregate_saturated := 0
+	var companies: Array[Dictionary] = []
+	for company_id in run_state.get_company_ids():
+		var remaining := get_remaining_credit(run_state, credit_balance, company_id)
+		if remaining < 0: return {}
+		companies.append({"company_id": company_id, "remaining_credit": remaining})
+		if comparison_capacity < deficit:
+			comparison_capacity += mini(remaining, deficit - comparison_capacity)
+		aggregate_saturated += mini(remaining, run_state.MAX_ABSOLUTE_CASH - aggregate_saturated)
+	return {
+		"deficit": deficit,
+		"comparison_capacity": comparison_capacity,
+		"aggregate_remaining_credit_saturated": aggregate_saturated,
+		"recovery_possible": deficit == 0 or comparison_capacity >= deficit,
+		"companies": companies,
+	}

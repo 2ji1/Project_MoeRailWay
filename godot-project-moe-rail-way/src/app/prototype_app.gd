@@ -17,6 +17,7 @@ const SessionEconomyScript = preload("res://src/domain/economy/session_economy.g
 const ContractSystemScript = preload("res://src/domain/contract/contract_system.gd")
 const RunStateScript = preload("res://src/domain/run/run_state.gd")
 const PrototypeRunControllerScript = preload("res://src/domain/run/prototype_run_controller.gd")
+const CycleProgressionScript = preload("res://src/domain/run/cycle_progression.gd")
 const SettlementResultScript = preload("res://src/domain/run/settlement_result.gd")
 const OperationsScreenScript = preload("res://src/presentation/operations/operations_screen.gd")
 const ContractResultPanelScript = preload("res://src/presentation/results/contract_result_panel.gd")
@@ -164,7 +165,8 @@ func compose_session_dependencies() -> PackedStringArray:
 	run_controller = PrototypeRunControllerScript.new(
 		run_state,
 		balance.contract_economy_balance.base_operating_cost,
-		balance.credit_survival_balance
+		balance.credit_survival_balance,
+		CycleProgressionScript.new(balance.hazard_growth_interval_cycles, balance.hazard_cells_per_step, balance.damage_per_cell_per_cycle, balance.maximum_damage_per_cell)
 	)
 	if not _starts_in_operations():
 		assert(
@@ -189,6 +191,13 @@ func _compose_transient_session() -> PackedStringArray:
 		return errors
 	session_start_config.selected_contract = selected_contract
 	session_start_config.starting_session_cash = run_state.get_cash()
+	var eligible_cells := session_start_config.grid_size.x * session_start_config.grid_size.y - 1
+	var difficulty := run_controller.get_cycle_difficulty(balance.hazard_generation_balance.hazard_cell_count, eligible_cells, balance.durability_balance.damage_per_traveled_cell)
+	if difficulty.is_empty():
+		errors.append("prototype_run_controller requires one valid cycle difficulty")
+		return errors
+	session_start_config.hazard_cell_count = int(difficulty["hazard_cell_count"])
+	session_start_config.damage_per_traveled_cell = float(difficulty["damage_per_traveled_cell"])
 	errors.append_array(ValidatorScript.validate_completed_session_start_config(session_start_config))
 	if not errors.is_empty():
 		return errors

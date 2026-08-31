@@ -112,9 +112,10 @@ func _test_negative_cash_blocks_next_session() -> void:
 	assert_true(settlement.get_credit_survival_observation()["session_start_blocked"], "Credit observation reports the negative-cash start gate")
 	assert_true(controller.try_continue_to_operations(), "Results continue returns once")
 	assert_false(controller.try_continue_to_operations(), "Repeated continue is inert")
-	assert_true(controller.try_select_contract(_contract()), "Negative-cash operations remains readable and selectable")
-	assert_false(controller.can_start_session(), "Negative cash blocks the next session")
-	assert_true(controller.try_start_session() == null, "Negative cash creates no renewable session budget")
+	assert_equal(controller.get_phase(), load(RUN_CONTROLLER_PATH).Phase.TERMINAL, "Unfunded negative cash enters terminal state")
+	assert_false(controller.try_select_contract(_contract()), "Terminal state blocks contract selection")
+	assert_false(controller.can_start_session(), "Terminal state blocks the next session")
+	assert_true(controller.try_start_session() == null, "Terminal state creates no renewable session budget")
 
 
 func _test_high_settlement_cash_carries_to_next_session() -> void:

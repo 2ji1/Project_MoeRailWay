@@ -144,6 +144,14 @@ static func validate(balance: PrototypeBalanceScript) -> PackedStringArray:
             )
     _validate_contract_economy(errors, balance.contract_economy_balance)
     _validate_credit_survival(errors, balance.credit_survival_balance, balance.contract_economy_balance)
+    if balance.hazard_growth_interval_cycles < 1 or balance.hazard_growth_interval_cycles > 1000000:
+        errors.append("prototype_balance.hazard_growth_interval_cycles must be between 1 and 1000000")
+    if balance.hazard_cells_per_step < 0 or balance.hazard_cells_per_step > 4096:
+        errors.append("prototype_balance.hazard_cells_per_step must be between 0 and 4096")
+    if not is_finite(balance.damage_per_cell_per_cycle) or balance.damage_per_cell_per_cycle < 0.0 or balance.damage_per_cell_per_cycle > 1000000.0:
+        errors.append("prototype_balance.damage_per_cell_per_cycle must be finite and between 0.0 and 1000000.0")
+    if balance.durability_balance != null and (not is_finite(balance.maximum_damage_per_cell) or balance.maximum_damage_per_cell < balance.durability_balance.damage_per_traveled_cell or balance.maximum_damage_per_cell > 1000000.0):
+        errors.append("prototype_balance.maximum_damage_per_cell must be finite, bounded, and at least base damage")
 
     if balance.hazard_generation_balance == null:
         errors.append("prototype_balance.hazard_generation_balance.resource is required")
