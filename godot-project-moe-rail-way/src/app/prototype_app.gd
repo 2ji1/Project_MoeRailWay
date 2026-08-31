@@ -342,10 +342,11 @@ func _on_start_requested() -> void:
 
 func _on_borrow_requested(company_id: StringName, amount: int) -> void:
 	var was_recovery := run_controller.is_recovery_mode()
-	if run_controller.try_borrow(company_id, amount):
-		if was_recovery and not run_controller.is_recovery_mode():
-			_recovery_credit_company_id = StringName()
-		_present_operations()
+	if not run_controller.try_borrow(company_id, amount):
+		return
+	if was_recovery and not run_controller.is_recovery_mode():
+		_recovery_credit_company_id = StringName()
+	_present_operations()
 
 
 func _on_decline_recovery_requested() -> void:

@@ -59,6 +59,32 @@ $Allowlist = @(
     'godot-project-moe-rail-way/tools/credit_survival/verify_feature.ps1'
 )
 $CreatePaths = @(
+    'godot-project-moe-rail-way/src/config/company_credit_balance.gd'
+    'godot-project-moe-rail-way/src/config/company_credit_balance.gd.uid'
+    'godot-project-moe-rail-way/src/config/credit_survival_balance.gd'
+    'godot-project-moe-rail-way/src/config/credit_survival_balance.gd.uid'
+    'godot-project-moe-rail-way/data/credit_survival_balance.tres'
+    'godot-project-moe-rail-way/tests/fixtures/credit_survival_balance.tres'
+    'godot-project-moe-rail-way/tests/unit/test_credit_limit.gd'
+    'godot-project-moe-rail-way/tests/unit/test_credit_limit.gd.uid'
+    'godot-project-moe-rail-way/src/domain/credit/loan_record.gd'
+    'godot-project-moe-rail-way/src/domain/credit/loan_record.gd.uid'
+    'godot-project-moe-rail-way/src/domain/credit/credit_system.gd'
+    'godot-project-moe-rail-way/src/domain/credit/credit_system.gd.uid'
+    'godot-project-moe-rail-way/tests/unit/test_credit_system.gd'
+    'godot-project-moe-rail-way/tests/unit/test_credit_system.gd.uid'
+    'godot-project-moe-rail-way/src/domain/credit/credit_quote.gd'
+    'godot-project-moe-rail-way/src/domain/credit/credit_quote.gd.uid'
+    'godot-project-moe-rail-way/tests/unit/test_credit_settlement.gd'
+    'godot-project-moe-rail-way/tests/unit/test_credit_settlement.gd.uid'
+    'godot-project-moe-rail-way/src/domain/run/cycle_progression.gd'
+    'godot-project-moe-rail-way/src/domain/run/cycle_progression.gd.uid'
+    'godot-project-moe-rail-way/src/domain/run/terminal_run_result.gd'
+    'godot-project-moe-rail-way/src/domain/run/terminal_run_result.gd.uid'
+    'godot-project-moe-rail-way/tests/unit/test_cycle_progression.gd'
+    'godot-project-moe-rail-way/tests/unit/test_cycle_progression.gd.uid'
+    'godot-project-moe-rail-way/tests/unit/test_credit_survival_presentation.gd'
+    'godot-project-moe-rail-way/tests/unit/test_credit_survival_presentation.gd.uid'
     'godot-project-moe-rail-way/tests/integration/credit_survival_app.tscn'
     'godot-project-moe-rail-way/tests/integration/run_credit_survival_integration.gd'
     'godot-project-moe-rail-way/tests/integration/run_credit_survival_integration.gd.uid'
@@ -75,7 +101,7 @@ try {
     if ($Outside.Count -ne 0) { throw "Feature paths outside allowlist: $($Outside -join ', ')" }
     foreach ($Path in $CreatePaths) {
         git cat-file -e "HEAD:$Path"
-        if ($LASTEXITCODE -ne 0) { throw "Missing Task 6 create path: $Path" }
+        if ($LASTEXITCODE -ne 0) { throw "Missing planned Credit create path: $Path" }
     }
     $RenameDelete = @(git diff --name-status --diff-filter=RD "$BaseCommit...HEAD")
     if ($RenameDelete.Count -ne 0) { throw "Rename/delete audit failed: $($RenameDelete -join ', ')" }
