@@ -122,6 +122,17 @@ func append_loan(loan: RefCounted) -> void:
 	_credit_revision += 1
 
 
+func apply_debt_service_quote(quote: RefCounted) -> void:
+	assert(quote != null and quote.get_credit_revision() == _credit_revision, "Debt quote revision must match RunState")
+	var next_revision := _credit_revision
+	if quote.has_payments():
+		assert(_credit_revision < MAX_INT, "Credit revision exhausted")
+		next_revision += 1
+	var validated: Variant = get_script().new(_cash, _company_ids, _company_trust_milli, _completed_cycle_count, _company_rate_basis_points, quote.get_post_loans(), _next_loan_id, next_revision)
+	_active_loans = validated.get_active_loans()
+	_credit_revision = next_revision
+
+
 func add_company_trust_milli(company_id: StringName, amount: int) -> void:
 	assert(_company_trust_milli.has(company_id), "Unknown company ID")
 	assert(amount >= 0, "Trust increment cannot be negative")

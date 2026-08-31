@@ -23,6 +23,8 @@ var _session_starting_cash := 0
 var _settlement_result: SettlementResultScript
 var _credit_balance: Resource
 var _last_borrow_result: Dictionary = {}
+var _next_settlement_identity := 1
+var _active_settlement_identity := 0
 
 
 func _init(run_state: RunStateScript, base_operating_cost: int, credit_balance: Resource = null) -> void:
@@ -71,16 +73,22 @@ func can_start_session() -> bool:
 
 
 func try_start_session() -> SessionEconomyScript:
-	if not can_start_session():
+	if not can_start_session() or _next_settlement_identity >= MAX_INT:
 		return null
 	var session_economy := SessionEconomyScript.new(_run_state.get_cash())
 	_session_starting_cash = _run_state.get_cash()
 	_settlement_result = null
+	_active_settlement_identity = _next_settlement_identity
 	_phase = Phase.SESSION
 	return session_economy
 
 
-func try_settle_session(session_result: SessionResultScript) -> SettlementResultScript:
+func create_debt_service_quote():
+	if _phase != Phase.SESSION or _active_settlement_identity < 1: return null
+	return CreditSystemScript.create_debt_service_quote(_run_state, _active_settlement_identity, _run_state.get_completed_cycle_count() + 1)
+
+
+func try_settle_session(session_result: SessionResultScript, supplied_quote = null, inject_pre_install_failure: bool = false) -> SettlementResultScript:
 	if (
 		_phase != Phase.SESSION
 		or _settlement_result != null
@@ -99,8 +107,8 @@ func try_settle_session(session_result: SessionResultScript) -> SettlementResult
 	var after_repair: Variant = _cash_after_delta(int(after_contract), -repair_cost)
 	if after_repair == null:
 		return null
-	var closing_cash: Variant = _cash_after_delta(int(after_repair), -_base_operating_cost)
-	if closing_cash == null:
+	var after_operating: Variant = _cash_after_delta(int(after_repair), -_base_operating_cost)
+	if after_operating == null:
 		return null
 	var company_id := session_result.get_selected_contract_company_id()
 	if (
@@ -108,11 +116,24 @@ func try_settle_session(session_result: SessionResultScript) -> SettlementResult
 		or not _run_state.can_increment_completed_cycle()
 	):
 		return null
+	var settlement_cycle := _run_state.get_completed_cycle_count() + 1
+	var debt_quote = supplied_quote if supplied_quote != null else create_debt_service_quote()
+	if not CreditSystemScript.is_debt_service_quote_valid(_run_state, debt_quote, _active_settlement_identity, settlement_cycle):
+		return null
+	if debt_quote.has_payments() and _run_state.get_credit_revision() >= MAX_INT:
+		return null
+	var debt_total: Variant = _checked_nonnegative_sum(debt_quote.get_principal_total(), debt_quote.get_interest_total())
+	if debt_total == null:
+		return null
+	var closing_cash: Variant = _cash_after_delta(int(after_operating), -int(debt_total))
+	if closing_cash == null:
+		return null
 
 	var candidate := _run_state.duplicate_state()
 	candidate.set_cash(int(closing_cash))
 	candidate.add_company_trust_milli(company_id, trust_gain)
 	candidate.increment_completed_cycle()
+	candidate.apply_debt_service_quote(debt_quote)
 	var credit_observation := candidate.get_observation()
 	credit_observation["session_starting_cash"] = _session_starting_cash
 	credit_observation["delivery_fee_total"] = session_result.get_delivery_fee_total()
@@ -126,6 +147,9 @@ func try_settle_session(session_result: SessionResultScript) -> SettlementResult
 	credit_observation["trust_gain_milli"] = trust_gain
 	credit_observation["repair_cost"] = repair_cost
 	credit_observation["operating_cost"] = _base_operating_cost
+	credit_observation["debt_service"] = debt_quote.get_observation()
+	credit_observation["debt_principal_paid"] = debt_quote.get_principal_total()
+	credit_observation["debt_interest_paid"] = debt_quote.get_interest_total()
 	credit_observation["closing_cash"] = int(closing_cash)
 	credit_observation["session_start_blocked"] = int(closing_cash) < 0
 	var settlement := SettlementResultScript.new(
@@ -146,11 +170,17 @@ func try_settle_session(session_result: SessionResultScript) -> SettlementResult
 		candidate.get_completed_cycle_count(),
 		true,
 		true,
-		credit_observation
+		credit_observation,
+		debt_quote.get_principal_total(),
+		debt_quote.get_interest_total()
 	)
+	if inject_pre_install_failure:
+		return null
 	_run_state.replace_with(candidate)
 	_settlement_result = settlement
 	_phase = Phase.RESULTS
+	_next_settlement_identity += 1
+	_active_settlement_identity = 0
 	return _settlement_result
 
 
@@ -176,6 +206,10 @@ func get_selected_contract() -> Dictionary:
 
 func get_settlement_result() -> SettlementResultScript:
 	return _settlement_result
+
+
+func get_active_settlement_identity() -> int:
+	return _active_settlement_identity
 
 
 func _is_valid_contract(contract: Dictionary) -> bool:
@@ -258,3 +292,8 @@ func _cash_after_delta(cash: int, delta: int) -> Variant:
 		return null
 	var value := cash + delta
 	return value if _run_state.can_set_cash(value) else null
+
+
+func _checked_nonnegative_sum(left: int, right: int) -> Variant:
+	if left < 0 or right < 0 or right > MAX_INT - left: return null
+	return left + right

@@ -14,6 +14,8 @@ var _contract_adjustment: int
 var _trust_gain_milli: int
 var _repair_cost: int
 var _operating_cost: int
+var _debt_principal_paid: int
+var _debt_interest_paid: int
 var _closing_cash: int
 var _completed_cycle_count: int
 var _next_session_starts_full_durability: bool
@@ -39,7 +41,9 @@ func _init(
 	completed_cycle_count_value: int,
 	next_session_starts_full_durability_value: bool,
 	session_only_increases_cleared_value: bool,
-	credit_survival_observation_value: Dictionary
+	credit_survival_observation_value: Dictionary,
+	debt_principal_paid_value: int = 0,
+	debt_interest_paid_value: int = 0
 ) -> void:
 	_completion_reason = completion_reason_value
 	_selected_company_id = selected_company_id_value
@@ -59,6 +63,8 @@ func _init(
 	_next_session_starts_full_durability = next_session_starts_full_durability_value
 	_session_only_increases_cleared = session_only_increases_cleared_value
 	_credit_survival_observation = credit_survival_observation_value.duplicate(true)
+	_debt_principal_paid = debt_principal_paid_value
+	_debt_interest_paid = debt_interest_paid_value
 
 
 func get_completion_reason() -> int:
@@ -113,6 +119,14 @@ func get_operating_cost() -> int:
 	return _operating_cost
 
 
+func get_debt_principal_paid() -> int:
+	return _debt_principal_paid
+
+
+func get_debt_interest_paid() -> int:
+	return _debt_interest_paid
+
+
 func get_closing_cash() -> int:
 	return _closing_cash
 
@@ -130,7 +144,7 @@ func are_session_only_increases_cleared() -> bool:
 
 
 func get_ordered_line_items() -> Array[Dictionary]:
-	return [
+	var items: Array[Dictionary] = [
 		{"id": &"session_starting_cash", "amount": _session_starting_cash, "informational": false},
 		{"id": &"delivery_fee_total", "amount": _delivery_fee_total, "informational": true},
 		{"id": &"session_spending", "amount": _session_spending, "informational": true},
@@ -139,8 +153,12 @@ func get_ordered_line_items() -> Array[Dictionary]:
 		{"id": &"trust_gain_milli", "amount": _trust_gain_milli, "informational": false},
 		{"id": &"repair_cost", "amount": _repair_cost, "informational": false},
 		{"id": &"operating_cost", "amount": _operating_cost, "informational": false},
-		{"id": &"closing_cash", "amount": _closing_cash, "informational": false},
-	].duplicate(true)
+	]
+	if _debt_principal_paid > 0 or _debt_interest_paid > 0:
+		items.append({"id": &"debt_principal", "amount": _debt_principal_paid, "informational": false})
+		items.append({"id": &"debt_interest", "amount": _debt_interest_paid, "informational": false})
+	items.append({"id": &"closing_cash", "amount": _closing_cash, "informational": false})
+	return items.duplicate(true)
 
 
 func get_credit_survival_observation() -> Dictionary:
