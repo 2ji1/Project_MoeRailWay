@@ -6,6 +6,7 @@ const SessionEconomyScript = preload("res://src/domain/economy/session_economy.g
 const SessionResultScript = preload("res://src/domain/session/session_result.gd")
 const SettlementResultScript = preload("res://src/domain/run/settlement_result.gd")
 const ContractSystemScript = preload("res://src/domain/contract/contract_system.gd")
+const CreditSystemScript = preload("res://src/domain/credit/credit_system.gd")
 const MAX_INT := 9223372036854775807
 
 enum Phase {
@@ -20,13 +21,23 @@ var _phase := Phase.OPERATIONS
 var _selected_contract: Dictionary = {}
 var _session_starting_cash := 0
 var _settlement_result: SettlementResultScript
+var _credit_balance: Resource
 
 
-func _init(run_state: RunStateScript, base_operating_cost: int) -> void:
+func _init(run_state: RunStateScript, base_operating_cost: int, credit_balance: Resource = null) -> void:
 	assert(run_state != null, "Prototype run state is required")
 	assert(base_operating_cost >= 0 and base_operating_cost <= 1000000, "Base operating cost must be between 0 and 1000000")
 	_run_state = run_state
 	_base_operating_cost = base_operating_cost
+	_credit_balance = credit_balance
+
+
+func try_borrow(company_id: StringName, amount: int) -> bool:
+	if _phase != Phase.OPERATIONS or _credit_balance == null: return false
+	var candidate = CreditSystemScript.create_borrow_candidate(_run_state, _credit_balance, company_id, amount)
+	if candidate == null: return false
+	_run_state.replace_with(candidate)
+	return true
 
 
 func try_select_contract(contract: Dictionary) -> bool:

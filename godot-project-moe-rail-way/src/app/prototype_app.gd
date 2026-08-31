@@ -163,7 +163,8 @@ func compose_session_dependencies() -> PackedStringArray:
 	)
 	run_controller = PrototypeRunControllerScript.new(
 		run_state,
-		balance.contract_economy_balance.base_operating_cost
+		balance.contract_economy_balance.base_operating_cost,
+		balance.credit_survival_balance
 	)
 	if not _starts_in_operations():
 		assert(
