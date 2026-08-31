@@ -236,6 +236,57 @@ func get_run_state_observation() -> Dictionary:
 	return _run_state.get_observation()
 
 
+func get_operations_observation() -> Dictionary:
+	var observation := _run_state.get_observation()
+	var cycle := _run_state.get_completed_cycle_count() + 1 if _run_state.can_increment_completed_cycle() else 0
+	var debt_quote = CreditSystemScript.create_debt_service_quote(_run_state, 1, cycle) if cycle > 0 else null
+	var due_by_company := {}
+	var schedules_by_company := {}
+	for company_id in _run_state.get_company_ids():
+		due_by_company[company_id] = {"principal": 0, "interest": 0}
+		schedules_by_company[company_id] = []
+	if debt_quote != null:
+		for item in debt_quote.get_items():
+			var company_id := StringName(item.get("company_id", StringName()))
+			var due: Dictionary = due_by_company.get(company_id, {"principal": 0, "interest": 0})
+			due["principal"] = int(due["principal"]) + int(item.get("principal", 0))
+			due["interest"] = int(due["interest"]) + int(item.get("interest", 0))
+			due_by_company[company_id] = due
+			schedules_by_company[company_id].append(item.duplicate(true))
+	var companies: Array[Dictionary] = []
+	for company_id in _run_state.get_company_ids():
+		var trust := _run_state.get_company_trust_milli(company_id)
+		var limit: int = _credit_balance.get_credit_limit(company_id, trust) if _credit_balance != null else 0
+		var remaining: int = CreditSystemScript.get_remaining_credit(_run_state, _credit_balance, company_id) if _credit_balance != null else 0
+		var borrow_capacity := mini(remaining, RunStateScript.MAX_ABSOLUTE_CASH - _run_state.get_cash())
+		var due: Dictionary = due_by_company[company_id]
+		companies.append({
+			"company_id": company_id,
+			"trust_milli": trust,
+			"next_limit_trust_milli": _credit_balance.get_next_limit_trust(company_id, trust) if _credit_balance != null else -1,
+			"credit_limit": limit,
+			"outstanding_principal": CreditSystemScript.get_outstanding_principal(_run_state, company_id),
+			"remaining_credit": remaining,
+			"borrow_capacity": borrow_capacity,
+			"rate_basis_points": _run_state.get_company_rate_basis_points(company_id),
+			"next_principal": int(due["principal"]),
+			"next_interest": int(due["interest"]),
+			"schedule": schedules_by_company[company_id],
+		})
+	var recovery := CreditSystemScript.get_recovery_observation(_run_state, _credit_balance)
+	observation["phase"] = _phase
+	observation["pending_cycle"] = get_pending_cycle()
+	observation["selected_cycle"] = _selected_cycle
+	observation["recovery_mode"] = _recovery_mode
+	observation["recovery"] = recovery
+	observation["company_credit"] = companies
+	observation["projected_operating_cost"] = _base_operating_cost
+	observation["projected_repair_cost"] = 0
+	observation["projected_debt_principal"] = debt_quote.get_principal_total() if debt_quote != null else 0
+	observation["projected_debt_interest"] = debt_quote.get_interest_total() if debt_quote != null else 0
+	return observation.duplicate(true)
+
+
 func get_selected_contract() -> Dictionary:
 	return _selected_contract.duplicate(true)
 

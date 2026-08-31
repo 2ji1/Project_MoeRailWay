@@ -59,6 +59,8 @@ func _ready() -> void:
 	_runs_as_project_main_scene = get_tree().current_scene == self
 	_operations_screen.company_selected.connect(_on_company_selected)
 	_operations_screen.start_requested.connect(_on_start_requested)
+	_operations_screen.borrow_requested.connect(_on_borrow_requested)
+	_operations_screen.decline_recovery_requested.connect(_on_decline_recovery_requested)
 	_contract_result_panel.continue_requested.connect(_on_continue_requested)
 	var errors := compose_session_dependencies()
 	if not errors.is_empty():
@@ -312,6 +314,16 @@ func _on_start_requested() -> void:
 	_activate_composed_session()
 
 
+func _on_borrow_requested(company_id: StringName, amount: int) -> void:
+	if run_controller.try_borrow(company_id, amount):
+		_present_operations()
+
+
+func _on_decline_recovery_requested() -> void:
+	if not run_controller.try_decline_recovery(): return
+	_present_terminal()
+
+
 func _on_continue_requested() -> void:
 	if not run_controller.try_continue_to_operations():
 		return
@@ -326,7 +338,7 @@ func _present_terminal() -> void:
 	_session_shell.hide()
 	_operations_screen.hide()
 	_contract_result_panel.show()
-	print("Credit Survival terminal reason=%d" % run_controller.get_terminal_result().get_reason())
+	_contract_result_panel.present_terminal(run_controller.get_terminal_result())
 
 
 func _present_operations() -> void:
@@ -337,7 +349,7 @@ func _present_operations() -> void:
 	_operations_screen.show()
 	_operations_screen.present(
 		balance.contract_economy_balance.companies,
-		run_controller.get_run_state_observation(),
+		run_controller.get_operations_observation(),
 		StringName(run_controller.get_selected_contract().get("company_id", StringName()))
 	)
 

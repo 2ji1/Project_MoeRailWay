@@ -4,6 +4,7 @@ extends Control
 signal continue_requested
 
 @onready var _reason: Label = %Reason
+@onready var _title: Label = %Title
 @onready var _contract_summary: Label = %ContractSummary
 @onready var _line_rows: VBoxContainer = %LineRows
 @onready var _cycle: Label = %Cycle
@@ -12,6 +13,7 @@ signal continue_requested
 
 var _settlement_observation: Dictionary = {}
 var _continue_consumed := false
+var _terminal_observation: Dictionary = {}
 
 
 func _ready() -> void:
@@ -22,7 +24,10 @@ func present(settlement) -> void:
 	if settlement == null:
 		return
 	_settlement_observation = settlement.get_observation()
+	_terminal_observation = {}
+	_title.text = "CONTRACT SETTLEMENT"
 	_continue_consumed = false
+	_continue_button.show()
 	_continue_button.disabled = false
 	_rebuild_lines(settlement.get_ordered_line_items())
 	_reason.text = _reason_text(settlement.get_completion_reason())
@@ -35,6 +40,22 @@ func present(settlement) -> void:
 	_cycle.text = "COMPLETED CYCLE %d" % settlement.get_completed_cycle_count()
 	_blocked_notice.visible = settlement.get_closing_cash() < 0
 	_blocked_notice.text = "CREDIT SURVIVAL REQUIRED" if _blocked_notice.visible else ""
+	show()
+
+
+func present_terminal(terminal_result) -> void:
+	if terminal_result == null: return
+	_terminal_observation = terminal_result.get_observation()
+	_title.text = "RUN ENDED"
+	var reason: int = terminal_result.get_reason()
+	_reason.text = "BANKRUPTCY: CREDIT EXHAUSTED" if reason == 0 else "BANKRUPTCY: RECOVERY DECLINED"
+	_contract_summary.text = "FINAL CASH %d" % int(_terminal_observation.get("run_state", {}).get("cash", 0))
+	_cycle.text = "COMPLETED CYCLES %d" % int(_terminal_observation.get("run_state", {}).get("completed_cycle_count", 0))
+	_blocked_notice.visible = true
+	_blocked_notice.text = "NO FURTHER SESSION CAN START"
+	_rebuild_lines([])
+	_continue_button.hide()
+	_continue_button.disabled = true
 	show()
 
 
@@ -58,6 +79,7 @@ func get_presentation_observation() -> Dictionary:
 		"continue_disabled": _continue_button.disabled,
 		"continue_mouse_filter": _continue_button.mouse_filter,
 		"settlement": _settlement_observation.duplicate(true),
+		"terminal": _terminal_observation.duplicate(true),
 	}.duplicate(true)
 
 
