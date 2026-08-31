@@ -8,9 +8,14 @@ const CreditBalanceScript = preload("res://src/config/credit_survival_balance.gd
 const SessionResultScript = preload("res://src/domain/session/session_result.gd")
 const PrototypeBalanceScript = preload("res://src/config/prototype_balance.gd")
 const ValidatorScript = preload("res://src/config/prototype_config_validator.gd")
+const CreditSystemScript = preload("res://src/domain/credit/credit_system.gd")
 
 const COMPANY_IDS := [&"company_01", &"company_02", &"company_03", &"company_04", &"company_05", &"company_06"]
 const COMPANY_RATES := {&"company_01": 400, &"company_02": 500, &"company_03": 600, &"company_04": 700, &"company_05": 800, &"company_06": 900}
+
+
+class SaturatingCreditBalance extends Resource:
+	func get_credit_limit(_company_id: StringName, _trust_milli: int) -> int: return RunStateScript.MAX_ABSOLUTE_CASH
 
 
 func run() -> PackedStringArray:
@@ -110,6 +115,8 @@ func _test_credit_exhausted_terminal_is_atomic() -> void:
 	var zero_state := RunStateScript.new(0, COMPANY_IDS, {}, 0, COMPANY_RATES)
 	var zero_controller := RunControllerScript.new(zero_state, 0, CreditBalanceScript.new())
 	assert_equal(zero_controller.get_recovery_observation()["aggregate_remaining_credit_saturated"], 0, "Zero aggregate remaining credit is explicit")
+	var saturated := CreditSystemScript.get_recovery_observation(zero_state, SaturatingCreditBalance.new())
+	assert_equal(saturated["aggregate_remaining_credit_saturated"], RunStateScript.MAX_ABSOLUTE_CASH, "Aggregate remaining credit saturates at the RunState cash bound")
 
 
 func _terminal_signature() -> String:

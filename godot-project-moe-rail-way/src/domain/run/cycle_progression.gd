@@ -32,8 +32,9 @@ static func damage_for_cycle(cycle: int, base_damage: float, damage_per_cycle: f
 	assert(is_finite(damage_per_cycle) and damage_per_cycle >= 0.0)
 	assert(is_finite(maximum_damage) and maximum_damage >= base_damage)
 	if damage_per_cycle == 0.0: return base_damage
-	var maximum_steps := int(floor((maximum_damage - base_damage) / damage_per_cycle))
-	var applied_steps := mini(cycle - 1, maximum_steps)
+	var requested_steps := cycle - 1
+	var maximum_steps_float: float = floor((maximum_damage - base_damage) / damage_per_cycle)
+	var applied_steps: int = requested_steps if maximum_steps_float >= float(requested_steps) else int(maximum_steps_float)
 	return minf(maximum_damage, base_damage + float(applied_steps) * damage_per_cycle)
 
 

@@ -315,7 +315,18 @@ func _on_start_requested() -> void:
 func _on_continue_requested() -> void:
 	if not run_controller.try_continue_to_operations():
 		return
+	if run_controller.get_phase() == PrototypeRunControllerScript.Phase.TERMINAL:
+		_present_terminal()
+		return
 	_present_operations()
+
+
+func _present_terminal() -> void:
+	set_physics_process(false)
+	_session_shell.hide()
+	_operations_screen.hide()
+	_contract_result_panel.show()
+	print("Credit Survival terminal reason=%d" % run_controller.get_terminal_result().get_reason())
 
 
 func _present_operations() -> void:
