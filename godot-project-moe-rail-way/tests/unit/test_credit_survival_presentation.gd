@@ -105,6 +105,18 @@ func _test_mouse_only_operations() -> void:
 	assert_equal(center.anchor_right, 1.0, "Centered panel recomputes horizontal mouse mapping after resize")
 	assert_equal(center.anchor_bottom, 1.0, "Centered panel recomputes vertical mouse mapping after resize")
 	screen.free()
+	var app_fixture := _controller_fixture(300)
+	var app = load(APP_SCENE).instantiate()
+	app.start_in_operations = true
+	Engine.get_main_loop().root.add_child(app)
+	app.run_controller = app_fixture.controller
+	app._on_company_selected(&"company_01")
+	app._on_borrow_requested(&"company_01", 1)
+	observation = app._operations_screen.get_presentation_observation()
+	assert_equal(observation.status_text, "CASH 301 | CYCLE 1", "Successful normal borrowing refreshes displayed cash")
+	assert_true(observation.rows[0].text.contains("PRINCIPAL 1"), "Successful normal borrowing refreshes displayed principal")
+	assert_true(observation.rows[0].text.contains("LEFT 99"), "Successful normal borrowing refreshes remaining Credit")
+	app.free()
 
 
 func _test_recovery_and_terminal_presentation() -> void:
@@ -133,6 +145,11 @@ func _test_recovery_and_terminal_presentation() -> void:
 	assert_true(observation.rows[0].selected, "Recovery company selection is independent from contract acceptance")
 	app._operations_screen.get_node("Center/Panel/Margin/Rows/BorrowControls/BorrowButton").emit_signal("pressed")
 	assert_equal(fixture.controller.get_run_state_observation().cash, -9, "Recovery selection reaches one explicit borrow through the app")
+	observation = app._operations_screen.get_presentation_observation()
+	assert_equal(observation.status_text, "CASH -9 | CYCLE 1", "Partial recovery borrowing refreshes displayed cash")
+	assert_true(observation.rows[0].text.contains("PRINCIPAL 1"), "Partial recovery borrowing refreshes displayed principal")
+	assert_true(observation.rows[0].text.contains("LEFT 99"), "Partial recovery borrowing refreshes remaining Credit")
+	assert_equal(observation.recovery_text, "RECOVERY ACTIVE", "Partial recovery refresh preserves recovery presentation")
 	app.free()
 	var panel = load(RESULT_SCENE).instantiate()
 	Engine.get_main_loop().root.add_child(panel)
