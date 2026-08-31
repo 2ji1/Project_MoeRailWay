@@ -355,11 +355,21 @@ func _checked_nonnegative_sum(left: int, right: int) -> Variant:
 
 func _commit_terminal(reason: int, recovery: Dictionary, inject_failure: bool) -> bool:
 	var settlement_observation := _settlement_result.get_observation() if _settlement_result != null else {}
-	var candidate := TerminalRunResultScript.new(reason, _run_state.get_observation(), settlement_observation, recovery)
+	var terminal_result := TerminalRunResultScript.new(reason, _run_state.get_observation(), settlement_observation, recovery)
+	var candidate := {"reason": reason, "result": terminal_result, "phase": Phase.TERMINAL}
+	if not _is_valid_terminal_candidate(candidate): return false
 	if inject_failure: return false
-	_terminal_result = candidate
-	_phase = Phase.TERMINAL
+	_terminal_result = candidate["result"]
+	_phase = candidate["phase"]
 	_recovery_mode = false
 	_selected_contract = {}
 	_selected_cycle = 0
 	return true
+
+
+func _is_valid_terminal_candidate(candidate: Dictionary) -> bool:
+	if candidate.get("phase", -1) != Phase.TERMINAL or candidate.get("result") == null: return false
+	var reason := int(candidate.get("reason", -1))
+	if reason not in [TerminalRunResultScript.Reason.CREDIT_EXHAUSTED, TerminalRunResultScript.Reason.RECOVERY_DECLINED]: return false
+	var observation: Dictionary = candidate["result"].get_observation()
+	return candidate["result"].get_reason() == reason and observation["run_state"] == _run_state.get_observation()

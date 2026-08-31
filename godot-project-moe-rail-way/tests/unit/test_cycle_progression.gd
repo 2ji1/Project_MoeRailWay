@@ -115,8 +115,15 @@ func _test_credit_exhausted_terminal_is_atomic() -> void:
 func _terminal_signature() -> String:
 	var state := RunStateScript.new(300, COMPANY_IDS, {}, 0, COMPANY_RATES)
 	var controller := RunControllerScript.new(state, 50, CreditBalanceScript.new())
-	_settle_negative(controller)
+	assert_true(controller.try_select_contract(_contract()), "First deterministic cycle selects contract")
+	assert_not_null(controller.try_start_session(), "First deterministic cycle starts")
+	assert_not_null(controller.try_settle_session(_positive_result()), "First deterministic cycle settles")
+	assert_true(controller.try_continue_to_operations(), "First deterministic cycle returns to operations")
+	assert_true(controller.try_select_contract(_contract()), "Second deterministic cycle selects contract")
+	assert_not_null(controller.try_start_session(), "Second deterministic cycle starts")
+	assert_not_null(controller.try_settle_session(_second_cycle_negative_result()), "Second deterministic cycle settles negative")
 	controller.try_continue_to_operations()
+	assert_equal(state.get_completed_cycle_count(), 2, "Deterministic bankruptcy fixture completes two cycles")
 	return JSON.stringify(controller.get_terminal_result().get_observation())
 
 
@@ -132,3 +139,11 @@ func _contract() -> Dictionary:
 
 func _negative_result():
 	return SessionResultScript.new(SessionResultScript.Reason.TRACK_END_REACHED, 10, 10, 0, 0, 0, 100.0, 80.0, 20, 10, 290, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, &"company_01", 1, 0, 0, -100, 0, [])
+
+
+func _positive_result():
+	return SessionResultScript.new(SessionResultScript.Reason.REGULAR_TIME_EXPIRED, 10, 10, 0, 1, 0, 100.0, 100.0, 0, 300, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, &"company_01", 1, 1, 10000, 0, 0, [])
+
+
+func _second_cycle_negative_result():
+	return SessionResultScript.new(SessionResultScript.Reason.TRACK_END_REACHED, 10, 10, 0, 0, 0, 100.0, 80.0, 20, 10, 240, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, &"company_01", 1, 0, 0, -100, 0, [])
