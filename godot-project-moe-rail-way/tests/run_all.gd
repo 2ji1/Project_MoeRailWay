@@ -53,6 +53,7 @@ const ContractSessionControllerSuiteScript = preload(
     "res://tests/unit/test_contract_session_controller.gd"
 )
 const CreditLimitSuiteScript = preload("res://tests/unit/test_credit_limit.gd")
+const CreditSystemSuiteScript = preload("res://tests/unit/test_credit_system.gd")
 
 
 func _initialize() -> void:
@@ -60,6 +61,14 @@ func _initialize() -> void:
 
 
 func _run_suites() -> void:
+    var credit_system_probe_prefix := "--credit-system-invalid-probe="
+    for argument in OS.get_cmdline_user_args():
+        if argument.begins_with(credit_system_probe_prefix):
+            var probe_case := argument.trim_prefix(credit_system_probe_prefix)
+            print("CREDIT_SYSTEM_INVALID_PROBE_BEGIN:" + probe_case)
+            CreditSystemSuiteScript.new().run_invalid_probe(probe_case)
+            quit(1)
+            return
     var credit_limit_probe_prefix := "--credit-limit-invalid-probe="
     for argument in OS.get_cmdline_user_args():
         if argument.begins_with(credit_limit_probe_prefix):

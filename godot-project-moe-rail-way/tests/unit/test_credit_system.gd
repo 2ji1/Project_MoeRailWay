@@ -11,9 +11,11 @@ const COMPANY_RATES := {&"company_01": 400, &"company_02": 500, &"company_03": 6
 
 
 func run() -> PackedStringArray:
+	_verify_invalid_probe()
 	_test_amount_bounds_and_shared_cash()
 	_test_independent_loans_and_canonical_order()
 	_test_schedule_and_fixed_rate()
+	_test_candidate_isolation_and_aggregate_install()
 	_test_operations_only_and_identity_exhaustion()
 	return finish()
 
@@ -34,7 +36,9 @@ func _test_amount_bounds_and_shared_cash() -> void:
 	assert_false(controller.try_borrow(&"company_01", 1), "Maximum-plus-one rejects")
 	assert_equal(JSON.stringify(state.get_observation()), at_limit, "Limit rejection is value-identical")
 	var overflow_state: Variant = _state(RunStateScript.MAX_ABSOLUTE_CASH, {&"company_01": 100})
+	var overflow_before := JSON.stringify(overflow_state.get_observation())
 	assert_false(RunControllerScript.new(overflow_state, 0, credit).try_borrow(&"company_01", 1), "Cash overflow rejects")
+	assert_equal(JSON.stringify(overflow_state.get_observation()), overflow_before, "Cash overflow rejection is value-identical")
 
 
 func _test_independent_loans_and_canonical_order() -> void:
@@ -49,6 +53,8 @@ func _test_independent_loans_and_canonical_order() -> void:
 	assert_equal([loans[0]["company_id"], loans[0]["loan_id"], loans[1]["company_id"], loans[1]["loan_id"], loans[2]["company_id"], loans[2]["loan_id"]], [&"company_01", 2, &"company_01", 3, &"company_02", 1], "Loans observe canonical company then ID order")
 	assert_equal(CreditSystemScript.get_outstanding_principal(state, &"company_01"), 25, "Company principal is derived from its loans")
 	assert_equal(CreditSystemScript.get_outstanding_principal(state, &"company_02"), 10, "Other company principal remains independent")
+	loans[0]["remaining_principal"] = 999
+	assert_equal(state.get_observation()["active_loans"][0]["remaining_principal"], 20, "Loan observations are detached")
 
 
 func _test_schedule_and_fixed_rate() -> void:
@@ -67,6 +73,28 @@ func _test_schedule_and_fixed_rate() -> void:
 	assert_equal(schedule, [0, 0, 0, 0, 1], "Equal principal leaves the remainder in the final installment")
 	var ordinary := LoanRecordScript.new(99, &"company_01", 10, 10, 400, 4, 0, 1)
 	assert_equal([ordinary.get_scheduled_principal(1), ordinary.get_scheduled_principal(2), ordinary.get_scheduled_principal(3), ordinary.get_scheduled_principal(4)], [2, 2, 2, 4], "Ordinary equal-principal schedule is deterministic")
+	var later_state := RunStateScript.new(0, COMPANY_IDS, {&"company_01": 100}, 3, COMPANY_RATES)
+	assert_true(RunControllerScript.new(later_state, 0, credit).try_borrow(&"company_01", 1), "Borrowing after completed cycles succeeds")
+	assert_equal(later_state.get_active_loans()[0].get_first_due_cycle(), 4, "First due cycle follows the completed-cycle authority")
+
+
+func _test_candidate_isolation_and_aggregate_install() -> void:
+	var credit := CreditBalanceScript.new()
+	var state: Variant = _state(10, {&"company_01": 100})
+	var before := JSON.stringify(state.get_observation())
+	var candidate = CreditSystemScript.create_borrow_candidate(state, credit, &"company_01", 25)
+	assert_not_null(candidate, "Pure borrow candidate is created")
+	assert_equal(JSON.stringify(state.get_observation()), before, "Candidate creation leaves live state unchanged")
+	assert_equal(candidate.get_cash(), 35, "Candidate contains post-borrow cash")
+	assert_equal(candidate.get_active_loans().size(), 1, "Candidate contains the new loan")
+	assert_equal(candidate.get_credit_revision(), 1, "Candidate advances Credit revision")
+	state.replace_with(candidate)
+	assert_equal(state.get_cash(), 35, "Aggregate install replaces cash")
+	assert_equal(state.get_active_loans().size(), 1, "Aggregate install replaces Credit facts")
+	assert_equal(state.get_credit_revision(), 1, "Aggregate install replaces identity revision")
+	var detached: Array = state.get_active_loans()
+	detached.clear()
+	assert_equal(state.get_active_loans().size(), 1, "Loan list copies cannot mutate RunState")
 
 
 func _test_operations_only_and_identity_exhaustion() -> void:
@@ -79,9 +107,29 @@ func _test_operations_only_and_identity_exhaustion() -> void:
 	assert_false(controller.try_borrow(&"company_01", 1), "Borrowing outside operations rejects")
 	assert_equal(JSON.stringify(state.get_observation()), before, "Phase rejection changes nothing")
 	var exhausted := RunStateScript.new(0, COMPANY_IDS, {&"company_01": 100}, 0, COMPANY_RATES, [], MAX_INT, 0)
+	var exhausted_before := JSON.stringify(exhausted.get_observation())
 	assert_false(RunControllerScript.new(exhausted, 0, credit).try_borrow(&"company_01", 1), "Loan ID exhaustion rejects")
+	assert_equal(JSON.stringify(exhausted.get_observation()), exhausted_before, "Loan ID exhaustion is value-identical")
 	var revision_exhausted := RunStateScript.new(0, COMPANY_IDS, {&"company_01": 100}, 0, COMPANY_RATES, [], 1, MAX_INT)
+	var revision_before := JSON.stringify(revision_exhausted.get_observation())
 	assert_false(RunControllerScript.new(revision_exhausted, 0, credit).try_borrow(&"company_01", 1), "Credit revision exhaustion rejects")
+	assert_equal(JSON.stringify(revision_exhausted.get_observation()), revision_before, "Credit revision exhaustion is value-identical")
+
+
+func _verify_invalid_probe() -> void:
+	var output: Array = []
+	var arguments := PackedStringArray(["--headless", "--path", ProjectSettings.globalize_path("res://"), "--script", "res://tests/run_all.gd", "--", "--credit-system-invalid-probe=loan_rate"])
+	var exit_code := OS.execute(OS.get_executable_path(), arguments, output, true)
+	var captured := "\n".join(PackedStringArray(output))
+	assert_true(captured.contains("CREDIT_SYSTEM_INVALID_PROBE_BEGIN:loan_rate"), "Loan invariant probe starts")
+	assert_true(captured.contains("RunState loan rate must match the fixed company rate"), "Loan invariant probe reports the mismatch")
+	assert_true(exit_code != 0, "Loan invariant probe exits unsuccessfully")
+
+
+func run_invalid_probe(case_name: String) -> void:
+	if case_name != "loan_rate": return
+	var invalid := LoanRecordScript.new(1, &"company_01", 10, 10, 1, 4, 0, 1)
+	RunStateScript.new(0, COMPANY_IDS, {}, 0, COMPANY_RATES, [invalid], 2, 0)
 
 
 func _state(cash: int, trust: Dictionary) -> Variant:
