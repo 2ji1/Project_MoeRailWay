@@ -4,6 +4,8 @@ Implementation commit: `1790e9754f2223d8c78f4b8cd99a1d05d01d506a`
 
 Authority for terminal waiver labels: `Credit Survival execution delegation, user message dated 2026-08-31`.
 
+Unaffected determination: follow-up implementation commit `f307a2029ce509f07d3ea699f3ddb05a28a5ab54` only rewrites the already-existing successful-borrow refresh branch as an explicit early return and expands the structural verifier's planned Create-path inventory. It does not change layout, displayed values, input controls, borrowing semantics, recovery semantics, terminal behavior, or viewport composition. Therefore the direct 1280x720 observations and every tooling-based waiver below remain applicable to the behavior they label; no row is carried across an affected behavior change.
+
 The automated integration checks the real application scene at 960x540, 1280x720, 1600x900, and 1920x1080. Computer Use directly observed the standalone Windows build at 1280x720 on the exact implementation commit. The production operations scene starts with zero trust, so deterministic positive-Credit, recovery, bankruptcy, held-input, and full prior-gameplay states cannot be injected through the available Windows UI without adding a manual-only product seam. Those rows use the approved waiver rather than misreporting automated evidence as direct observation.
 
 | Row | Status | Evidence |
