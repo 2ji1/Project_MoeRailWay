@@ -1,19 +1,19 @@
 # Credit Survival Windows Mouse-Only Evidence
 
-Implementation commit: PENDING
+Implementation commit: `1790e9754f2223d8c78f4b8cd99a1d05d01d506a`
 
 Authority for terminal waiver labels: `Credit Survival execution delegation, user message dated 2026-08-31`.
 
-The automated integration checks the real application scene at 960x540, 1280x720, 1600x900, and 1920x1080. Manual rows remain `PENDING` until they are directly observed as `AGENT-VERIFIED` or receive the explicitly authorized `WAIVED_BY_USER_GATE_RELAXATION` label with a concrete tooling limitation.
+The automated integration checks the real application scene at 960x540, 1280x720, 1600x900, and 1920x1080. Computer Use directly observed the standalone Windows build at 1280x720 on the exact implementation commit. The production operations scene starts with zero trust, so deterministic positive-Credit, recovery, bankruptcy, held-input, and full prior-gameplay states cannot be injected through the available Windows UI without adding a manual-only product seam. Those rows use the approved waiver rather than misreporting automated evidence as direct observation.
 
 | Row | Status | Evidence |
 | --- | --- | --- |
-| Six companies and selected schedule reachable | PENDING | PENDING |
-| Credit figures and next payment readable | PENDING | PENDING |
-| Mouse-only amount controls, MAX, and BORROW | PENDING | PENDING |
-| Held click creates no duplicate borrowing | PENDING | PENDING |
-| Positive-cash voluntary borrowing | PENDING | PENDING |
-| Deficit continuation block and recovery | PENDING | PENDING |
-| Exhausted and declined bankruptcy reasons | PENDING | PENDING |
-| Cycle and difficulty update once | PENDING | PENDING |
-| Prior Contract, Warp, track, hazard, purchase, and result interactions | PENDING | PENDING |
+| Six companies and selected schedule reachable | AGENT-VERIFIED | At 1280x720, selected Company 1, scrolled the bounded company list, reached Company 6, and observed the selected schedule panel on implementation commit `1790e9754f2223d8c78f4b8cd99a1d05d01d506a`. |
+| Credit figures and next payment readable | AGENT-VERIFIED | At 1280x720, directly read trust, next threshold, limit, principal, remaining Credit, rate, next principal, next interest, projected operating/debt cost, and `REPAIR UNKNOWN` on implementation commit `1790e9754f2223d8c78f4b8cd99a1d05d01d506a`. |
+| Mouse-only amount controls, MAX, and BORROW | WAIVED_BY_USER_GATE_RELAXATION | The real scene exposes the controls but starts at zero trust, leaving them disabled; Computer Use cannot inject authoritative trust without a test-only product seam. Authority: `Credit Survival execution delegation, user message dated 2026-08-31`. |
+| Held click creates no duplicate borrowing | WAIVED_BY_USER_GATE_RELAXATION | A positive Credit balance cannot be reached deterministically through the bounded Windows UI session, so a meaningful held BORROW action cannot be directly observed. Authority: `Credit Survival execution delegation, user message dated 2026-08-31`. |
+| Positive-cash voluntary borrowing | WAIVED_BY_USER_GATE_RELAXATION | The production scene begins with zero trust and no available Credit; Computer Use cannot inject gameplay-earned trust without changing the implementation under observation. Authority: `Credit Survival execution delegation, user message dated 2026-08-31`. |
+| Deficit continuation block and recovery | WAIVED_BY_USER_GATE_RELAXATION | Computer Use cannot inject a deterministic negative settlement into the standalone production scene without a manual-only state seam. Authority: `Credit Survival execution delegation, user message dated 2026-08-31`. |
+| Exhausted and declined bankruptcy reasons | WAIVED_BY_USER_GATE_RELAXATION | Computer Use cannot inject both terminal Credit states into the standalone production scene without a manual-only state seam. Authority: `Credit Survival execution delegation, user message dated 2026-08-31`. |
+| Cycle and difficulty update once | WAIVED_BY_USER_GATE_RELAXATION | Directly driving a deterministic completed route and settlement through Windows input is not available without an integration-control seam; the exact state transition remains automated evidence only. Authority: `Credit Survival execution delegation, user message dated 2026-08-31`. |
+| Prior Contract, Warp, track, hazard, purchase, and result interactions | WAIVED_BY_USER_GATE_RELAXATION | The Windows tool cannot deterministically reproduce the complete scripted prior-feature route and timed interactions; the seven pre-Credit integrations remain automated evidence only. Authority: `Credit Survival execution delegation, user message dated 2026-08-31`. |
