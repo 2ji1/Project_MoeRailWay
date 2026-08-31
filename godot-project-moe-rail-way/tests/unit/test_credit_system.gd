@@ -131,8 +131,13 @@ func _verify_invalid_probe() -> void:
 		"term": "Loan term must be between 1 and 1000",
 		"installments": "Paid installments must be inside the term",
 		"first_due_cycle": "First due cycle must be positive",
+		"run_loan_company": "RunState loan company must exist",
+		"run_loan_rate": "RunState loan rate must match the fixed company rate",
+		"run_loan_id_order": "RunState loan ID must precede next loan ID",
+		"run_loan_id_duplicate": "RunState loan IDs must be unique",
 	}
-	for case_name in cases:
+	var case_names := PackedStringArray(["loan_id", "company_id", "original_principal", "remaining_principal", "rate", "term", "installments", "first_due_cycle", "run_loan_company", "run_loan_rate", "run_loan_id_order", "run_loan_id_duplicate"])
+	for case_name in case_names:
 		var output: Array = []
 		var arguments := PackedStringArray(["--headless", "--path", ProjectSettings.globalize_path("res://"), "--script", "res://tests/run_all.gd", "--", "--credit-system-invalid-probe=" + case_name])
 		var exit_code := OS.execute(OS.get_executable_path(), arguments, output, true)
@@ -152,6 +157,19 @@ func run_invalid_probe(case_name: String) -> void:
 		"term": LoanRecordScript.new(1, &"company_01", 10, 10, 400, 0, 0, 1)
 		"installments": LoanRecordScript.new(1, &"company_01", 10, 10, 400, 4, 4, 1)
 		"first_due_cycle": LoanRecordScript.new(1, &"company_01", 10, 10, 400, 4, 0, 0)
+		"run_loan_company":
+			var loan := LoanRecordScript.new(1, &"unknown_company", 10, 10, 400, 4, 0, 1)
+			RunStateScript.new(0, COMPANY_IDS, {}, 0, COMPANY_RATES, [loan], 2, 0)
+		"run_loan_rate":
+			var loan := LoanRecordScript.new(1, &"company_01", 10, 10, 1, 4, 0, 1)
+			RunStateScript.new(0, COMPANY_IDS, {}, 0, COMPANY_RATES, [loan], 2, 0)
+		"run_loan_id_order":
+			var loan := LoanRecordScript.new(2, &"company_01", 10, 10, 400, 4, 0, 1)
+			RunStateScript.new(0, COMPANY_IDS, {}, 0, COMPANY_RATES, [loan], 2, 0)
+		"run_loan_id_duplicate":
+			var first := LoanRecordScript.new(1, &"company_01", 10, 10, 400, 4, 0, 1)
+			var second := LoanRecordScript.new(1, &"company_02", 10, 10, 500, 4, 0, 1)
+			RunStateScript.new(0, COMPANY_IDS, {}, 0, COMPANY_RATES, [first, second], 2, 0)
 
 
 func _state(cash: int, trust: Dictionary) -> Variant:
