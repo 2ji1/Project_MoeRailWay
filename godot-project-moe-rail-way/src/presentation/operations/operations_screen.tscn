@@ -24,7 +24,7 @@ grow_vertical = 2
 
 [node name="Panel" type="PanelContainer" parent="Center"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(720, 0)
+custom_minimum_size = Vector2(880, 0)
 layout_mode = 2
 
 [node name="Margin" type="MarginContainer" parent="Center/Panel"]
@@ -49,10 +49,83 @@ layout_mode = 2
 text = "CASH 0 | CYCLE 0"
 horizontal_alignment = 1
 
-[node name="CompanyRows" type="VBoxContainer" parent="Center/Panel/Margin/Rows"]
+[node name="RecoveryStatus" type="Label" parent="Center/Panel/Margin/Rows"]
 unique_name_in_owner = true
 layout_mode = 2
+text = "OPERATIONS READY"
+horizontal_alignment = 1
+mouse_filter = 2
+
+[node name="CompanyScroll" type="ScrollContainer" parent="Center/Panel/Margin/Rows"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 156)
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="CompanyRows" type="VBoxContainer" parent="Center/Panel/Margin/Rows/CompanyScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
 theme_override_constants/separation = 4
+
+[node name="CreditSchedule" type="Label" parent="Center/Panel/Margin/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "SELECTED SCHEDULE: NONE"
+horizontal_alignment = 1
+mouse_filter = 2
+
+[node name="ProjectedCosts" type="Label" parent="Center/Panel/Margin/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "PROJECTED: OPERATING 0 | DEBT 0 + 0 | REPAIR UNKNOWN"
+horizontal_alignment = 1
+mouse_filter = 2
+
+[node name="BorrowControls" type="HBoxContainer" parent="Center/Panel/Margin/Rows"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 4
+
+[node name="MinusTen" type="Button" parent="Center/Panel/Margin/Rows/BorrowControls"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "-10"
+
+[node name="MinusOne" type="Button" parent="Center/Panel/Margin/Rows/BorrowControls"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "-1"
+
+[node name="BorrowAmount" type="Label" parent="Center/Panel/Margin/Rows/BorrowControls"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(90, 0)
+layout_mode = 2
+text = "BORROW 1"
+horizontal_alignment = 1
+vertical_alignment = 1
+mouse_filter = 2
+
+[node name="PlusOne" type="Button" parent="Center/Panel/Margin/Rows/BorrowControls"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "+1"
+
+[node name="PlusTen" type="Button" parent="Center/Panel/Margin/Rows/BorrowControls"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "+10"
+
+[node name="Maximum" type="Button" parent="Center/Panel/Margin/Rows/BorrowControls"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "MAX"
+
+[node name="BorrowButton" type="Button" parent="Center/Panel/Margin/Rows/BorrowControls"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "BORROW"
 
 [node name="BlockedNotice" type="Label" parent="Center/Panel/Margin/Rows"]
 unique_name_in_owner = true
@@ -65,3 +138,9 @@ horizontal_alignment = 1
 unique_name_in_owner = true
 layout_mode = 2
 text = "START SESSION"
+
+[node name="DeclineButton" type="Button" parent="Center/Panel/Margin/Rows"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+text = "DECLINE RECOVERY AND END RUN"

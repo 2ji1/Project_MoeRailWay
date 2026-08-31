@@ -120,7 +120,11 @@ Invoke-MoeRailGate 'res://tests/integration/run_contract_economy_integration.gd'
 Invoke-MoeRailGate 'res://tests/integration/run_credit_survival_integration.gd' '^PASS: credit survival integration$'
 ```
 
-For each additional focused filename in the task matrix, replace only the literal `--suite=test_credit_limit.gd` argument. Task 6 creates `godot-project-moe-rail-way/tools/credit_survival/verify_feature.ps1` with the literal union of every Credit Create/Modify path. The final executable structural gate is `pwsh -NoProfile -File .\godot-project-moe-rail-way\tools\credit_survival\verify_feature.ps1 -BaseCommit (git merge-base HEAD origin/main)`. That script must fail unless the feature diff is a subset of its literal allowlist, every planned Create path exists, every tracked `.gd` has exactly one tracked adjacent `.gd.uid` and vice versa, `git diff --check` passes, and `git diff --name-status --diff-filter=RD <base>...HEAD` is empty.
+For each additional focused filename in the task matrix, replace only the literal `--suite=test_credit_limit.gd` argument. Task 6 creates `godot-project-moe-rail-way/tools/credit_survival/verify_feature.ps1` with the literal union of every Credit Create/Modify path plus the canonical plan path used for approved implementation corrections. The final executable structural gate is `pwsh -NoProfile -File .\godot-project-moe-rail-way\tools\credit_survival\verify_feature.ps1 -BaseCommit (git merge-base HEAD origin/main)`. That script must fail unless the feature diff is a subset of its literal allowlist, every planned Create path exists, every tracked `.gd` has exactly one tracked adjacent `.gd.uid` and vice versa, `git diff --check` passes, and `git diff --name-status --diff-filter=RD <base>...HEAD` is empty.
+
+**Implementation-plan correction modify allowlist:**
+
+- `docs/superpowers/plans/2026-08-30-credit-survival.md`
 
 ## 4. Anticipated Credit-Owned Paths
 
@@ -167,7 +171,7 @@ Task 0 may rename these only when the actual Contract structure requires it, and
 
 **Objective:** Bind six Contract company IDs to deterministic trust-limit functions, fixed rates, and repayment terms without mutating run state.
 
-**RED:** Register focused tests that prove exact Contract company coverage/order, `(0, 0)` first knot, strict trust-coordinate order, nondecreasing limit order, floor piecewise-linear interpolation, cap behavior, trust zero, negative-trust rejection, next-integer-limit trust query/`CAP`, unknown/duplicate IDs, rate/term bounds, overflow rejection, run-start company-rate copying, and unchanged Contract configuration on validation failure.
+**RED:** Register focused tests that prove exact Contract company coverage/order, `(0, 0)` first knot, minimum knot count, nonnegative knots, strict trust-coordinate order, nondecreasing limit order, floor piecewise-linear interpolation, cap behavior, trust zero, negative-trust rejection, next-integer-limit trust query/`CAP`, unknown/duplicate IDs, rate/term bounds, maximum `Vector2i` boundary safety for 64-bit interpolation, mandatory complete run-start company-rate copying, and unchanged Contract configuration on validation failure. Because both knot coordinates are nonnegative `Vector2i` values, their maximum delta product is `2147483647 * 2147483647`, which is representable by signed 64-bit Godot integers; an artificial overflow-rejection case is neither reachable nor required.
 
 **Minimum GREEN:** Add concrete balance Resources and pure limit queries. Trust remains authoritative in `godot-project-moe-rail-way/src/domain/run/run_state.gd`. Do not add borrowing, loans, cash mutation, UI, or generalized curve/financial abstractions.
 
@@ -191,6 +195,8 @@ Task 0 may rename these only when the actual Contract structure requires it, and
 - `godot-project-moe-rail-way/data/prototype_balance.tres`
 - `godot-project-moe-rail-way/src/config/prototype_config_validator.gd`
 - `godot-project-moe-rail-way/tests/run_all.gd`
+- `godot-project-moe-rail-way/tests/unit/test_run_state.gd`
+- `godot-project-moe-rail-way/tests/unit/test_prototype_run_controller.gd`
 
 **Regressions:** Focused limit/config suites, every existing configuration suite, registered full runner, and all existing integration runners.
 
@@ -285,6 +291,8 @@ Task 0 may rename these only when the actual Contract structure requires it, and
 - `godot-project-moe-rail-way/src/config/prototype_config_validator.gd`
 - `godot-project-moe-rail-way/src/domain/credit/credit_system.gd`
 - `godot-project-moe-rail-way/tests/run_all.gd`
+- `godot-project-moe-rail-way/tests/unit/test_prototype_run_controller.gd`
+- `godot-project-moe-rail-way/tests/integration/run_contract_economy_integration.gd`
 
 **Regressions:** Focused cycle/recovery/bankruptcy suites, Risk hazard/config tests, Contract loop tests, registered full runner, and all integrations.
 
@@ -315,6 +323,11 @@ Task 0 may rename these only when the actual Contract structure requires it, and
 - `godot-project-moe-rail-way/src/presentation/results/contract_result_panel.gd`
 - `godot-project-moe-rail-way/src/presentation/results/contract_result_panel.tscn`
 - `godot-project-moe-rail-way/tests/run_all.gd`
+- `godot-project-moe-rail-way/tests/unit/test_contract_economy_presentation.gd`
+- `godot-project-moe-rail-way/tests/smoke/test_track_train_app_composition.gd`
+- `godot-project-moe-rail-way/tests/integration/run_contract_economy_integration.gd`
+
+The existing Contract presentation, app-composition smoke, and Contract integration regressions are included because the required bounded company-list scroller changes the concrete node path used by those tests. Their assertions remain regression-only: the correction may update the path to the same six company buttons but may not weaken, remove, or reinterpret any existing behavior.
 
 **Regressions:** Focused presentation/input suites, all Contract layout/input/results tests, session-shell tests, registered full runner, and all integrations.
 

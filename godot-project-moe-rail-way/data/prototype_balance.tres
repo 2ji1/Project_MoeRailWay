@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="PrototypeBalance" load_steps=14 format=3]
+[gd_resource type="Resource" script_class="PrototypeBalance" load_steps=15 format=3]
 
 [ext_resource type="Script" path="res://src/config/prototype_balance.gd" id="1_balance"]
 [ext_resource type="Resource" path="res://data/session_balance.tres" id="2_session"]
@@ -13,6 +13,7 @@
 [ext_resource type="Resource" path="res://data/durability_balance.tres" id="11_durability"]
 [ext_resource type="Resource" path="res://data/track_investment_balance.tres" id="12_track_investment"]
 [ext_resource type="Resource" path="res://data/cargo_investment_balance.tres" id="13_cargo_investment"]
+[ext_resource type="Resource" path="res://data/credit_survival_balance.tres" id="14_credit"]
 
 [resource]
 script = ExtResource("1_balance")
@@ -28,3 +29,4 @@ hazard_generation_balance = ExtResource("10_hazard")
 durability_balance = ExtResource("11_durability")
 track_investment_balance = ExtResource("12_track_investment")
 cargo_investment_balance = ExtResource("13_cargo_investment")
+credit_survival_balance = ExtResource("14_credit")

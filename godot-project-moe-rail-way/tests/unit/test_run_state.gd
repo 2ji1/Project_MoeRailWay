@@ -1,6 +1,10 @@
 extends "res://tests/support/prototype_test.gd"
 
 const RUN_STATE_PATH := "res://src/domain/run/run_state.gd"
+const COMPANY_RATES := {
+	&"company_01": 400, &"company_02": 500, &"company_03": 600,
+	&"company_04": 700, &"company_05": 800, &"company_06": 900,
+}
 
 
 func run() -> PackedStringArray:
@@ -10,7 +14,7 @@ func run() -> PackedStringArray:
 		return finish()
 	var state_script: Script = load(RUN_STATE_PATH)
 	var ids := [&"company_01", &"company_02", &"company_03", &"company_04", &"company_05", &"company_06"]
-	var state: Variant = state_script.new(300, ids)
+	var state: Variant = state_script.new(300, ids, {}, 0, COMPANY_RATES)
 	for method_name in [&"get_cash", &"get_completed_cycle_count", &"get_company_trust_milli", &"get_observation", &"duplicate_state", &"replace_with"]:
 		assert_true(state.has_method(method_name), "RunState exposes %s" % method_name)
 	assert_equal(state.call("get_cash"), 300, "Run cash starts at configured value")
@@ -87,28 +91,29 @@ func run_invalid_probe(case_name: String) -> void:
 		state_script.new(0, [&"company_01"])
 	elif case_name == "empty_id":
 		ids[0] = &""
-		state_script.new(0, ids)
+		state_script.new(0, ids, {}, 0, COMPANY_RATES)
 	elif case_name == "duplicate_id":
 		ids[1] = ids[0]
-		state_script.new(0, ids)
+		state_script.new(0, ids, {}, 0, COMPANY_RATES)
 	elif case_name == "cash_low":
 		state_script.new(-1000000000001, ids)
 	elif case_name == "cash_high":
 		state_script.new(1000000000001, ids)
 	elif case_name == "trust_negative":
-		state_script.new(0, ids, {&"company_01": -1})
+		state_script.new(0, ids, {&"company_01": -1}, 0, COMPANY_RATES)
 	elif case_name == "trust_high":
-		state_script.new(0, ids, {&"company_01": 1000000000001})
+		state_script.new(0, ids, {&"company_01": 1000000000001}, 0, COMPANY_RATES)
 	elif case_name == "cycle_negative":
 		state_script.new(0, ids, {}, -1)
 	elif case_name == "set_cash_high":
-		state_script.new(0, ids).set_cash(1000000000001)
+		state_script.new(0, ids, {}, 0, COMPANY_RATES).set_cash(1000000000001)
 	elif case_name == "add_trust_negative":
-		state_script.new(0, ids).add_company_trust_milli(&"company_01", -1)
+		state_script.new(0, ids, {}, 0, COMPANY_RATES).add_company_trust_milli(&"company_01", -1)
 	elif case_name == "add_trust_overflow":
-		state_script.new(0, ids, {&"company_01": 1000000000000}).add_company_trust_milli(&"company_01", 1)
+		state_script.new(0, ids, {&"company_01": 1000000000000}, 0, COMPANY_RATES).add_company_trust_milli(&"company_01", 1)
 	elif case_name == "cycle_overflow":
-		state_script.new(0, ids, {}, 9223372036854775807).increment_completed_cycle()
+		state_script.new(0, ids, {}, 9223372036854775807, COMPANY_RATES).increment_completed_cycle()
 	elif case_name == "replace_ids":
 		var other_ids := [&"other_01", &"other_02", &"other_03", &"other_04", &"other_05", &"other_06"]
-		state_script.new(0, ids).replace_with(state_script.new(0, other_ids))
+		var other_rates := {&"other_01": 400, &"other_02": 500, &"other_03": 600, &"other_04": 700, &"other_05": 800, &"other_06": 900}
+		state_script.new(0, ids, {}, 0, COMPANY_RATES).replace_with(state_script.new(0, other_ids, {}, 0, other_rates))

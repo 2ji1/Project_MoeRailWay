@@ -9,6 +9,10 @@ const COMPANY_IDS := [
 	&"company_01", &"company_02", &"company_03",
 	&"company_04", &"company_05", &"company_06",
 ]
+const COMPANY_RATES := {
+	&"company_01": 400, &"company_02": 500, &"company_03": 600,
+	&"company_04": 700, &"company_05": 800, &"company_06": 900,
+}
 
 
 func run() -> PackedStringArray:
@@ -25,7 +29,7 @@ func run() -> PackedStringArray:
 
 
 func _test_ordered_one_shot_settlement() -> void:
-	var state := RunStateScript.new(300, COMPANY_IDS)
+	var state := RunStateScript.new(300, COMPANY_IDS, {}, 0, COMPANY_RATES)
 	var controller: Variant = load(RUN_CONTROLLER_PATH).new(state, 50)
 	assert_true(controller.try_select_contract(_contract()), "Operations selects one valid contract")
 	var economy: Variant = controller.try_start_session()
@@ -70,7 +74,7 @@ func _test_ordered_one_shot_settlement() -> void:
 func _test_all_end_reasons_share_order() -> void:
 	var signatures: Array = []
 	for reason in [SessionResultScript.Reason.REGULAR_TIME_EXPIRED, SessionResultScript.Reason.TRACK_END_REACHED, SessionResultScript.Reason.DURABILITY_DEPLETED]:
-		var state := RunStateScript.new(300, COMPANY_IDS)
+		var state := RunStateScript.new(300, COMPANY_IDS, {}, 0, COMPANY_RATES)
 		var controller: Variant = load(RUN_CONTROLLER_PATH).new(state, 50)
 		controller.try_select_contract(_contract())
 		controller.try_start_session()
@@ -87,7 +91,7 @@ func _test_all_end_reasons_share_order() -> void:
 
 
 func _test_negative_cash_blocks_next_session() -> void:
-	var state := RunStateScript.new(300, COMPANY_IDS)
+	var state := RunStateScript.new(300, COMPANY_IDS, {}, 0, COMPANY_RATES)
 	var controller: Variant = load(RUN_CONTROLLER_PATH).new(state, 50)
 	controller.try_select_contract(_contract())
 	controller.try_start_session()
@@ -108,13 +112,14 @@ func _test_negative_cash_blocks_next_session() -> void:
 	assert_true(settlement.get_credit_survival_observation()["session_start_blocked"], "Credit observation reports the negative-cash start gate")
 	assert_true(controller.try_continue_to_operations(), "Results continue returns once")
 	assert_false(controller.try_continue_to_operations(), "Repeated continue is inert")
-	assert_true(controller.try_select_contract(_contract()), "Negative-cash operations remains readable and selectable")
-	assert_false(controller.can_start_session(), "Negative cash blocks the next session")
-	assert_true(controller.try_start_session() == null, "Negative cash creates no renewable session budget")
+	assert_equal(controller.get_phase(), load(RUN_CONTROLLER_PATH).Phase.TERMINAL, "Unfunded negative cash enters terminal state")
+	assert_false(controller.try_select_contract(_contract()), "Terminal state blocks contract selection")
+	assert_false(controller.can_start_session(), "Terminal state blocks the next session")
+	assert_true(controller.try_start_session() == null, "Terminal state creates no renewable session budget")
 
 
 func _test_high_settlement_cash_carries_to_next_session() -> void:
-	var state := RunStateScript.new(1000000, COMPANY_IDS)
+	var state := RunStateScript.new(1000000, COMPANY_IDS, {}, 0, COMPANY_RATES)
 	var controller: Variant = load(RUN_CONTROLLER_PATH).new(state, 0)
 	assert_true(controller.try_select_contract(_contract()), "High-cash cycle selects a contract")
 	assert_equal(controller.try_start_session().get_cash(), 1000000, "First high-cash session starts at the RunState boundary")
@@ -139,7 +144,7 @@ func _test_high_settlement_cash_carries_to_next_session() -> void:
 
 
 func _test_rejected_settlement_is_byte_identical() -> void:
-	var state := RunStateScript.new(300, COMPANY_IDS)
+	var state := RunStateScript.new(300, COMPANY_IDS, {}, 0, COMPANY_RATES)
 	var controller: Variant = load(RUN_CONTROLLER_PATH).new(state, 50)
 	controller.try_select_contract(_contract())
 	controller.try_start_session()

@@ -17,6 +17,7 @@ const SessionEconomyScript = preload("res://src/domain/economy/session_economy.g
 const ContractSystemScript = preload("res://src/domain/contract/contract_system.gd")
 const RunStateScript = preload("res://src/domain/run/run_state.gd")
 const PrototypeRunControllerScript = preload("res://src/domain/run/prototype_run_controller.gd")
+const CycleProgressionScript = preload("res://src/domain/run/cycle_progression.gd")
 const SettlementResultScript = preload("res://src/domain/run/settlement_result.gd")
 const OperationsScreenScript = preload("res://src/presentation/operations/operations_screen.gd")
 const ContractResultPanelScript = preload("res://src/presentation/results/contract_result_panel.gd")
@@ -51,6 +52,7 @@ var session_controller: SessionControllerScript
 
 var _session_result_was_presented := false
 var _runs_as_project_main_scene := false
+var _recovery_credit_company_id := StringName()
 
 
 func _ready() -> void:
@@ -58,6 +60,8 @@ func _ready() -> void:
 	_runs_as_project_main_scene = get_tree().current_scene == self
 	_operations_screen.company_selected.connect(_on_company_selected)
 	_operations_screen.start_requested.connect(_on_start_requested)
+	_operations_screen.borrow_requested.connect(_on_borrow_requested)
+	_operations_screen.decline_recovery_requested.connect(_on_decline_recovery_requested)
 	_contract_result_panel.continue_requested.connect(_on_continue_requested)
 	var errors := compose_session_dependencies()
 	if not errors.is_empty():
@@ -88,6 +92,7 @@ func compose_session_dependencies() -> PackedStringArray:
 	settlement_result = null
 	session_controller = null
 	_session_result_was_presented = false
+	_recovery_credit_company_id = StringName()
 
 	var errors := PackedStringArray()
 	var shell = get_node_or_null("SessionShell") as SessionShellScript
@@ -156,11 +161,16 @@ func compose_session_dependencies() -> PackedStringArray:
 		company_ids.append(company.company_id)
 	run_state = RunStateScript.new(
 		balance.contract_economy_balance.initial_run_cash,
-		company_ids
+		company_ids,
+		{},
+		0,
+		balance.credit_survival_balance.get_rate_table(company_ids)
 	)
 	run_controller = PrototypeRunControllerScript.new(
 		run_state,
-		balance.contract_economy_balance.base_operating_cost
+		balance.contract_economy_balance.base_operating_cost,
+		balance.credit_survival_balance,
+		CycleProgressionScript.new(balance.hazard_growth_interval_cycles, balance.hazard_cells_per_step, balance.damage_per_cell_per_cycle, balance.maximum_damage_per_cell)
 	)
 	if not _starts_in_operations():
 		assert(
@@ -185,6 +195,13 @@ func _compose_transient_session() -> PackedStringArray:
 		return errors
 	session_start_config.selected_contract = selected_contract
 	session_start_config.starting_session_cash = run_state.get_cash()
+	var eligible_cells := session_start_config.grid_size.x * session_start_config.grid_size.y - 1
+	var difficulty := run_controller.get_cycle_difficulty(balance.hazard_generation_balance.hazard_cell_count, eligible_cells, balance.durability_balance.damage_per_traveled_cell)
+	if difficulty.is_empty():
+		errors.append("prototype_run_controller requires one valid cycle difficulty")
+		return errors
+	session_start_config.hazard_cell_count = int(difficulty["hazard_cell_count"])
+	session_start_config.damage_per_traveled_cell = float(difficulty["damage_per_traveled_cell"])
 	errors.append_array(ValidatorScript.validate_completed_session_start_config(session_start_config))
 	if not errors.is_empty():
 		return errors
@@ -267,6 +284,26 @@ func is_showing_result() -> bool:
 	return _session_shell.is_showing_result()
 
 
+func get_playtest_observation() -> Dictionary:
+	if run_controller == null or run_state == null or balance == null:
+		return {}
+	var eligible_cells := 0
+	if session_start_config != null:
+		eligible_cells = session_start_config.grid_size.x * session_start_config.grid_size.y - 1
+	var difficulty := run_controller.get_cycle_difficulty(
+		balance.hazard_generation_balance.hazard_cell_count,
+		maxi(eligible_cells, 0),
+		balance.durability_balance.damage_per_traveled_cell
+	)
+	return {
+		"run": run_state.get_observation(),
+		"operations": run_controller.get_operations_observation(),
+		"difficulty": difficulty,
+		"settlement": run_controller.get_settlement_result().get_observation() if run_controller.get_settlement_result() != null else {},
+		"terminal": run_controller.get_terminal_result().get_observation() if run_controller.get_terminal_result() != null else {},
+	}.duplicate(true)
+
+
 func _on_snapshot_published(snapshot: SessionSnapshotScript) -> void:
 	_session_shell.present(snapshot)
 
@@ -281,6 +318,10 @@ func _on_session_completed(result: SessionResultScript) -> void:
 
 
 func _on_company_selected(company_id: StringName) -> void:
+	if run_controller.is_recovery_mode():
+		_recovery_credit_company_id = company_id
+		_present_operations()
+		return
 	var contract := _contract_for_company(company_id)
 	if contract.is_empty() or not run_controller.try_select_contract(contract):
 		return
@@ -299,10 +340,36 @@ func _on_start_requested() -> void:
 	_activate_composed_session()
 
 
+func _on_borrow_requested(company_id: StringName, amount: int) -> void:
+	var was_recovery := run_controller.is_recovery_mode()
+	if not run_controller.try_borrow(company_id, amount):
+		return
+	if was_recovery and not run_controller.is_recovery_mode():
+		_recovery_credit_company_id = StringName()
+	_present_operations()
+
+
+func _on_decline_recovery_requested() -> void:
+	if not run_controller.try_decline_recovery(): return
+	_present_terminal()
+
+
 func _on_continue_requested() -> void:
 	if not run_controller.try_continue_to_operations():
 		return
+	_recovery_credit_company_id = StringName()
+	if run_controller.get_phase() == PrototypeRunControllerScript.Phase.TERMINAL:
+		_present_terminal()
+		return
 	_present_operations()
+
+
+func _present_terminal() -> void:
+	set_physics_process(false)
+	_session_shell.hide()
+	_operations_screen.hide()
+	_contract_result_panel.show()
+	_contract_result_panel.present_terminal(run_controller.get_terminal_result())
 
 
 func _present_operations() -> void:
@@ -311,10 +378,11 @@ func _present_operations() -> void:
 	_session_shell.hide()
 	_contract_result_panel.hide()
 	_operations_screen.show()
+	var selected_company_id := _recovery_credit_company_id if run_controller.is_recovery_mode() else StringName(run_controller.get_selected_contract().get("company_id", StringName()))
 	_operations_screen.present(
 		balance.contract_economy_balance.companies,
-		run_controller.get_run_state_observation(),
-		StringName(run_controller.get_selected_contract().get("company_id", StringName()))
+		run_controller.get_operations_observation(),
+		selected_company_id
 	)
 
 

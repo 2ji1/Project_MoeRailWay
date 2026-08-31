@@ -3,6 +3,8 @@ extends SceneTree
 const APP_SCENE_PATH := "res://tests/integration/contract_economy_app.tscn"
 const SessionControllerScript = preload("res://src/domain/session/session_controller.gd")
 const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.gd")
+const PrototypeRunControllerScript = preload("res://src/domain/run/prototype_run_controller.gd")
+const TerminalRunResultScript = preload("res://src/domain/run/terminal_run_result.gd")
 
 const INTEGRATION_SEED := 73013
 const SELECTED_COMPANY := &"company_02"
@@ -194,7 +196,7 @@ func _verify_complete_cycle() -> void:
 	await process_frame
 	var returned_operations: Dictionary = operations.get_presentation_observation()
 	_assert_true(returned_operations.visible, "Continue returns to Operations")
-	_assert_equal(returned_operations.status_text, "CASH 130 | CYCLE 1", "Operations presents persistent closing cash and cycle")
+	_assert_equal(returned_operations.status_text, "CASH 130 | CYCLE 2", "Operations presents persistent closing cash and pending cycle")
 	_assert_true(returned_operations.start_disabled, "Continue clears the prior contract selection")
 	var run_observation: Dictionary = app.run_controller.get_run_state_observation()
 	_assert_equal(run_observation.company_trust_milli[String(SELECTED_COMPANY)], 125, "Only selected company receives persisted trust")
@@ -236,9 +238,10 @@ func _verify_negative_cash_boundary() -> void:
 	_assert_true(not JSON.stringify(result_observation).contains("BANKRUPT"), "Negative result does not declare bankruptcy")
 	result_panel.get_node("Center/Panel/Margin/Rows/ContinueButton").emit_signal("pressed")
 	await process_frame
-	var operations_observation: Dictionary = app.get_node("OperationsScreen").get_presentation_observation()
-	_assert_true(operations_observation.start_disabled, "Negative persistent cash blocks the next session")
-	_assert_equal(operations_observation.blocked_text, "CREDIT SURVIVAL REQUIRED", "Operations retains the deferred credit boundary")
+	_assert_equal(app.run_controller.get_phase(), PrototypeRunControllerScript.Phase.TERMINAL, "Unrecoverable negative cash enters terminal phase")
+	_assert_equal(app.run_controller.get_terminal_result().get_reason(), TerminalRunResultScript.Reason.CREDIT_EXHAUSTED, "Terminal reason is credit exhausted")
+	_assert_true(not app.get_node("OperationsScreen").visible, "Terminal transition does not expose inactive operations")
+	_assert_true(result_panel.visible, "Terminal transition preserves the result surface")
 	_free_app(app)
 	await process_frame
 
@@ -259,7 +262,7 @@ func _spawn_operations_app():
 
 func _select_company_and_start(app, row_index: int) -> void:
 	var operations = app.get_node("OperationsScreen")
-	var rows = operations.get_node("Center/Panel/Margin/Rows/CompanyRows")
+	var rows = operations.get_node("Center/Panel/Margin/Rows/CompanyScroll/CompanyRows")
 	if row_index < 0 or row_index >= rows.get_child_count():
 		_failures.append("Requested company row must exist")
 		return

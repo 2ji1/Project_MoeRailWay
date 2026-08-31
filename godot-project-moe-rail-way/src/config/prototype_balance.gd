@@ -10,6 +10,7 @@ const DepartureBalanceScript = preload("res://src/config/departure_balance.gd")
 const WarpLifecycleBalanceScript = preload("res://src/config/warp_lifecycle_balance.gd")
 const CargoBalanceScript = preload("res://src/config/cargo_balance.gd")
 const ContractEconomyBalanceScript = preload("res://src/config/contract_economy_balance.gd")
+const CreditSurvivalBalanceScript = preload("res://src/config/credit_survival_balance.gd")
 const HazardGenerationBalanceScript = preload("res://src/config/hazard_generation_balance.gd")
 const DurabilityBalanceScript = preload("res://src/config/durability_balance.gd")
 const TrackInvestmentBalanceScript = preload("res://src/config/track_investment_balance.gd")
@@ -23,10 +24,17 @@ const CargoInvestmentBalanceScript = preload("res://src/config/cargo_investment_
 @export var warp_lifecycle_balance: WarpLifecycleBalanceScript = WarpLifecycleBalanceScript.new()
 @export var cargo_balance: CargoBalanceScript = CargoBalanceScript.new()
 @export var contract_economy_balance: ContractEconomyBalanceScript = ContractEconomyBalanceScript.new()
+@export var credit_survival_balance: CreditSurvivalBalanceScript = CreditSurvivalBalanceScript.new()
 @export var hazard_generation_balance: HazardGenerationBalanceScript = HazardGenerationBalanceScript.new()
 @export var durability_balance: DurabilityBalanceScript = DurabilityBalanceScript.new()
 @export var track_investment_balance: TrackInvestmentBalanceScript = TrackInvestmentBalanceScript.new()
 @export var cargo_investment_balance: CargoInvestmentBalanceScript = CargoInvestmentBalanceScript.new()
+
+@export_group("Credit Survival Progression")
+@export_range(1, 1000000, 1) var hazard_growth_interval_cycles := 2
+@export_range(0, 4096, 1) var hazard_cells_per_step := 1
+@export_range(0.0, 1000000.0, 0.1) var damage_per_cell_per_cycle := 1.0
+@export_range(0.0, 1000000.0, 0.1) var maximum_damage_per_cell := 10.0
 
 var session_duration_seconds: float:
     get:

@@ -38,7 +38,7 @@ func _test_operations_mode_starts_selected_session() -> void:
 	assert_true(initial_operations.start_disabled, "Operations requires an explicit company selection")
 	operations.get_node("Center/Panel/Margin/Rows/StartButton").emit_signal("pressed")
 	assert_true(app.session_controller == null, "Disabled start creates no session before selection")
-	var company_rows = operations.get_node("Center/Panel/Margin/Rows/CompanyRows")
+	var company_rows = operations.get_node("Center/Panel/Margin/Rows/CompanyScroll/CompanyRows")
 	company_rows.get_child(2).emit_signal("pressed")
 	assert_true(operations.get_presentation_observation().rows[2].selected, "Mouse selection updates the explicit selected row")
 	operations.get_node("Center/Panel/Margin/Rows/StartButton").emit_signal("pressed")
