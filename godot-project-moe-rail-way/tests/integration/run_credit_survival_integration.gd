@@ -23,15 +23,21 @@ func _initialize() -> void:
 
 func _run() -> void:
 	await _verify_real_app_surface()
-	var first := _scenario_a()
-	var second := _scenario_a()
-	_assert_equal(first, _scenario_a_expected(), "Independent two-cycle debt oracle matches exact values")
-	_assert_equal(JSON.stringify(second), JSON.stringify(first), "Repeated Credit traces are byte-identical")
-	_verify_gameplay_trust_unlock()
-	_verify_negative_recovery_and_decline()
-	_verify_credit_exhaustion()
-	_verify_difficulty_growth()
+	var first := _complete_credit_trace()
+	var second := _complete_credit_trace()
+	_assert_equal(first.scenario_a, _scenario_a_expected(), "Independent two-cycle debt oracle matches exact values")
+	_assert_equal(JSON.stringify(second), JSON.stringify(first), "Repeated complete Credit traces are byte-identical through terminal bankruptcy")
 	_finish()
+
+
+func _complete_credit_trace() -> Dictionary:
+	return {
+		"scenario_a": _scenario_a(),
+		"trust_unlock": _gameplay_trust_unlock_trace(),
+		"recovery_and_decline": _negative_recovery_and_decline_trace(),
+		"credit_exhaustion": _credit_exhaustion_trace(),
+		"difficulty": _difficulty_growth_trace(),
+	}
 
 
 func _verify_real_app_surface() -> void:
@@ -133,7 +139,7 @@ func _settlement_trace(settlement) -> Dictionary:
 	}
 
 
-func _verify_gameplay_trust_unlock() -> void:
+func _gameplay_trust_unlock_trace() -> Dictionary:
 	var balance := CreditBalanceScript.new()
 	var state := RunStateScript.new(300, COMPANY_IDS, {}, 0, balance.get_rate_table(COMPANY_IDS))
 	var controller := RunControllerScript.new(state, 50, balance, CycleProgressionScript.new())
@@ -148,9 +154,14 @@ func _verify_gameplay_trust_unlock() -> void:
 	_assert_equal(credit.credit_limit, 100, "Gameplay trust unlocks Credit immediately")
 	_assert_true(controller.try_borrow(&"company_01", 40), "Positive-cash voluntary borrowing succeeds after unlock")
 	_assert_equal(state.get_cash(), 290, "Borrowed proceeds enter shared post-settlement cash")
+	return {
+		"settlement": settlement.get_observation(),
+		"credit": credit,
+		"post_borrow_run": state.get_observation(),
+	}
 
 
-func _verify_negative_recovery_and_decline() -> void:
+func _negative_recovery_and_decline_trace() -> Dictionary:
 	var balance := CreditBalanceScript.new()
 	var state := RunStateScript.new(-30, COMPANY_IDS, {&"company_02": 100}, 2, balance.get_rate_table(COMPANY_IDS))
 	var controller := RunControllerScript.new(state, 50, balance)
@@ -166,9 +177,14 @@ func _verify_negative_recovery_and_decline() -> void:
 	decline._recovery_mode = true
 	_assert_true(decline.try_decline_recovery(), "Explicit recovery decline ends the run")
 	_assert_equal(decline.get_terminal_result().get_reason(), TerminalResultScript.Reason.RECOVERY_DECLINED, "Decline has its distinct terminal reason")
+	return {
+		"recovered_run": state.get_observation(),
+		"recovered_loan": loan.get_observation(),
+		"declined_terminal": decline.get_terminal_result().get_observation(),
+	}
 
 
-func _verify_credit_exhaustion() -> void:
+func _credit_exhaustion_trace() -> Dictionary:
 	var balance := CreditBalanceScript.new()
 	var trust := {}
 	var limits := [100, 100, 125, 125, 150, 150]
@@ -186,14 +202,16 @@ func _verify_credit_exhaustion() -> void:
 	_assert_equal(recovery.comparison_capacity, 0, "Scenario C comparison capacity is zero")
 	_assert_equal(recovery.aggregate_remaining_credit_saturated, 0, "Scenario C aggregate remaining Credit is zero")
 	_assert_false(controller.try_continue_to_operations(), "Scenario C bankruptcy is one-shot")
+	return controller.get_terminal_result().get_observation()
 
 
-func _verify_difficulty_growth() -> void:
+func _difficulty_growth_trace() -> Dictionary:
 	var balance := CreditBalanceScript.new()
 	var state := RunStateScript.new(300, COMPANY_IDS, {}, 2, balance.get_rate_table(COMPANY_IDS))
 	var controller := RunControllerScript.new(state, 50, balance, CycleProgressionScript.new(2, 1, 1.0, 10.0))
 	var difficulty: Dictionary = controller.get_cycle_difficulty(1, 100, 2.0)
 	_assert_equal(difficulty, {"cycle": 3, "hazard_cell_count": 2, "damage_per_traveled_cell": 4.0}, "Cycle 3 difficulty grows once from the hard-coded base")
+	return difficulty
 
 
 func _session_result(company_id: StringName, final_cash: int, spending: int, repair: int, adjustment: int, trust_gain: int, deliveries: int, quota: int):
