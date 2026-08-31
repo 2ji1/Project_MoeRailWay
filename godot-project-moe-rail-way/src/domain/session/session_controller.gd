@@ -14,8 +14,10 @@ const HazardSystemScript = preload("res://src/domain/hazard/hazard_system.gd")
 const WarpPairRecordScript = preload("res://src/domain/warp/warp_pair_record.gd")
 const CargoSlotRecordScript = preload("res://src/domain/cargo/cargo_slot_record.gd")
 const SessionEconomyScript = preload("res://src/domain/economy/session_economy.gd")
+const ContractSystemScript = preload("res://src/domain/contract/contract_system.gd")
 
 const DISTANCE_EPSILON := 0.0001
+const MAX_INT := 9223372036854775807
 
 signal snapshot_published(snapshot: SessionSnapshotScript)
 signal session_completed(result: SessionResultScript)
@@ -35,6 +37,7 @@ var _warp_pair_system: WarpPairSystemScript
 var _cargo_system: CargoSystemScript
 var _hazard_system: HazardSystemScript
 var _session_economy: SessionEconomyScript
+var _contract_system: ContractSystemScript
 var _total_ticks: int
 var _elapsed_ticks := 0
 var _remaining_ticks: int
@@ -64,7 +67,8 @@ func _init(
 	warp_pair_system: WarpPairSystemScript = null,
 	cargo_system: CargoSystemScript = null,
 	hazard_system: HazardSystemScript = null,
-	session_economy: SessionEconomyScript = null
+	session_economy: SessionEconomyScript = null,
+	contract_system: ContractSystemScript = null
 ) -> void:
 	assert(start_config != null, "Session start config is required")
 	assert(track_system != null, "Track system is required")
@@ -72,6 +76,10 @@ func _init(
 	assert(
 		(warp_pair_system == null) == (cargo_system == null),
 		"Warp pair and cargo systems must both be provided or both be null"
+	)
+	assert(
+		contract_system == null or warp_pair_system != null,
+		"Contract system requires Warp and cargo systems"
 	)
 	_start_config = start_config
 	_track_system = track_system
@@ -85,12 +93,14 @@ func _init(
 		if session_economy != null
 		else SessionEconomyScript.new(_start_config.starting_session_cash)
 	)
+	_contract_system = contract_system
 	_ticks_per_second = _start_config.simulation_ticks_per_second
 	_total_ticks = maxi(
 		1,
 		int(ceil(_start_config.session_duration_seconds * float(_ticks_per_second)))
 	)
 	_remaining_ticks = _total_ticks
+	_assert_contract_delivery_capacity()
 	_seconds_per_tick = 1.0 / float(_ticks_per_second)
 	_construction_cells_per_tick = _start_config.build_cells_per_second * _seconds_per_tick
 	assert(_seconds_per_tick > 0.0, "Tick duration must be positive")
@@ -242,6 +252,7 @@ func advance_tick(
 				contact_hits,
 				_cargo_system
 			)
+			_resolve_contract_deliveries()
 			_install_warp_anchors()
 		if _hazard_system != null:
 			var hazard_distance := _track_system.get_traveled_hazard_distance_cells(
@@ -399,7 +410,14 @@ func _complete(reason: SessionResultScript.Reason) -> void:
 		_grade_separated_crossing_count,
 		_grade_separated_crossing_spent,
 		_temporary_track_purchase_spent,
-		_temporary_cargo_purchase_spent
+		_temporary_cargo_purchase_spent,
+		_contract_system.get_selected_company_id() if _contract_system != null else StringName(),
+		_contract_system.get_quota() if _contract_system != null else 0,
+		_contract_system.get_contracted_delivery_count() if _contract_system != null else 0,
+		_contract_system.get_attainment_basis_points() if _contract_system != null else 0,
+		_contract_system.get_cash_contract_adjustment() if _contract_system != null else 0,
+		_contract_system.get_trust_gain_milli() if _contract_system != null else 0,
+		_get_contract_delivery_facts()
 	))
 
 
@@ -534,7 +552,78 @@ func _create_snapshot(include_warp_events: bool = true) -> SessionSnapshotScript
 		_grade_separated_crossing_count,
 		_grade_separated_crossing_spent,
 		_temporary_track_purchase_spent,
-		_temporary_cargo_purchase_spent
+		_temporary_cargo_purchase_spent,
+		_contract_system.get_selected_company_id() if _contract_system != null else StringName(),
+		_contract_system.get_quota() if _contract_system != null else 0,
+		_contract_system.get_contracted_delivery_count() if _contract_system != null else 0,
+		_contract_system.get_attainment_basis_points() if _contract_system != null else 0,
+		_contract_system.get_cash_contract_adjustment() if _contract_system != null else 0,
+		_contract_system.get_trust_gain_milli() if _contract_system != null else 0,
+		_get_contract_delivery_facts()
+	)
+
+
+func _resolve_contract_deliveries() -> void:
+	if _contract_system == null:
+		return
+	var candidate_contract := _contract_system.duplicate_contract()
+	var candidate_economy := _session_economy.duplicate_economy()
+	var changed := false
+	for event in _warp_pair_system.get_tick_events():
+		if event.get("type", StringName()) != &"DELIVERED":
+			continue
+		var pair_id := StringName(event.get("pair_id", StringName()))
+		if candidate_contract.has_delivery(pair_id):
+			continue
+		var fact := {
+			"pair_id": pair_id,
+			"company_id": StringName(event.get("company_id", StringName())),
+			"base_delivery_fee": int(event.get("base_delivery_fee", -1)),
+		}
+		var accepted := candidate_contract.try_record_delivery(fact)
+		accepted = accepted and candidate_economy.try_credit(fact["base_delivery_fee"])
+		assert(accepted, "Validated Warp delivery must record and credit atomically")
+		if not accepted:
+			return
+		changed = true
+	if not changed:
+		return
+	_contract_system.replace_with(candidate_contract)
+	_session_economy.replace_with(candidate_economy)
+
+
+func _get_contract_delivery_facts() -> Array[Dictionary]:
+	if _contract_system == null:
+		var empty: Array[Dictionary] = []
+		return empty
+	return _contract_system.get_delivery_facts()
+
+
+func _assert_contract_delivery_capacity() -> void:
+	if _contract_system == null:
+		return
+	assert(
+		_contract_system.can_record_additional_deliveries(_total_ticks),
+		"Session maximum deliveries must fit contract count and trust"
+	)
+	var maximum_delivery_fee := 0
+	if _start_config.company_definitions.is_empty():
+		maximum_delivery_fee = _start_config.cargo_base_delivery_reward
+	else:
+		for definition in _start_config.company_definitions:
+			maximum_delivery_fee = maxi(
+				maximum_delivery_fee,
+				int(definition.get("base_delivery_fee", 0))
+			)
+	assert(
+		maximum_delivery_fee == 0
+		or _total_ticks <= MAX_INT / maximum_delivery_fee,
+		"Session maximum delivery fees must fit checked session cash"
+	)
+	var maximum_delivery_fee_total := _total_ticks * maximum_delivery_fee
+	assert(
+		_session_economy.can_credit_total(maximum_delivery_fee_total),
+		"Session maximum delivery fees must fit checked session cash"
 	)
 
 

@@ -263,7 +263,7 @@ func _verify_crossing_hazard_warp_and_track_end() -> void:
 	_assert_equal(results.size(), 1, "Track end presents exactly one result")
 	if results.size() == 1:
 		_assert_equal(results[0].get_reason(), SessionResultScript.Reason.TRACK_END_REACHED, "Long crossing route ends at track end")
-		_assert_equal(results[0].get_final_session_cash(), 130, "Track end refunds neither crossing nor purchases")
+		_assert_equal(results[0].get_final_session_cash(), 167, "Track end retains one delivery fee and refunds neither crossing nor purchases")
 		_assert_equal(results[0].get_final_total_track_cells(), 85, "Track-end evidence retains final temporary track capacity")
 		_assert_equal(results[0].get_final_total_cargo_slots(), 3, "Track-end evidence retains final temporary cargo capacity")
 	var expected_durability := maxf(

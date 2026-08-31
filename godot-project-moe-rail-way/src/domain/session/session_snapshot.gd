@@ -70,6 +70,13 @@ var _grade_separated_crossing_count: int
 var _grade_separated_crossing_spent: int
 var _temporary_track_purchase_spent: int
 var _temporary_cargo_purchase_spent: int
+var _selected_contract_company_id: StringName
+var _contract_quota: int
+var _contracted_delivery_count: int
+var _contract_attainment_basis_points: int
+var _cash_contract_adjustment: int
+var _contract_trust_gain_milli: int
+var _contract_delivery_facts: Array[Dictionary] = []
 
 
 func _init(
@@ -136,7 +143,14 @@ func _init(
 	grade_separated_crossing_count_value: int = 0,
 	grade_separated_crossing_spent_value: int = 0,
 	temporary_track_purchase_spent_value: int = 0,
-	temporary_cargo_purchase_spent_value: int = 0
+	temporary_cargo_purchase_spent_value: int = 0,
+	selected_contract_company_id_value: StringName = StringName(),
+	contract_quota_value: int = 0,
+	contracted_delivery_count_value: int = 0,
+	contract_attainment_basis_points_value: int = 0,
+	cash_contract_adjustment_value: int = 0,
+	contract_trust_gain_milli_value: int = 0,
+	contract_delivery_facts_value: Array[Dictionary] = []
 ) -> void:
 	_total_ticks = total_ticks_value
 	_elapsed_ticks = elapsed_ticks_value
@@ -202,6 +216,13 @@ func _init(
 	_grade_separated_crossing_spent = grade_separated_crossing_spent_value
 	_temporary_track_purchase_spent = temporary_track_purchase_spent_value
 	_temporary_cargo_purchase_spent = temporary_cargo_purchase_spent_value
+	_selected_contract_company_id = StringName(selected_contract_company_id_value)
+	_contract_quota = contract_quota_value
+	_contracted_delivery_count = contracted_delivery_count_value
+	_contract_attainment_basis_points = contract_attainment_basis_points_value
+	_cash_contract_adjustment = cash_contract_adjustment_value
+	_contract_trust_gain_milli = contract_trust_gain_milli_value
+	_contract_delivery_facts = contract_delivery_facts_value.duplicate(true)
 
 
 func get_total_ticks() -> int:
@@ -468,6 +489,34 @@ func get_temporary_track_purchase_spent() -> int:
 
 func get_temporary_cargo_purchase_spent() -> int:
 	return _temporary_cargo_purchase_spent
+
+
+func get_selected_contract_company_id() -> StringName:
+	return _selected_contract_company_id
+
+
+func get_contract_quota() -> int:
+	return _contract_quota
+
+
+func get_contracted_delivery_count() -> int:
+	return _contracted_delivery_count
+
+
+func get_contract_attainment_basis_points() -> int:
+	return _contract_attainment_basis_points
+
+
+func get_cash_contract_adjustment() -> int:
+	return _cash_contract_adjustment
+
+
+func get_contract_trust_gain_milli() -> int:
+	return _contract_trust_gain_milli
+
+
+func get_contract_delivery_facts() -> Array[Dictionary]:
+	return _contract_delivery_facts.duplicate(true)
 
 
 func _duplicate_records(source: Array[TrackCellRecordScript]) -> Array[TrackCellRecordScript]:

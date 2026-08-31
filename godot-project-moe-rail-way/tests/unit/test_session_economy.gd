@@ -55,7 +55,7 @@ func _test_session_economy_atomic_spending() -> void:
 		return
 	var economy_script: Script = load(SESSION_ECONOMY_PATH)
 	var economy: Variant = economy_script.new(300)
-	for method_name in [&"try_spend", &"get_cash", &"get_total_spent", &"get_observation"]:
+	for method_name in [&"try_spend", &"try_credit", &"get_cash", &"get_total_spent", &"get_total_credited", &"get_observation"]:
 		if not economy.has_method(method_name):
 			assert_true(false, "Session economy exposes %s" % method_name)
 			return
@@ -90,6 +90,19 @@ func _test_session_economy_atomic_spending() -> void:
 		economy.call("replace_with", candidate)
 		assert_equal(economy.call("get_cash"), 200, "Validated staged economy installs exactly")
 		assert_equal(economy.call("get_total_spent"), 100, "Staged install preserves exact spending total")
+
+	var credit_economy: Variant = economy_script.new(300)
+	assert_true(credit_economy.call("try_credit", 75), "Checked credit succeeds")
+	assert_equal(credit_economy.call("get_cash"), 375, "Credit is immediately spendable")
+	assert_equal(credit_economy.call("get_total_credited"), 75, "Credit total records exact fees")
+	var before_invalid_credit := JSON.stringify(credit_economy.call("get_observation"))
+	assert_false(credit_economy.call("try_credit", -1), "Negative credit rejects")
+	assert_equal(JSON.stringify(credit_economy.call("get_observation")), before_invalid_credit, "Invalid credit is byte-identical")
+	var overflow_economy: Variant = economy_script.new(300)
+	assert_true(overflow_economy.call("try_credit", 9223372036854775507), "Largest safe cash credit succeeds")
+	var before_overflow := JSON.stringify(overflow_economy.call("get_observation"))
+	assert_false(overflow_economy.call("try_credit", 1), "Cash overflow credit rejects")
+	assert_equal(JSON.stringify(overflow_economy.call("get_observation")), before_overflow, "Overflow rejection is byte-identical")
 
 
 func _assert_contains(errors: PackedStringArray, fragment: String) -> void:

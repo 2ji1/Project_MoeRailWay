@@ -12,6 +12,8 @@ const RouteContactAnchorScript = preload("res://src/domain/track/route_contact_a
 const WarpPairRecordScript = preload("res://src/domain/warp/warp_pair_record.gd")
 const WarpPairSystemScript = preload("res://src/domain/warp/warp_pair_system.gd")
 const CargoSystemScript = preload("res://src/domain/cargo/cargo_system.gd")
+const ContractSystemScript = preload("res://src/domain/contract/contract_system.gd")
+const SessionEconomyScript = preload("res://src/domain/economy/session_economy.gd")
 
 
 class ContactTrackSpy extends TrackSystemScript:
@@ -393,6 +395,10 @@ func _test_controller_resolves_ordinal_and_physical_hit_order() -> void:
     assert_equal(turnover_snapshot.get_delivered_pair_count(), 1, "Turnover pays one delivery")
     assert_equal(turnover_snapshot.get_base_delivery_reward_total(), 37, "Turnover pays exact reward")
     assert_equal(turnover_snapshot.get_delivery_fee_total(), 37, "Turnover fee total aliases reward observation")
+    assert_equal(turnover_snapshot.get_current_session_cash(), 337, "Delivery fee credits live cash immediately once")
+    assert_equal(turnover_snapshot.get_contracted_delivery_count(), 1, "Selected legacy company delivery counts once")
+    assert_equal(turnover_snapshot.get_contract_attainment_basis_points(), 5000, "Contract attainment uses selected quota")
+    assert_equal(turnover_snapshot.get_contract_delivery_facts().size(), 1, "Contract retains one detached delivery fact")
     var slots: Array = turnover_snapshot.get_cargo_slot_records()
     if slots.size() == 1:
         assert_equal(slots[0].pair_id, &"warp_pair_2", "Later physical origin reuses freed slot")
@@ -442,6 +448,9 @@ func _test_final_life_delivery_survives_regular_track_end_tie() -> void:
         assert_equal(results[0].get_delivered_pair_count(), 1, "Result retains delivery")
         assert_equal(results[0].get_base_delivery_reward_total(), 37, "Result retains reward")
         assert_equal(results[0].get_delivery_fee_total(), 37, "Result exposes same fee total")
+        assert_equal(results[0].get_final_session_cash(), 337, "Terminal result retains immediate fee credit")
+        assert_equal(results[0].get_contracted_delivery_count(), 1, "Early result retains selected delivery count")
+        assert_equal(results[0].get_contract_delivery_facts().size(), 1, "Early result retains one delivery fact")
 
     var pairs := terminal.get_warp_pair_records()
     var events := terminal.get_warp_cargo_events()
@@ -514,13 +523,22 @@ func _config(
     lifetime_ticks: int = 5,
     cargo_slots: int = 1
 ) -> SessionStartConfigScript:
-    return SessionStartConfigScript.new(
+    var config := SessionStartConfigScript.new(
         73013, duration, 1,
         speed, 8, 1, 2.0, 10.0, 1,
         Vector2(240.0, 160.0), Vector2i(6, 4), 40.0, Vector2.ZERO,
         &"warp_departure", Vector2(20.0, 20.0), Vector2i(0, 0),
         0, 1, lifetime_ticks, lifetime_ticks, 2, cargo_slots, 37
     )
+    config.starting_session_cash = 300
+    config.selected_contract = {
+        "company_id": &"legacy",
+        "quota": 2,
+        "maximum_shortfall_penalty": 100,
+        "completion_bonus_at_quota": 60,
+        "trust_per_excess_delivery_milli": 125,
+    }
+    return config
 
 
 func _fixture(config: SessionStartConfigScript) -> Dictionary:
@@ -530,12 +548,18 @@ func _fixture(config: SessionStartConfigScript) -> Dictionary:
     var cargo := CargoSystemScript.new(
         config.cargo_base_slot_count, config.cargo_base_delivery_reward
     )
-    var controller := SessionControllerScript.new(config, track, train, warp, cargo)
+    var economy := SessionEconomyScript.new(config.starting_session_cash)
+    var contract := ContractSystemScript.new(config.selected_contract)
+    var controller := SessionControllerScript.new(
+        config, track, train, warp, cargo, null, economy, contract
+    )
     return {
         "track": track,
         "train": train,
         "warp": warp,
         "cargo": cargo,
+        "economy": economy,
+        "contract": contract,
         "controller": controller,
     }
 

@@ -10,6 +10,8 @@ const TrackInputFrameScript = preload("res://src/domain/track/track_input_frame.
 const TrackSystemScript = preload("res://src/domain/track/track_system.gd")
 const TrainSystemScript = preload("res://src/domain/train/train_system.gd")
 const WarpPairSystemScript = preload("res://src/domain/warp/warp_pair_system.gd")
+const ContractSystemScript = preload("res://src/domain/contract/contract_system.gd")
+const SessionEconomyScript = preload("res://src/domain/economy/session_economy.gd")
 
 const HAZARD_SYSTEM_PATH := "res://src/domain/hazard/hazard_system.gd"
 
@@ -81,8 +83,12 @@ func _test_zero_durability_wins_after_same_sweep_warp_delivery() -> void:
 	var warp := WarpPairSystemScript.new(config, SessionRngScript.new(config.seed))
 	var cargo := CargoSystemScript.new(config.cargo_base_slot_count, config.cargo_base_delivery_reward)
 	var hazard: Variant = load(HAZARD_SYSTEM_PATH).new(config)
+	var economy := SessionEconomyScript.new(config.starting_session_cash)
+	var contract := ContractSystemScript.new(config.selected_contract)
 	var controller_script: Script = load("res://src/domain/session/session_controller.gd")
-	var controller: Variant = controller_script.new(config, track, train, warp, cargo, hazard)
+	var controller: Variant = controller_script.new(
+		config, track, train, warp, cargo, hazard, economy, contract
+	)
 	var results: Array = []
 	controller.session_completed.connect(func(result): results.append(result))
 	controller.start()
@@ -108,8 +114,10 @@ func _test_zero_durability_wins_after_same_sweep_warp_delivery() -> void:
 	assert_equal(snapshot.call("get_temporary_cargo_purchase_count"), 0, "Terminal snapshot retains zero cargo purchases")
 	assert_false(snapshot.call("is_temporary_track_purchase_available"), "Terminal snapshot revokes track purchase authority")
 	assert_false(snapshot.call("is_temporary_cargo_purchase_available"), "Terminal snapshot revokes cargo purchase authority")
-	assert_equal(results[0].call("get_final_session_cash"), 300, "Result retains unspent final session cash")
+	assert_equal(results[0].call("get_final_session_cash"), 337, "Same-sweep fee credits final session cash once")
 	assert_equal(results[0].call("get_total_session_cash_spent"), 0, "Result retains zero investment spend")
+	assert_equal(results[0].call("get_contracted_delivery_count"), 1, "Same-sweep selected delivery counts before durability completion")
+	assert_equal(results[0].call("get_contract_delivery_facts").size(), 1, "Durability result retains one delivery fact")
 	assert_equal(results[0].call("get_final_total_track_cells"), 8, "Result retains detached final track capacity")
 	assert_equal(results[0].call("get_final_total_cargo_slots"), 2, "Result retains detached final cargo capacity")
 	controller.advance_tick()
@@ -118,13 +126,21 @@ func _test_zero_durability_wins_after_same_sweep_warp_delivery() -> void:
 
 
 func _config() -> SessionStartConfigScript:
-	return SessionStartConfigScript.new(
+	var config := SessionStartConfigScript.new(
 		73013, 20.0, 1,
 		1.0, 8, 1, 2.0, 10.0, 1,
 		Vector2(240.0, 160.0), Vector2i(6, 4), 40.0, Vector2.ZERO,
 		&"risk_departure", Vector2(20.0, 20.0), Vector2i(0, 0),
 		0, 1, 5, 5, 2, 2, 37, 100, 300
 	)
+	config.selected_contract = {
+		"company_id": &"legacy",
+		"quota": 1,
+		"maximum_shortfall_penalty": 100,
+		"completion_bonus_at_quota": 60,
+		"trust_per_excess_delivery_milli": 125,
+	}
+	return config
 
 
 func _draw_frame(cells: Array[Vector2i]) -> TrackInputFrameScript:

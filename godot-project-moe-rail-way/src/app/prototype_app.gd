@@ -14,6 +14,7 @@ const WarpPairSystemScript = preload("res://src/domain/warp/warp_pair_system.gd"
 const CargoSystemScript = preload("res://src/domain/cargo/cargo_system.gd")
 const HazardSystemScript = preload("res://src/domain/hazard/hazard_system.gd")
 const SessionEconomyScript = preload("res://src/domain/economy/session_economy.gd")
+const ContractSystemScript = preload("res://src/domain/contract/contract_system.gd")
 const SessionShellScript = preload("res://src/presentation/session/session_shell.gd")
 const UILayoutProfileScript = preload("res://src/presentation/layout/ui_layout_profile.gd")
 const UILayoutValidatorScript = preload("res://src/presentation/layout/ui_layout_validator.gd")
@@ -32,6 +33,7 @@ var warp_pair_system: WarpPairSystemScript
 var cargo_system: CargoSystemScript
 var hazard_system: HazardSystemScript
 var session_economy: SessionEconomyScript
+var contract_system: ContractSystemScript
 var session_controller: SessionControllerScript
 
 @onready var _session_shell: SessionShellScript = $SessionShell
@@ -77,6 +79,7 @@ func compose_session_dependencies() -> PackedStringArray:
 	cargo_system = null
 	hazard_system = null
 	session_economy = null
+	contract_system = null
 	session_controller = null
 	_session_result_was_presented = false
 
@@ -134,6 +137,14 @@ func compose_session_dependencies() -> PackedStringArray:
 		logical_track_field.get_grid_rect().position,
 		selected_cell
 	)
+	var selected_company = balance.contract_economy_balance.companies[0]
+	session_start_config.selected_contract = {
+		"company_id": selected_company.company_id,
+		"quota": selected_company.quota,
+		"maximum_shortfall_penalty": selected_company.maximum_shortfall_penalty,
+		"completion_bonus_at_quota": selected_company.completion_bonus_at_quota,
+		"trust_per_excess_delivery_milli": selected_company.trust_per_excess_delivery_milli,
+	}
 	errors.append_array(ValidatorScript.validate_completed_session_start_config(session_start_config))
 	if not errors.is_empty():
 		return errors
@@ -144,6 +155,7 @@ func compose_session_dependencies() -> PackedStringArray:
 	)
 	hazard_system = HazardSystemScript.new(session_start_config)
 	session_economy = SessionEconomyScript.new(session_start_config.starting_session_cash)
+	contract_system = ContractSystemScript.new(session_start_config.selected_contract)
 	warp_pair_system = WarpPairSystemScript.new(session_start_config, session_rng)
 	cargo_system = CargoSystemScript.new(session_start_config.cargo_base_slot_count)
 	session_controller = SessionControllerScript.new(
@@ -153,7 +165,8 @@ func compose_session_dependencies() -> PackedStringArray:
 		warp_pair_system,
 		cargo_system,
 		hazard_system,
-		session_economy
+		session_economy,
+		contract_system
 	)
 	return errors
 
