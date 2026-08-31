@@ -42,17 +42,19 @@ func present(companies: Array, run_observation: Dictionary, selected_company_id:
 	_rebuild_company_rows()
 	var cash := int(_run_observation.get("cash", 0))
 	var recovery_mode := bool(_run_observation.get("recovery_mode", false))
-	_status.text = "CASH %d | CYCLE %d" % [cash, int(_run_observation.get("completed_cycle_count", 0))]
+	var cycle := int(_run_observation.get("selected_cycle", 0))
+	if cycle <= 0: cycle = int(_run_observation.get("pending_cycle", 0))
+	if cycle <= 0: cycle = int(_run_observation.get("completed_cycle_count", 0))
+	_status.text = "CASH %d | CYCLE %d" % [cash, cycle]
 	_recovery_status.text = "RECOVERY ACTIVE" if recovery_mode else "OPERATIONS READY"
 	_blocked_notice.visible = cash < 0
 	_blocked_notice.text = "CREDIT SURVIVAL REQUIRED" if cash < 0 else ""
-	_start_button.disabled = _selected_company_id.is_empty() or cash < 0
+	_start_button.disabled = not bool(_run_observation.get("contract_selected", not _selected_company_id.is_empty())) or cash < 0
 	_decline_button.visible = recovery_mode and cash < 0
-	_costs.text = "PROJECTED: OPERATING %d | DEBT %d + %d | REPAIR %d (KNOWN)" % [
+	_costs.text = "PROJECTED: OPERATING %d | DEBT %d + %d | REPAIR UNKNOWN" % [
 		int(_run_observation.get("projected_operating_cost", 0)),
 		int(_run_observation.get("projected_debt_principal", 0)),
 		int(_run_observation.get("projected_debt_interest", 0)),
-		int(_run_observation.get("projected_repair_cost", 0)),
 	]
 	_refresh_credit_controls()
 
@@ -146,13 +148,14 @@ func _refresh_credit_controls() -> void:
 	var credit := _credit_for(_selected_company_id)
 	var remaining := int(credit.get("remaining_credit", 0))
 	var capacity := int(credit.get("borrow_capacity", remaining))
+	var disabled_reason := String(credit.get("borrow_disabled_reason", ""))
 	if capacity > 0:
 		_borrow_value = clampi(_borrow_value, 1, capacity)
 	else:
 		_borrow_value = 0
 	_borrow_amount.text = "BORROW %d" % _borrow_value
 	_borrow_button.disabled = _selected_company_id.is_empty() or capacity <= 0 or _borrow_value <= 0
-	_borrow_button.tooltip_text = "SELECT A COMPANY" if _selected_company_id.is_empty() else ("NO REMAINING CREDIT" if remaining <= 0 else ("RUN CASH LIMIT" if capacity <= 0 else ""))
+	_borrow_button.tooltip_text = "SELECT A COMPANY" if _selected_company_id.is_empty() else disabled_reason
 	var schedule: Array = credit.get("schedule", [])
 	var parts: PackedStringArray = []
 	for item in schedule:

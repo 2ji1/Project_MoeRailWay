@@ -7,12 +7,14 @@ const CreditBalanceScript = preload("res://src/config/credit_survival_balance.gd
 const RunStateScript = preload("res://src/domain/run/run_state.gd")
 const RunControllerScript = preload("res://src/domain/run/prototype_run_controller.gd")
 const TerminalRunResultScript = preload("res://src/domain/run/terminal_run_result.gd")
+const APP_SCENE := "res://src/app/prototype_app.tscn"
 
 
 func run() -> PackedStringArray:
 	_test_detached_credit_observation()
 	_test_mouse_only_operations()
 	_test_recovery_and_terminal_presentation()
+	_test_supported_viewports()
 	return finish()
 
 
@@ -26,7 +28,7 @@ func _test_detached_credit_observation() -> void:
 	assert_equal(observation.cash, 360, "Credit observation exposes shared post-borrow cash")
 	assert_equal(observation.pending_cycle, 1, "Credit observation exposes the next cycle")
 	assert_equal(observation.projected_operating_cost, 50, "Credit observation exposes projected operating cost")
-	assert_equal(observation.projected_repair_cost, 0, "Credit observation exposes the currently knowable repair cost")
+	assert_false(observation.projected_repair_known, "Credit observation marks contingent pre-session repair as unknown")
 	assert_equal(observation.projected_debt_principal, 15, "Credit observation aggregates next principal")
 	assert_equal(observation.projected_debt_interest, 3, "Credit observation aggregates next interest")
 	var first: Dictionary = observation.company_credit[0]
@@ -45,6 +47,12 @@ func _test_detached_credit_observation() -> void:
 	assert_equal(controller.get_operations_observation().company_credit[0].remaining_credit, 60, "Presentation observation cannot mutate domain state")
 	var max_fixture := _controller_fixture(RunStateScript.MAX_ABSOLUTE_CASH)
 	assert_equal(max_fixture.controller.get_operations_observation().company_credit[0].borrow_capacity, 0, "Run cash maximum disables otherwise available Credit")
+	var id_fixture := _controller_fixture(300, RunStateScript.MAX_INT)
+	assert_equal(id_fixture.controller.get_operations_observation().company_credit[0].borrow_disabled_reason, "LOAN ID LIMIT", "Loan ID exhaustion has an explicit technical-limit reason")
+	var revision_fixture := _controller_fixture(300, 1, RunStateScript.MAX_INT)
+	assert_equal(revision_fixture.controller.get_operations_observation().company_credit[0].borrow_disabled_reason, "CREDIT REVISION LIMIT", "Credit revision exhaustion has an explicit technical-limit reason")
+	var cycle_fixture := _controller_fixture(300, 1, 0, RunStateScript.MAX_INT)
+	assert_equal(cycle_fixture.controller.get_operations_observation().company_credit[0].borrow_disabled_reason, "CYCLE LIMIT", "Cycle exhaustion has an explicit technical-limit reason")
 
 
 func _test_mouse_only_operations() -> void:
@@ -68,6 +76,8 @@ func _test_mouse_only_operations() -> void:
 	assert_true(observation.rows[0].text.contains("NEXT 10+2"), "Company row presents next debt service")
 	assert_true(observation.schedule_text.contains("#1 P10 I2 -> 30"), "Selected company schedule is readable")
 	assert_true(observation.cost_text.contains("OPERATING 50"), "Projected costs are visible before contract acceptance")
+	assert_true(observation.cost_text.contains("REPAIR UNKNOWN"), "Contingent repair cost is visibly unknown before a session")
+	assert_equal(observation.status_text, "CASH 340 | CYCLE 1", "Operations shows the pending current cycle instead of completed-cycle lag")
 	assert_false(observation.borrow_disabled, "Positive cash does not disable borrowing")
 	assert_equal(observation.borrow_amount, 1, "Borrow amount begins at the bounded minimum")
 	var controls = screen.get_node("Center/Panel/Margin/Rows/BorrowControls")
@@ -113,6 +123,17 @@ func _test_recovery_and_terminal_presentation() -> void:
 	screen.get_node("Center/Panel/Margin/Rows/DeclineButton").emit_signal("pressed")
 	assert_equal(declined[0], 1, "Recovery decline emits one explicit command")
 	screen.free()
+	var app = load(APP_SCENE).instantiate()
+	app.start_in_operations = true
+	Engine.get_main_loop().root.add_child(app)
+	app.run_controller = fixture.controller
+	fixture.controller._recovery_mode = true
+	app._on_company_selected(&"company_01")
+	observation = app._operations_screen.get_presentation_observation()
+	assert_true(observation.rows[0].selected, "Recovery company selection is independent from contract acceptance")
+	app._operations_screen.get_node("Center/Panel/Margin/Rows/BorrowControls/BorrowButton").emit_signal("pressed")
+	assert_equal(fixture.controller.get_run_state_observation().cash, -9, "Recovery selection reaches one explicit borrow through the app")
+	app.free()
 	var panel = load(RESULT_SCENE).instantiate()
 	Engine.get_main_loop().root.add_child(panel)
 	assert_true(panel.has_method("present_terminal"), "Results expose the terminal bankruptcy presentation")
@@ -125,7 +146,26 @@ func _test_recovery_and_terminal_presentation() -> void:
 	panel.free()
 
 
-func _controller_fixture(cash: int) -> Dictionary:
+func _test_supported_viewports() -> void:
+	for viewport_size in [Vector2(960, 540), Vector2(1280, 720), Vector2(1600, 900), Vector2(1920, 1080)]:
+		var host := Control.new()
+		host.size = viewport_size
+		var screen = load(OPERATIONS_SCENE).instantiate()
+		host.add_child(screen)
+		Engine.get_main_loop().root.add_child(host)
+		var fixture := _controller_fixture(300)
+		screen.present(fixture.companies, fixture.controller.get_operations_observation(), StringName())
+		var panel_rect: Rect2 = screen.get_presentation_observation().panel_rect
+		var start_rect: Rect2 = screen.get_node("Center/Panel/Margin/Rows/StartButton").get_global_rect()
+		var borrow_rect: Rect2 = screen.get_node("Center/Panel/Margin/Rows/BorrowControls/BorrowButton").get_global_rect()
+		assert_true(Rect2(Vector2.ZERO, viewport_size).encloses(panel_rect), "Panel stays inside supported viewport %s" % viewport_size)
+		assert_true(panel_rect.encloses(start_rect) and start_rect.has_point(start_rect.get_center()), "Start hit rectangle stays visible at %s" % viewport_size)
+		assert_true(panel_rect.encloses(borrow_rect) and borrow_rect.has_point(borrow_rect.get_center()), "Borrow hit rectangle stays visible at %s" % viewport_size)
+		assert_true(screen.get_node("Center/Panel/Margin/Rows/CompanyScroll") is ScrollContainer, "Company list uses bounded scrolling at %s" % viewport_size)
+		host.free()
+
+
+func _controller_fixture(cash: int, next_loan_id: int = 1, credit_revision: int = 0, completed_cycles: int = 0) -> Dictionary:
 	var credit_balance = CreditBalanceScript.new()
 	var company_ids: Array[StringName] = []
 	var companies: Array = []
@@ -135,7 +175,7 @@ func _controller_fixture(cash: int) -> Dictionary:
 		company_ids.append(company_id)
 		trust[company_id] = 100
 		companies.append(CompanyBalanceScript.new(company_id, "Company %d" % (index + 1)))
-	var state := RunStateScript.new(cash, company_ids, trust, 0, credit_balance.get_rate_table(company_ids))
+	var state := RunStateScript.new(cash, company_ids, trust, completed_cycles, credit_balance.get_rate_table(company_ids), [], next_loan_id, credit_revision)
 	return {
 		"controller": RunControllerScript.new(state, 50, credit_balance),
 		"companies": companies,

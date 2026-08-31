@@ -258,7 +258,18 @@ func get_operations_observation() -> Dictionary:
 		var trust := _run_state.get_company_trust_milli(company_id)
 		var limit: int = _credit_balance.get_credit_limit(company_id, trust) if _credit_balance != null else 0
 		var remaining: int = CreditSystemScript.get_remaining_credit(_run_state, _credit_balance, company_id) if _credit_balance != null else 0
-		var borrow_capacity := mini(remaining, RunStateScript.MAX_ABSOLUTE_CASH - _run_state.get_cash())
+		var borrow_disabled_reason := ""
+		if remaining <= 0:
+			borrow_disabled_reason = "NO REMAINING CREDIT"
+		elif RunStateScript.MAX_ABSOLUTE_CASH - _run_state.get_cash() <= 0:
+			borrow_disabled_reason = "RUN CASH LIMIT"
+		elif _run_state.get_next_loan_id() >= MAX_INT:
+			borrow_disabled_reason = "LOAN ID LIMIT"
+		elif _run_state.get_credit_revision() >= MAX_INT:
+			borrow_disabled_reason = "CREDIT REVISION LIMIT"
+		elif not _run_state.can_increment_completed_cycle():
+			borrow_disabled_reason = "CYCLE LIMIT"
+		var borrow_capacity := 0 if not borrow_disabled_reason.is_empty() else mini(remaining, RunStateScript.MAX_ABSOLUTE_CASH - _run_state.get_cash())
 		var due: Dictionary = due_by_company[company_id]
 		companies.append({
 			"company_id": company_id,
@@ -268,6 +279,7 @@ func get_operations_observation() -> Dictionary:
 			"outstanding_principal": CreditSystemScript.get_outstanding_principal(_run_state, company_id),
 			"remaining_credit": remaining,
 			"borrow_capacity": borrow_capacity,
+			"borrow_disabled_reason": borrow_disabled_reason,
 			"rate_basis_points": _run_state.get_company_rate_basis_points(company_id),
 			"next_principal": int(due["principal"]),
 			"next_interest": int(due["interest"]),
@@ -277,11 +289,12 @@ func get_operations_observation() -> Dictionary:
 	observation["phase"] = _phase
 	observation["pending_cycle"] = get_pending_cycle()
 	observation["selected_cycle"] = _selected_cycle
+	observation["contract_selected"] = not _selected_contract.is_empty()
 	observation["recovery_mode"] = _recovery_mode
 	observation["recovery"] = recovery
 	observation["company_credit"] = companies
 	observation["projected_operating_cost"] = _base_operating_cost
-	observation["projected_repair_cost"] = 0
+	observation["projected_repair_known"] = false
 	observation["projected_debt_principal"] = debt_quote.get_principal_total() if debt_quote != null else 0
 	observation["projected_debt_interest"] = debt_quote.get_interest_total() if debt_quote != null else 0
 	return observation.duplicate(true)

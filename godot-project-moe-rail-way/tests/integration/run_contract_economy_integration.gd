@@ -196,7 +196,7 @@ func _verify_complete_cycle() -> void:
 	await process_frame
 	var returned_operations: Dictionary = operations.get_presentation_observation()
 	_assert_true(returned_operations.visible, "Continue returns to Operations")
-	_assert_equal(returned_operations.status_text, "CASH 130 | CYCLE 1", "Operations presents persistent closing cash and cycle")
+	_assert_equal(returned_operations.status_text, "CASH 130 | CYCLE 2", "Operations presents persistent closing cash and pending cycle")
 	_assert_true(returned_operations.start_disabled, "Continue clears the prior contract selection")
 	var run_observation: Dictionary = app.run_controller.get_run_state_observation()
 	_assert_equal(run_observation.company_trust_milli[String(SELECTED_COMPANY)], 125, "Only selected company receives persisted trust")
@@ -262,7 +262,7 @@ func _spawn_operations_app():
 
 func _select_company_and_start(app, row_index: int) -> void:
 	var operations = app.get_node("OperationsScreen")
-	var rows = operations.get_node("Center/Panel/Margin/Rows/CompanyRows")
+	var rows = operations.get_node("Center/Panel/Margin/Rows/CompanyScroll/CompanyRows")
 	if row_index < 0 or row_index >= rows.get_child_count():
 		_failures.append("Requested company row must exist")
 		return

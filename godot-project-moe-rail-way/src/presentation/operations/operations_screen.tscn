@@ -56,9 +56,17 @@ text = "OPERATIONS READY"
 horizontal_alignment = 1
 mouse_filter = 2
 
-[node name="CompanyRows" type="VBoxContainer" parent="Center/Panel/Margin/Rows"]
+[node name="CompanyScroll" type="ScrollContainer" parent="Center/Panel/Margin/Rows"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 156)
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="CompanyRows" type="VBoxContainer" parent="Center/Panel/Margin/Rows/CompanyScroll"]
 unique_name_in_owner = true
 layout_mode = 2
+size_flags_horizontal = 3
 theme_override_constants/separation = 4
 
 [node name="CreditSchedule" type="Label" parent="Center/Panel/Margin/Rows"]
@@ -71,7 +79,7 @@ mouse_filter = 2
 [node name="ProjectedCosts" type="Label" parent="Center/Panel/Margin/Rows"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "PROJECTED: OPERATING 0 | DEBT 0 + 0 | REPAIR 0 (KNOWN)"
+text = "PROJECTED: OPERATING 0 | DEBT 0 + 0 | REPAIR UNKNOWN"
 horizontal_alignment = 1
 mouse_filter = 2
 

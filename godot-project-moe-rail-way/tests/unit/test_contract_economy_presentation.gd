@@ -53,7 +53,7 @@ func _test_operations_screen() -> void:
 	assert_true(observation.rows[1].selected, "Operations shows the selected company")
 	assert_equal(observation.status_text, "CASH 300 | CYCLE 2", "Operations shows persistent cash and cycle")
 	assert_false(observation.start_disabled, "Selected nonnegative run enables start")
-	var row = screen.get_node("Center/Panel/Margin/Rows/CompanyRows").get_child(2)
+	var row = screen.get_node("Center/Panel/Margin/Rows/CompanyScroll/CompanyRows").get_child(2)
 	row.emit_signal("pressed")
 	assert_equal(selected, [&"company_03"], "One company row emits one explicit selection command")
 	screen.get_node("Center/Panel/Margin/Rows/StartButton").emit_signal("pressed")

@@ -52,6 +52,7 @@ var session_controller: SessionControllerScript
 
 var _session_result_was_presented := false
 var _runs_as_project_main_scene := false
+var _recovery_credit_company_id := StringName()
 
 
 func _ready() -> void:
@@ -91,6 +92,7 @@ func compose_session_dependencies() -> PackedStringArray:
 	settlement_result = null
 	session_controller = null
 	_session_result_was_presented = false
+	_recovery_credit_company_id = StringName()
 
 	var errors := PackedStringArray()
 	var shell = get_node_or_null("SessionShell") as SessionShellScript
@@ -296,6 +298,10 @@ func _on_session_completed(result: SessionResultScript) -> void:
 
 
 func _on_company_selected(company_id: StringName) -> void:
+	if run_controller.is_recovery_mode():
+		_recovery_credit_company_id = company_id
+		_present_operations()
+		return
 	var contract := _contract_for_company(company_id)
 	if contract.is_empty() or not run_controller.try_select_contract(contract):
 		return
@@ -315,7 +321,10 @@ func _on_start_requested() -> void:
 
 
 func _on_borrow_requested(company_id: StringName, amount: int) -> void:
+	var was_recovery := run_controller.is_recovery_mode()
 	if run_controller.try_borrow(company_id, amount):
+		if was_recovery and not run_controller.is_recovery_mode():
+			_recovery_credit_company_id = StringName()
 		_present_operations()
 
 
@@ -327,6 +336,7 @@ func _on_decline_recovery_requested() -> void:
 func _on_continue_requested() -> void:
 	if not run_controller.try_continue_to_operations():
 		return
+	_recovery_credit_company_id = StringName()
 	if run_controller.get_phase() == PrototypeRunControllerScript.Phase.TERMINAL:
 		_present_terminal()
 		return
@@ -347,10 +357,11 @@ func _present_operations() -> void:
 	_session_shell.hide()
 	_contract_result_panel.hide()
 	_operations_screen.show()
+	var selected_company_id := _recovery_credit_company_id if run_controller.is_recovery_mode() else StringName(run_controller.get_selected_contract().get("company_id", StringName()))
 	_operations_screen.present(
 		balance.contract_economy_balance.companies,
 		run_controller.get_operations_observation(),
-		StringName(run_controller.get_selected_contract().get("company_id", StringName()))
+		selected_company_id
 	)
 
 
