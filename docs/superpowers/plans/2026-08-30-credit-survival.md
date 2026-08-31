@@ -167,7 +167,7 @@ Task 0 may rename these only when the actual Contract structure requires it, and
 
 **Objective:** Bind six Contract company IDs to deterministic trust-limit functions, fixed rates, and repayment terms without mutating run state.
 
-**RED:** Register focused tests that prove exact Contract company coverage/order, `(0, 0)` first knot, strict trust-coordinate order, nondecreasing limit order, floor piecewise-linear interpolation, cap behavior, trust zero, negative-trust rejection, next-integer-limit trust query/`CAP`, unknown/duplicate IDs, rate/term bounds, overflow rejection, run-start company-rate copying, and unchanged Contract configuration on validation failure.
+**RED:** Register focused tests that prove exact Contract company coverage/order, `(0, 0)` first knot, minimum knot count, nonnegative knots, strict trust-coordinate order, nondecreasing limit order, floor piecewise-linear interpolation, cap behavior, trust zero, negative-trust rejection, next-integer-limit trust query/`CAP`, unknown/duplicate IDs, rate/term bounds, maximum `Vector2i` boundary safety for 64-bit interpolation, mandatory complete run-start company-rate copying, and unchanged Contract configuration on validation failure. Because both knot coordinates are nonnegative `Vector2i` values, their maximum delta product is `2147483647 * 2147483647`, which is representable by signed 64-bit Godot integers; an artificial overflow-rejection case is neither reachable nor required.
 
 **Minimum GREEN:** Add concrete balance Resources and pure limit queries. Trust remains authoritative in `godot-project-moe-rail-way/src/domain/run/run_state.gd`. Do not add borrowing, loans, cash mutation, UI, or generalized curve/financial abstractions.
 
@@ -191,6 +191,8 @@ Task 0 may rename these only when the actual Contract structure requires it, and
 - `godot-project-moe-rail-way/data/prototype_balance.tres`
 - `godot-project-moe-rail-way/src/config/prototype_config_validator.gd`
 - `godot-project-moe-rail-way/tests/run_all.gd`
+- `godot-project-moe-rail-way/tests/unit/test_run_state.gd`
+- `godot-project-moe-rail-way/tests/unit/test_prototype_run_controller.gd`
 
 **Regressions:** Focused limit/config suites, every existing configuration suite, registered full runner, and all existing integration runners.
 
