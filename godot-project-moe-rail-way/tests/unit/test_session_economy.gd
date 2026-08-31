@@ -61,6 +61,9 @@ func _test_session_economy_atomic_spending() -> void:
 			return
 
 	assert_equal(economy.call("get_cash"), 300, "Economy starts from copied cash")
+	var high_cash_economy: Variant = economy_script.new(1000000000000)
+	assert_equal(high_cash_economy.call("get_starting_cash"), 1000000000000, "Economy accepts the complete RunState cash range")
+	assert_equal(high_cash_economy.call("get_cash"), 1000000000000, "High RunState cash copies without synthetic credit")
 	assert_equal(economy.call("get_total_spent"), 0, "Economy starts with zero spending")
 	var before_rejection := JSON.stringify(economy.call("get_observation"))
 	assert_false(economy.call("try_spend", 301), "Insufficient spend rejects")

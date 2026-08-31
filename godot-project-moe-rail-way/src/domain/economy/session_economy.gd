@@ -1,7 +1,7 @@
 class_name SessionEconomy
 extends RefCounted
 
-const MAX_STARTING_CASH := 1000000
+const MAX_STARTING_CASH := 1000000000000
 const MAX_CASH := 9223372036854775807
 
 var _starting_cash: int
@@ -11,7 +11,10 @@ var _total_credited := 0
 
 
 func _init(starting_cash: int) -> void:
-	assert(starting_cash >= 0 and starting_cash <= MAX_STARTING_CASH, "Starting session cash must be between 0 and 1000000")
+	assert(
+		starting_cash >= 0 and starting_cash <= MAX_STARTING_CASH,
+		"Starting session cash must be between 0 and 1000000000000"
+	)
 	_starting_cash = starting_cash
 	_cash = starting_cash
 

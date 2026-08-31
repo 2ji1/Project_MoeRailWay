@@ -98,23 +98,53 @@ func get_contracted_delivery_count() -> int:
 
 
 func get_attainment_basis_points() -> int:
-	return _contracted_delivery_count * 10000 / _quota
+	return calculate_attainment_basis_points(_contracted_delivery_count, _quota)
 
 
 func get_cash_contract_adjustment() -> int:
-	var capped_delivery_count := mini(_contracted_delivery_count, _quota)
-	var numerator := (
-		capped_delivery_count
-		* (_completion_bonus_at_quota + _maximum_shortfall_penalty)
-		- _quota * _maximum_shortfall_penalty
+	return calculate_cash_contract_adjustment(
+		_contracted_delivery_count,
+		_quota,
+		_maximum_shortfall_penalty,
+		_completion_bonus_at_quota
 	)
-	return _round_ratio_half_away_from_zero(numerator, _quota)
 
 
 func get_trust_gain_milli() -> int:
+	return calculate_trust_gain_milli(
+		_contracted_delivery_count,
+		_quota,
+		_trust_per_excess_delivery_milli
+	)
+
+
+static func calculate_attainment_basis_points(delivery_count: int, quota: int) -> int:
+	return delivery_count * 10000 / quota
+
+
+static func calculate_cash_contract_adjustment(
+	delivery_count: int,
+	quota: int,
+	maximum_shortfall_penalty: int,
+	completion_bonus_at_quota: int
+) -> int:
+	var capped_delivery_count := mini(delivery_count, quota)
+	var numerator := (
+		capped_delivery_count
+		* (completion_bonus_at_quota + maximum_shortfall_penalty)
+		- quota * maximum_shortfall_penalty
+	)
+	return _round_ratio_half_away_from_zero(numerator, quota)
+
+
+static func calculate_trust_gain_milli(
+	delivery_count: int,
+	quota: int,
+	trust_per_excess_delivery_milli: int
+) -> int:
 	return (
-		maxi(_contracted_delivery_count - _quota, 0)
-		* _trust_per_excess_delivery_milli
+		maxi(delivery_count - quota, 0)
+		* trust_per_excess_delivery_milli
 	)
 
 
@@ -178,7 +208,7 @@ func _is_valid_delivery_fact(fact: Dictionary) -> bool:
 	)
 
 
-func _round_ratio_half_away_from_zero(numerator: int, denominator: int) -> int:
+static func _round_ratio_half_away_from_zero(numerator: int, denominator: int) -> int:
 	if numerator == 0:
 		return 0
 	var magnitude := absi(numerator)

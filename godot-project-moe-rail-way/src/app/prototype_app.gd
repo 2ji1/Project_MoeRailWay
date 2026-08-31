@@ -15,6 +15,9 @@ const CargoSystemScript = preload("res://src/domain/cargo/cargo_system.gd")
 const HazardSystemScript = preload("res://src/domain/hazard/hazard_system.gd")
 const SessionEconomyScript = preload("res://src/domain/economy/session_economy.gd")
 const ContractSystemScript = preload("res://src/domain/contract/contract_system.gd")
+const RunStateScript = preload("res://src/domain/run/run_state.gd")
+const PrototypeRunControllerScript = preload("res://src/domain/run/prototype_run_controller.gd")
+const SettlementResultScript = preload("res://src/domain/run/settlement_result.gd")
 const SessionShellScript = preload("res://src/presentation/session/session_shell.gd")
 const UILayoutProfileScript = preload("res://src/presentation/layout/ui_layout_profile.gd")
 const UILayoutValidatorScript = preload("res://src/presentation/layout/ui_layout_validator.gd")
@@ -34,6 +37,9 @@ var cargo_system: CargoSystemScript
 var hazard_system: HazardSystemScript
 var session_economy: SessionEconomyScript
 var contract_system: ContractSystemScript
+var run_state: RunStateScript
+var run_controller: PrototypeRunControllerScript
+var settlement_result: SettlementResultScript
 var session_controller: SessionControllerScript
 
 @onready var _session_shell: SessionShellScript = $SessionShell
@@ -80,6 +86,9 @@ func compose_session_dependencies() -> PackedStringArray:
 	hazard_system = null
 	session_economy = null
 	contract_system = null
+	run_state = null
+	run_controller = null
+	settlement_result = null
 	session_controller = null
 	_session_result_was_presented = false
 
@@ -145,6 +154,22 @@ func compose_session_dependencies() -> PackedStringArray:
 		"completion_bonus_at_quota": selected_company.completion_bonus_at_quota,
 		"trust_per_excess_delivery_milli": selected_company.trust_per_excess_delivery_milli,
 	}
+	var company_ids: Array[StringName] = []
+	for company in balance.contract_economy_balance.companies:
+		company_ids.append(company.company_id)
+	run_state = RunStateScript.new(
+		balance.contract_economy_balance.initial_run_cash,
+		company_ids
+	)
+	run_controller = PrototypeRunControllerScript.new(
+		run_state,
+		balance.contract_economy_balance.base_operating_cost
+	)
+	assert(
+		run_controller.try_select_contract(session_start_config.selected_contract),
+		"Default prototype contract must select"
+	)
+	session_start_config.starting_session_cash = run_state.get_cash()
 	errors.append_array(ValidatorScript.validate_completed_session_start_config(session_start_config))
 	if not errors.is_empty():
 		return errors
@@ -154,7 +179,10 @@ func compose_session_dependencies() -> PackedStringArray:
 		session_start_config.maximum_durability
 	)
 	hazard_system = HazardSystemScript.new(session_start_config)
-	session_economy = SessionEconomyScript.new(session_start_config.starting_session_cash)
+	session_economy = run_controller.try_start_session()
+	if session_economy == null:
+		errors.append("prototype_run_controller must start from nonnegative RunState cash")
+		return errors
 	contract_system = ContractSystemScript.new(session_start_config.selected_contract)
 	warp_pair_system = WarpPairSystemScript.new(session_start_config, session_rng)
 	cargo_system = CargoSystemScript.new(session_start_config.cargo_base_slot_count)
@@ -209,4 +237,8 @@ func _on_snapshot_published(snapshot: SessionSnapshotScript) -> void:
 
 
 func _on_session_completed(result: SessionResultScript) -> void:
+	settlement_result = run_controller.try_settle_session(result)
+	if settlement_result == null:
+		push_error("Prototype run settlement must accept the completed session result")
+		return
 	present_session_result(result)

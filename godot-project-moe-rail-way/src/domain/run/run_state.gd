@@ -36,6 +36,10 @@ func get_cash() -> int:
 	return _cash
 
 
+func can_set_cash(value: int) -> bool:
+	return value >= -MAX_ABSOLUTE_CASH and value <= MAX_ABSOLUTE_CASH
+
+
 func set_cash(value: int) -> void:
 	assert(value >= -MAX_ABSOLUTE_CASH and value <= MAX_ABSOLUTE_CASH, "Run cash exceeds the prototype bound")
 	_cash = value
@@ -54,6 +58,10 @@ func get_company_ids() -> Array[StringName]:
 	return _company_ids.duplicate()
 
 
+func has_company(company_id: StringName) -> bool:
+	return _company_trust_milli.has(company_id)
+
+
 func get_company_trust_milli(company_id: StringName) -> int:
 	assert(_company_trust_milli.has(company_id), "Unknown company ID")
 	return _company_trust_milli[company_id]
@@ -65,6 +73,16 @@ func add_company_trust_milli(company_id: StringName, amount: int) -> void:
 	var current: int = _company_trust_milli[company_id]
 	assert(amount <= MAX_TRUST_MILLI - current, "RunState trust overflow")
 	_company_trust_milli[company_id] = current + amount
+
+
+func can_add_company_trust_milli(company_id: StringName, amount: int) -> bool:
+	if not _company_trust_milli.has(company_id) or amount < 0:
+		return false
+	return amount <= MAX_TRUST_MILLI - int(_company_trust_milli[company_id])
+
+
+func can_increment_completed_cycle() -> bool:
+	return _completed_cycle_count < 9223372036854775807
 
 
 func get_observation() -> Dictionary:
