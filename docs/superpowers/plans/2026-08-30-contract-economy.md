@@ -238,10 +238,12 @@ Create:
 
 Modify:
 
+- `godot-project-moe-rail-way/src/domain/economy/session_economy.gd`
 - `godot-project-moe-rail-way/src/domain/run/run_state.gd`
 - `godot-project-moe-rail-way/src/domain/contract/contract_system.gd`
 - `godot-project-moe-rail-way/src/domain/session/session_result.gd`
 - `godot-project-moe-rail-way/src/app/prototype_app.gd`
+- `godot-project-moe-rail-way/tests/unit/test_session_economy.gd`
 - `godot-project-moe-rail-way/tests/unit/test_contract_system.gd`
 - `godot-project-moe-rail-way/tests/run_all.gd`
 
