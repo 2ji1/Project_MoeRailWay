@@ -82,16 +82,21 @@ func _test_candidate_isolation_and_aggregate_install() -> void:
 	var credit := CreditBalanceScript.new()
 	var state: Variant = _state(10, {&"company_01": 100})
 	var before := JSON.stringify(state.get_observation())
-	var candidate = CreditSystemScript.create_borrow_candidate(state, credit, &"company_01", 25)
-	assert_not_null(candidate, "Pure borrow candidate is created")
-	assert_equal(JSON.stringify(state.get_observation()), before, "Candidate creation leaves live state unchanged")
-	assert_equal(candidate.get_cash(), 35, "Candidate contains post-borrow cash")
-	assert_equal(candidate.get_active_loans().size(), 1, "Candidate contains the new loan")
-	assert_equal(candidate.get_credit_revision(), 1, "Candidate advances Credit revision")
-	state.replace_with(candidate)
+	var proposal = CreditSystemScript.create_borrow_proposal(state, credit, &"company_01", 25)
+	assert_not_null(proposal, "Pure borrow proposal is created")
+	assert_equal(JSON.stringify(state.get_observation()), before, "Proposal creation leaves live state unchanged")
+	assert_equal(proposal.get_original_principal(), 25, "Proposal contains validated loan facts")
+	var controller := RunControllerScript.new(state, 0, credit)
+	assert_true(controller.try_borrow(&"company_01", 25), "Controller accepts the proposal")
 	assert_equal(state.get_cash(), 35, "Aggregate install replaces cash")
 	assert_equal(state.get_active_loans().size(), 1, "Aggregate install replaces Credit facts")
 	assert_equal(state.get_credit_revision(), 1, "Aggregate install replaces identity revision")
+	var result := controller.get_last_borrow_result()
+	assert_equal(result["cash_before"], 10, "Borrow result reports pre-install cash")
+	assert_equal(result["cash_after"], 35, "Borrow result reports installed cash")
+	assert_equal(result["loan"]["loan_id"], 1, "Borrow result reports the accepted loan")
+	result["loan"]["remaining_principal"] = 999
+	assert_equal(controller.get_last_borrow_result()["loan"]["remaining_principal"], 25, "Borrow result is detached")
 	var detached: Array = state.get_active_loans()
 	detached.clear()
 	assert_equal(state.get_active_loans().size(), 1, "Loan list copies cannot mutate RunState")
@@ -117,19 +122,36 @@ func _test_operations_only_and_identity_exhaustion() -> void:
 
 
 func _verify_invalid_probe() -> void:
-	var output: Array = []
-	var arguments := PackedStringArray(["--headless", "--path", ProjectSettings.globalize_path("res://"), "--script", "res://tests/run_all.gd", "--", "--credit-system-invalid-probe=loan_rate"])
-	var exit_code := OS.execute(OS.get_executable_path(), arguments, output, true)
-	var captured := "\n".join(PackedStringArray(output))
-	assert_true(captured.contains("CREDIT_SYSTEM_INVALID_PROBE_BEGIN:loan_rate"), "Loan invariant probe starts")
-	assert_true(captured.contains("RunState loan rate must match the fixed company rate"), "Loan invariant probe reports the mismatch")
-	assert_true(exit_code != 0, "Loan invariant probe exits unsuccessfully")
+	var cases := {
+		"loan_id": "Loan ID must be positive",
+		"company_id": "Loan company ID is required",
+		"original_principal": "Original principal must be positive",
+		"remaining_principal": "Remaining principal must be positive and bounded",
+		"rate": "Loan rate must be between 0 and 10000",
+		"term": "Loan term must be between 1 and 1000",
+		"installments": "Paid installments must be inside the term",
+		"first_due_cycle": "First due cycle must be positive",
+	}
+	for case_name in cases:
+		var output: Array = []
+		var arguments := PackedStringArray(["--headless", "--path", ProjectSettings.globalize_path("res://"), "--script", "res://tests/run_all.gd", "--", "--credit-system-invalid-probe=" + case_name])
+		var exit_code := OS.execute(OS.get_executable_path(), arguments, output, true)
+		var captured := "\n".join(PackedStringArray(output))
+		assert_true(captured.contains("CREDIT_SYSTEM_INVALID_PROBE_BEGIN:" + case_name), "Loan invariant probe starts: " + case_name)
+		assert_true(captured.contains(cases[case_name]), "Loan invariant probe reports: " + case_name)
+		assert_true(exit_code != 0, "Loan invariant probe exits unsuccessfully: " + case_name)
 
 
 func run_invalid_probe(case_name: String) -> void:
-	if case_name != "loan_rate": return
-	var invalid := LoanRecordScript.new(1, &"company_01", 10, 10, 1, 4, 0, 1)
-	RunStateScript.new(0, COMPANY_IDS, {}, 0, COMPANY_RATES, [invalid], 2, 0)
+	match case_name:
+		"loan_id": LoanRecordScript.new(0, &"company_01", 10, 10, 400, 4, 0, 1)
+		"company_id": LoanRecordScript.new(1, StringName(), 10, 10, 400, 4, 0, 1)
+		"original_principal": LoanRecordScript.new(1, &"company_01", 0, 0, 400, 4, 0, 1)
+		"remaining_principal": LoanRecordScript.new(1, &"company_01", 10, 11, 400, 4, 0, 1)
+		"rate": LoanRecordScript.new(1, &"company_01", 10, 10, 10001, 4, 0, 1)
+		"term": LoanRecordScript.new(1, &"company_01", 10, 10, 400, 0, 0, 1)
+		"installments": LoanRecordScript.new(1, &"company_01", 10, 10, 400, 4, 4, 1)
+		"first_due_cycle": LoanRecordScript.new(1, &"company_01", 10, 10, 400, 4, 0, 0)
 
 
 func _state(cash: int, trust: Dictionary) -> Variant:

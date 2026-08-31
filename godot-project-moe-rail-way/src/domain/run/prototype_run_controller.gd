@@ -22,6 +22,7 @@ var _selected_contract: Dictionary = {}
 var _session_starting_cash := 0
 var _settlement_result: SettlementResultScript
 var _credit_balance: Resource
+var _last_borrow_result: Dictionary = {}
 
 
 func _init(run_state: RunStateScript, base_operating_cost: int, credit_balance: Resource = null) -> void:
@@ -34,10 +35,24 @@ func _init(run_state: RunStateScript, base_operating_cost: int, credit_balance: 
 
 func try_borrow(company_id: StringName, amount: int) -> bool:
 	if _phase != Phase.OPERATIONS or _credit_balance == null: return false
-	var candidate = CreditSystemScript.create_borrow_candidate(_run_state, _credit_balance, company_id, amount)
-	if candidate == null: return false
+	var loan = CreditSystemScript.create_borrow_proposal(_run_state, _credit_balance, company_id, amount)
+	if loan == null or amount > RunStateScript.MAX_ABSOLUTE_CASH - _run_state.get_cash(): return false
+	var candidate := _run_state.duplicate_state()
+	candidate.set_cash(_run_state.get_cash() + amount)
+	candidate.append_loan(loan)
+	var borrow_result := {
+		"loan": loan.get_observation(),
+		"cash_before": _run_state.get_cash(),
+		"cash_after": candidate.get_cash(),
+		"credit_revision": candidate.get_credit_revision(),
+	}
 	_run_state.replace_with(candidate)
+	_last_borrow_result = borrow_result
 	return true
+
+
+func get_last_borrow_result() -> Dictionary:
+	return _last_borrow_result.duplicate(true)
 
 
 func try_select_contract(contract: Dictionary) -> bool:

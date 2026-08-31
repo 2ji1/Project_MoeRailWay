@@ -25,16 +25,11 @@ static func get_remaining_credit(run_state: RefCounted, credit_balance: Resource
 	return limit - principal
 
 
-static func create_borrow_candidate(run_state: RefCounted, credit_balance: Resource, company_id: StringName, amount: int):
+static func create_borrow_proposal(run_state: RefCounted, credit_balance: Resource, company_id: StringName, amount: int):
 	if run_state == null or credit_balance == null or amount < 1: return null
 	var remaining_credit := get_remaining_credit(run_state, credit_balance, company_id)
 	if remaining_credit < 0 or amount > remaining_credit: return null
-	if amount > run_state.MAX_ABSOLUTE_CASH - run_state.get_cash(): return null
 	if run_state.get_next_loan_id() >= MAX_INT or run_state.get_credit_revision() >= MAX_INT or run_state.get_completed_cycle_count() >= MAX_INT: return null
 	var company = credit_balance.get_company(company_id)
 	if company == null or company.term_cycles < 1 or company.term_cycles > 1000: return null
-	var loan := LoanRecordScript.new(run_state.get_next_loan_id(), company_id, amount, amount, run_state.get_company_rate_basis_points(company_id), company.term_cycles, 0, run_state.get_completed_cycle_count() + 1)
-	var candidate = run_state.duplicate_state()
-	candidate.set_cash(run_state.get_cash() + amount)
-	candidate.append_loan(loan)
-	return candidate
+	return LoanRecordScript.new(run_state.get_next_loan_id(), company_id, amount, amount, run_state.get_company_rate_basis_points(company_id), company.term_cycles, 0, run_state.get_completed_cycle_count() + 1)
