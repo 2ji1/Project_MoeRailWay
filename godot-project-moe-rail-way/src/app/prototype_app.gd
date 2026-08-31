@@ -156,7 +156,10 @@ func compose_session_dependencies() -> PackedStringArray:
 		company_ids.append(company.company_id)
 	run_state = RunStateScript.new(
 		balance.contract_economy_balance.initial_run_cash,
-		company_ids
+		company_ids,
+		{},
+		0,
+		balance.credit_survival_balance.get_rate_table(company_ids)
 	)
 	run_controller = PrototypeRunControllerScript.new(
 		run_state,

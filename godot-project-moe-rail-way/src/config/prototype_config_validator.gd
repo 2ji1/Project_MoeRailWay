@@ -143,6 +143,7 @@ static func validate(balance: PrototypeBalanceScript) -> PackedStringArray:
                 "prototype_balance.cargo_balance.base_slot_count must be between 1 and 8"
             )
     _validate_contract_economy(errors, balance.contract_economy_balance)
+    _validate_credit_survival(errors, balance.credit_survival_balance, balance.contract_economy_balance)
 
     if balance.hazard_generation_balance == null:
         errors.append("prototype_balance.hazard_generation_balance.resource is required")
@@ -361,6 +362,52 @@ static func _validate_nonnegative_company_value(
         errors.append(prefix + "." + field_name + " must be between 0 and 1000000")
 
 
+static func _validate_credit_survival(
+    errors: PackedStringArray,
+    balance: Resource,
+    contract_balance: Resource
+) -> void:
+    var prefix := "prototype_balance.credit_survival_balance"
+    if balance == null:
+        errors.append(prefix + ".resource is required")
+        return
+    if contract_balance == null or contract_balance.companies.size() != 6:
+        errors.append(prefix + ".contract company order is unavailable")
+        return
+    if balance.companies.size() != 6:
+        errors.append(prefix + ".companies must contain exactly 6 entries")
+        return
+    for index in range(balance.companies.size()):
+        var company: Resource = balance.companies[index]
+        var company_prefix := "%s.companies[%d]" % [prefix, index]
+        if company == null:
+            errors.append(company_prefix + ".resource is required")
+            continue
+        var contract_company: Resource = contract_balance.companies[index]
+        if contract_company == null:
+            errors.append(company_prefix + ".contract company is unavailable")
+        elif company.company_id != contract_company.company_id:
+            errors.append(company_prefix + ".company_id must match contract company order")
+        if company.rate_basis_points < 0 or company.rate_basis_points > 10000:
+            errors.append(company_prefix + ".rate_basis_points must be between 0 and 10000")
+        if company.term_cycles < 1 or company.term_cycles > 1000:
+            errors.append(company_prefix + ".term_cycles must be between 1 and 1000")
+        if company.trust_limit_knots.size() < 2:
+            errors.append(company_prefix + ".trust_limit_knots must contain at least 2 entries")
+            continue
+        if company.trust_limit_knots[0] != Vector2i(0, 0):
+            errors.append(company_prefix + ".trust_limit_knots must begin at (0, 0)")
+        for knot_index in range(company.trust_limit_knots.size()):
+            var knot: Vector2i = company.trust_limit_knots[knot_index]
+            if knot.x < 0 or knot.y < 0:
+                errors.append(company_prefix + ".trust_limit_knots must be nonnegative")
+            if knot_index == 0:
+                continue
+            var previous: Vector2i = company.trust_limit_knots[knot_index - 1]
+            if knot.x <= previous.x:
+                errors.append(company_prefix + ".trust coordinates must be strictly increasing")
+            if knot.y < previous.y:
+                errors.append(company_prefix + ".credit limits must be nondecreasing")
 static func _validate_cargo_investment(
     errors: PackedStringArray,
     prefix: String,

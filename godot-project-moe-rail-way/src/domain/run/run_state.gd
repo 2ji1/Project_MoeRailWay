@@ -9,17 +9,20 @@ var _cash: int
 var _completed_cycle_count: int
 var _company_ids: Array[StringName] = []
 var _company_trust_milli: Dictionary = {}
+var _company_rate_basis_points: Dictionary = {}
 
 
 func _init(
 	cash_value: int,
 	company_ids_value: Array,
 	company_trust_milli_value: Dictionary = {},
-	completed_cycle_count_value: int = 0
+	completed_cycle_count_value: int = 0,
+	company_rate_basis_points_value: Dictionary = {}
 ) -> void:
 	assert(cash_value >= -MAX_ABSOLUTE_CASH and cash_value <= MAX_ABSOLUTE_CASH, "Run cash exceeds the prototype bound")
 	assert(company_ids_value.size() == COMPANY_COUNT, "RunState requires exactly six companies")
 	assert(completed_cycle_count_value >= 0, "Completed cycle count cannot be negative")
+	assert(not company_rate_basis_points_value.is_empty(), "RunState rate table must cover every company")
 	_cash = cash_value
 	_completed_cycle_count = completed_cycle_count_value
 	for raw_company_id in company_ids_value:
@@ -30,6 +33,10 @@ func _init(
 		assert(trust_value >= 0 and trust_value <= MAX_TRUST_MILLI, "RunState trust exceeds the prototype bound")
 		_company_ids.append(company_id)
 		_company_trust_milli[company_id] = trust_value
+		assert(company_rate_basis_points_value.has(company_id), "RunState rate table must cover every company")
+		var rate_value := int(company_rate_basis_points_value[company_id])
+		assert(rate_value >= 0 and rate_value <= 10000, "RunState rate exceeds the prototype bound")
+		_company_rate_basis_points[company_id] = rate_value
 
 
 func get_cash() -> int:
@@ -67,6 +74,11 @@ func get_company_trust_milli(company_id: StringName) -> int:
 	return _company_trust_milli[company_id]
 
 
+func get_company_rate_basis_points(company_id: StringName) -> int:
+	assert(_company_rate_basis_points.has(company_id), "Unknown company ID")
+	return _company_rate_basis_points[company_id]
+
+
 func add_company_trust_milli(company_id: StringName, amount: int) -> void:
 	assert(_company_trust_milli.has(company_id), "Unknown company ID")
 	assert(amount >= 0, "Trust increment cannot be negative")
@@ -94,6 +106,7 @@ func get_observation() -> Dictionary:
 		"completed_cycle_count": _completed_cycle_count,
 		"company_ids": _company_ids.duplicate(),
 		"company_trust_milli": trust_observation,
+		"company_rate_basis_points": _company_rate_basis_points.duplicate(true),
 	}
 
 
@@ -102,13 +115,15 @@ func duplicate_state() -> RunState:
 		_cash,
 		_company_ids.duplicate(),
 		_company_trust_milli.duplicate(true),
-		_completed_cycle_count
+		_completed_cycle_count,
+		_company_rate_basis_points.duplicate(true)
 	)
 
 
 func replace_with(source: RunState) -> void:
 	assert(source != null, "Source RunState is required")
 	assert(source._company_ids == _company_ids, "Source RunState company IDs must match in stable order")
+	assert(source._company_rate_basis_points == _company_rate_basis_points, "Source RunState company rates must match")
 	_cash = source._cash
 	_completed_cycle_count = source._completed_cycle_count
 	_company_trust_milli = source._company_trust_milli.duplicate(true)
